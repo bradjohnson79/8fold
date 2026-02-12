@@ -15,9 +15,7 @@ const TARGET_ROOT = path.join(process.cwd(), "apps", "api", "app", "api", "admin
 // Allowlist of CURRENT Prisma-using admin routes (legacy compatibility layer).
 // Guardrail intent: prevent Prisma from spreading to *new* admin API files.
 const ALLOWED_PRISMA_IMPORT_FILES = new Set<string>([
-  "apps/api/app/api/admin/users/route.ts",
   "apps/api/app/api/admin/users/routers/route.ts",
-  "apps/api/app/api/admin/users/contractors/route.ts",
   "apps/api/app/api/admin/users/job-posters/route.ts",
 ]);
 
