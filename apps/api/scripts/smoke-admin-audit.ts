@@ -62,11 +62,39 @@ async function main() {
   if (!DATABASE_URL) throw new Error("DATABASE_URL missing");
 
   const base = (process.env.API_BASE_URL ?? "http://localhost:3003").replace(/\/+$/, "");
+  const adminBase = (process.env.ADMIN_BASE_URL ?? "http://localhost:3002").replace(/\/+$/, "");
   const authSchema = getAuthSchemaFromDbUrl(DATABASE_URL);
   const runMutations = process.env.ADMIN_AUDIT_RUN_MUTATIONS === "1";
+  const checkAdminAuth = process.env.ADMIN_AUDIT_CHECK_ADMIN_AUTH === "1";
 
   const pg = new Client({ connectionString: DATABASE_URL });
   await pg.connect();
+
+  async function resolveAdminUserSchema(): Promise<string> {
+    const candidates = [authSchema, "8fold_test", "public"];
+    for (const schema of candidates) {
+      try {
+        const res = await pg.query(
+          `select 1 as ok from information_schema.tables where table_schema = $1 and table_name = 'AdminUser' limit 1;`,
+          [schema],
+        );
+        if ((res.rows[0]?.ok ?? null) === 1) return schema;
+      } catch {
+        // ignore
+      }
+    }
+    return "public";
+  }
+
+  function parseCookie(setCookieHeader: string, name: string): string | null {
+    const raw = String(setCookieHeader ?? "");
+    const parts = raw.split(/,\s*(?=[^;]+=[^;]+)/g); // split combined Set-Cookie
+    for (const p of parts) {
+      const m = p.match(new RegExp(`(?:^|\\s)${name}=([^;]+)`));
+      if (m && m[1]) return m[1];
+    }
+    return null;
+  }
 
   // Discover an AdminUser (for actor authUserId). We do NOT assume a schema; try common.
   async function selectAdminUser(): Promise<{ email: string }> {
@@ -259,6 +287,88 @@ async function main() {
   ];
 
   const results: RunRow[] = [];
+
+  // Optional: verify Admin UI auth + cookie + Admin→API bridge by logging into apps/admin and calling /api/admin/stats.
+  if (checkAdminAuth) {
+    const traceId = crypto.randomUUID();
+    const start = Date.now();
+    try {
+      const email = String(process.env.ADMIN_AUDIT_LOGIN_EMAIL ?? admin.email).trim().toLowerCase();
+      const password = String(process.env.ADMIN_AUDIT_LOGIN_PASSWORD ?? "Admin12345!");
+
+      const adminSchema = await resolveAdminUserSchema();
+      await pg.query(
+        `insert into "${adminSchema}"."AdminUser" ("id", "email", "passwordHash", "role")
+         values ($1, $2, public.crypt($3, public.gen_salt('bf', 10)), $4)
+         on conflict ("email") do update
+           set "role" = excluded."role",
+               "passwordHash" = excluded."passwordHash";`,
+        [crypto.randomUUID(), email, password, "SUPER_ADMIN"],
+      );
+
+      const loginResp = await fetch(`${adminBase}/api/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-admin-trace-id": traceId },
+        body: JSON.stringify({ email, password }),
+        cache: "no-store" as any,
+      });
+      const loginText = await loginResp.text().catch(() => "");
+      results.push({
+        name: "admin-ui.login",
+        method: "POST",
+        url: `${adminBase}/api/login`,
+        traceId,
+        status: loginResp.status,
+        ok: loginResp.status >= 200 && loginResp.status < 300,
+        elapsedMs: Date.now() - start,
+        bodySnippet: truncate(loginText, 2000),
+      });
+
+      const setCookie = loginResp.headers.get("set-cookie") ?? "";
+      const adminSession = parseCookie(setCookie, "admin_session");
+      if (!adminSession) {
+        results.push({
+          name: "admin-ui.cookie.admin_session",
+          method: "GET",
+          url: `${adminBase}/api/login`,
+          traceId,
+          status: 0,
+          ok: false,
+          elapsedMs: Date.now() - start,
+          bodySnippet: "Missing admin_session Set-Cookie header",
+        });
+      } else {
+        const statsStart = Date.now();
+        const statsResp = await fetch(`${adminBase}/api/admin/stats`, {
+          method: "GET",
+          headers: { cookie: `admin_session=${adminSession}`, "x-admin-trace-id": traceId },
+          cache: "no-store" as any,
+        });
+        const statsText = await statsResp.text().catch(() => "");
+        results.push({
+          name: "admin-ui.stats",
+          method: "GET",
+          url: `${adminBase}/api/admin/stats`,
+          traceId,
+          status: statsResp.status,
+          ok: statsResp.status >= 200 && statsResp.status < 300,
+          elapsedMs: Date.now() - statsStart,
+          bodySnippet: truncate(statsText, 2000),
+        });
+      }
+    } catch (err: any) {
+      results.push({
+        name: "admin-ui.auth-check",
+        method: "GET",
+        url: `${adminBase}/api/admin/stats`,
+        traceId,
+        status: 0,
+        ok: false,
+        elapsedMs: Date.now() - start,
+        bodySnippet: `AUTH_CHECK_FAILED: ${String(err?.message ?? err)}`,
+      });
+    }
+  }
 
   async function callOne(e: (typeof endpoints)[number]): Promise<RunRow> {
     const traceId = crypto.randomUUID();
