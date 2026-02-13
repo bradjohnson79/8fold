@@ -19,6 +19,7 @@ export const TRADE_DELTAS: Record<TradeCategory, number> = {
   FENCING: 25_00,
   SNOW_REMOVAL: 25_00,
   MOVING: 25_00,
+  FURNITURE_ASSEMBLY: 25_00,
   
   // ±$50 trades (higher variability)
   JUNK_REMOVAL: 50_00,

@@ -121,7 +121,13 @@ export async function POST(req: Request) {
     }
 
     // Store files on disk first (non-DB, safe to do outside transactions)
-    const storedFiles = [];
+    const storedFiles: Array<{
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      storageKey: string;
+      sha256: string;
+    }> = [];
     for (const f of body.data.files) {
       const stored = await storeMaterialsReceiptFile({
         submissionId: submission.id,
@@ -129,7 +135,13 @@ export async function POST(req: Request) {
         mimeType: f.mimeType,
         base64: f.base64
       });
-      storedFiles.push({ ...f, ...stored });
+      storedFiles.push({
+        originalName: f.originalName,
+        mimeType: f.mimeType,
+        sizeBytes: stored.sizeBytes,
+        storageKey: stored.storageKey,
+        sha256: stored.sha256,
+      });
     }
 
     const extracted = await extractReceiptTotals({

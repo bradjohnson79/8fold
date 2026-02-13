@@ -41,7 +41,7 @@ export async function POST(req: Request) {
               id: jobs.id,
               status: jobs.status,
               customerActionTokenHash: jobs.customerActionTokenHash,
-              routerId: jobs.routerId,
+              routerId: jobs.claimedByUserId,
             })
             .from(jobs)
             .where(eq(jobs.id, id))
@@ -146,7 +146,7 @@ export async function POST(req: Request) {
       const job =
         (
           await db
-            .select({ routerId: jobs.routerId })
+            .select({ routerId: jobs.claimedByUserId })
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1)

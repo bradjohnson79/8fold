@@ -37,7 +37,7 @@ export async function POST(req: Request) {
               id: jobs.id,
               status: jobs.status,
               isMock: jobs.isMock,
-              routerId: jobs.routerId,
+              routerId: jobs.claimedByUserId,
               routerEarningsCents: jobs.routerEarningsCents,
               brokerFeeCents: jobs.brokerFeeCents,
             })

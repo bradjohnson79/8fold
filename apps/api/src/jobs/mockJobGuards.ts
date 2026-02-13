@@ -183,7 +183,7 @@ export async function cleanupInvalidMockJobs(
       isMock: jobs.isMock,
       jobSource: jobs.jobSource,
       publicStatus: jobs.publicStatus,
-      routerId: jobs.routerId,
+      routerId: jobs.claimedByUserId,
       laborTotalCents: jobs.laborTotalCents,
       contractorPayoutCents: jobs.contractorPayoutCents,
       routerEarningsCents: jobs.routerEarningsCents,
@@ -197,7 +197,7 @@ export async function cleanupInvalidMockJobs(
         // Mock job with OPEN status
         and(eq(jobs.isMock, true), eq(jobs.publicStatus, "OPEN" as any)),
         // Mock job that's claimed
-        and(eq(jobs.isMock, true), isNotNull(jobs.routerId)),
+        and(eq(jobs.isMock, true), isNotNull(jobs.claimedByUserId)),
         // Mock job with invalid pricing
         and(eq(jobs.isMock, true), lte(jobs.laborTotalCents, 0)),
         and(eq(jobs.isMock, true), lte(jobs.contractorPayoutCents, 0)),

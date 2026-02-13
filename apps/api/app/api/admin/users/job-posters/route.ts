@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     const nextCursor = rows.length > take ? rows[take]?.jobPoster?.userId ?? null : null;
 
     return NextResponse.json({
-      jobPosters: page.map((r) => ({
+      jobPosters: page.map((r: any) => ({
         ...r.jobPoster,
         createdAt: (r.jobPoster.createdAt as any)?.toISOString?.() ?? String(r.jobPoster.createdAt),
         lastJobPostedAt: (r.jobPoster.lastJobPostedAt as any)?.toISOString?.() ?? null,

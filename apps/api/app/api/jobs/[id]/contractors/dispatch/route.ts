@@ -39,7 +39,7 @@ export async function POST(req: Request) {
               status: jobs.status,
               region: jobs.region,
               serviceType: jobs.serviceType,
-              routerId: jobs.routerId,
+              routerId: jobs.claimedByUserId,
               contractorPayoutCents: jobs.contractorPayoutCents,
             })
             .from(jobs)

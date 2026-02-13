@@ -70,7 +70,7 @@ export async function GET(req: Request) {
     const nextCursor = rows.length > take ? rows[take]?.router?.userId ?? null : null;
 
     return NextResponse.json({
-      routers: page.map((r) => ({
+      routers: page.map((r: any) => ({
         ...r.router,
         createdAt: (r.router.createdAt as any)?.toISOString?.() ?? String(r.router.createdAt),
         user: {

@@ -152,7 +152,7 @@ export async function GET(req: Request) {
     const nextCursor = rows.length > take ? rows[take]?.user?.id ?? null : null;
 
     return NextResponse.json({
-      users: page.map((r) => ({
+      users: page.map((r: any) => ({
         ...r.user,
         createdAt: (r.user.createdAt as any)?.toISOString?.() ?? String(r.user.createdAt),
         updatedAt: (r.user.updatedAt as any)?.toISOString?.() ?? String(r.user.updatedAt),

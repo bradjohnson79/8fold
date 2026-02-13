@@ -73,7 +73,7 @@ export async function GET(req: Request) {
     const nextCursor = rows.length > take ? rows[take]?.contractor?.userId ?? null : null;
 
     return NextResponse.json({
-      contractors: page.map((r) => ({
+      contractors: page.map((r: any) => ({
         ...r.contractor,
         createdAt: (r.contractor.createdAt as any)?.toISOString?.() ?? String(r.contractor.createdAt),
         user: {

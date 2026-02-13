@@ -26,6 +26,7 @@ export * from "./materialsItem";
 export * from "./jobPosterCredit";
 export * from "./stripeWebhookEvent";
 export * from "./routerProfile";
+export * from "./repeatContractorRequest";
 export * from "./supportTicket";
 export * from "./supportMessage";
 export * from "./supportAttachment";

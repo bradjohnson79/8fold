@@ -23,7 +23,7 @@ export async function GET(req: Request) {
         await db
           .select({ c: sql<number>`count(${jobs.id})` })
           .from(jobs)
-          .where(eq(jobs.routerId, u.userId))
+          .where(eq(jobs.claimedByUserId, u.userId))
       )[0]?.c ?? 0;
 
     const successfulCompletedApproved =
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
         await db
           .select({ c: sql<number>`count(${jobs.id})` })
           .from(jobs)
-          .where(and(eq(jobs.routerId, u.userId), eq(jobs.status, "COMPLETED_APPROVED" as any)))
+          .where(and(eq(jobs.claimedByUserId, u.userId), eq(jobs.status, "COMPLETED_APPROVED" as any)))
       )[0]?.c ?? 0;
 
     // Exclude any jobs with unresolved holds/disputes (no ACTIVE holds).
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
           .leftJoin(jobHolds, and(eq(jobHolds.jobId, jobs.id), eq(jobHolds.status, "ACTIVE" as any)))
           .where(
             and(
-              eq(jobs.routerId, u.userId),
+              eq(jobs.claimedByUserId, u.userId),
               eq(jobs.status, "COMPLETED_APPROVED" as any),
               isNull(jobHolds.id),
             ),
