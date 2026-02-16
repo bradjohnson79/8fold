@@ -1,20 +1,20 @@
-import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
-import { db } from "../../../db/drizzle";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
+import { PUBLIC_MARKETPLACE_JOB_STATUSES } from "../../constants/publicJobStatuses";
 import { getRegionDatasets, getRegionName, type CountryCode2 } from "../../locations/datasets";
 import { regionToCityState } from "../../jobs/nominatim";
 
-const PUBLIC_STATUSES = ["PUBLISHED", "OPEN_FOR_ROUTING", "IN_PROGRESS"] as const;
-
 function publicEligibility() {
-  // Match current public discovery behavior:
+  // Homepage "Newest jobs" discovery:
   // - archived=false
-  // - status in PUBLISHED/OPEN_FOR_ROUTING/IN_PROGRESS
-  // - include REAL (non-mock) OR any IN_PROGRESS (coverage jobs may be MOCK)
+  // - status in OPEN_FOR_ROUTING/ASSIGNED/IN_PROGRESS (no PUBLISHED - enum drift fix)
+  // - isMock=false, jobSource=REAL
   return and(
     eq(jobs.archived, false),
-    inArray(jobs.status, PUBLIC_STATUSES as unknown as any),
-    or(and(eq(jobs.jobSource, "REAL"), eq(jobs.isMock, false)), eq(jobs.status, "IN_PROGRESS")),
+    eq(jobs.isMock, false),
+    eq(jobs.jobSource, "REAL"),
+    inArray(jobs.status, PUBLIC_MARKETPLACE_JOB_STATUSES as unknown as any),
   );
 }
 
@@ -91,14 +91,64 @@ export async function listCitiesByRegion(
     .slice(0, 50);
 }
 
-export async function listNewestJobs(limit: number): Promise<Array<typeof jobs.$inferSelect>> {
+export type PublicNewestJobRow = {
+  id: string;
+  title: string;
+  status: string;
+  region: string;
+  country: string;
+  city: string | null;
+  tradeCategory: string | null;
+  createdAt: Date;
+  laborTotalCents: number;
+  contractorPayoutCents: number;
+  routerEarningsCents: number;
+  brokerFeeCents: number;
+  materialsTotalCents: number;
+  transactionFeeCents: number;
+  amountCents: number;
+  paymentStatus: string;
+  publicStatus: string;
+};
+
+export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[]> {
   const take = Math.max(1, Math.min(50, Math.trunc(limit || 9)));
-  return await db
-    .select()
+  const result = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      status: jobs.status,
+      region: jobs.region,
+      country: jobs.country,
+      city: jobs.city,
+      tradeCategory: jobs.tradeCategory,
+      createdAt: jobs.createdAt,
+      laborTotalCents: jobs.laborTotalCents,
+      contractorPayoutCents: jobs.contractorPayoutCents,
+      routerEarningsCents: jobs.routerEarningsCents,
+      brokerFeeCents: jobs.brokerFeeCents,
+      materialsTotalCents: jobs.materialsTotalCents,
+      transactionFeeCents: jobs.transactionFeeCents,
+      amountCents: jobs.amountCents,
+      paymentStatus: jobs.paymentStatus,
+      publicStatus: jobs.publicStatus,
+    })
     .from(jobs)
     .where(publicEligibility())
     .orderBy(desc(jobs.createdAt), desc(jobs.id))
     .limit(take);
+
+  if (process.env.NODE_ENV !== "production") {
+    for (const row of result) {
+      if (row.laborTotalCents === undefined) {
+        throw new Error(
+          "Public jobs query missing laborTotalCents — financial schema drift detected.",
+        );
+      }
+    }
+  }
+
+  return result;
 }
 
 export async function listJobsByLocation(opts: {

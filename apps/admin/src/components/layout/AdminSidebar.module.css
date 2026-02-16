@@ -1,0 +1,128 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 950;
+  color: #052e16;
+  background: radial-gradient(circle at 30% 30%, #86efac, #22c55e);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.brandText {
+  font-weight: 950;
+  letter-spacing: 0.2px;
+  line-height: 1.1;
+}
+
+.brandSub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(226, 232, 240, 0.6);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nav {
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.52);
+  margin: 10px 8px 8px;
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: rgba(226, 232, 240, 0.84);
+  border: 1px solid transparent;
+}
+
+.link:hover {
+  background: rgba(2, 6, 23, 0.35);
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
+.active {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.25);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.activeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.9);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  flex: 0 0 auto;
+}
+
+.footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.envPill {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: rgba(134, 239, 172, 0.95);
+  background: rgba(34, 197, 94, 0.08);
+  font-weight: 900;
+}
+
+.hint {
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.55);
+  line-height: 1.35;
+}
+

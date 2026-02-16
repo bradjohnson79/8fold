@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin } from "../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../src/http/errors";
+import { requireAdmin } from "@/src/lib/auth/requireAdmin";
+import { handleApiError } from "@/src/lib/errorHandler";
 import { and, desc, eq, lt, or } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { jobPosters, users } from "../../../../../db/schema";
@@ -11,12 +11,13 @@ const QuerySchema = z.object({
 });
 
 export async function GET(req: Request) {
-  try {
-    await requireAdmin(req);
+  const auth = await requireAdmin(req);
+  if (auth instanceof NextResponse) return auth;
 
+  try {
     const url = new URL(req.url);
     const parsed = QuerySchema.safeParse({ cursor: url.searchParams.get("cursor") ?? undefined });
-    if (!parsed.success) return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+    if (!parsed.success) return NextResponse.json({ ok: false, error: "invalid_query" }, { status: 400 });
 
     const take = 50;
     const cursorUserId = parsed.data.cursor ?? null;
@@ -67,7 +68,9 @@ export async function GET(req: Request) {
     const nextCursor = rows.length > take ? rows[take]?.jobPoster?.userId ?? null : null;
 
     return NextResponse.json({
-      jobPosters: page.map((r: any) => ({
+      ok: true,
+      data: {
+        jobPosters: page.map((r: any) => ({
         ...r.jobPoster,
         createdAt: (r.jobPoster.createdAt as any)?.toISOString?.() ?? String(r.jobPoster.createdAt),
         lastJobPostedAt: (r.jobPoster.lastJobPostedAt as any)?.toISOString?.() ?? null,
@@ -77,11 +80,11 @@ export async function GET(req: Request) {
           updatedAt: (r.user.updatedAt as any)?.toISOString?.() ?? String(r.user.updatedAt),
         },
       })),
-      nextCursor
+        nextCursor,
+      },
     });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    return handleApiError(err, "GET /api/admin/users/job-posters", { userId: auth.userId });
   }
 }
 

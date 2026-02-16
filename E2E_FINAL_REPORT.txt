@@ -1,0 +1,92 @@
+
+================================================================================
+E2E BC AUDIT - Three Mandated Flows
+================================================================================
+
+✓ Using API on port 3003
+
+🔵 FLOW 1: Job Poster Full Publish (Langley, BC; HANDYMAN)
+--------------------------------------------------------------------------------
+  1.1 Requesting login code for poster...
+  1.2 Verifying login code...
+  ✓ Logged in as job poster
+  1.3 Creating job draft...
+❌ FLOW 1 FAILED: Failed to create draft
+
+🔵 FLOW 2: Router Routes Job
+--------------------------------------------------------------------------------
+  2.1 Logging in as router...
+  ✓ Logged in as router
+  2.2 Fetching routable jobs...
+  ✓ Found 0 routable jobs
+❌ FLOW 2 FAILED: No routable jobs found. Flow 1 may not have published a job.
+
+🔵 FLOW 3: Contractor Accepts + Messaging Unlock
+--------------------------------------------------------------------------------
+  3.1 Logging in as contractor...
+  ✓ Logged in as contractor
+❌ FLOW 3 FAILED: No dispatch data found from Flow 2
+
+================================================================================
+E2E AUDIT REPORT
+================================================================================
+
+📊 SUMMARY:
+  Flow 1 (Job Poster Publish): ❌ FAILED
+    Error: Failed to create draft
+  Flow 2 (Router Routes Job):  ❌ FAILED
+    Error: No routable jobs found. Flow 1 may not have published a job.
+  Flow 3 (Contractor Accept):  ❌ FAILED
+    Error: No dispatch data found from Flow 2
+
+📋 DETAILED AUDIT LOG:
+--------------------------------------------------------------------------------
+
+AUTH:
+  1. [POST] /api/auth/request
+     Status: 200 | Result: success
+     Data: {"email":"poster.bc.e2e@8fold.local"}
+  2. [POST] /api/auth/verify
+     Status: 200 | Result: success
+     Data: {"email":"poster.bc.e2e@8fold.local","hasToken":true}
+  3. [POST] /api/auth/request
+     Status: 200 | Result: success
+     Data: {"email":"router.bc.e2e@8fold.local"}
+  4. [POST] /api/auth/verify
+     Status: 200 | Result: success
+     Data: {"email":"router.bc.e2e@8fold.local","hasToken":true}
+  5. [POST] /api/auth/request
+     Status: 200 | Result: success
+     Data: {"email":"contractor.bc.e2e@8fold.local"}
+  6. [POST] /api/auth/verify
+     Status: 200 | Result: success
+     Data: {"email":"contractor.bc.e2e@8fold.local","hasToken":true}
+
+JOB-POSTER:
+  1. [POST] /api/web/job-poster/jobs/create-draft
+     Status: 400 | Result: failed
+     Data: {}
+
+ROUTER:
+  1. [GET] /api/web/router/routable-jobs
+     Status: 200 | Result: success
+     Data: {"count":0}
+
+================================================================================
+🔍 KEY DB SIDE-EFFECTS (INFERRED):
+--------------------------------------------------------------------------------
+  - Users table: 3 authenticated sessions created
+  - JobDrafts table: 1 draft created, wizard steps updated
+  - Jobs table: 1 job published (status: PUBLISHED, routingStatus: ROUTED_BY_ROUTER)
+  - JobDispatches table: N dispatches created (1-5 contractors)
+  - JobAssignments table: 1 assignment created (contractor accepted)
+  - Conversations table: 1 conversation created
+  - Messages table: System message + user messages created
+  - JobPayments table: 1 payment intent created (if Stripe flow completed)
+
+================================================================================
+END OF AUDIT
+================================================================================
+
+📝 Detailed audit log saved to: /Users/bradjohnson/Documents/APPS/8Fold_Local/E2E_AUDIT_LOG.json
+

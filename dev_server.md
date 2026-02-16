@@ -1,0 +1,1 @@
+pnpm --filter @8fold/mobile dev

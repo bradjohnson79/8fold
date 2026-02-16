@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin } from "../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../src/http/errors";
+import { requireAdmin } from "@/src/lib/auth/requireAdmin";
+import { handleApiError } from "@/src/lib/errorHandler";
 import { and, desc, eq, lt, or } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { contractorAccounts, users } from "../../../../../db/schema";
@@ -11,12 +11,13 @@ const QuerySchema = z.object({
 });
 
 export async function GET(req: Request) {
-  try {
-    await requireAdmin(req);
+  const auth = await requireAdmin(req);
+  if (auth instanceof NextResponse) return auth;
 
+  try {
     const url = new URL(req.url);
     const parsed = QuerySchema.safeParse({ cursor: url.searchParams.get("cursor") ?? undefined });
-    if (!parsed.success) return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+    if (!parsed.success) return NextResponse.json({ ok: false, error: "invalid_query" }, { status: 400 });
 
     const take = 50;
     // Cursor paging: mirror Prisma behavior (order by createdAt desc, userId desc).
@@ -42,6 +43,10 @@ export async function GET(req: Request) {
       .select({
         contractor: {
           userId: contractorAccounts.userId,
+          status: contractorAccounts.status,
+          wizardCompleted: contractorAccounts.wizardCompleted,
+          waiverAccepted: contractorAccounts.waiverAccepted,
+          waiverAcceptedAt: contractorAccounts.waiverAcceptedAt,
           tradeCategory: contractorAccounts.tradeCategory,
           serviceRadiusKm: contractorAccounts.serviceRadiusKm,
           country: contractorAccounts.country,
@@ -73,8 +78,11 @@ export async function GET(req: Request) {
     const nextCursor = rows.length > take ? rows[take]?.contractor?.userId ?? null : null;
 
     return NextResponse.json({
-      contractors: page.map((r: any) => ({
+      ok: true,
+      data: {
+        contractors: page.map((r: any) => ({
         ...r.contractor,
+        waiverAcceptedAt: (r.contractor.waiverAcceptedAt as any)?.toISOString?.() ?? null,
         createdAt: (r.contractor.createdAt as any)?.toISOString?.() ?? String(r.contractor.createdAt),
         user: {
           ...r.user,
@@ -82,34 +90,11 @@ export async function GET(req: Request) {
           updatedAt: (r.user.updatedAt as any)?.toISOString?.() ?? String(r.user.updatedAt),
         },
       })),
-      nextCursor
+        nextCursor,
+      },
     });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    if (process.env.ADMIN_AUDIT_LOG === "1" && status >= 500) {
-      const traceId = req.headers.get("x-admin-trace-id") ?? null;
-      const pg: any = err && typeof err === "object" ? (err as any) : null;
-      // eslint-disable-next-line no-console
-      console.error("[ADMIN_AUDIT][API_500]", {
-        traceId,
-        method: req.method,
-        path: new URL(req.url).pathname,
-        message,
-        err,
-        stack: err instanceof Error ? err.stack : undefined,
-        pg: pg
-          ? {
-              code: pg.code,
-              detail: pg.detail,
-              constraint: pg.constraint,
-              column: pg.column,
-              table: pg.table,
-              schema: pg.schema,
-            }
-          : null,
-      });
-    }
-    return NextResponse.json({ error: message }, { status });
+    return handleApiError(err, "GET /api/admin/users/contractors", { userId: auth.userId });
   }
 }
 

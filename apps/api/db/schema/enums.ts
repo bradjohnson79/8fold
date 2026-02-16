@@ -4,15 +4,26 @@ import { pgEnum } from "drizzle-orm/pg-core";
 // They are for typing / future reads only (no migrations in Phase 0.2).
 
 export const userRoleEnum = pgEnum("UserRole", [
-  "USER",
   "ADMIN",
-  "CUSTOMER",
   "CONTRACTOR",
   "ROUTER",
   "JOB_POSTER",
 ]);
 
-export const userStatusEnum = pgEnum("UserStatus", ["ACTIVE", "SUSPENDED", "PENDING"]);
+export const userStatusEnum = pgEnum("UserStatus", ["ACTIVE", "SUSPENDED", "ARCHIVED", "PENDING"]);
+
+// Contractor (inventory)
+export const contractorStatusEnum = pgEnum("ContractorStatus", ["PENDING", "APPROVED", "REJECTED"]);
+export const contractorTradeEnum = pgEnum("ContractorTrade", [
+  "JUNK_REMOVAL",
+  "YARDWORK_GROUNDSKEEPING",
+  "CARPENTRY",
+  "DRYWALL",
+  "ROOFING",
+  "PLUMBING",
+  "ELECTRICAL",
+  "WELDING",
+]);
 
 export const tradeCategoryEnum = pgEnum("TradeCategory", [
   "PLUMBING",
@@ -61,6 +72,8 @@ export const jobStatusEnum = pgEnum("JobStatus", [
   // NOTE: Added to Postgres via add-only ALTER TYPE on 2026-02-12.
   // Order must match Postgres enum sort order (added at end; no reordering allowed).
   "COMPLETED",
+  // NOTE: Added to Postgres via add-only ALTER TYPE on 2026-02-14.
+  "DISPUTED",
 ]);
 
 export const publicJobStatusEnum = pgEnum("PublicJobStatus", ["OPEN", "IN_PROGRESS"]);
@@ -74,6 +87,56 @@ export const routingStatusEnum = pgEnum("RoutingStatus", ["UNROUTED", "ROUTED_BY
 export const countryCodeEnum = pgEnum("CountryCode", ["CA", "US"]);
 
 export const currencyCodeEnum = pgEnum("CurrencyCode", ["CAD", "USD"]);
+
+// Stripe-backed payment + payout state (Job + PartsMaterialRequest)
+export const paymentStatusEnum = pgEnum("PaymentStatus", [
+  "UNPAID",
+  "REQUIRES_ACTION",
+  "FUNDED",
+  "FAILED",
+  "REFUNDED",
+]);
+
+// Avoid name collision with existing Postgres enum "PayoutStatus" (PENDING/PAID/FAILED).
+export const jobPayoutStatusEnum = pgEnum("JobPayoutStatus", ["NOT_READY", "READY", "RELEASED", "FAILED"]);
+
+export const partsMaterialReleaseStatusEnum = pgEnum("PartsMaterialReleaseStatus", [
+  "NOT_READY",
+  "READY",
+  "RELEASED",
+  "FAILED",
+]);
+
+// Ledger (wallet + bank-ledger hardening)
+// NOTE: Postgres enum is authoritative. Values must be add-only in Postgres.
+export const ledgerDirectionEnum = pgEnum("LedgerDirection", ["CREDIT", "DEBIT"]);
+export const ledgerBucketEnum = pgEnum("LedgerBucket", ["PENDING", "AVAILABLE", "PAID", "HELD"]);
+export const ledgerEntryTypeEnum = pgEnum("LedgerEntryType", [
+  // Existing values
+  "ROUTER_EARNING",
+  "BROKER_FEE",
+  "PAYOUT",
+  "ADJUSTMENT",
+  // Bank-ledger values (added in 0008)
+  "ESCROW_FUND",
+  "PNM_FUND",
+  "ESCROW_RELEASE",
+  "ESCROW_REFUND",
+  "PLATFORM_FEE",
+  "ROUTER_EARN",
+  "CONTRACTOR_EARN",
+]);
+
+// Escrow + parts/materials (bank-ledger foundations; added in 0008)
+export const escrowKindEnum = pgEnum("EscrowKind", ["JOB_ESCROW", "PARTS_MATERIALS"]);
+export const escrowStatusEnum = pgEnum("EscrowStatus", ["PENDING", "FUNDED", "RELEASED", "REFUNDED", "FAILED"]);
+export const partsMaterialStatusEnum = pgEnum("PartsMaterialStatus", [
+  "REQUESTED",
+  "APPROVED",
+  "PAID",
+  "REJECTED",
+  "CANCELLED",
+]);
 
 export const routerStatusEnum = pgEnum("RouterStatus", ["ACTIVE", "SUSPENDED"]);
 
@@ -220,4 +283,13 @@ export const materialsRequestStatusEnum = pgEnum("MaterialsRequestStatus", [
 
 export const rolePayoutMethodEnum = pgEnum("RolePayoutMethod", ["STRIPE", "PAYPAL"]);
 export const rolePayoutStatusEnum = pgEnum("RolePayoutStatus", ["UNSET", "PENDING", "ACTIVE"]);
+
+// AI email (send queue / counters)
+export const sendQueueStatusEnum = pgEnum("SendQueueStatus", ["QUEUED", "SENT", "FAILED", "BLOCKED"]);
+export const sendBlockedReasonEnum = pgEnum("SendBlockedReason", [
+  "REGION_PAUSED",
+  "IDENTITY_PAUSED",
+  "DAILY_LIMIT_EXCEEDED",
+  "INTERVAL_LIMIT_EXCEEDED",
+]);
 

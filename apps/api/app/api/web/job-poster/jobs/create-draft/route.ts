@@ -6,13 +6,13 @@ import { jobPhotos } from "../../../../../../db/schema/jobPhoto";
 import { jobPosterProfiles } from "../../../../../../db/schema/jobPosterProfile";
 import { jobs } from "../../../../../../db/schema/job";
 import { eq } from "drizzle-orm";
-import { requireJobPoster } from "../../../../../../src/auth/rbac";
+import { requireJobPosterReady } from "../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../src/http/errors";
-import { JobPostingInputSchema } from "@8fold/shared/jobPosting";
+import { JobPostingInputSchema } from "@8fold/shared";
 import { appraiseJobPrice } from "../../../../../../src/pricing/aiAppraisal";
 import { validateJobLocationMatchesProfile } from "../../../../../../src/jobs/location";
 import { geocodeAddress } from "../../../../../../src/jobs/location";
-import { calculatePayoutBreakdown } from "@8fold/shared/money";
+import { calculatePayoutBreakdown } from "@8fold/shared";
 import { PRICING_VERSION } from "../../../../../../src/pricing/constants";
 import { rateLimit } from "../../../../../../src/middleware/rateLimit";
 import { getRegionName } from "../../../../../../src/locations/datasets";
@@ -21,7 +21,9 @@ import { ensureActiveAccount } from "../../../../../../src/server/accountGuard";
 
 export async function POST(req: Request) {
   try {
-    const user = await requireJobPoster(req);
+    const ready = await requireJobPosterReady(req);
+    if (ready instanceof Response) return ready;
+    const user = ready;
     await ensureActiveAccount(user.userId);
     const rl = rateLimit({
       key: `job_posting:create_draft:${user.userId}`,
@@ -35,10 +37,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if profile exists + is complete (full address required before posting)
+    // Profile already validated by requireJobPosterReady; fetch for location validation
     const profileRows = await db
       .select({
-        userId: jobPosterProfiles.userId,
         address: jobPosterProfiles.address,
         city: jobPosterProfiles.city,
         stateProvince: jobPosterProfiles.stateProvince,
@@ -48,25 +49,8 @@ export async function POST(req: Request) {
       .where(eq(jobPosterProfiles.userId, user.userId))
       .limit(1);
     const profile = profileRows[0] ?? null;
-
     if (!profile) {
-      return NextResponse.json(
-        { error: "Job poster profile required. Please complete your profile first." },
-        { status: 400 }
-      );
-    }
-
-    const hasFullAddress = Boolean(
-      (profile.address ?? "").trim() &&
-        (profile.city ?? "").trim() &&
-        (profile.stateProvince ?? "").trim() &&
-        String(profile.country ?? "").trim()
-    );
-    if (!hasFullAddress) {
-      return NextResponse.json(
-        { error: "Profile must include your full address (street, city, state/province, country) before posting a job." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Profile required" }, { status: 400 });
     }
 
     const body = await req.json();
@@ -95,7 +79,7 @@ export async function POST(req: Request) {
     const stateProvince = addr.provinceOrState;
     const address = addr.street;
     const postalCode = addr.postalCode ?? "";
-    const junkHaulingItems = (items ?? []).map((it) => ({
+    const junkHaulingItems = (items ?? []).map((it: any) => ({
       category: it.category,
       item: it.description,
       quantity: it.quantity,
@@ -210,11 +194,11 @@ export async function POST(req: Request) {
       // Photo refs (if provided).
       if (photoUrls?.length) {
         await tx.insert(jobPhotos).values(
-          photoUrls.map((url) => ({
+          photoUrls.map((url: string) => ({
             id: crypto.randomUUID(),
             jobId,
             kind: "CUSTOMER_SCOPE",
-            actor: "CUSTOMER",
+            actor: "JOB_POSTER",
             url,
             metadata: { label: "JOB_POSTING_DRAFT", city, stateProvince } as any,
             createdAt: new Date(),

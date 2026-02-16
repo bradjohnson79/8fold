@@ -41,7 +41,13 @@ export async function POST(req: Request) {
     const u = await requireUser(req);
     if (String(u.role) !== "CONTRACTOR") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const body = BodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     const requestId = getIdFromUrl(req);
@@ -63,6 +69,7 @@ export async function POST(req: Request) {
       )[0] ?? null;
     if (!mr) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (mr.contractorId !== c.contractor.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
     if (mr.status !== "ESCROWED") return NextResponse.json({ error: "Escrow not funded yet" }, { status: 409 });
     const escrow =
       (

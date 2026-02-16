@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "8Fold Local",
+    "slug": "8fold-local",
+    "scheme": "eightfoldlocal",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.eightfoldlocal.app"
+    },
+    "android": {
+      "package": "com.eightfoldlocal.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}

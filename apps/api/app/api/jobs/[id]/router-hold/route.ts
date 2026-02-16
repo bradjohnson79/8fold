@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRouter } from "../../../../../src/auth/rbac";
+import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../src/http/errors";
 import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs, jobHolds, jobs } from "../../../../../db/schema";
 import { randomUUID } from "crypto";
+import { logApiError } from "@/src/lib/errors/errorLogger";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -22,9 +23,17 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRouter(req);
+    const ready = await requireRouterReady(req);
+    if (ready instanceof Response) return ready;
+    const user = ready;
     const id = getIdFromUrl(req);
-    const body = BodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     const result = await db.transaction(async (tx) => {
@@ -91,6 +100,7 @@ export async function POST(req: Request) {
     if (result.kind === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     return NextResponse.json({ job: result.job });
   } catch (err) {
+    logApiError({ context: "POST /api/jobs/[id]/router-hold", err });
     const { status, message } = toHttpError(err);
     return NextResponse.json({ error: message }, { status });
   }

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { and, eq, gte, ilike, lte } from "drizzle-orm";
-import { db } from "../../db/drizzle";
+import { db } from "@/server/db/drizzle";
 import {
   auditLogs,
   jobAssignments,

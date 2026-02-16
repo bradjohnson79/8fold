@@ -1,0 +1,11 @@
+import { Suspense } from "react";
+import AdminSignupClient from "./AdminSignupClient";
+
+export default function AdminSignupPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "60vh" }} />}>
+      <AdminSignupClient />
+    </Suspense>
+  );
+}
+

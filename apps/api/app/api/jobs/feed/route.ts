@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
-import { db } from "../../../../db/drizzle";
+import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../../db/schema/job";
-import { toHttpError } from "../../../../src/http/errors";
+import { handleApiError } from "../../../../src/lib/errorHandler";
+import { ok } from "../../../../src/lib/api/respond";
 
 export async function GET() {
   try {
@@ -42,10 +42,9 @@ export async function GET() {
       .orderBy(desc(jobs.publishedAt))
       .limit(50);
 
-    return NextResponse.json({ jobs: result });
+    return ok({ jobs: result });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    return handleApiError(err, "GET /api/jobs/feed");
   }
 }
 

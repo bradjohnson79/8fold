@@ -12,7 +12,13 @@ export async function POST(req: Request) {
     const u = await optionalUser(req);
     if (!u) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = BodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     // v2: approval requires Stripe funding via PaymentIntent flow.

@@ -1,0 +1,19 @@
+{
+  "country": "CA",
+  "regions": [
+    { "regionCode": "AB", "regionName": "Alberta", "cities": ["Calgary", "Edmonton", "Red Deer", "Lethbridge", "Fort McMurray", "Medicine Hat"] },
+    { "regionCode": "BC", "regionName": "British Columbia", "cities": ["Vancouver", "Victoria", "Surrey", "Burnaby", "Kelowna", "Nanaimo"] },
+    { "regionCode": "MB", "regionName": "Manitoba", "cities": ["Winnipeg", "Brandon", "Steinbach", "Thompson", "Portage la Prairie", "Selkirk"] },
+    { "regionCode": "NB", "regionName": "New Brunswick", "cities": ["Moncton", "Saint John", "Fredericton", "Dieppe", "Miramichi", "Bathurst"] },
+    { "regionCode": "NL", "regionName": "Newfoundland and Labrador", "cities": ["St. John's", "Corner Brook", "Mount Pearl", "Gander", "Grand Falls-Windsor", "Labrador City"] },
+    { "regionCode": "NS", "regionName": "Nova Scotia", "cities": ["Halifax", "Sydney", "Dartmouth", "Truro", "New Glasgow", "Kentville"] },
+    { "regionCode": "NT", "regionName": "Northwest Territories", "cities": ["Yellowknife", "Hay River", "Inuvik", "Fort Smith", "Norman Wells", "Tuktoyaktuk"] },
+    { "regionCode": "NU", "regionName": "Nunavut", "cities": ["Iqaluit", "Rankin Inlet", "Arviat", "Baker Lake", "Cambridge Bay", "Pond Inlet"] },
+    { "regionCode": "ON", "regionName": "Ontario", "cities": ["Toronto", "Ottawa", "Hamilton", "Mississauga", "London", "Kitchener"] },
+    { "regionCode": "PE", "regionName": "Prince Edward Island", "cities": ["Charlottetown", "Summerside", "Stratford", "Cornwall", "Montague", "Souris"] },
+    { "regionCode": "QC", "regionName": "Quebec", "cities": ["Montreal", "Quebec City", "Laval", "Gatineau", "Longueuil", "Sherbrooke"] },
+    { "regionCode": "SK", "regionName": "Saskatchewan", "cities": ["Saskatoon", "Regina", "Prince Albert", "Moose Jaw", "Swift Current", "Yorkton"] },
+    { "regionCode": "YT", "regionName": "Yukon", "cities": ["Whitehorse", "Dawson City", "Watson Lake", "Haines Junction", "Carmacks", "Faro"] }
+  ]
+}
+

@@ -1,10 +1,14 @@
 import { randomUUID } from "crypto";
-import { db as appDb } from "../../db/drizzle";
+import { db as appDb } from "@/server/db/drizzle";
 import { contractors, jobs, users } from "../../db/schema";
 
 type DbLike = typeof appDb;
 
-export async function seedTestUser(db: DbLike, authUserId: string, role: "USER" | "ADMIN") {
+export async function seedTestUser(
+  db: DbLike,
+  authUserId: string,
+  role: "JOB_POSTER" | "CONTRACTOR" | "ROUTER" | "ADMIN",
+) {
   const id = randomUUID();
   const out =
     (

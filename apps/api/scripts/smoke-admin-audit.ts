@@ -61,8 +61,10 @@ async function main() {
   const DATABASE_URL = process.env.DATABASE_URL;
   if (!DATABASE_URL) throw new Error("DATABASE_URL missing");
 
-  const base = (process.env.API_BASE_URL ?? "http://localhost:3003").replace(/\/+$/, "");
-  const adminBase = (process.env.ADMIN_BASE_URL ?? "http://localhost:3002").replace(/\/+$/, "");
+  const base = String(process.env.API_ORIGIN ?? "").trim().replace(/\/+$/, "");
+  if (!base) throw new Error("API_ORIGIN missing (explicit config required)");
+  const adminBase = String(process.env.ADMIN_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (!adminBase) throw new Error("ADMIN_BASE_URL missing (explicit config required)");
   const authSchema = getAuthSchemaFromDbUrl(DATABASE_URL);
   const runMutations = process.env.ADMIN_AUDIT_RUN_MUTATIONS === "1";
   const checkAdminAuth = process.env.ADMIN_AUDIT_CHECK_ADMIN_AUTH === "1";
@@ -303,7 +305,7 @@ async function main() {
          on conflict ("email") do update
            set "role" = excluded."role",
                "passwordHash" = excluded."passwordHash";`,
-        [crypto.randomUUID(), email, password, "SUPER_ADMIN"],
+        [crypto.randomUUID(), email, password, "ADMIN"],
       );
 
       const loginResp = await fetch(`${adminBase}/api/login`, {

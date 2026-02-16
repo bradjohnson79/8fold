@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { jobs } from "../../../../../db/schema/job";
@@ -6,12 +5,15 @@ import { repeatContractorRequests } from "../../../../../db/schema/repeatContrac
 import { jobAssignments } from "../../../../../db/schema/jobAssignment";
 import { contractors } from "../../../../../db/schema/contractor";
 import { jobPayments } from "../../../../../db/schema/jobPayment";
-import { requireJobPoster } from "../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../src/http/errors";
+import { requireJobPosterReady } from "../../../../../src/auth/onboardingGuards";
+import { handleApiError } from "../../../../../src/lib/errorHandler";
+import { ok } from "../../../../../src/lib/api/respond";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireJobPoster(req);
+    const ready = await requireJobPosterReady(req);
+    if (ready instanceof Response) return ready;
+    const user = ready;
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? undefined;
 
@@ -30,6 +32,8 @@ export async function GET(req: Request) {
         regionCode: jobs.regionCode,
         tradeCategory: jobs.tradeCategory,
         status: jobs.status,
+        paymentStatus: jobs.paymentStatus,
+        payoutStatus: jobs.payoutStatus,
         createdAt: jobs.createdAt,
         publishedAt: jobs.publishedAt,
         contactedAt: jobs.contactedAt,
@@ -41,6 +45,9 @@ export async function GET(req: Request) {
         escrowLockedAt: jobs.escrowLockedAt,
         paymentCapturedAt: jobs.paymentCapturedAt,
         paymentReleasedAt: jobs.paymentReleasedAt,
+        contractorCompletedAt: jobs.contractorCompletedAt,
+        customerApprovedAt: jobs.customerApprovedAt,
+        routerApprovedAt: jobs.routerApprovedAt,
       })
       .from(jobs)
       .where(where)
@@ -141,10 +148,9 @@ export async function GET(req: Request) {
       payment: paymentByJobId.get(j.id) ?? null,
     }));
 
-    return NextResponse.json({ jobs: out });
+    return ok({ jobs: out });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    return handleApiError(err, "GET /api/web/job-poster/jobs");
   }
 }
 

@@ -1,0 +1,69 @@
+{
+  "name": "8fold-local",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "pnpm -C apps/web dev",
+    "dev:admin": "pnpm -C apps/admin dev -p 3002",
+    "dev:api": "pnpm -C apps/api dev",
+    "dev:dise": "API_ORIGIN=http://localhost:3003 pnpm -C apps/dise dev",
+    "dev": "pnpm dev:web & pnpm dev:admin & pnpm dev:api & pnpm dev:dise",
+    "predev:verify": "pnpm -C apps/api db:verify",
+    "build": "pnpm -C apps/web build",
+    "lint": "pnpm -C apps/web lint",
+    "typecheck": "pnpm -C apps/web typecheck",
+    "test": "pnpm -C apps/web test",
+    "format": "prettier -w .",
+    "guardrails": "node scripts/guardrails.mjs",
+    "test:role-scan": "node scripts/scan-legacy-roles.mjs",
+    "ci:gate": "node scripts/ci-gate.mjs",
+    "check:boundaries": "ts-node --esm scripts/check-boundaries.ts",
+    "db:generate": "node -e \"console.error('❌ Schema generation is Drizzle-only.'); process.exit(1)\"",
+    "db:migrate:drizzle": "tsx scripts/apply-drizzle-sql-migrations.ts",
+    "db:migrate": "pnpm db:migrate:drizzle",
+    "db:test:deploy": "tsx scripts/db-test-deploy.ts",
+    "seed:dev": "node -e \"console.error('❌ Legacy seed script removed during Prisma removal.'); process.exit(1)\"",
+    "seed:locations": "node -e \"console.error('❌ Legacy seed script removed during Prisma removal.'); process.exit(1)\"",
+    "seed:mocks:region-volume": "node -e \"console.error('❌ Mock seeding via Prisma has been removed. Use Drizzle-native seed scripts.'); process.exit(1)\"",
+    "mock:refresh": "node -e \"console.error('❌ Mock refresh via Prisma has been removed. Use Drizzle-native refresh scripts.'); process.exit(1)\"",
+    "payout:schedule": "node -e \"console.error('❌ Legacy payout scheduler removed during Prisma removal.'); process.exit(1)\"",
+    "contractorPayout:schedule": "node -e \"console.error('❌ Legacy payout scheduler removed during Prisma removal.'); process.exit(1)\"",
+    "db:studio": "node -e \"console.error('❌ No DB studio configured.'); process.exit(1)\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "drizzle-kit": "^0.31.9",
+    "playwright": "^1.58.2",
+    "prettier": "^3.3.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3",
+    "tsx": "^4.20.5",
+    "turbo": "^2.3.3"
+  },
+  "dependencies": {
+    "@types/pg": "^8.16.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "pg": "^8.18.0"
+  },
+  "pnpm": {
+    "autoInstallPeers": false,
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "@prisma/client",
+        "prisma"
+      ]
+    },
+    "overrides": {
+      "drizzle-orm": "0.45.1",
+      "react": "18.3.1",
+      "react-dom": "18.3.1",
+      "@types/react": "18.3.27",
+      "@types/react-dom": "18.3.7"
+    }
+  }
+}

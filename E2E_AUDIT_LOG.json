@@ -1,0 +1,178 @@
+{
+  "results": {
+    "flow1": {
+      "passed": false,
+      "error": "Failed to create draft"
+    },
+    "flow2": {
+      "passed": true,
+      "error": ""
+    },
+    "flow3": {
+      "passed": true,
+      "error": ""
+    }
+  },
+  "auditLog": [
+    {
+      "flow": "auth",
+      "step": "request-login-code",
+      "endpoint": "/api/auth/request",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "email": "poster.bc.e2e@8fold.local"
+      }
+    },
+    {
+      "flow": "auth",
+      "step": "verify-login-code",
+      "endpoint": "/api/auth/verify",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "email": "poster.bc.e2e@8fold.local",
+        "hasToken": true
+      }
+    },
+    {
+      "flow": "job-poster",
+      "step": "create-draft",
+      "endpoint": "/api/web/job-poster/jobs/create-draft",
+      "method": "POST",
+      "status": 400,
+      "result": "failed",
+      "data": {}
+    },
+    {
+      "flow": "auth",
+      "step": "request-login-code",
+      "endpoint": "/api/auth/request",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "email": "router.bc.e2e@8fold.local"
+      }
+    },
+    {
+      "flow": "auth",
+      "step": "verify-login-code",
+      "endpoint": "/api/auth/verify",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "email": "router.bc.e2e@8fold.local",
+        "hasToken": true
+      }
+    },
+    {
+      "flow": "router",
+      "step": "get-routable-jobs",
+      "endpoint": "/api/web/router/routable-jobs",
+      "method": "GET",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "count": 1
+      }
+    },
+    {
+      "flow": "router",
+      "step": "get-eligible-contractors",
+      "endpoint": "/api/jobs/cmldztfo7000sonvnkdy96rpo/contractors/eligible",
+      "method": "GET",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "jobId": "cmldztfo7000sonvnkdy96rpo",
+        "count": 2
+      }
+    },
+    {
+      "flow": "router",
+      "step": "apply-routing",
+      "endpoint": "/api/web/router/apply-routing",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "jobId": "cmldztfo7000sonvnkdy96rpo",
+        "contractorCount": 2,
+        "created": [
+          {
+            "dispatchId": "2b47e889-60ec-4177-a56d-fece27411593",
+            "contractorId": "cml5zk0o60008onl1oae0wowr",
+            "token": "fb1e7ebb2108c034ac385e56777297602c2647e81a267072"
+          },
+          {
+            "dispatchId": "333c0730-06cf-4636-a723-560524344b7d",
+            "contractorId": "730b0014-cc23-4b8d-b61e-84532a6b0f96",
+            "token": "18663e5171effccf4398a380f940f48a65078b0a78428270"
+          }
+        ]
+      }
+    },
+    {
+      "flow": "auth",
+      "step": "request-login-code",
+      "endpoint": "/api/auth/request",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "email": "contractor.bc.e2e@8fold.local"
+      }
+    },
+    {
+      "flow": "auth",
+      "step": "verify-login-code",
+      "endpoint": "/api/auth/verify",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "email": "contractor.bc.e2e@8fold.local",
+        "hasToken": true
+      }
+    },
+    {
+      "flow": "contractor",
+      "step": "accept-dispatch",
+      "endpoint": "/api/contractor/dispatch/respond",
+      "method": "POST",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "dispatchId": "333c0730-06cf-4636-a723-560524344b7d",
+        "status": "ACCEPTED"
+      }
+    },
+    {
+      "flow": "contractor",
+      "step": "get-conversations",
+      "endpoint": "/api/web/contractor/conversations",
+      "method": "GET",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "count": 1
+      }
+    },
+    {
+      "flow": "job-poster",
+      "step": "get-conversations",
+      "endpoint": "/api/web/job-poster/conversations",
+      "method": "GET",
+      "status": 200,
+      "result": "success",
+      "data": {
+        "count": 0
+      }
+    }
+  ],
+  "timestamp": "2026-02-11T03:04:21.633Z"
+}

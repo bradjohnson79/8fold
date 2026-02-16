@@ -1,0 +1,126 @@
+{
+  "base": "http://localhost:3003",
+  "generatedAt": "2026-02-11T23:38:27.958Z",
+  "results": [
+    {
+      "role": "job-poster",
+      "name": "profile",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/job-poster/profile",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "job-poster",
+      "name": "my-jobs",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/job-poster/jobs",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "job-poster",
+      "name": "pending-materials",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/job-poster/materials/pending",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "job-poster",
+      "name": "conversations",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/job-poster/conversations",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "job-poster",
+      "name": "support-badge",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/support/tickets?take=1",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "router",
+      "name": "profile",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/router/profile",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "router",
+      "name": "routable-jobs",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/router/routable-jobs",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "router",
+      "name": "routing-queue",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/router/routed-jobs",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "router",
+      "name": "support-inbox",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/router/support/inbox",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "contractor",
+      "name": "profile",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/contractor/profile",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "contractor",
+      "name": "offers",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/contractor/offers",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "contractor",
+      "name": "appointment",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/contractor/appointment",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "contractor",
+      "name": "conversations",
+      "method": "GET",
+      "url": "http://localhost:3003/api/web/contractor/conversations",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "public",
+      "name": "public-recent",
+      "method": "GET",
+      "url": "http://localhost:3003/api/public/jobs/recent?limit=5",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "role": "public",
+      "name": "public-by-location",
+      "method": "GET",
+      "url": "http://localhost:3003/api/public/jobs/by-location?country=CA&regionCode=BC&city=Langley",
+      "status": 200,
+      "ok": true
+    }
+  ]
+}

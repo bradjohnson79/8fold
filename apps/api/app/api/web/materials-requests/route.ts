@@ -4,7 +4,7 @@ import { toHttpError } from "../../../../src/http/errors";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { db } from "../../../../db/drizzle";
+import { db } from "@/server/db/drizzle";
 import {
   auditLogs,
   contractors,
@@ -17,6 +17,7 @@ import {
   materialsRequests,
   users,
 } from "../../../../db/schema";
+import { isJobActive } from "../../../../src/utils/jobActive";
 
 const CreateBodySchema = z.object({
   jobId: z.string().trim().min(10),
@@ -210,7 +211,13 @@ export async function POST(req: Request) {
     const u = await optionalUser(req);
     if (!u) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = CreateBodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = CreateBodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     const job =
@@ -219,6 +226,7 @@ export async function POST(req: Request) {
           .select({
             id: jobs.id,
             status: jobs.status,
+            paymentStatus: jobs.paymentStatus,
             routerId: jobs.claimedByUserId,
             jobPosterUserId: jobs.jobPosterUserId,
           })
@@ -227,6 +235,14 @@ export async function POST(req: Request) {
           .limit(1)
       )[0] ?? null;
     if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    if (!isJobActive(job)) {
+      return NextResponse.json(
+        { ok: false, error: "Job is not active. Parts & Materials unavailable." },
+        { status: 400 },
+      );
+    }
+
     if (job.status !== "ASSIGNED" && job.status !== "IN_PROGRESS") {
       return NextResponse.json({ error: "Materials requests require ASSIGNED or IN_PROGRESS." }, { status: 409 });
     }

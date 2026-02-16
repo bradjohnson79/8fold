@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1600" viewBox="0 0 900 1600">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#062316"/>
+      <stop offset="1" stop-color="#0f6f43"/>
+    </linearGradient>
+    <radialGradient id="glow2" cx="40%" cy="28%" r="75%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="900" height="1600" fill="url(#g2)"/>
+  <rect width="900" height="1600" fill="url(#glow2)"/>
+
+  <!-- Site backdrop -->
+  <path d="M0 1080c160-120 310-160 450-160s290 40 450 160v520H0z" fill="#ffffff" fill-opacity="0.08"/>
+  <path d="M0 1180c180-110 330-145 450-145s270 35 450 145v420H0z" fill="#ffffff" fill-opacity="0.06"/>
+
+  <!-- Contractor (abstract) -->
+  <circle cx="520" cy="540" r="70" fill="#ffffff" fill-opacity="0.16"/>
+  <path d="M350 980c40-220 160-310 270-310s230 90 270 310" fill="#ffffff" fill-opacity="0.10"/>
+
+  <!-- Tool belt / equipment -->
+  <rect x="360" y="900" width="340" height="70" rx="18" fill="#ffffff" fill-opacity="0.12"/>
+  <rect x="390" y="918" width="120" height="34" rx="12" fill="#0b3d24" fill-opacity="0.45"/>
+  <rect x="530" y="918" width="140" height="34" rx="12" fill="#0b3d24" fill-opacity="0.35"/>
+
+  <!-- On-site panel / checklist -->
+  <rect x="120" y="260" width="420" height="240" rx="28" fill="#ffffff" fill-opacity="0.10"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="3">
+    <path d="M160 320h340"/>
+    <path d="M160 375h260"/>
+    <path d="M160 430h300"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.16">
+    <circle cx="160" cy="320" r="10"/>
+    <circle cx="160" cy="375" r="10"/>
+    <circle cx="160" cy="430" r="10"/>
+  </g>
+</svg>
+

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser } from "../../../../../src/auth/rbac";
+import { requireSupportRequester } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
 import crypto from "node:crypto";
 import { and, desc, eq, or } from "drizzle-orm";
@@ -20,18 +20,7 @@ type SupportRoleContext = z.infer<typeof SupportRoleContextSchema>;
 function expectedRoleContext(role: string): SupportRoleContext {
   if (role === "ROUTER") return "ROUTER";
   if (role === "CONTRACTOR") return "CONTRACTOR";
-  // USER/CUSTOMER/JOB_POSTER are treated as Job Poster context in v1.
   return "JOB_POSTER";
-}
-
-async function requireSupportRequester(req: Request) {
-  const user = await requireUser(req);
-  const r = String(user.role);
-  if (r === "ADMIN") throw Object.assign(new Error("Forbidden"), { status: 403 });
-  if (r !== "USER" && r !== "CUSTOMER" && r !== "JOB_POSTER" && r !== "ROUTER" && r !== "CONTRACTOR") {
-    throw Object.assign(new Error("Forbidden"), { status: 403 });
-  }
-  return user;
 }
 
 const CreateSchema = z.object({
@@ -85,6 +74,7 @@ export async function GET(req: Request) {
       .limit(take);
 
     return NextResponse.json({
+      ok: true,
       tickets: rows.map((t) => ({
         ...t,
         createdAt: t.createdAt.toISOString(),
@@ -95,27 +85,38 @@ export async function GET(req: Request) {
               decisionAt: (t as any).disputeCase.decisionAt ? (t as any).disputeCase.decisionAt.toISOString() : null,
             }
           : null,
-      }))
+      })),
     });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const { status, message, code, context } = toHttpError(err);
+    return NextResponse.json({ ok: false, error: message, code, context }, { status });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const user = await requireSupportRequester(req);
-    const body = await req.json().catch(() => ({}));
-    const parsed = CreateSchema.safeParse(body);
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ ok: false, error: "Invalid input", code: "INVALID_JSON" }, { status: 400 });
+    }
+    const parsed = CreateSchema.safeParse(raw);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid input", code: "INVALID_INPUT", context: { details: parsed.error.flatten() } },
+        { status: 400 },
+      );
     }
 
     const { type, category, priority, roleContext, subject, message } = parsed.data;
     const expected = expectedRoleContext(String(user.role));
     if (roleContext !== expected) {
-      return NextResponse.json({ error: "roleContext must match your account role" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "roleContext must match your account role", code: "ROLE_CONTEXT_MISMATCH", context: { expected } },
+        { status: 400 },
+      );
     }
 
     const created = await db.transaction(async (tx) => {
@@ -173,6 +174,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       {
+        ok: true,
         ticket: {
           ...created,
           createdAt: created.createdAt.toISOString(),
@@ -182,8 +184,8 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const { status, message, code, context } = toHttpError(err);
+    return NextResponse.json({ ok: false, error: message, code, context }, { status });
   }
 }
 

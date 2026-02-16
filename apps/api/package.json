@@ -9,11 +9,23 @@
     "start": "next start -p 3003",
     "lint": "next lint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:verify": "tsx scripts/verifyDbSchema.ts",
+    "remove-mock-actors": "tsx scripts/remove-mock-actors.ts",
+    "financial-db-introspect": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/financial-db-introspect.ts",
+    "verify-financial-schema": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/verify-financial-schema.ts",
+    "financial-audit": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/financial-audit.ts",
+    "test:lifecycle": "tsx scripts/betaLifecycleTest.ts",
+    "test:lifecycle:probe": "tsx scripts/betaLifecycleTest.ts --probe",
+    "test:lifecycle:financial": "tsx scripts/financialLifecycleTest.ts",
+    "ci:smoke": "tsx scripts/ci-smoke.ts",
+    "backfill:roles": "tsx scripts/backfill-role-taxonomy.ts",
+    "migrate:router-rewards": "tsx scripts/migrate-router-rewards.ts"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
     "@clerk/nextjs": "^6.12.0",
+    "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.45.1",
     "next": "^15.1.6",
     "nodemailer": "^8.0.1",
@@ -25,6 +37,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.13.1",
     "@types/nodemailer": "^7.0.9",
     "@types/pg": "^8.16.0",

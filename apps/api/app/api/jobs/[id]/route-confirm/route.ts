@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
 import { jobs } from "../../../../../db/schema/job";
-import { requireRouter } from "../../../../../src/auth/rbac";
+import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../src/http/errors";
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -15,7 +15,9 @@ function getIdFromUrl(req: Request): string {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRouter(req);
+    const ready = await requireRouterReady(req);
+    if (ready instanceof Response) return ready;
+    const user = ready;
     const id = getIdFromUrl(req);
 
     const result = await db.transaction(async (tx) => {

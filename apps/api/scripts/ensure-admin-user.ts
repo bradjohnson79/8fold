@@ -1,7 +1,7 @@
 /**
  * Deterministic Admin access recovery tool.
  *
- * Guarantees an AdminUser exists for the given email and forces role=SUPER_ADMIN.
+ * Guarantees an AdminUser exists for the given email and forces role=ADMIN.
  * Also (re)sets passwordHash deterministically so local login can succeed.
  *
  * Run:
@@ -83,7 +83,7 @@ async function main() {
        set "role" = excluded."role",
            "passwordHash" = excluded."passwordHash"
      returning "id", "email", "role";`,
-    [id, email, password, "SUPER_ADMIN"],
+    [id, email, password, "ADMIN"],
   );
 
   const row = (upsert.rows[0] ?? null) as { id: string; email: string; role: string } | null;

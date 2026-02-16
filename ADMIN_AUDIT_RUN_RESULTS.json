@@ -1,0 +1,284 @@
+{
+  "base": "http://localhost:3012",
+  "generatedAt": "2026-02-13T04:27:17.039Z",
+  "runMutations": false,
+  "actor": {
+    "adminEmail": "bradjohnson79@gmail.com",
+    "actorUserId": "cml5fjhjr0000oniiahlsl9i7",
+    "authSchema": "8fold_test"
+  },
+  "discovered": {
+    "firstJobId": "audit_job_1fdcfc7c",
+    "firstContractorId": "audit_contractor_row_1fdcfc7c",
+    "firstPayoutRequestId": null,
+    "firstJobDraftId": null,
+    "firstDisputeId": null
+  },
+  "results": [
+    {
+      "name": "admin-ui.login",
+      "method": "POST",
+      "url": "http://localhost:3002/api/login",
+      "traceId": "6eef1fac-47d8-48c5-9c26-bfaad8d6688c",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 560,
+      "bodySnippet": "{\"ok\":true}"
+    },
+    {
+      "name": "admin-ui.stats",
+      "method": "GET",
+      "url": "http://localhost:3002/api/admin/stats",
+      "traceId": "6eef1fac-47d8-48c5-9c26-bfaad8d6688c",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 722,
+      "bodySnippet": "{\"contractors\":{\"total\":42,\"approved\":40},\"jobDrafts\":{\"total\":0},\"jobs\":{\"total\":28,\"assigned\":4,\"published\":9,\"inProgress\":0,\"contractorCompleted\":0,\"customerApproved\":0,\"customerRejected\":0,\"flagged\":0,\"completedApproved\":5},\"payoutRequests\":{\"requested\":0}}"
+    },
+    {
+      "name": "jobs.list",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/jobs",
+      "traceId": "ad31e1b0-bc10-49ed-b9ae-4d2bc2d6e5a5",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 205,
+      "bodySnippet": "{\"jobs\":[{\"id\":\"audit_job_1fdcfc7c\",\"status\":\"COMPLETED_APPROVED\",\"archived\":false,\"title\":\"Audit job 1fdcfc7c\",\"scope\":\"Test scope\",\"region\":\"BC\",\"country\":\"US\",\"currency\":\"USD\",\"regionCode\":null,\"regionName\":null,\"city\":null,\"postalCode\":null,\"addressFull\":null,\"aiAppraisalStatus\":\"PENDING\",\"aiAppraisedAt\":null,\"aiSuggestedTotal\":null,\"aiPriceRangeLow\":null,\"aiPriceRangeHigh\":null,\"aiConfidence\":null,\"aiReasoning\":null,\"pricingIntel\":null,\"pricingIntelGeneratedAt\":null,\"pricingIntelModel\":null,\"supersededByJobId\":null,\"isMock\":false,\"publicStatus\":\"OPEN\",\"jobSource\":\"REAL\",\"repeatContractorDiscountCents\":0,\"serviceType\":\"handyman\",\"tradeCategory\":\"HANDYMAN\",\"timeWindow\":null,\"routerEarningsCents\":0,\"brokerFeeCents\":0,\"contractorPayoutCents\":0,\"laborTotalCents\":0,\"materialsTotalCents\":0,\"transactionFeeCents\":0,\"escrowLockedAt\":null,\"paymentCapturedAt\":null,\"paymentReleasedAt\":\"2026-02-12T02:31:03.895Z\",\"priceMedianCents\":null,\"priceAdjustmentCents\":null,\"pricingVersion\":\"v1-median-delta\",\"junkHaulingItems\":null,\"availability\":null,\"jobType\":\"urban\",\"lat\":null,\"lng\":null,\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"publishedAt\":\"2026-02-12T02:31:04.246Z\",\"jobPosterUserId\":\"audit_poster_1fdcfc7c\",\"contactedAt\":null,\"guaranteeEligibleAt\":\"2026-02-19T02:31:04.246Z\",\"claimedAt\":null,\"claimedByUserId\":null,\"adminRoutedById\":null,\"contractorUserId\":\"audit_contractor_1fdcfc7c\",\"postedAt\":\"2026-02-12T02:31:04.246Z\",\"routingDueAt\":\"2026-02-13T02:31:04.246Z\",\"firstRoutedAt\":null,\"routingStatus\":\"UNROUTED\",\"failsafeRouting\":false,\"routedAt\":null,\"contractorCompletedAt\":null,\"contractorCompletionSummary\":null,\"customerApprovedAt\":null,\"customerRejectedAt\":null,\"customerRejectReason\":null,\"customerRejectNotes\":null,\"customerFeedback\":null,\"routerApprovedAt\":null,\"routerApprovalNotes\":null,\"completionFlaggedAt\":null,\"completionFlagReason\":null,\"contractorActionTokenHash\":null,\"customerActionTokenHash\":null,\"estimatedCompletionDate\":null,\"estimateSetAt\":null,\"estimateUpdatedAt\":null,\"e… [truncated 499616 chars]"
+    },
+    {
+      "name": "jobs.list.ASSIGNED",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/jobs?status=ASSIGNED",
+      "traceId": "c818bf0d-dbb1-44f3-83d2-4550fe556eb0",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 88,
+      "bodySnippet": "{\"jobs\":[{\"id\":\"0ac57fff-a8d0-4857-ba85-09fa886619f4\",\"status\":\"ASSIGNED\",\"archived\":false,\"title\":\"E2E (BC) Furniture assembly — Langley\",\"scope\":\"Assemble one IKEA cabinet and mount to wall. Bring basic tools. Verify wall studs and level alignment.\",\"region\":\"langley-bc\",\"country\":\"CA\",\"currency\":\"CAD\",\"regionCode\":\"BC\",\"regionName\":null,\"city\":\"Langley\",\"postalCode\":\"V2Y 1N7\",\"addressFull\":null,\"aiAppraisalStatus\":\"COMPLETED\",\"aiAppraisedAt\":\"2026-02-11T23:46:24.325Z\",\"aiSuggestedTotal\":400,\"aiPriceRangeLow\":300,\"aiPriceRangeHigh\":500,\"aiConfidence\":\"high\",\"aiReasoning\":\"Estimated BC urban furniture assembly and wall-mount service for a single IKEA cabinet. Typical local contractor rates for small assembly and wall mounting: about 60–100 CAD/hour. Time to complete: 3–5 hours (including stud verification and\",\"pricingIntel\":null,\"pricingIntelGeneratedAt\":null,\"pricingIntelModel\":null,\"supersededByJobId\":null,\"isMock\":false,\"publicStatus\":\"OPEN\",\"jobSource\":\"REAL\",\"repeatContractorDiscountCents\":0,\"serviceType\":\"handyman\",\"tradeCategory\":\"FURNITURE_ASSEMBLY\",\"timeWindow\":null,\"routerEarningsCents\":3750,\"brokerFeeCents\":2500,\"contractorPayoutCents\":18750,\"laborTotalCents\":25000,\"materialsTotalCents\":0,\"transactionFeeCents\":0,\"escrowLockedAt\":\"2026-02-11T23:46:24.757Z\",\"paymentCapturedAt\":\"2026-02-11T23:46:24.757Z\",\"paymentReleasedAt\":null,\"priceMedianCents\":40000,\"priceAdjustmentCents\":-15000,\"pricingVersion\":\"v1-median-delta\",\"junkHaulingItems\":[{\"category\":\"Assembly\",\"quantity\":1,\"description\":\"IKEA cabinet assembly\"}],\"availability\":{\"monday\":{\"evening\":false,\"morning\":true,\"afternoon\":false}},\"jobType\":\"urban\",\"lat\":49.1044,\"lng\":-122.8011,\"createdAt\":\"2026-02-11T23:46:19.155Z\",\"publishedAt\":\"2026-02-11T23:46:19.155Z\",\"jobPosterUserId\":\"af9b3142-8e06-4bf6-9869-7fe340e95e98\",\"contactedAt\":null,\"guaranteeEligibleAt\":\"2026-02-18T23:46:19.155Z\",\"claimedAt\":\"2026-02-11T23:46:26.197Z\",\"claimedByUserId\":\"3262ab2a-7307-449d-a698-43cb885d45e8\",\"adminRoutedById\":null,\"con… [truncated 13455 chars]"
+    },
+    {
+      "name": "jobs.list.COMPLETED",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/jobs?status=COMPLETED",
+      "traceId": "da3a333d-6c87-445c-b209-2032d93f0540",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 93,
+      "bodySnippet": "{\"jobs\":[]}"
+    },
+    {
+      "name": "jobs.list.COMPLETED_APPROVED",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/jobs?status=COMPLETED_APPROVED",
+      "traceId": "b4caaefc-366c-4d88-9609-9795636a8a4a",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 93,
+      "bodySnippet": "{\"jobs\":[{\"id\":\"audit_job_1fdcfc7c\",\"status\":\"COMPLETED_APPROVED\",\"archived\":false,\"title\":\"Audit job 1fdcfc7c\",\"scope\":\"Test scope\",\"region\":\"BC\",\"country\":\"US\",\"currency\":\"USD\",\"regionCode\":null,\"regionName\":null,\"city\":null,\"postalCode\":null,\"addressFull\":null,\"aiAppraisalStatus\":\"PENDING\",\"aiAppraisedAt\":null,\"aiSuggestedTotal\":null,\"aiPriceRangeLow\":null,\"aiPriceRangeHigh\":null,\"aiConfidence\":null,\"aiReasoning\":null,\"pricingIntel\":null,\"pricingIntelGeneratedAt\":null,\"pricingIntelModel\":null,\"supersededByJobId\":null,\"isMock\":false,\"publicStatus\":\"OPEN\",\"jobSource\":\"REAL\",\"repeatContractorDiscountCents\":0,\"serviceType\":\"handyman\",\"tradeCategory\":\"HANDYMAN\",\"timeWindow\":null,\"routerEarningsCents\":0,\"brokerFeeCents\":0,\"contractorPayoutCents\":0,\"laborTotalCents\":0,\"materialsTotalCents\":0,\"transactionFeeCents\":0,\"escrowLockedAt\":null,\"paymentCapturedAt\":null,\"paymentReleasedAt\":\"2026-02-12T02:31:03.895Z\",\"priceMedianCents\":null,\"priceAdjustmentCents\":null,\"pricingVersion\":\"v1-median-delta\",\"junkHaulingItems\":null,\"availability\":null,\"jobType\":\"urban\",\"lat\":null,\"lng\":null,\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"publishedAt\":\"2026-02-12T02:31:04.246Z\",\"jobPosterUserId\":\"audit_poster_1fdcfc7c\",\"contactedAt\":null,\"guaranteeEligibleAt\":\"2026-02-19T02:31:04.246Z\",\"claimedAt\":null,\"claimedByUserId\":null,\"adminRoutedById\":null,\"contractorUserId\":\"audit_contractor_1fdcfc7c\",\"postedAt\":\"2026-02-12T02:31:04.246Z\",\"routingDueAt\":\"2026-02-13T02:31:04.246Z\",\"firstRoutedAt\":null,\"routingStatus\":\"UNROUTED\",\"failsafeRouting\":false,\"routedAt\":null,\"contractorCompletedAt\":null,\"contractorCompletionSummary\":null,\"customerApprovedAt\":null,\"customerRejectedAt\":null,\"customerRejectReason\":null,\"customerRejectNotes\":null,\"customerFeedback\":null,\"routerApprovedAt\":null,\"routerApprovalNotes\":null,\"completionFlaggedAt\":null,\"completionFlagReason\":null,\"contractorActionTokenHash\":null,\"customerActionTokenHash\":null,\"estimatedCompletionDate\":null,\"estimateSetAt\":null,\"estimateUpdatedAt\":null,\"e… [truncated 11628 chars]"
+    },
+    {
+      "name": "routing-activity",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/routing-activity",
+      "traceId": "85e119b2-47bd-4b15-b5cc-92d96c91c7e8",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 119,
+      "bodySnippet": "{\"jobs\":[{\"id\":\"audit_job_1fdcfc7c\",\"title\":\"Audit job 1fdcfc7c\",\"region\":\"BC\",\"status\":\"COMPLETED_APPROVED\",\"routingStatus\":\"UNROUTED\",\"routerId\":null,\"routerName\":null,\"routerEmail\":null,\"adminRoutedById\":null,\"adminRoutedByEmail\":null,\"routedAt\":null,\"firstRoutedAt\":null,\"claimedAt\":null,\"dispatchedContractorsCount\":0,\"guaranteeEligibleAt\":\"2026-02-19T02:31:04.246Z\",\"contactedAt\":null,\"publishedAt\":\"2026-02-12T02:31:04.246Z\"},{\"id\":\"audit_job_fd458dd6\",\"title\":\"Audit job fd458dd6\",\"region\":\"BC\",\"status\":\"COMPLETED_APPROVED\",\"routingStatus\":\"UNROUTED\",\"routerId\":null,\"routerName\":null,\"routerEmail\":null,\"adminRoutedById\":null,\"adminRoutedByEmail\":null,\"routedAt\":null,\"firstRoutedAt\":null,\"claimedAt\":null,\"dispatchedContractorsCount\":0,\"guaranteeEligibleAt\":\"2026-02-19T02:30:50.027Z\",\"contactedAt\":null,\"publishedAt\":\"2026-02-12T02:30:50.027Z\"},{\"id\":\"audit_job_592dfccc\",\"title\":\"Audit job 592dfccc\",\"region\":\"BC\",\"status\":\"COMPLETED_APPROVED\",\"routingStatus\":\"UNROUTED\",\"routerId\":null,\"routerName\":null,\"routerEmail\":null,\"adminRoutedById\":null,\"adminRoutedByEmail\":null,\"routedAt\":null,\"firstRoutedAt\":null,\"claimedAt\":null,\"dispatchedContractorsCount\":0,\"guaranteeEligibleAt\":\"2026-02-19T02:30:31.957Z\",\"contactedAt\":null,\"publishedAt\":\"2026-02-12T02:30:31.957Z\"},{\"id\":\"audit_job_b0e1386d\",\"title\":\"Audit job b0e1386d\",\"region\":\"BC\",\"status\":\"COMPLETED_APPROVED\",\"routingStatus\":\"UNROUTED\",\"routerId\":null,\"routerName\":null,\"routerEmail\":null,\"adminRoutedById\":null,\"adminRoutedByEmail\":null,\"routedAt\":null,\"firstRoutedAt\":null,\"claimedAt\":null,\"dispatchedContractorsCount\":0,\"guaranteeEligibleAt\":\"2026-02-19T02:30:09.728Z\",\"contactedAt\":null,\"publishedAt\":\"2026-02-12T02:30:09.728Z\"},{\"id\":\"audit_job_1cbdb0c4\",\"title\":\"Payout job 1cbdb0c4\",\"region\":\"BC\",\"status\":\"COMPLETED_APPROVED\",\"routingStatus\":\"UNROUTED\",\"routerId\":null,\"routerName\":null,\"routerEmail\":null,\"adminRoutedById\":null,\"adminRoutedByEmail\":null,\"routedAt\":null,\"firstRoutedAt\":null,\"claimedAt\":null,\"dispatched… [truncated 88349 chars]"
+    },
+    {
+      "name": "contractors.list",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/contractors",
+      "traceId": "31d4da12-5784-4cc4-b7a2-4f208674203a",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 86,
+      "bodySnippet": "{\"contractors\":[{\"id\":\"audit_contractor_row_1fdcfc7c\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor 1fdcfc7c\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.1fdcfc7c@8fold.local\",\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_row_fd458dd6\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor fd458dd6\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.fd458dd6@8fold.local\",\"createdAt\":\"2026-02-12T02:30:50.027Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_row_592dfccc\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor 592dfccc\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.592dfccc@8fold.local\",\"createdAt\":\"2026-02-12T02:30:31.957Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_row_b0e1386d\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor b0e1386d\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.b0e1386d@8fold.local\",\"createdAt\":\"2026-02-12T02:30:09.728Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_1cbdb0c4\",\"status\":\"APPROVED\",\"businessName\":\"Payout Contractor 1cbdb0c4\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"payout.contractor.1cbdb0c4@8fold.local\",\"createdAt\":\"2026-02-12T02:29:57.879Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":nul… [truncated 16221 chars]"
+    },
+    {
+      "name": "contractors.approved",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/contractors?status=APPROVED",
+      "traceId": "79ee117a-2f36-43e1-af2b-8878130c0a12",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 90,
+      "bodySnippet": "{\"contractors\":[{\"id\":\"audit_contractor_row_1fdcfc7c\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor 1fdcfc7c\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.1fdcfc7c@8fold.local\",\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_row_fd458dd6\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor fd458dd6\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.fd458dd6@8fold.local\",\"createdAt\":\"2026-02-12T02:30:50.027Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_row_592dfccc\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor 592dfccc\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.592dfccc@8fold.local\",\"createdAt\":\"2026-02-12T02:30:31.957Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_row_b0e1386d\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor b0e1386d\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.b0e1386d@8fold.local\",\"createdAt\":\"2026-02-12T02:30:09.728Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null},{\"id\":\"audit_contractor_1cbdb0c4\",\"status\":\"APPROVED\",\"businessName\":\"Payout Contractor 1cbdb0c4\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"payout.contractor.1cbdb0c4@8fold.local\",\"createdAt\":\"2026-02-12T02:29:57.879Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":nul… [truncated 15369 chars]"
+    },
+    {
+      "name": "contractors.detail",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/contractors/audit_contractor_row_1fdcfc7c",
+      "traceId": "ba6d3866-23ea-448e-874c-fbd6785b13af",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 100,
+      "bodySnippet": "{\"contractor\":{\"id\":\"audit_contractor_row_1fdcfc7c\",\"status\":\"APPROVED\",\"businessName\":\"Audit Contractor 1fdcfc7c\",\"contactName\":null,\"yearsExperience\":3,\"phone\":null,\"email\":\"contractor.audit.1fdcfc7c@8fold.local\",\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"approvedAt\":null,\"country\":\"CA\",\"regionCode\":\"BC\",\"trade\":\"PLUMBING\",\"categories\":null,\"tradeCategories\":null,\"automotiveEnabled\":false,\"lat\":null,\"lng\":null,\"regions\":null}}"
+    },
+    {
+      "name": "job-drafts.list",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/job-drafts",
+      "traceId": "7f80b72e-236b-44fa-934b-e87543d46ef9",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 87,
+      "bodySnippet": "{\"jobDrafts\":[]}"
+    },
+    {
+      "name": "payout-requests.list",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/payout-requests?status=REQUESTED",
+      "traceId": "41dbd54b-133a-483a-ba38-0cfedf4f0d7f",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 89,
+      "bodySnippet": "{\"payoutRequests\":[]}"
+    },
+    {
+      "name": "payout-requests.paid",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/payout-requests?status=PAID",
+      "traceId": "ce5c1a36-d04c-47d4-981c-0341eee4682f",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 91,
+      "bodySnippet": "{\"payoutRequests\":[]}"
+    },
+    {
+      "name": "support.tickets.backend",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/support/tickets?take=5",
+      "traceId": "7a896ff5-af25-451f-b25a-03bef31a1ed5",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 96,
+      "bodySnippet": "{\"tickets\":[{\"id\":\"cmlah0f88006fonz05dg49v9c\",\"createdAt\":\"2026-02-06T05:54:34.136Z\",\"updatedAt\":\"2026-02-06T05:54:34.136Z\",\"type\":\"HELP\",\"status\":\"OPEN\",\"category\":\"CONTRACTOR\",\"priority\":\"NORMAL\",\"roleContext\":\"CONTRACTOR\",\"subject\":\"Contractor support request\",\"createdById\":\"cmlagj0bl0000ontudaez7nki\",\"assignedToId\":null,\"messageCount\":1},{\"id\":\"cmlaft7m40054onz0tlyyxvp5\",\"createdAt\":\"2026-02-06T05:20:58.061Z\",\"updatedAt\":\"2026-02-06T05:20:58.061Z\",\"type\":\"HELP\",\"status\":\"OPEN\",\"category\":\"ROUTING\",\"priority\":\"NORMAL\",\"roleContext\":\"ROUTER\",\"subject\":\"Router support request\",\"createdById\":\"cmla950i70000on4untwpvl1i\",\"assignedToId\":null,\"messageCount\":1},{\"id\":\"cmla9m7oh002tonz0w25cafb8\",\"createdAt\":\"2026-02-06T02:27:33.858Z\",\"updatedAt\":\"2026-02-06T02:27:33.858Z\",\"type\":\"HELP\",\"status\":\"OPEN\",\"category\":\"ROUTING\",\"priority\":\"NORMAL\",\"roleContext\":\"ROUTER\",\"subject\":\"Router support request\",\"createdById\":\"cmla950i70000on4untwpvl1i\",\"assignedToId\":null,\"messageCount\":1}]}"
+    },
+    {
+      "name": "audit-logs",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/audit-logs?take=5",
+      "traceId": "8364003e-6c6d-4e80-b7b5-a7f35ccf84d0",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 95,
+      "bodySnippet": "{\"auditLogs\":[{\"id\":\"a7bbaf7d-1081-4457-b65d-f70af12d8e3c\",\"createdAt\":\"2026-02-12 04:40:51.097\",\"actorUserId\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"action\":\"AUTH_VERIFIED\",\"entityType\":\"AuthToken\",\"entityId\":\"4dd0143c-cc3b-4f40-a9be-4a335ec5288a\",\"metadata\":{},\"actorAdminUserId\":null,\"actor\":{\"id\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"name\":null,\"role\":\"ROUTER\",\"email\":\"info@aetherx.co\",\"phone\":null,\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T04:28:43.787\",\"updatedAt\":\"2026-02-12T04:28:43.787\",\"archivedAt\":null,\"authUserId\":null,\"accountStatus\":\"ACTIVE\",\"deletionReason\":null,\"suspendedUntil\":null}},{\"id\":\"68c26137-4d4e-466c-9097-29a20cc87697\",\"createdAt\":\"2026-02-12 04:40:51.097\",\"actorUserId\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"action\":\"SESSION_CREATED\",\"entityType\":\"Session\",\"entityId\":\"4bdc82db-b9f6-407f-b7b7-bc5c98cdb14a\",\"metadata\":{\"expiresAt\":\"2026-03-14T04:40:50.959Z\"},\"actorAdminUserId\":null,\"actor\":{\"id\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"name\":null,\"role\":\"ROUTER\",\"email\":\"info@aetherx.co\",\"phone\":null,\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T04:28:43.787\",\"updatedAt\":\"2026-02-12T04:28:43.787\",\"archivedAt\":null,\"authUserId\":null,\"accountStatus\":\"ACTIVE\",\"deletionReason\":null,\"suspendedUntil\":null}},{\"id\":\"6146b19f-d57d-471f-a9c1-8cee910abe4e\",\"createdAt\":\"2026-02-12 04:40:45.452\",\"actorUserId\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"action\":\"AUTH_REQUESTED\",\"entityType\":\"User\",\"entityId\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"metadata\":{\"email\":\"info@aetherx.co\"},\"actorAdminUserId\":null,\"actor\":{\"id\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"name\":null,\"role\":\"ROUTER\",\"email\":\"info@aetherx.co\",\"phone\":null,\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T04:28:43.787\",\"updatedAt\":\"2026-02-12T04:28:43.787\",\"archivedAt\":null,\"authUserId\":null,\"accountStatus\":\"ACTIVE\",\"deletionReason\":null,\"suspendedUntil\":null}},{\"id\":\"072fe190-560f-4ae6-a182-c6a2a2831050\",\"createdAt\":\"2026-02-12 04:35:46.487\",\"actorUserId\":… [truncated 1172 chars]"
+    },
+    {
+      "name": "stats",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/stats",
+      "traceId": "375a88e7-4e38-4ee1-b2b9-dc41c452872c",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 318,
+      "bodySnippet": "{\"contractors\":{\"total\":42,\"approved\":40},\"jobDrafts\":{\"total\":0},\"jobs\":{\"total\":28,\"assigned\":4,\"published\":9,\"inProgress\":0,\"contractorCompleted\":0,\"customerApproved\":0,\"customerRejected\":0,\"flagged\":0,\"completedApproved\":5},\"payoutRequests\":{\"requested\":0}}"
+    },
+    {
+      "name": "support.disputes.list",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/support/disputes?take=5",
+      "traceId": "e8fcc310-e01b-4e45-9f43-6e414f5b0b61",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 94,
+      "bodySnippet": "{\"disputes\":[]}"
+    },
+    {
+      "name": "support.disputes.detail",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/support/disputes/:disputeId",
+      "traceId": "6df3c346-a7b2-43a0-a0a5-be2f1c98c5d4",
+      "status": -1,
+      "ok": true,
+      "elapsedMs": 0,
+      "skipped": true,
+      "skipReason": "No dispute id discovered from /api/admin/support/disputes."
+    },
+    {
+      "name": "users.all",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/users",
+      "traceId": "bf8eab01-21ac-47bf-bf71-d43f3e78b4b9",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 133,
+      "bodySnippet": "{\"users\":[{\"id\":\"78196332-00f5-43bf-9146-2bb14d335277\",\"email\":\"info@magiapp.dev\",\"phone\":null,\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T04:30:37.706Z\",\"updatedAt\":\"2026-02-12T04:30:37.706Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{\"id\":\"e8fd5ddb-ee70-4288-883b-36e597672248\",\"email\":\"info@aetherx.co\",\"phone\":null,\"name\":null,\"role\":\"ROUTER\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T04:28:43.787Z\",\"updatedAt\":\"2026-02-12T04:28:43.787Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{\"id\":\"audit_upsert_user_3d380f7e43339\",\"email\":null,\"phone\":null,\"name\":null,\"role\":\"USER\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T02:39:10.297Z\",\"updatedAt\":\"2026-02-12T02:39:10.297Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{\"id\":\"audit_poster_1fdcfc7c\",\"email\":\"poster.audit.1fdcfc7c@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"JOB_POSTER\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"updatedAt\":\"2026-02-12T02:31:03.895Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{\"id\":\"audit_contractor_1fdcfc7c\",\"email\":\"contractor.audit.1fdcfc7c@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T02:31:04.246Z\",\"updatedAt\":\"2026-02-12T02:31:03.895Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{\"id\":\"audit_poster_fd458dd6\",\"email\":\"poster.audit.fd458dd6@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"JOB_POSTER\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T02:30:50.027Z\",\"updatedAt\":\"2026-02-12T02:30:49.691Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{\"id\":\"audit_contractor_fd458dd6\",\"email\":\"contractor.audit.fd458dd6@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-12T02:30:50.027Z\",\"updatedAt\":\"2026-02-12T02:30:49.691Z\",\"jobPoster\":null,\"router\":null,\"contractorAccount\":null},{… [truncated 16060 chars]"
+    },
+    {
+      "name": "users.routers",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/users/routers",
+      "traceId": "3625cc4c-9a99-444e-adf3-d1e417f6959d",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 96,
+      "bodySnippet": "{\"routers\":[{\"userId\":\"3262ab2a-7307-449d-a698-43cb885d45e8\",\"homeCountry\":\"CA\",\"homeRegionCode\":\"BC\",\"homeCity\":\"Langley\",\"isSeniorRouter\":true,\"dailyRouteLimit\":10,\"routesCompleted\":0,\"routesFailed\":0,\"rating\":null,\"status\":\"ACTIVE\",\"createdAt\":\"2026-02-11T23:30:18.023Z\",\"user\":{\"email\":\"router.audit@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"ROUTER\",\"status\":\"ACTIVE\",\"country\":\"CA\",\"createdAt\":\"2026-02-11T23:30:18.023Z\",\"updatedAt\":\"2026-02-11T23:41:23.079Z\"}},{\"userId\":\"a351dc93-ddb9-4c41-8124-08951de25995\",\"homeCountry\":\"CA\",\"homeRegionCode\":\"BC\",\"homeCity\":\"Vancouver\",\"isSeniorRouter\":true,\"dailyRouteLimit\":10,\"routesCompleted\":0,\"routesFailed\":0,\"rating\":null,\"status\":\"ACTIVE\",\"createdAt\":\"2026-02-11T02:53:38.697Z\",\"user\":{\"email\":\"router.bc.e2e@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"ROUTER\",\"status\":\"ACTIVE\",\"country\":\"CA\",\"createdAt\":\"2026-02-11T02:53:38.697Z\",\"updatedAt\":\"2026-02-11T02:55:00.337Z\"}},{\"userId\":\"cmlebemjm0000onkzm8ul69t4\",\"homeCountry\":\"US\",\"homeRegionCode\":\"CA\",\"homeCity\":null,\"isSeniorRouter\":false,\"dailyRouteLimit\":10,\"routesCompleted\":0,\"routesFailed\":0,\"rating\":null,\"status\":\"ACTIVE\",\"createdAt\":\"2026-02-08T22:28:45.403Z\",\"user\":{\"email\":\"smoke.router6+1770589722@local.test\",\"phone\":null,\"name\":null,\"role\":\"ROUTER\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-08T22:28:43.809Z\",\"updatedAt\":\"2026-02-08T22:28:45.285Z\"}},{\"userId\":\"cmlebdf370018ont26dex15dj\",\"homeCountry\":\"US\",\"homeRegionCode\":\"CA\",\"homeCity\":null,\"isSeniorRouter\":false,\"dailyRouteLimit\":10,\"routesCompleted\":0,\"routesFailed\":0,\"rating\":null,\"status\":\"ACTIVE\",\"createdAt\":\"2026-02-08T22:27:48.439Z\",\"user\":{\"email\":\"smoke.router5+1770589667@local.test\",\"phone\":null,\"name\":null,\"role\":\"ROUTER\",\"status\":\"ACTIVE\",\"country\":\"US\",\"createdAt\":\"2026-02-08T22:27:47.465Z\",\"updatedAt\":\"2026-02-08T22:27:48.307Z\"}},{\"userId\":\"cmlebcxni000xont2uo0g72ll\",\"homeCountry\":\"US\",\"homeRegionCode\":\"CA\",\"homeCity\":null,\"isSeniorRouter\":false,\"dailyRouteLimit\":10,\"routesCompleted\":… [truncated 2574 chars]"
+    },
+    {
+      "name": "users.contractors",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/users/contractors",
+      "traceId": "7c8f0941-835a-4844-80b0-83a7ba3514d7",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 100,
+      "bodySnippet": "{\"contractors\":[{\"userId\":\"2afc17eb-9395-4437-b0bb-29121801fd85\",\"tradeCategory\":\"FURNITURE_ASSEMBLY\",\"serviceRadiusKm\":25,\"country\":\"CA\",\"regionCode\":\"BC\",\"city\":\"Langley\",\"isApproved\":true,\"jobsCompleted\":0,\"rating\":null,\"createdAt\":\"2026-02-11T23:30:18.023Z\",\"user\":{\"email\":\"contractor.audit@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"CA\",\"createdAt\":\"2026-02-11T23:30:18.023Z\",\"updatedAt\":\"2026-02-11T23:41:23.079Z\"}},{\"userId\":\"41b83131-f13c-4037-97bf-c71d8a62b05e\",\"tradeCategory\":\"HANDYMAN\",\"serviceRadiusKm\":25,\"country\":\"CA\",\"regionCode\":\"BC\",\"city\":\"Vancouver\",\"isApproved\":true,\"jobsCompleted\":0,\"rating\":null,\"createdAt\":\"2026-02-11T03:14:33.568Z\",\"user\":{\"email\":\"isabella.nguyen+vancouver@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"CA\",\"createdAt\":\"2026-02-11T03:14:33.568Z\",\"updatedAt\":\"2026-02-11T03:14:33.568Z\"}},{\"userId\":\"33680ae5-17ac-4c3d-9a6e-90654aee1637\",\"tradeCategory\":\"HANDYMAN\",\"serviceRadiusKm\":25,\"country\":\"CA\",\"regionCode\":\"BC\",\"city\":\"Vancouver\",\"isApproved\":true,\"jobsCompleted\":0,\"rating\":null,\"createdAt\":\"2026-02-11T03:14:33.568Z\",\"user\":{\"email\":\"liam.johnson+vancouver@8fold.local\",\"phone\":null,\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"CA\",\"createdAt\":\"2026-02-11T03:14:33.568Z\",\"updatedAt\":\"2026-02-11T03:14:33.568Z\"}},{\"userId\":\"7ab4cbf2-8647-4e32-9e39-08f402651f88\",\"tradeCategory\":\"HANDYMAN\",\"serviceRadiusKm\":25,\"country\":\"CA\",\"regionCode\":\"BC\",\"city\":\"Vancouver\",\"isApproved\":true,\"jobsCompleted\":0,\"rating\":null,\"createdAt\":\"2026-02-11T02:53:38.697Z\",\"user\":{\"email\":\"contractor.bc.e2e@8fold.local\",\"phone\":\"+1 604 555 0100\",\"name\":null,\"role\":\"CONTRACTOR\",\"status\":\"ACTIVE\",\"country\":\"CA\",\"createdAt\":\"2026-02-11T02:53:38.697Z\",\"updatedAt\":\"2026-02-11T02:55:00.337Z\"}},{\"userId\":\"cmlagj0bl0000ontudaez7nki\",\"tradeCategory\":\"HANDYMAN\",\"serviceRadiusKm\":25,\"country\":\"US\",\"regionCode\":\"TX\",\"city\":null,\"isApproved\":true,\"jobsCompleted\":0,\"rating\"… [truncated 276 chars]"
+    },
+    {
+      "name": "users.job-posters",
+      "method": "GET",
+      "url": "http://localhost:3012/api/admin/users/job-posters",
+      "traceId": "92f889ac-563c-401d-b86b-f710ffc88f53",
+      "status": 200,
+      "ok": true,
+      "elapsedMs": 96,
+      "bodySnippet": "{\"jobPosters\":[],\"nextCursor\":null}"
+    },
+    {
+      "name": "jobs.assign",
+      "method": "POST",
+      "url": "http://localhost:3012/api/admin/jobs/audit_job_1fdcfc7c/assign",
+      "traceId": "30a7048f-d0b9-4cce-8c16-0ad2aa6438a7",
+      "status": -1,
+      "ok": true,
+      "elapsedMs": 0,
+      "skipped": true,
+      "skipReason": "Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run)."
+    },
+    {
+      "name": "payout-requests.mark-paid",
+      "method": "POST",
+      "url": "http://localhost:3012/api/admin/payout-requests/:id/mark-paid",
+      "traceId": "339cb103-625c-4265-9592-22bedfefda24",
+      "status": -1,
+      "ok": true,
+      "elapsedMs": 0,
+      "skipped": true,
+      "skipReason": "Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run)."
+    },
+    {
+      "name": "my.roles.router.accept-terms",
+      "method": "POST",
+      "url": "http://localhost:3012/api/admin/my/roles/router/accept-terms",
+      "traceId": "06e7c55f-e094-4f4f-ad3e-6f6be0f724ef",
+      "status": -1,
+      "ok": true,
+      "elapsedMs": 0,
+      "skipped": true,
+      "skipReason": "Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run)."
+    },
+    {
+      "name": "my.roles.router.complete",
+      "method": "POST",
+      "url": "http://localhost:3012/api/admin/my/roles/router/complete",
+      "traceId": "9a61915e-3c04-4b82-ba87-72d1d5757aa2",
+      "status": -1,
+      "ok": true,
+      "elapsedMs": 0,
+      "skipped": true,
+      "skipReason": "Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run)."
+    }
+  ]
+}

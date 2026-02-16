@@ -1,0 +1,14 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    { "tag": "0000_messaging_notifications", "breakpoints": false, "when": 1730000000000 },
+    { "tag": "0001_job_posting_draft_defaults", "breakpoints": false, "when": 1730000001000 },
+    { "tag": "0002_contractor_accounts_wizard_columns", "breakpoints": false, "when": 1730000002000 },
+    { "tag": "0003_jobposterprofile_unique_userid", "breakpoints": false, "when": 1730000003000 },
+    { "tag": "0004_user_account_status_fields", "breakpoints": false, "when": 1730000004000 },
+    { "tag": "0006_user_role_no_admin", "breakpoints": false, "when": 1730000006000 },
+    { "tag": "0007_admin_user_profile", "breakpoints": false, "when": 1730000007000 }
+  ]
+}
+

@@ -1,19 +1,6 @@
-import "dotenv/config";
-import pg from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { db, pool } from "@/server/db/drizzle";
 
-export function getTestDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL_TEST;
-  if (!url) {
-    throw new Error("Missing DATABASE_URL_TEST (required for tests)");
-  }
-  return url;
-}
-
-export function createTestDb(): { db: ReturnType<typeof drizzle>; pool: pg.Pool } {
-  const connectionString = getTestDatabaseUrl();
-  const pool = new pg.Pool({ connectionString });
-  const db = drizzle(pool);
+export function createTestDb(): { db: typeof db; pool: typeof pool } {
   return { db, pool };
 }
 

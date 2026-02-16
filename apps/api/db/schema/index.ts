@@ -26,6 +26,7 @@ export * from "./materialsItem";
 export * from "./jobPosterCredit";
 export * from "./stripeWebhookEvent";
 export * from "./routerProfile";
+export * from "./routerReward";
 export * from "./repeatContractorRequest";
 export * from "./supportTicket";
 export * from "./supportMessage";
@@ -44,4 +45,5 @@ export * from "./message";
 export * from "./notificationDelivery";
 export * from "./monitoringEvent";
 export * from "./routingHub";
+export * from "./directoryEngine";
 

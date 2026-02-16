@@ -1,16 +1,18 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser } from "../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../src/http/errors";
+import { requireSupportRequester } from "../../../../../src/auth/rbac";
+import { handleApiError } from "../../../../../src/lib/errorHandler";
+import { badRequest, fail, ok } from "../../../../../src/lib/api/respond";
 import { addBusinessDays } from "../../../../../src/support/businessDays";
 import crypto from "node:crypto";
-import { eq } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
 import { disputeCases } from "../../../../../db/schema/disputeCase";
 import { jobs } from "../../../../../db/schema/job";
+import { jobHolds } from "../../../../../db/schema/jobHold";
 import { supportMessages } from "../../../../../db/schema/supportMessage";
 import { supportTickets } from "../../../../../db/schema/supportTicket";
+import { sanitizeText } from "../../../../../src/utils/sanitizeText";
 
 const DisputeAgainstRoleSchema = z.enum(["JOB_POSTER", "CONTRACTOR"]);
 const DisputeReasonSchema = z.enum(["PRICING", "WORK_QUALITY", "NO_SHOW", "PAYMENT", "OTHER"]);
@@ -26,22 +28,13 @@ function expectedRoleContext(role: string): SupportRoleContext {
   return "JOB_POSTER";
 }
 
-async function requireSupportRequester(req: Request) {
-  const user = await requireUser(req);
-  const r = String(user.role);
-  if (r === "ADMIN") throw Object.assign(new Error("Forbidden"), { status: 403 });
-  if (r !== "USER" && r !== "CUSTOMER" && r !== "JOB_POSTER" && r !== "ROUTER" && r !== "CONTRACTOR") {
-    throw Object.assign(new Error("Forbidden"), { status: 403 });
-  }
-  return user;
-}
-
 const CreateSchema = z.object({
   jobId: z.string().min(5),
   againstUserId: z.string().min(5),
   againstRole: DisputeAgainstRoleSchema,
   disputeReason: DisputeReasonSchema,
-  description: z.string().trim().min(10).max(5000),
+  // User statement (required; min 100 chars per v1 policy).
+  description: z.string().trim().min(100).max(5000),
   subject: z.string().trim().min(3).max(160),
   roleContext: SupportRoleContextSchema,
   category: SupportTicketCategorySchema.optional(),
@@ -49,26 +42,119 @@ const CreateSchema = z.object({
   message: z.string().trim().min(1).max(5000).optional(),
 });
 
+export async function GET(req: Request) {
+  try {
+    const user = await requireSupportRequester(req);
+
+    const rows = await db
+      .select({
+        id: disputeCases.id,
+        createdAt: disputeCases.createdAt,
+        updatedAt: disputeCases.updatedAt,
+        ticketId: disputeCases.ticketId,
+        jobId: disputeCases.jobId,
+        filedByUserId: disputeCases.filedByUserId,
+        againstUserId: disputeCases.againstUserId,
+        againstRole: disputeCases.againstRole,
+        disputeReason: disputeCases.disputeReason,
+        description: disputeCases.description,
+        status: disputeCases.status,
+        decision: disputeCases.decision,
+        decisionSummary: disputeCases.decisionSummary,
+        decisionAt: disputeCases.decisionAt,
+        deadlineAt: disputeCases.deadlineAt,
+        ticketSubject: supportTickets.subject,
+      })
+      .from(disputeCases)
+      .innerJoin(supportTickets, eq(supportTickets.id, disputeCases.ticketId))
+      .where(or(eq(disputeCases.filedByUserId, user.userId), eq(disputeCases.againstUserId, user.userId)))
+      .orderBy(desc(disputeCases.updatedAt), desc(disputeCases.id))
+      .limit(100);
+
+    return ok({
+      disputes: rows.map((d) => ({
+        ...d,
+        createdAt: d.createdAt.toISOString(),
+        updatedAt: d.updatedAt.toISOString(),
+        decisionAt: d.decisionAt ? d.decisionAt.toISOString() : null,
+        deadlineAt: d.deadlineAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    return handleApiError(err, "GET /api/web/support/disputes");
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireSupportRequester(req);
-    const body = await req.json().catch(() => ({}));
-    const parsed = CreateSchema.safeParse(body);
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return badRequest("invalid_json");
+    }
+    const parsed = CreateSchema.safeParse(raw);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
+      return badRequest("invalid_input");
     }
 
     const input = parsed.data;
+    const safe = {
+      subject: sanitizeText(input.subject, { maxLen: 160 }),
+      description: sanitizeText(input.description, { maxLen: 5000 }),
+      message: input.message ? sanitizeText(input.message, { maxLen: 5000 }) : undefined,
+    };
     const expected = expectedRoleContext(String(user.role));
     if (input.roleContext !== expected) {
-      return NextResponse.json({ error: "roleContext must match your account role" }, { status: 400 });
+      return badRequest("role_context_mismatch");
     }
 
     // Ensure job exists (and is not a mock job).
-    const jobRows = await db.select({ id: jobs.id, isMock: jobs.isMock }).from(jobs).where(eq(jobs.id, input.jobId)).limit(1);
+    const jobRows = await db
+      .select({
+        id: jobs.id,
+        isMock: jobs.isMock,
+        status: jobs.status,
+        paymentStatus: jobs.paymentStatus,
+        payoutStatus: jobs.payoutStatus,
+        routerApprovedAt: jobs.routerApprovedAt,
+        jobPosterUserId: jobs.jobPosterUserId,
+        contractorUserId: jobs.contractorUserId,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, input.jobId))
+      .limit(1);
     const job = jobRows[0] ?? null;
-    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    if (job.isMock) return NextResponse.json({ error: "Mock jobs cannot be disputed" }, { status: 400 });
+    if (!job) return fail(404, "job_not_found");
+    if (job.isMock) return badRequest("mock_job_cannot_be_disputed");
+
+    // Dispute eligibility (frontend mirrors this).
+    if (String(job.paymentStatus ?? "") !== "FUNDED") {
+      return badRequest("job_not_funded");
+    }
+    if (String(job.payoutStatus ?? "") === "RELEASED") {
+      return badRequest("payout_already_released");
+    }
+    if (job.routerApprovedAt) {
+      return badRequest("completion_already_approved");
+    }
+    if (String(job.status ?? "") === "DISPUTED") {
+      return fail(409, "job_already_disputed");
+    }
+
+    // Authorization: only job participants can file disputes, and the "against" must match the other participant.
+    const involved = job.jobPosterUserId === user.userId || job.contractorUserId === user.userId;
+    if (!involved) return fail(403, "forbidden");
+    const expectedAgainstUserId =
+      job.jobPosterUserId === user.userId ? (job.contractorUserId ?? "") : (job.jobPosterUserId ?? "");
+    const expectedAgainstRole = job.jobPosterUserId === user.userId ? ("CONTRACTOR" as const) : ("JOB_POSTER" as const);
+    if (!expectedAgainstUserId) {
+      return badRequest("job_participants_not_ready");
+    }
+    if (input.againstUserId !== expectedAgainstUserId || input.againstRole !== expectedAgainstRole) {
+      return badRequest("against_must_match_other_participant");
+    }
 
     const now = new Date();
     const deadlineAt = addBusinessDays(now, 15);
@@ -84,7 +170,7 @@ export async function POST(req: Request) {
           priority: (input.priority ?? "NORMAL") as any,
           createdById: user.userId,
           roleContext: input.roleContext as any,
-          subject: input.subject,
+          subject: safe.subject,
           updatedAt: now,
         } as any)
         .returning({ id: supportTickets.id, createdAt: supportTickets.createdAt, updatedAt: supportTickets.updatedAt });
@@ -100,7 +186,7 @@ export async function POST(req: Request) {
           againstUserId: input.againstUserId,
           againstRole: input.againstRole as any,
           disputeReason: input.disputeReason as any,
-          description: input.description,
+          description: safe.description,
           status: "SUBMITTED",
           deadlineAt,
           updatedAt: now,
@@ -124,12 +210,30 @@ export async function POST(req: Request) {
         });
       const dispute = disputeRows[0] as any;
 
-      if (input.message && input.message.trim().length > 0) {
+      // Freeze payout by marking job disputed + placing a hold.
+      await tx
+        .update(jobs)
+        .set({
+          status: "DISPUTED" as any,
+        })
+        .where(eq(jobs.id, input.jobId));
+
+      await tx.insert(jobHolds).values({
+        id: crypto.randomUUID(),
+        status: "ACTIVE" as any,
+        jobId: input.jobId,
+        reason: "DISPUTE" as any,
+        notes: `Dispute case ${dispute.id}`,
+        appliedByUserId: user.userId,
+        sourceDisputeCaseId: dispute.id,
+      } as any);
+
+      if (safe.message && safe.message.trim().length > 0) {
         await tx.insert(supportMessages).values({
           id: crypto.randomUUID(),
           ticketId: ticket.id,
           authorId: user.userId,
-          message: input.message.trim(),
+          message: safe.message.trim(),
         } as any);
       }
 
@@ -146,13 +250,19 @@ export async function POST(req: Request) {
           againstRole: input.againstRole,
           disputeReason: input.disputeReason,
           deadlineAt: deadlineAt.toISOString(),
+          sanitized: true,
+          truncated: {
+            subject: safe.subject.length < input.subject.length,
+            description: safe.description.length < input.description.length,
+            message: Boolean(input.message && safe.message && safe.message.length < input.message.length),
+          },
         } as any,
       });
 
       return { ticketId: ticket.id, dispute };
     });
 
-    return NextResponse.json(
+    return ok(
       {
         ticketId: created.ticketId,
         dispute: {
@@ -166,8 +276,7 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    return handleApiError(err, "POST /api/web/support/disputes");
   }
 }
 

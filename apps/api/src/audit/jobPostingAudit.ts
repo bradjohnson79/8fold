@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { PayoutBreakdown } from "@8fold/shared";
-import { db } from "../../db/drizzle";
+import { db } from "@/server/db/drizzle";
 import { auditLogs } from "../../db/schema";
 
 export async function logJobDraftCreated(

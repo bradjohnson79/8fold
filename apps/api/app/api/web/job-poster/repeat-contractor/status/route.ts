@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireJobPoster } from "../../../../../../src/auth/rbac";
+import { requireJobPosterReady } from "../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
@@ -7,7 +7,9 @@ import { jobs, repeatContractorRequests } from "../../../../../../db/schema";
 
 export async function GET(req: Request) {
   try {
-    const u = await requireJobPoster(req);
+    const ready = await requireJobPosterReady(req);
+    if (ready instanceof Response) return ready;
+    const u = ready;
     const url = new URL(req.url);
     const jobId = url.searchParams.get("jobId")?.trim() ?? "";
     if (!jobId) return NextResponse.json({ error: "Missing jobId" }, { status: 400 });

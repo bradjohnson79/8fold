@@ -1,0 +1,11 @@
+import { Suspense } from "react";
+import LoginClient from "./LoginClient";
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-[40vh]" />}>
+      <LoginClient />
+    </Suspense>
+  );
+}
+

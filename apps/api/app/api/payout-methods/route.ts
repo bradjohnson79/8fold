@@ -8,6 +8,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "../../../db/drizzle";
 import { auditLogs, contractorAccounts, jobPosterProfiles, payoutMethods, routerProfiles, users } from "../../../db/schema";
+import { logApiError } from "@/src/lib/errors/errorLogger";
 
 const CurrencySchema = z.enum(["CAD", "USD"]);
 const ProviderSchema = z.enum(["STRIPE", "PAYPAL", "WISE"]);
@@ -67,7 +68,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
-    const body = CreateSchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = CreateSchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     // Country->currency lock (per spec)
@@ -206,6 +213,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ payoutMethod: created, onboardingUrl }, { status: 201 });
   } catch (err) {
+    logApiError({ context: "POST /api/payout-methods", err });
     const { status, message } = toHttpError(err);
     return NextResponse.json({ error: message }, { status });
   }

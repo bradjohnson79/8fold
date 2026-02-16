@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "../../../../../src/auth/rbac";
+import { requireContractorReady } from "../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../src/http/errors";
 import { and, desc, eq, ilike } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
@@ -7,10 +7,9 @@ import { contractors, jobs, repeatContractorRequests, users } from "../../../../
 
 export async function GET(req: Request) {
   try {
-    const u = await requireUser(req);
-    if (String(u.role) !== "CONTRACTOR") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const ready = await requireContractorReady(req);
+    if (ready instanceof Response) return ready;
+    const u = ready;
 
     const user =
       (

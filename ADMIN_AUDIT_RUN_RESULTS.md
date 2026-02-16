@@ -1,0 +1,39 @@
+## Admin Audit — Smoke Runner Results
+
+- Base: `http://localhost:3012`
+- Generated: `2026-02-13T04:27:17.040Z`
+- Mutations run: **NO**
+- Total calls: **26**
+- Failures (non-2xx, excluding skipped): **0**
+
+- **admin-ui.login**: `POST http://localhost:3002/api/login` → **200** (560ms) trace=`6eef1fac-47d8-48c5-9c26-bfaad8d6688c`
+- **admin-ui.stats**: `GET http://localhost:3002/api/admin/stats` → **200** (722ms) trace=`6eef1fac-47d8-48c5-9c26-bfaad8d6688c`
+- **jobs.list**: `GET http://localhost:3012/api/admin/jobs` → **200** (205ms) trace=`ad31e1b0-bc10-49ed-b9ae-4d2bc2d6e5a5`
+- **jobs.list.ASSIGNED**: `GET http://localhost:3012/api/admin/jobs?status=ASSIGNED` → **200** (88ms) trace=`c818bf0d-dbb1-44f3-83d2-4550fe556eb0`
+- **jobs.list.COMPLETED**: `GET http://localhost:3012/api/admin/jobs?status=COMPLETED` → **200** (93ms) trace=`da3a333d-6c87-445c-b209-2032d93f0540`
+- **jobs.list.COMPLETED_APPROVED**: `GET http://localhost:3012/api/admin/jobs?status=COMPLETED_APPROVED` → **200** (93ms) trace=`b4caaefc-366c-4d88-9609-9795636a8a4a`
+- **routing-activity**: `GET http://localhost:3012/api/admin/routing-activity` → **200** (119ms) trace=`85e119b2-47bd-4b15-b5cc-92d96c91c7e8`
+- **contractors.list**: `GET http://localhost:3012/api/admin/contractors` → **200** (86ms) trace=`31d4da12-5784-4cc4-b7a2-4f208674203a`
+- **contractors.approved**: `GET http://localhost:3012/api/admin/contractors?status=APPROVED` → **200** (90ms) trace=`79ee117a-2f36-43e1-af2b-8878130c0a12`
+- **contractors.detail**: `GET http://localhost:3012/api/admin/contractors/audit_contractor_row_1fdcfc7c` → **200** (100ms) trace=`ba6d3866-23ea-448e-874c-fbd6785b13af`
+- **job-drafts.list**: `GET http://localhost:3012/api/admin/job-drafts` → **200** (87ms) trace=`7f80b72e-236b-44fa-934b-e87543d46ef9`
+- **payout-requests.list**: `GET http://localhost:3012/api/admin/payout-requests?status=REQUESTED` → **200** (89ms) trace=`41dbd54b-133a-483a-ba38-0cfedf4f0d7f`
+- **payout-requests.paid**: `GET http://localhost:3012/api/admin/payout-requests?status=PAID` → **200** (91ms) trace=`ce5c1a36-d04c-47d4-981c-0341eee4682f`
+- **support.tickets.backend**: `GET http://localhost:3012/api/admin/support/tickets?take=5` → **200** (96ms) trace=`7a896ff5-af25-451f-b25a-03bef31a1ed5`
+- **audit-logs**: `GET http://localhost:3012/api/admin/audit-logs?take=5` → **200** (95ms) trace=`8364003e-6c6d-4e80-b7b5-a7f35ccf84d0`
+- **stats**: `GET http://localhost:3012/api/admin/stats` → **200** (318ms) trace=`375a88e7-4e38-4ee1-b2b9-dc41c452872c`
+- **support.disputes.list**: `GET http://localhost:3012/api/admin/support/disputes?take=5` → **200** (94ms) trace=`e8fcc310-e01b-4e45-9f43-6e414f5b0b61`
+- **support.disputes.detail**: `GET http://localhost:3012/api/admin/support/disputes/:disputeId` → **SKIPPED** (0ms) trace=`6df3c346-a7b2-43a0-a0a5-be2f1c98c5d4`
+  - skipReason: No dispute id discovered from /api/admin/support/disputes.
+- **users.all**: `GET http://localhost:3012/api/admin/users` → **200** (133ms) trace=`bf8eab01-21ac-47bf-bf71-d43f3e78b4b9`
+- **users.routers**: `GET http://localhost:3012/api/admin/users/routers` → **200** (96ms) trace=`3625cc4c-9a99-444e-adf3-d1e417f6959d`
+- **users.contractors**: `GET http://localhost:3012/api/admin/users/contractors` → **200** (100ms) trace=`7c8f0941-835a-4844-80b0-83a7ba3514d7`
+- **users.job-posters**: `GET http://localhost:3012/api/admin/users/job-posters` → **200** (96ms) trace=`92f889ac-563c-401d-b86b-f710ffc88f53`
+- **jobs.assign**: `POST http://localhost:3012/api/admin/jobs/audit_job_1fdcfc7c/assign` → **SKIPPED** (0ms) trace=`30a7048f-d0b9-4cce-8c16-0ad2aa6438a7`
+  - skipReason: Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run).
+- **payout-requests.mark-paid**: `POST http://localhost:3012/api/admin/payout-requests/:id/mark-paid` → **SKIPPED** (0ms) trace=`339cb103-625c-4265-9592-22bedfefda24`
+  - skipReason: Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run).
+- **my.roles.router.accept-terms**: `POST http://localhost:3012/api/admin/my/roles/router/accept-terms` → **SKIPPED** (0ms) trace=`06e7c55f-e094-4f4f-ad3e-6f6be0f724ef`
+  - skipReason: Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run).
+- **my.roles.router.complete**: `POST http://localhost:3012/api/admin/my/roles/router/complete` → **SKIPPED** (0ms) trace=`9a61915e-3c04-4b82-ba87-72d1d5757aa2`
+  - skipReason: Skipped mutating endpoint (set ADMIN_AUDIT_RUN_MUTATIONS=1 to run).

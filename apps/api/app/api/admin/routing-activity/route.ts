@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "../../../../src/auth/rbac";
-import { toHttpError } from "../../../../src/http/errors";
+import { requireAdmin } from "@/src/lib/auth/requireAdmin";
+import { handleApiError } from "@/src/lib/errorHandler";
 // Use string literals for routing status to avoid runtime enum resolution issues in some environments.
 import { and, desc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db } from "../../../../db/drizzle";
+import { db } from "@/server/db/drizzle";
 import { jobDispatches } from "../../../../db/schema/jobDispatch";
 import { jobs } from "../../../../db/schema/job";
 import { routerProfiles } from "../../../../db/schema/routerProfile";
 import { users } from "../../../../db/schema/user";
 
 export async function GET(req: Request) {
+  const auth = await requireAdmin(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
-    await requireAdmin(req);
 
     const dispatchCounts = db
       .select({
@@ -95,32 +97,8 @@ export async function GET(req: Request) {
       publishedAt: (job as any).publishedAt?.toISOString?.() ?? null,
     }));
 
-    return NextResponse.json({ jobs: transformed });
+    return NextResponse.json({ ok: true, data: { jobs: transformed } });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    if (process.env.ADMIN_AUDIT_LOG === "1" && status >= 500) {
-      const traceId = req.headers.get("x-admin-trace-id") ?? null;
-      const pg: any = err && typeof err === "object" ? (err as any) : null;
-      // eslint-disable-next-line no-console
-      console.error("[ADMIN_AUDIT][API_500]", {
-        traceId,
-        method: req.method,
-        path: new URL(req.url).pathname,
-        message,
-        err,
-        stack: err instanceof Error ? err.stack : undefined,
-        pg: pg
-          ? {
-              code: pg.code,
-              detail: pg.detail,
-              constraint: pg.constraint,
-              column: pg.column,
-              table: pg.table,
-              schema: pg.schema,
-            }
-          : null,
-      });
-    }
-    return NextResponse.json({ error: message }, { status });
+    return handleApiError(err, "GET /api/admin/routing-activity", { userId: auth.userId });
   }
 }

@@ -7,7 +7,7 @@ import { contractors } from "../../../../../db/schema/contractor";
 import { jobAssignments } from "../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../db/schema/job";
 import { users } from "../../../../../db/schema/user";
-import { requireUser } from "../../../../../src/auth/rbac";
+import { requireContractorReady } from "../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../src/http/errors";
 import { z } from "zod";
 
@@ -48,7 +48,9 @@ async function getContractorForUser(userId: string) {
 
 export async function GET(req: Request) {
   try {
-    const u = await requireUser(req);
+    const ready = await requireContractorReady(req);
+    if (ready instanceof Response) return ready;
+    const u = ready;
     const c = await getContractorForUser(u.userId);
     if (c.kind !== "ok") return NextResponse.json({ ok: true, hasContractor: false, active: null });
 
@@ -121,11 +123,18 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const u = await requireUser(req);
+    const ready = await requireContractorReady(req);
+    if (ready instanceof Response) return ready;
+    const u = ready;
     const c = await getContractorForUser(u.userId);
     if (c.kind !== "ok") return NextResponse.json({ error: "No contractor profile found" }, { status: 404 });
 
-    const raw = await req.json().catch(() => ({}));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
     const mode = String((raw as any)?.mode ?? "set");
 
     if (mode === "update") {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireJobPoster } from "../../../../../../../src/auth/rbac";
+import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../../src/http/errors";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../../../../../../db/drizzle";
@@ -14,7 +14,9 @@ function getIdFromUrl(req: Request): string {
 
 export async function GET(req: Request) {
   try {
-    const user = await requireJobPoster(req);
+    const ready = await requireJobPosterReady(req);
+    if (ready instanceof Response) return ready;
+    const user = ready;
     const id = getIdFromUrl(req);
     if (!id) return NextResponse.json({ error: "Missing job id" }, { status: 400 });
 

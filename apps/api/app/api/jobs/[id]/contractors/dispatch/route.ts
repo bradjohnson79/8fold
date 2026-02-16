@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { requireRouter } from "../../../../../../src/auth/rbac";
+import { requireRouterReady } from "../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { stateFromRegion } from "../../../../../../src/jobs/geo";
 import { z } from "zod";
@@ -25,9 +25,17 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const router = await requireRouter(req);
+    const ready = await requireRouterReady(req);
+    if (ready instanceof Response) return ready;
+    const router = ready;
     const jobId = getJobIdFromUrl(req);
-    const body = BodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     const result = await db.transaction(async (tx) => {

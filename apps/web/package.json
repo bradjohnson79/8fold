@@ -1,0 +1,33 @@
+{
+  "name": "@8fold/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3006",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@8fold/shared": "workspace:*",
+    "@stripe/react-stripe-js": "^3.6.0",
+    "@stripe/stripe-js": "^5.6.0",
+    "next": "^15.5.11",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "stripe": "^17.4.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8",
+    "eslint-config-next": "15.5.11",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5"
+  }
+}

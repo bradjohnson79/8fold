@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireRouter } from "../../../../../src/auth/rbac";
+import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../src/http/errors";
 import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { getOrCreatePlatformUserId } from "../../../../../src/system/platformUser";
+import { maybeCreateRouterReferralRewardForUser, trySettleRouterReward } from "../../../../../src/rewards/routerRewards";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
-import { auditLogs, jobAssignments, jobs, ledgerEntries, materialsRequests, routers } from "../../../../../db/schema";
+import { auditLogs, contractors, jobAssignments, jobs, ledgerEntries, materialsRequests, routers, users } from "../../../../../db/schema";
 import { randomUUID } from "crypto";
 
 function getIdFromUrl(req: Request): string {
@@ -22,9 +23,17 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const user = await requireRouter(req);
+    const ready = await requireRouterReady(req);
+    if (ready instanceof Response) return ready;
+    const user = ready;
     const id = getIdFromUrl(req);
-    const body = BodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
     const platformUserId = await getOrCreatePlatformUserId();
@@ -40,6 +49,10 @@ export async function POST(req: Request) {
               routerId: jobs.claimedByUserId,
               routerEarningsCents: jobs.routerEarningsCents,
               brokerFeeCents: jobs.brokerFeeCents,
+              jobPosterUserId: jobs.jobPosterUserId,
+              contractorUserId: jobs.contractorUserId,
+              payoutStatus: jobs.payoutStatus,
+              paymentStatus: jobs.paymentStatus,
             })
             .from(jobs)
             .where(eq(jobs.id, id))
@@ -47,6 +60,7 @@ export async function POST(req: Request) {
         )[0] ?? null;
       if (!job) return { kind: "not_found" as const };
       if (job.isMock) return { kind: "mock_job" as const };
+      if (String(job.status ?? "") === "DISPUTED") return { kind: "disputed" as const };
       if (job.routerId !== user.userId) return { kind: "forbidden" as const };
 
       const pendingMaterials =
@@ -64,7 +78,7 @@ export async function POST(req: Request) {
       const assignment =
         (
           await tx
-            .select({ id: jobAssignments.id, status: jobAssignments.status })
+            .select({ id: jobAssignments.id, contractorId: jobAssignments.contractorId, status: jobAssignments.status })
             .from(jobAssignments)
             .where(eq(jobAssignments.jobId, id))
             .limit(1)
@@ -118,6 +132,49 @@ export async function POST(req: Request) {
         memo: "Broker fee (COMPLETED_APPROVED)",
       });
 
+      // Router referral rewards (automated; one per referred user; funded only from platform fee pool).
+      // Resolve contractorUserId from assignment when job.contractorUserId is null (assignment flow may not populate it).
+      let contractorUserIdResolved = String(job.contractorUserId ?? "").trim();
+      if (!contractorUserIdResolved && assignment) {
+        const cid = assignment.contractorId ?? null;
+        if (cid) {
+          const contractorRows = await tx
+            .select({ email: contractors.email })
+            .from(contractors)
+            .where(eq(contractors.id, cid))
+            .limit(1);
+          const contractorEmail = contractorRows[0]?.email ?? null;
+          if (contractorEmail) {
+            const userRows = await tx
+              .select({ id: users.id })
+              .from(users)
+              .where(sql`lower(${users.email}) = lower(${contractorEmail})`)
+              .limit(1);
+            contractorUserIdResolved = userRows[0]?.id ?? "";
+          }
+        }
+      }
+
+      const createdRewards: Array<{ id: string; routerUserId: string; amount: number; jobId: string }> = [];
+      for (const referredUserId of [String(job.jobPosterUserId ?? "").trim(), contractorUserIdResolved]) {
+        if (!referredUserId) continue;
+        const created = await maybeCreateRouterReferralRewardForUser({ tx, jobId: id, referredUserId });
+        if (created.created && created.rewardId && created.routerUserId) {
+          createdRewards.push({ id: created.rewardId, routerUserId: created.routerUserId, amount: 500, jobId: id });
+        }
+      }
+
+      // Attempt settlement immediately only if payout is released (refund-safe).
+      if (String((updated as any)?.payoutStatus ?? "").toUpperCase() === "RELEASED") {
+        for (const r of createdRewards) {
+          await trySettleRouterReward({
+            tx,
+            platformUserId,
+            reward: { id: r.id, routerUserId: r.routerUserId, jobId: r.jobId, amount: r.amount, status: "PENDING" },
+          });
+        }
+      }
+
       await tx.insert(auditLogs).values({
         id: randomUUID(),
         actorUserId: user.userId,
@@ -143,6 +200,7 @@ export async function POST(req: Request) {
     if (result.kind === "not_found") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (result.kind === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (result.kind === "mock_job") return NextResponse.json({ error: "Mock jobs cannot be completed" }, { status: 409 });
+    if (result.kind === "disputed") return NextResponse.json({ error: "Job is disputed" }, { status: 409 });
     if (result.kind === "no_assignment") return NextResponse.json({ error: "Job is not assigned" }, { status: 409 });
     if (result.kind === "materials_pending") {
       return NextResponse.json(

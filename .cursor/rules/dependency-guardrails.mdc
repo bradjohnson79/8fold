@@ -1,0 +1,55 @@
+---
+description: Enforce monorepo dependency/ORM guardrails (Drizzle, Prisma, pnpm overrides)
+alwaysApply: true
+---
+
+# 8Fold Monorepo Dependency Guardrails
+
+These rules are **enforced policy**. If a requested change would violate them, stop and report instead of “fixing around” the policy.
+
+## Drizzle ownership (hard boundary)
+
+- `drizzle-orm` may exist **ONLY** in `apps/api/package.json`.
+- Do **not** add `drizzle-orm` to root `package.json`, `apps/web`, `packages/*`, or any other workspace.
+- If a tool tries to auto-add Drizzle in another package, **reject the change**.
+
+## Prisma isolation
+
+- Prisma must **never** live in the same package as Drizzle.
+- If Prisma exists, it must be isolated to a separate package and treated as legacy until removed.
+
+## pnpm overrides (must remain)
+
+- Root `package.json` must preserve:
+  - `pnpm.overrides.drizzle-orm = "0.45.1"`
+- Never remove/alter this override during dependency work.
+
+## Dependency install guard (no silent topology drift)
+
+Before running any install that could change the graph:
+
+- Run `pnpm why drizzle-orm` and confirm a **single** physical instance.
+- If multiple instances exist, **stop** and report the duplication before proceeding.
+
+After dependency changes:
+
+- Run `pnpm install`
+- Run `pnpm why drizzle-orm` (must be single-instance)
+- Run `pnpm run build` (must pass)
+
+## No cross-package ORM imports
+
+- Never import DB clients across package boundaries (e.g. `import { db } from "apps/api/..."` in non-API packages).
+- All DB logic stays in `apps/api`; other packages talk via HTTP API.
+
+## No implicit dependency additions
+
+If adding any dependency:
+
+- State **why**, **where**, and confirm it doesn’t duplicate an existing dependency.
+- Confirm peer dependency compatibility.
+
+## Reference policy
+
+- Always consult `docs/DEPENDENCY_GUARDRAILS.md` before dependency changes.
+

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { optionalUser } from "../../../../src/auth/rbac";
 import { toHttpError } from "../../../../src/http/errors";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
-import { db } from "../../../../db/drizzle";
+import { db } from "@/server/db/drizzle";
 import { auditLogs, contractors, jobAssignments, jobHolds, jobs, users } from "../../../../db/schema";
 
 /**

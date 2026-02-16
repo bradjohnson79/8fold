@@ -28,7 +28,13 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   try {
     const id = getIdFromUrl(req);
-    const body = BodySchema.safeParse(await req.json().catch(() => ({})));
+    let raw: unknown = {};
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const body = BodySchema.safeParse(raw);
     if (!body.success) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
@@ -182,22 +188,13 @@ export async function POST(req: Request) {
             deadlineAt,
           } as any,
         });
-        // Dev/demo stub: no external email/SMS integration yet.
-        console.log(
-          "[router-approval-notify] job",
-          id,
-          "routerUserId",
-          job.routerId,
-          "deadlineAt",
-          deadlineAt
-        );
       }
     }
 
     return NextResponse.json({ job: result.job });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const { status, message, code, context } = toHttpError(err);
+    return NextResponse.json({ ok: false, error: message, code, context }, { status });
   }
 }
 

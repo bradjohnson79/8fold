@@ -18,7 +18,7 @@ describe("ledger immutability", () => {
 
   test("LedgerEntry cannot be updated or deleted (DB enforced)", async () => {
     const userId = randomUUID();
-    await db.insert(users).values({ id: userId, authUserId: `test:user:${Date.now()}`, role: "USER" as any });
+    await db.insert(users).values({ id: userId, authUserId: `test:user:${Date.now()}`, role: "JOB_POSTER" as any });
 
     const entryId = randomUUID();
     await db.insert(ledgerEntries).values({
