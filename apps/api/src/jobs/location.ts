@@ -1,5 +1,5 @@
-import { geocodeCityCentroid, regionToCityState } from "./nominatim";
 import { validateJobLocation } from "../pricing/validation";
+import { geocodeCityCentroid, geocodeStreetAddress, regionToCityState } from "./geocode";
 
 export type GeocodeResult = {
   lat: number;
@@ -16,10 +16,15 @@ export async function geocodeAddress(
   stateProvince: string,
   country: "CA" | "US" = "US"
 ): Promise<GeocodeResult | null> {
-  // If address provided, try geocoding it first
+  // If address provided, try address-level geocoding first.
   if (address && address.trim().length > 0) {
-    // TODO: Implement address geocoding with Nominatim
-    // For now, fall back to city centroid
+    const exact = await geocodeStreetAddress({
+      street: address,
+      city,
+      state: stateProvince,
+      country2: country,
+    });
+    if (exact) return exact;
   }
 
   // Fall back to city centroid

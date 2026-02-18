@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { LocationSelector } from "../components/LocationSelector";
 import { HomeJobFeedClient } from "./HomeJobFeedClient";
-import { requireServerSession } from "@/server/auth/requireServerSession";
+import { requireServerSession } from "@/server/auth/meSession";
+import { HeroBackgroundVideo } from "./HeroBackgroundVideo";
 
 export default async function HomePage() {
   let session: Awaited<ReturnType<typeof requireServerSession>> | null = null;
@@ -17,13 +18,15 @@ export default async function HomePage() {
     <div>
       {/* ───────────────────────────── 1. HERO ───────────────────────────── */}
       <section className="relative overflow-hidden bg-8fold-navy">
-        <div className="absolute inset-0 opacity-10">
+        <HeroBackgroundVideo />
+
+        <div className="absolute inset-0 z-10 opacity-10 pointer-events-none">
           <div className="absolute top-10 left-10 w-72 h-72 bg-8fold-green rounded-full blur-3xl" />
           <div className="absolute bottom-10 right-10 w-96 h-96 bg-8fold-green-light rounded-full blur-3xl" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white rounded-full blur-3xl" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
+        <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             {/* Left copy */}
             <div>
@@ -287,7 +290,7 @@ export default async function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
           <LocationSelector
             title="Find Jobs in Your Area"
-            subtitle="Select your province or state to see active and in-progress jobs. We only display regions where real work is happening."
+            subtitle="Select your province or state, then choose a city/town. City lists only include locations with jobs."
           />
         </div>
       </section>

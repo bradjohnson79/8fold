@@ -1,16 +1,18 @@
+import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { users } from "../../../../../db/schema/user";
 import { routerRewards } from "../../../../../db/schema/routerReward";
-import { requireRouter } from "../../../../../src/auth/rbac";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
-import { ok } from "../../../../../src/lib/api/respond";
 import { getOrCreatePlatformUserId } from "../../../../../src/system/platformUser";
 import { settlePendingRouterRewardsForRouter } from "../../../../../src/rewards/routerRewards";
 
 export async function GET(req: Request) {
   try {
-    const router = await requireRouter(req);
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
     const platformUserId = await getOrCreatePlatformUserId();
 
     const data = await db.transaction(async (tx) => {
@@ -47,7 +49,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return ok(data);
+    return NextResponse.json({ ok: true, ...data }, { status: 200 });
   } catch (err) {
     return handleApiError(err, "GET /api/web/router/rewards");
   }

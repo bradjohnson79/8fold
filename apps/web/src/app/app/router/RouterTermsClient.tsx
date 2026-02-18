@@ -1,10 +1,8 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
 
-export function RouterTermsClient() {
-  const router = useRouter();
+export function RouterTermsClient(props?: { onComplete?: () => void }) {
   const [checked, setChecked] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -20,8 +18,7 @@ export function RouterTermsClient() {
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Failed to record acceptance");
 
-      router.replace("/app/router/profile");
-      router.refresh();
+      props?.onComplete?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {

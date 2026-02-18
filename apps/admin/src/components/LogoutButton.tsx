@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { adminAuthFetch } from "@/lib/authClient";
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
@@ -11,8 +10,7 @@ export function LogoutButton() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await adminAuthFetch("/api/admin/logout", { method: "POST" });
-      if (!resp.ok) throw new Error(resp.error || "Logout failed");
+      await fetch("/api/admin/logout", { method: "POST" });
       window.location.href = "/login";
     } catch (e) {
       console.error("[ADMIN:logout:client:error]", {

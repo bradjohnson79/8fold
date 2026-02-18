@@ -6,6 +6,7 @@ import { ContractorResponsesCard } from "./ContractorResponsesCard";
 import { EcdCheckInsCard } from "./EcdCheckInsCard";
 import { ErrorDisplay } from "../../../../components/ErrorDisplay";
 import { LoadingSpinner } from "../../../../components/LoadingSpinner";
+import { formatEligibilityCountdown, isRefundEligible, refundEligibleAtUtc } from "@/lib/refundEligibility";
 
 type JobRow = {
   id: string;
@@ -69,6 +70,11 @@ export default function JobPosterDashboard() {
   const [materials, setMaterials] = React.useState<PendingMaterials[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [refundMeta, setRefundMeta] = React.useState<null | {
+    now: string;
+    eligibleAtByJobId: Record<string, string>;
+  }>(null);
+  const [refundMetaError, setRefundMetaError] = React.useState("");
   const [confirmDelete, setConfirmDelete] = React.useState<null | { id: string; title: string }>(null);
   const [deleting, setDeleting] = React.useState(false);
 
@@ -88,17 +94,29 @@ export default function JobPosterDashboard() {
       try {
         setLoading(true);
         setError("");
-        const [jobsResp, matsResp] = await Promise.all([
+        setRefundMetaError("");
+        const [jobsResp, matsResp, refundResp] = await Promise.all([
           fetch("/api/app/job-poster/jobs", { cache: "no-store", credentials: "include" }),
           fetch("/api/app/job-poster/materials/pending", { cache: "no-store", credentials: "include" }),
+          fetch("/api/app/job-poster/refund-eligibility", { cache: "no-store", credentials: "include" }),
         ]);
         const jobsJson = await jobsResp.json().catch(() => null);
         const matsJson = await matsResp.json().catch(() => null);
+        const refundJson = await refundResp.json().catch(() => null);
         if (!alive) return;
         if (!jobsResp.ok) throw new Error(jobsJson?.error ?? "Failed to load jobs");
         if (!matsResp.ok) throw new Error(matsJson?.error ?? "Failed to load materials");
         setJobs((jobsJson?.jobs ?? []) as JobRow[]);
         setMaterials((matsJson?.requests ?? []) as PendingMaterials[]);
+        if (refundResp.ok && refundJson?.ok === true && typeof refundJson?.now === "string") {
+          setRefundMeta({
+            now: refundJson.now,
+            eligibleAtByJobId: (refundJson.eligibleAtByJobId ?? {}) as Record<string, string>,
+          });
+        } else if (!refundResp.ok) {
+          setRefundMeta(null);
+          setRefundMetaError("Refund eligibility is temporarily unavailable.");
+        }
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed to load");
@@ -630,6 +648,126 @@ export default function JobPosterDashboard() {
             Contact Support
           </a>
         </div>
+      </div>
+
+      {/* 6) Refund Eligibility (read-only) */}
+      <div className="mt-6 border border-gray-200 rounded-2xl p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Refund Eligibility</h2>
+            <p className="text-gray-600 mt-1">
+              Refunds are reviewed by support. This section shows time-based eligibility only; backend approval is required.
+            </p>
+          </div>
+          <a
+            href="/app/job-poster/support/help"
+            className="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold px-4 py-2 rounded-lg"
+          >
+            Request Refund
+          </a>
+        </div>
+
+        {refundMetaError ? (
+          <div className="mt-4 bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-lg text-sm">
+            {refundMetaError}
+          </div>
+        ) : null}
+
+        {(() => {
+          const now = refundMeta?.now ? new Date(refundMeta.now) : null;
+          if (!now || isNaN(now.getTime())) {
+            return <div className="mt-4 text-sm text-gray-600">Loading refund eligibility…</div>;
+          }
+
+          const candidates = jobs.filter((j) => {
+            const status = String(j.status ?? "").toUpperCase();
+            const payoutStatus = String(j.payoutStatus ?? "").toUpperCase();
+            const hasAssignment = Boolean(j.assignment?.contractorId);
+            const eligibleStatus = ["DRAFT", "OPEN_FOR_ROUTING", "PUBLISHED"].includes(status);
+            const blockedStatus = [
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "CONTRACTOR_COMPLETED",
+              "CUSTOMER_APPROVED",
+              "COMPLETED_APPROVED",
+              "DISPUTED",
+            ].includes(status);
+            if (!eligibleStatus || blockedStatus) return false;
+            if (payoutStatus === "RELEASED") return false;
+            if (hasAssignment) return false;
+            return true;
+          });
+
+          if (candidates.length === 0) {
+            return (
+              <div className="mt-4 text-sm text-gray-600">
+                None of your current jobs are eligible for refund.
+              </div>
+            );
+          }
+
+          return (
+            <div className="mt-5 space-y-3">
+              {candidates.map((j) => {
+                const eligibleAtIso = refundMeta?.eligibleAtByJobId?.[j.id] ?? null;
+                const eligibleAt =
+                  (eligibleAtIso ? new Date(eligibleAtIso) : refundEligibleAtUtc(j)) ?? null;
+                const okEligibleAt = Boolean(eligibleAt && !isNaN(eligibleAt.getTime()));
+
+                const eligibleNow = isRefundEligible(j, now);
+                const statusLabel =
+                  eligibleAt && okEligibleAt ? formatEligibilityCountdown(eligibleAt, now) : "Eligibility unavailable";
+
+                return (
+                  <div key={j.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div>
+                        <div className="font-bold text-gray-900">{j.title}</div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          Created:{" "}
+                          <span className="font-mono">
+                            {j.createdAt ? new Date(j.createdAt).toLocaleString() : "—"}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-700 mt-2">
+                          <span
+                            className={
+                              eligibleNow
+                                ? "inline-flex px-2 py-1 rounded-full text-xs font-semibold border bg-green-50 text-green-800 border-green-200"
+                                : "inline-flex px-2 py-1 rounded-full text-xs font-semibold border bg-gray-50 text-gray-700 border-gray-200"
+                            }
+                          >
+                            {eligibleNow ? "Eligible now" : statusLabel}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <a
+                          href="/app/job-poster/support/help"
+                          className={
+                            "font-semibold px-4 py-2 rounded-lg " +
+                            (eligibleNow
+                              ? "bg-8fold-green hover:bg-8fold-green-dark text-white"
+                              : "bg-gray-100 text-gray-500 cursor-not-allowed pointer-events-none")
+                          }
+                          aria-disabled={!eligibleNow}
+                          title={!eligibleNow ? "Not yet eligible based on time + status." : undefined}
+                        >
+                          Request Refund
+                        </a>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-500">
+                      Status must remain in <span className="font-mono">DRAFT</span>,{" "}
+                      <span className="font-mono">OPEN_FOR_ROUTING</span>, or <span className="font-mono">PUBLISHED</span>;
+                      refunds are not automatic.
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </>
   );

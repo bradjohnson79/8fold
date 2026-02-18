@@ -1,6 +1,12 @@
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(SCRIPT_DIR, "..", ".env.local") });
 
 type Counts = {
   usersSeen: number;

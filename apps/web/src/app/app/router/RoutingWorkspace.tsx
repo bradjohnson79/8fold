@@ -329,13 +329,10 @@ export function RoutingWorkspace() {
         headers: { "content-type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          type: "HELP",
           category: supportCategoryToApiCategory(supportCategory),
-          priority: "NORMAL",
-          roleContext: "ROUTER",
           subject,
-          message: msg
-        })
+          message: msg,
+        }),
       });
       const json = await safeJson<any>(resp);
       if (!resp.ok) throw new Error(json?.error ?? "Failed to create ticket");

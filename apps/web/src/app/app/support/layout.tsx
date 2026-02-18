@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireServerSession } from "@/server/auth/requireServerSession";
+import { auth } from "@clerk/nextjs/server";
 
 export default async function SupportLayout({ children }: { children: React.ReactNode }) {
   // Legacy path: redirect into role-specific support areas to preserve stable role sidebar.
@@ -8,6 +9,13 @@ export default async function SupportLayout({ children }: { children: React.Reac
     session = await requireServerSession();
   } catch {
     session = null;
+  }
+
+  if (!session?.userId) {
+    const { userId: clerkUserId } = await auth();
+    if (!clerkUserId) return <>{children}</>;
+    // Signed-in user but session not ready: stabilize in /app.
+    redirect("/app");
   }
 
   const role = String(session?.role ?? "").trim().toUpperCase();

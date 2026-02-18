@@ -1,9 +1,6 @@
 import { GPT_MODEL } from "@8fold/shared";
-import { loadRootEnvOnce } from "../../config/loadRootEnv";
 
 export async function testNano() {
-  loadRootEnvOnce();
-
   const apiKey = process.env.OPENAI_API_KEY;
   const modelEnv = process.env.OPENAI_MODEL;
 

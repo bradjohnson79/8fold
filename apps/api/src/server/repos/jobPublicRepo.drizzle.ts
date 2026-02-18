@@ -1,56 +1,102 @@
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
-import { PUBLIC_MARKETPLACE_JOB_STATUSES } from "../../constants/publicJobStatuses";
-import { getRegionDatasets, getRegionName, type CountryCode2 } from "../../locations/datasets";
-import { regionToCityState } from "../../jobs/nominatim";
+import { PUBLIC_VISIBLE_STATUSES } from "../../lib/publicJobEligibility";
+import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 
 function publicEligibility() {
-  // Homepage "Newest jobs" discovery:
+  // Public discovery + location selector eligibility:
   // - archived=false
-  // - status in OPEN_FOR_ROUTING/ASSIGNED/IN_PROGRESS (no PUBLISHED - enum drift fix)
-  // - isMock=false, jobSource=REAL
+  // - status is either:
+  //   - ASSIGNED
+  //   - CUSTOMER_APPROVED with routerApprovedAt IS NULL (aka "CUSTOMER_APPROVED_AWAITING_ROUTER")
+  // - In production, exclude mock jobs. In local dev, allow mocks when DEVELOPMENT_MOCKS=true.
   return and(
     eq(jobs.archived, false),
-    eq(jobs.isMock, false),
-    eq(jobs.jobSource, "REAL"),
-    inArray(jobs.status, PUBLIC_MARKETPLACE_JOB_STATUSES as unknown as any),
+    process.env.NODE_ENV === "production"
+      ? and(eq(jobs.isMock, false), eq(jobs.jobSource, "REAL"))
+      : String(process.env.DEVELOPMENT_MOCKS ?? "").trim() === "true"
+        ? undefined
+        : and(eq(jobs.isMock, false), eq(jobs.jobSource, "REAL")),
+    or(
+      eq(jobs.status, "ASSIGNED" as any),
+      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
+    ),
   );
 }
 
-function countryByRegionCodeMap(): Map<string, CountryCode2> {
-  const out = new Map<string, CountryCode2>();
-  for (const ds of getRegionDatasets()) {
-    for (const r of ds.regions) out.set(r.regionCode.toUpperCase(), ds.country);
-  }
-  return out;
+const US_STATE_CODES_50 = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
+  "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
+]);
+
+const CA_PROVINCE_CODES_10 = new Set([
+  "AB","BC","MB","NB","NL","NS","ON","PE","QC","SK",
+]);
+
+function isAllowedRegion(country: CountryCode2, regionCode: string): boolean {
+  const rc = regionCode.trim().toUpperCase();
+  if (country === "US") return US_STATE_CODES_50.has(rc);
+  return CA_PROVINCE_CODES_10.has(rc);
+}
+
+async function maybeLogPublicDiscoveryDiagnostics(): Promise<void> {
+  // Dev-only, opt-in diagnostics.
+  if (process.env.NODE_ENV === "production") return;
+  if (String(process.env.PUBLIC_DISCOVERY_DEBUG ?? "").trim() !== "true") return;
+
+  const counts = await db
+    .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+    .from(jobs)
+    .groupBy(jobs.status);
+  // eslint-disable-next-line no-console
+  console.log("JOB STATUS COUNTS:", counts);
+
+  const regions = await db
+    .selectDistinct({ regionCode: jobs.regionCode })
+    .from(jobs)
+    .where(and(publicEligibility(), isNotNull(jobs.regionCode)));
+  // eslint-disable-next-line no-console
+  console.log("REGIONS FROM ELIGIBLE JOBS:", regions);
 }
 
 export async function listRegionsWithJobs(): Promise<
   Array<{ country: CountryCode2; regionCode: string; regionName: string; jobCount: number }>
 > {
+  await maybeLogPublicDiscoveryDiagnostics();
   const rows = await db
     .select({
+      country: jobs.country,
       regionCode: jobs.regionCode,
       jobCount: sql<number>`count(*)::int`,
     })
     .from(jobs)
     .where(and(publicEligibility(), isNotNull(jobs.regionCode)))
-    .groupBy(jobs.regionCode)
-    .orderBy(desc(sql<number>`count(*)`));
+    .groupBy(jobs.country, jobs.regionCode)
+    .orderBy(asc(jobs.country), asc(jobs.regionCode));
 
-  const countryBy = countryByRegionCodeMap();
-  return rows
+  const mapped = rows
     .map((r) => {
+      const country = (String(r.country ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US") as CountryCode2;
       const rc = String(r.regionCode ?? "").trim().toUpperCase();
       if (!rc) return null;
-      const country: CountryCode2 = countryBy.get(rc) ?? "US";
+      if (!isAllowedRegion(country, rc)) return null;
       return { country, regionCode: rc, regionName: getRegionName(country, rc) ?? rc, jobCount: r.jobCount ?? 0 };
     })
     .filter(
-      (x): x is { country: CountryCode2; regionCode: string; regionName: string; jobCount: number } =>
-        x !== null && x.jobCount > 0,
+      (x): x is { country: CountryCode2; regionCode: string; regionName: string; jobCount: number } => x !== null,
     );
+
+  // Required UX ordering: all US states first, then all CA provinces; within each, alphabetical by name.
+  return mapped.sort((a, b) => {
+    const ca = a.country === "CA";
+    const cb = b.country === "CA";
+    if (ca !== cb) return ca ? 1 : -1;
+    return a.regionName.localeCompare(b.regionName) || a.regionCode.localeCompare(b.regionCode);
+  });
 }
 
 export async function listCitiesByRegion(
@@ -59,36 +105,30 @@ export async function listCitiesByRegion(
 ): Promise<Array<{ city: string; jobCount: number }>> {
   const rc = regionCode.trim().toUpperCase();
   if (!rc) return [];
+  if (!isAllowedRegion(country, rc)) return [];
 
+  // DB truth only: cities come from Job.city (no slug derivation).
+  // This keeps selector deterministic and avoids client-side heuristics.
+  await maybeLogPublicDiscoveryDiagnostics();
   const rows = await db
-    .select({ city: jobs.city, region: jobs.region })
+    .select({ city: jobs.city, jobCount: sql<number>`count(*)::int` })
     .from(jobs)
-    .where(and(publicEligibility(), isNotNull(jobs.regionCode), eq(jobs.regionCode, rc)))
+    .where(
+      and(
+        publicEligibility(),
+        eq(jobs.country, country as any),
+        isNotNull(jobs.regionCode),
+        eq(jobs.regionCode, rc),
+        isNotNull(jobs.city),
+      ),
+    )
+    .groupBy(jobs.city)
+    .orderBy(asc(jobs.city))
     .limit(5000);
 
-  // Country param is accepted for signature parity; current behavior is regionCode-driven.
-  void country;
-
-  function titleCaseCity(slugOrCity: string): string {
-    const cleaned = slugOrCity.trim().replace(/[-_]+/g, " ");
-    return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-
-  const counts = new Map<string, number>();
-  for (const r of rows) {
-    const explicit = String((r.city ?? "") as any).trim();
-    const derived = regionToCityState(String((r.region ?? "") as any))?.city ?? "";
-    const cityName = explicit || derived;
-    const finalCity = cityName.trim();
-    if (!finalCity) continue;
-    const key = titleCaseCity(finalCity);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .map(([city, jobCount]) => ({ city, jobCount }))
-    .sort((a, b) => b.jobCount - a.jobCount || a.city.localeCompare(b.city))
-    .slice(0, 50);
+  return rows
+    .map((r) => ({ city: String(r.city ?? "").trim(), jobCount: Number(r.jobCount ?? 0) }))
+    .filter((r) => Boolean(r.city));
 }
 
 export type PublicNewestJobRow = {
@@ -113,6 +153,7 @@ export type PublicNewestJobRow = {
 
 export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[]> {
   const take = Math.max(1, Math.min(50, Math.trunc(limit || 9)));
+  await maybeLogPublicDiscoveryDiagnostics();
   const result = await db
     .select({
       id: jobs.id,

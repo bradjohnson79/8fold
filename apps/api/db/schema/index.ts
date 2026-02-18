@@ -39,11 +39,14 @@ export * from "./jobHold";
 export * from "./jobDispatch";
 export * from "./contractorAccount";
 export * from "./jobPosterProfile";
+export * from "./jobFlag";
+export * from "./transferRecord";
 export * from "./adminRouterContext";
 export * from "./conversation";
 export * from "./message";
 export * from "./notificationDelivery";
 export * from "./monitoringEvent";
 export * from "./routingHub";
+export * from "./clerkWebhookEvent";
 export * from "./directoryEngine";
 

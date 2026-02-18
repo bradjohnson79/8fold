@@ -5,6 +5,7 @@ import { db } from "../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../db/schema/auditLog";
 import { routers } from "../../../../../../db/schema/router";
 import { requireRouter } from "../../../../../../src/auth/rbac";
+import { ensureRouterProvisioned } from "../../../../../../src/auth/routerProvisioning";
 import { toHttpError } from "../../../../../../src/http/errors";
 
 const TERMS_VERSION = "v1.0";
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
   try {
     const router = await requireRouter(req);
 
+    await ensureRouterProvisioned(router.userId);
+
     const existingRows = await db
       .select({ termsAccepted: routers.termsAccepted })
       .from(routers)
@@ -26,9 +29,7 @@ export async function POST(req: Request) {
       .limit(1);
     const existing = existingRows[0] ?? null;
 
-    if (!existing) {
-      return NextResponse.json({ error: "Router not provisioned" }, { status: 403 });
-    }
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     if (!existing.termsAccepted) {
       const nowIso = new Date().toISOString();

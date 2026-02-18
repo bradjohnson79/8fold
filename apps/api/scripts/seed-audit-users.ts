@@ -1,5 +1,6 @@
 import path from "node:path";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { assertNotProductionSeed } from "./_seedGuard";
 
 function envOrThrow(name: string): string {
@@ -12,7 +13,8 @@ async function main() {
   assertNotProductionSeed("seed-audit-users.ts");
   // Ensure env is loaded before importing db.
   const dotenv = await import("dotenv");
-  dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: path.join(scriptDir, "..", ".env.local") });
   envOrThrow("DATABASE_URL");
 
   const { isDevelopmentMocksEnabled } = await import("../src/config/developmentMocks");
@@ -37,15 +39,30 @@ async function main() {
   const routerEmail = "router.audit@8fold.local";
   const contractorEmail = "contractor.audit@8fold.local";
 
+  function auditClerkUserId(email: string): string {
+    // Deterministic synthetic Clerk subject for seed users (never used for real auth).
+    return `seed:audit:${email.toLowerCase()}`;
+  }
+
   async function upsertUserByEmail(email: string, role: string) {
-    const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    const existing = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
     const id = existing[0]?.id ?? crypto.randomUUID();
     if (existing.length) {
-      await db.update(users).set({ role: role as any, status: "ACTIVE" as any, updatedAt: NOW }).where(eq(users.id, id));
+      const currentRole = String(existing[0]?.role ?? "").toUpperCase();
+      if (currentRole && currentRole !== String(role).toUpperCase()) {
+        throw new Error(`ROLE_IMMUTABLE: existing role=${currentRole} attempted=${role} for ${email}`);
+      }
+      // Update non-role fields only.
+      await db.update(users).set({ status: "ACTIVE" as any, updatedAt: NOW } as any).where(eq(users.id, id));
       return id;
     }
     await db.insert(users).values({
       id,
+      clerkUserId: auditClerkUserId(email),
       email,
       role: role as any,
       status: "ACTIVE" as any,
@@ -68,12 +85,19 @@ async function main() {
   async function upsertAuthUser(id: string, email: string, role: string) {
     // Canonical roles only. Auth schema must include JOB_POSTER (backfill-role-taxonomy).
     const authRole = role;
+    const existing = await db.execute<{ role: string }>(sql`select "role" from "public"."User" where "id" = ${id} limit 1`);
+    const existingRole = String((existing as any)?.rows?.[0]?.role ?? "").toUpperCase();
+    if (existingRole) {
+      if (existingRole !== String(authRole).toUpperCase()) {
+        throw new Error(`ROLE_IMMUTABLE(public.User): existing role=${existingRole} attempted=${authRole} for ${email}`);
+      }
+      // Update email only (never mutate role).
+      await db.execute(sql`update "public"."User" set "email" = ${email} where "id" = ${id}`);
+      return;
+    }
     await db.execute(sql`
       insert into "public"."User" ("id", "email", "role")
       values (${id}, ${email}, ${authRole}::"public"."UserRole")
-      on conflict ("id") do update
-      set "email" = excluded."email",
-          "role" = excluded."role"
     `);
   }
   await upsertAuthUser(posterUserId, posterEmail, "JOB_POSTER");

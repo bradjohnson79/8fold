@@ -1,9 +1,27 @@
-import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
+import dotenv from "dotenv";
 import { Client } from "pg";
 
 type Row = { id: string };
+
+function safeSchemaFromDatabaseUrl(databaseUrl: string): string | null {
+  // Our env uses DATABASE_URL ...?schema=8fold_test (Prisma convention).
+  // `pg` does not apply this automatically, so we set search_path manually.
+  try {
+    const u = new URL(databaseUrl);
+    const schema = u.searchParams.get("schema");
+    if (!schema) return null;
+    const trimmed = schema.trim();
+    // Allow leading digits (e.g. "8fold_test") since we'll always quote it.
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
+      throw new Error(`Invalid schema name in DATABASE_URL: ${trimmed}`);
+    }
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
 
 function assertEnv(name: string): string {
   const v = process.env[name];
@@ -20,8 +38,11 @@ function listSqlFiles(dirAbs: string) {
 }
 
 async function main() {
-  const databaseUrl = assertEnv("DATABASE_URL");
   const repoRoot = path.resolve(__dirname, "..");
+  // Env isolation: load from the API app only (no repo-root .env fallback).
+  dotenv.config({ path: path.join(repoRoot, "apps/api/.env.local") });
+
+  const databaseUrl = assertEnv("DATABASE_URL");
   const drizzleDir = path.join(repoRoot, "drizzle");
 
   if (!fs.existsSync(drizzleDir)) {
@@ -36,6 +57,12 @@ async function main() {
 
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
+
+  const schema = safeSchemaFromDatabaseUrl(databaseUrl);
+  if (schema) {
+    await client.query(`create schema if not exists "${schema}"`);
+    await client.query(`set search_path to "${schema}", public`);
+  }
 
   await client.query(`
     create table if not exists drizzle_sql_migrations (

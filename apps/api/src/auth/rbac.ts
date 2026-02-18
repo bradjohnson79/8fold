@@ -1,13 +1,10 @@
-import crypto from "crypto";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
-import { adminUsers } from "../../db/schema/adminUser";
-import { routers } from "../../db/schema/router";
-import { routerProfiles } from "../../db/schema/routerProfile";
 import { users } from "../../db/schema/user";
-import { verifyInternalAdmin } from "../server/requireInternalAdmin";
+import { routers } from "../../db/schema/router";
 import { incCounter } from "../server/observability/metrics";
 import { logEvent } from "../server/observability/log";
+import { requireAuth } from "./requireAuth";
 
 function routePath(req: Request): string | undefined {
   try {
@@ -17,20 +14,6 @@ function routePath(req: Request): string | undefined {
   }
 }
 
-function getAuthDbSchema(): string | null {
-  const url = process.env.DATABASE_URL ?? "";
-  try {
-    const u = new URL(url);
-    const s = u.searchParams.get("schema");
-    return s && /^[a-zA-Z0-9_]+$/.test(s) ? s : null;
-  } catch {
-    return null;
-  }
-}
-
-const AUTH_SCHEMA = getAuthDbSchema() ?? "public";
-const SESSION_T = sql.raw(`"${AUTH_SCHEMA}"."Session"`);
-
 function asDate(v: unknown): Date {
   if (v instanceof Date) return v;
   if (typeof v === "string" || typeof v === "number") return new Date(v);
@@ -38,97 +21,19 @@ function asDate(v: unknown): Date {
 }
 
 export type ApiAuthedUser = {
-  userId: string; // app User.id OR AdminUser.id (admin routes only)
+  userId: string; // internal domain User.id
   role: "ADMIN" | "CONTRACTOR" | "ROUTER" | "JOB_POSTER";
 };
 
-function sha256(s: string): string {
-  return crypto.createHash("sha256").update(s).digest("hex");
-}
-
-function parseCookieHeader(header: string | null): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!header) return out;
-  for (const part of header.split(";")) {
-    const [k, ...rest] = part.trim().split("=");
-    if (!k) continue;
-    out[k] = rest.join("=") ?? "";
-  }
-  return out;
-}
-
-function getSessionTokenFromRequest(req: Request): string | null {
-  const authz = req.headers.get("authorization") ?? req.headers.get("Authorization");
-  if (authz && authz.toLowerCase().startsWith("bearer ")) {
-    const token = authz.slice(7).trim();
-    return token.length > 0 ? token : null;
-  }
-  const header = req.headers.get("x-session-token");
-  if (header && header.trim().length > 0) return header.trim();
-
-  // Dev/local convenience: allow cookie-based auth for browser calls directly to apps/api.
-  // This keeps the canonical token the same ("sid"), but does not require client JS to
-  // manually attach Authorization headers.
-  const cookieHeader = req.headers.get("cookie");
-  const cookies = parseCookieHeader(cookieHeader);
-  const sidRaw = cookies["sid"] ?? "";
-  if (!sidRaw) return null;
-  try {
-    const sid = decodeURIComponent(sidRaw);
-    return sid && sid.trim().length > 0 ? sid.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-async function optionalInternalAdmin(req: Request): Promise<ApiAuthedUser | null> {
-  const verified = await verifyInternalAdmin(req);
-  if (!verified) return null;
-  return { userId: verified.adminId, role: "ADMIN" };
-}
-
 export async function optionalUser(req: Request): Promise<ApiAuthedUser | null> {
-  const raw = getSessionTokenFromRequest(req);
-  if (!raw) return null;
-
-  const tokenHash = sha256(raw);
-  const sessionRes = await db.execute(sql`
-    select "userId", "expiresAt", "revokedAt"
-    from ${SESSION_T}
-    where "sessionTokenHash" = ${tokenHash}
-    limit 1
-  `);
-  const sessionRow = (sessionRes.rows[0] ?? null) as
-    | { userId: string; expiresAt: unknown; revokedAt: unknown | null }
-    | null;
-  const session = sessionRow
-    ? { userId: sessionRow.userId, expiresAt: asDate(sessionRow.expiresAt), revokedAt: sessionRow.revokedAt ? asDate(sessionRow.revokedAt) : null }
-    : null;
-  if (!session) return null;
-  if (session.revokedAt) return null;
-  if (session.expiresAt.getTime() <= Date.now()) return null;
-
-  const userRows = await db
-    .select({
-      id: users.id,
-      role: users.role,
-      authUserId: users.authUserId,
-      status: users.status,
-      suspendedUntil: users.suspendedUntil,
-    })
-    .from(users)
-    .where(eq(users.id, session.userId))
-    .limit(1);
-  const user = userRows[0] ?? null;
+  const authed = await requireAuth(req);
+  if (authed instanceof Response) return null;
+  const user = authed.internalUser;
   if (!user) return null;
 
   const status = String(user.status ?? "ACTIVE");
-  const suspendedUntil = user.suspendedUntil ? (user.suspendedUntil instanceof Date ? user.suspendedUntil : new Date(user.suspendedUntil)) : null;
   if (status === "ARCHIVED") return null;
-  if (status === "SUSPENDED" && suspendedUntil && suspendedUntil.getTime() > Date.now()) return null;
-  if (status === "SUSPENDED" && (!suspendedUntil || suspendedUntil.getTime() <= Date.now())) {
-    await db.update(users).set({ status: "ACTIVE", suspendedUntil: null, suspensionReason: null, updatedAt: new Date() }).where(eq(users.id, user.id));
-  }
+  if (status === "SUSPENDED") return null;
   const role = String(user.role ?? "").trim().toUpperCase();
   if (role !== "JOB_POSTER" && role !== "ROUTER" && role !== "CONTRACTOR" && role !== "ADMIN") {
     // Canonical roles only. Legacy values must be migrated via backfill.
@@ -159,21 +64,15 @@ export async function requireUser(req: Request): Promise<ApiAuthedUser> {
 }
 
 export async function requireAdmin(req: Request): Promise<ApiAuthedUser> {
-  const admin = await optionalInternalAdmin(req);
-  if (!admin) {
-    throw Object.assign(new Error("Unauthorized"), {
-      status: 401,
-      code: "UNAUTHORIZED",
-    });
+  const user = await requireUser(req);
+  if (String(user.role) !== "ADMIN") {
+    throw Object.assign(new Error("Forbidden"), { status: 403, code: "ROLE_MISMATCH", context: { expectedRole: "ADMIN", role: user.role } });
   }
-  return admin;
+  return user;
 }
 
 /** Admin or Router only. Assignment chain: Router → selects contractor → POST /assign. AI cannot assign. */
 export async function requireAdminOrRouter(req: Request): Promise<ApiAuthedUser> {
-  const admin = await optionalInternalAdmin(req);
-  if (admin) return admin;
-
   const user = await requireUser(req);
   const role = String(user.role);
   if (role === "ROUTER") return await requireRouter(req);
@@ -200,30 +99,6 @@ export async function requireRouter(req: Request): Promise<ApiAuthedUser> {
   const user = await requireUser(req);
   const role = String(user.role);
 
-  // Unified routers table (first-class). No runtime auto-creation:
-  // The one-time backfill script must provision missing rows.
-  const routerRows = await db
-    .select({ status: routers.status })
-    .from(routers)
-    .where(eq(routers.userId, user.userId))
-    .limit(1);
-  const router = routerRows[0] ?? null;
-
-  // Defensive visibility for role ↔ provisioning drift (no behavior change).
-  if (router && role !== "ROUTER") {
-    logEvent({
-      level: "warn",
-      event: "rbac.role_provisioning_drift",
-      route: routePath(req),
-      method: req.method,
-      status: 200,
-      userId: user.userId,
-      role,
-      code: "ROLE_PROVISIONING_DRIFT",
-      context: { routersStatus: (router as any).status },
-    });
-  }
-
   if (role !== "ROUTER") {
     incCounter("api_403_total", { code: "ROLE_MISMATCH", role, route: routePath(req) });
     logEvent({
@@ -241,47 +116,6 @@ export async function requireRouter(req: Request): Promise<ApiAuthedUser> {
       status: 403,
       code: "ROLE_MISMATCH",
       context: { expectedRole: "ROUTER", role },
-    });
-  }
-
-  const profileRows = await db
-    .select({ status: routerProfiles.status })
-    .from(routerProfiles)
-    .where(eq(routerProfiles.userId, user.userId))
-    .limit(1);
-  const profile = profileRows[0] ?? null;
-  if (!profile || profile.status !== "ACTIVE") {
-    incCounter("api_403_total", { code: "ROUTER_NOT_ACTIVE", role, route: routePath(req) });
-    logEvent({
-      level: "warn",
-      event: "rbac.router_not_active",
-      route: routePath(req),
-      method: req.method,
-      status: 403,
-      userId: user.userId,
-      role,
-      code: "ROUTER_NOT_ACTIVE",
-    });
-    throw Object.assign(new Error("Router not active"), {
-      status: 403,
-      code: "ROUTER_NOT_ACTIVE",
-    });
-  }
-  if (!router || router.status !== "ACTIVE") {
-    incCounter("api_403_total", { code: "ROUTER_NOT_PROVISIONED", role, route: routePath(req) });
-    logEvent({
-      level: "warn",
-      event: "rbac.router_not_provisioned",
-      route: routePath(req),
-      method: req.method,
-      status: 403,
-      userId: user.userId,
-      role,
-      code: "ROUTER_NOT_PROVISIONED",
-    });
-    throw Object.assign(new Error("Router not provisioned"), {
-      status: 403,
-      code: "ROUTER_NOT_PROVISIONED",
     });
   }
 

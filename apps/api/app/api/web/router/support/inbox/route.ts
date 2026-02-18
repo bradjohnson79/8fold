@@ -1,14 +1,29 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
+import { routers } from "../../../../../../db/schema/router";
 import { supportTickets } from "../../../../../../db/schema/supportTicket";
 import { supportMessages } from "../../../../../../db/schema/supportMessage";
-import { requireSeniorRouter } from "../../../../../../src/auth/rbac";
+import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../src/http/errors";
 
 export async function GET(req: Request) {
   try {
-    await requireSeniorRouter(req);
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
+
+    // Router dashboard links to this page for all routers, but only senior routers should see the staff inbox.
+    // Return 200 with an empty list to avoid noisy 403 spam for non-senior routers.
+    const routerRows = await db
+      .select({ isSeniorRouter: routers.isSeniorRouter, status: routers.status })
+      .from(routers)
+      .where(eq(routers.userId, router.userId))
+      .limit(1);
+    const r = routerRows[0] ?? null;
+    if (!r || r.status !== "ACTIVE" || !r.isSeniorRouter) {
+      return NextResponse.json({ tickets: [], blocked: true, code: "ROUTER_NOT_SENIOR" }, { status: 200 });
+    }
 
     const url = new URL(req.url);
     const status = String(url.searchParams.get("status") ?? "").trim();

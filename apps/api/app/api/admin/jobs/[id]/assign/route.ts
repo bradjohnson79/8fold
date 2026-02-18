@@ -4,7 +4,7 @@ import { handleApiError } from "@/src/lib/errorHandler";
 import { assertJobTransition } from "../../../../../../src/jobs/jobTransitions";
 import { generateActionToken, hashActionToken } from "../../../../../../src/jobs/actionTokens";
 import { haversineKm, stateFromRegion } from "../../../../../../src/jobs/geo";
-import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/nominatim";
+import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/geocode";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";

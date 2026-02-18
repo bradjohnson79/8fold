@@ -1,18 +1,23 @@
-import "dotenv/config";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { assertNotProductionSeed } from "./_seedGuard";
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const API_ENV_PATH = path.join(SCRIPT_DIR, "..", ".env.local");
+dotenv.config({ path: API_ENV_PATH });
+
 function ensureDatabaseUrl() {
   if (process.env.DATABASE_URL) return;
-  const p = path.join(process.cwd(), ".env.local");
-  if (!fs.existsSync(p)) throw new Error("DATABASE_URL not set and apps/api/.env.local not found");
-  const txt = fs.readFileSync(p, "utf8");
+  if (!fs.existsSync(API_ENV_PATH)) throw new Error("DATABASE_URL not set and apps/api/.env.local not found");
+  const txt = fs.readFileSync(API_ENV_PATH, "utf8");
   const m = txt.match(/^DATABASE_URL\s*=\s*(.+)$/m);
   if (!m) throw new Error("DATABASE_URL missing in apps/api/.env.local");
   process.env.DATABASE_URL = m[1].trim();
@@ -43,64 +48,39 @@ async function main() {
   const routerEmail = "router.e2e@8fold.local";
   const now = new Date();
 
-  const contractorUser = await db
-    .insert(users)
-    .values({
-      id: crypto.randomUUID(),
-      email: contractorEmail,
-      role: "CONTRACTOR",
+  async function ensureUser(email: string, role: "JOB_POSTER" | "CONTRACTOR" | "ROUTER", extra: Record<string, unknown>) {
+    const existing = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
+    const id = existing[0]?.id ?? null;
+    if (id) {
+      const currentRole = String(existing[0]?.role ?? "").toUpperCase();
+      if (currentRole !== role) {
+        throw new Error(`ROLE_IMMUTABLE: existing role=${currentRole} attempted=${role} for ${email}`);
+      }
+      await db.update(users).set({ ...extra, status: "ACTIVE", updatedAt: now } as any).where(eq(users.id, id));
+      return id;
+    }
+    const newId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: newId,
+      clerkUserId: `seed:e2e:${email.toLowerCase()}`,
+      email,
+      role,
       status: "ACTIVE",
-      country: "US",
-      phone: "+1 555 0100",
       createdAt: now,
       updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "CONTRACTOR", status: "ACTIVE", country: "US", phone: "+1 555 0100", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
+      ...extra,
+    } as any);
+    return newId;
+  }
 
-  const posterUser = await db
-    .insert(users)
-    .values({
-      id: crypto.randomUUID(),
-      email: posterEmail,
-      role: "JOB_POSTER",
-      status: "ACTIVE",
-      country: "US",
-      phone: "+1 555 0200",
-      name: "E2E Poster",
-      createdAt: now,
-      updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "JOB_POSTER", status: "ACTIVE", country: "US", phone: "+1 555 0200", name: "E2E Poster", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
-
-  const routerUser = await db
-    .insert(users)
-    .values({
-      id: crypto.randomUUID(),
-      email: routerEmail,
-      role: "ROUTER",
-      status: "ACTIVE",
-      country: "US",
-      createdAt: now,
-      updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "ROUTER", status: "ACTIVE", country: "US", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
+  const contractorUserId = await ensureUser(contractorEmail, "CONTRACTOR", { country: "US", phone: "+1 555 0100" });
+  const posterUserId = await ensureUser(posterEmail, "JOB_POSTER", { country: "US", phone: "+1 555 0200", name: "E2E Poster" });
+  const routerUserId = await ensureUser(routerEmail, "ROUTER", { country: "US" });
 
   await db
     .insert(contractorAccounts)
     .values({
-      userId: contractorUser[0]!.id,
+      userId: contractorUserId,
       tradeCategory: "HANDYMAN",
       regionCode: "TX",
       country: "US",
@@ -175,14 +155,14 @@ async function main() {
       .set({
         status: "PUBLISHED",
         routingStatus: "UNROUTED",
-        claimedByUserId: routerUser[0]!.id,
+        claimedByUserId: routerUserId,
         claimedAt: null,
         contactedAt: null,
         routedAt: null,
         firstRoutedAt: null,
         adminRoutedById: null,
         contractorUserId: null,
-        jobPosterUserId: posterUser[0]!.id,
+        jobPosterUserId: posterUserId,
         customerApprovedAt: null,
         customerRejectedAt: null,
         routerApprovedAt: null,
@@ -222,8 +202,8 @@ async function main() {
       publishedAt: now,
       postedAt: now,
       createdAt: now,
-      claimedByUserId: routerUser[0]!.id,
-      jobPosterUserId: posterUser[0]!.id,
+      claimedByUserId: routerUserId,
+      jobPosterUserId: posterUserId,
     } as any);
   }
 
@@ -264,7 +244,7 @@ async function main() {
       tokenHash,
       jobId,
       contractorId,
-      routerUserId: routerUser[0]!.id,
+      routerUserId,
       expiresAt,
       createdAt: now,
       updatedAt: now,
@@ -281,12 +261,12 @@ async function main() {
       {
         ok: true,
         contractorEmail,
-        contractorUserId: contractorUser[0]!.id,
+        contractorUserId,
         contractorId,
         posterEmail,
-        posterUserId: posterUser[0]!.id,
+        posterUserId,
         routerEmail,
-        routerUserId: routerUser[0]!.id,
+        routerUserId,
         jobId,
         dispatchId: dispatch[0]!.id,
         dispatchToken: process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_OTP_ECHO === "true" ? rawToken : undefined,

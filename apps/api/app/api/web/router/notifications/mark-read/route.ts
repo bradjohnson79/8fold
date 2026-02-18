@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { notificationDeliveries } from "../../../../../../db/schema/notificationDelivery";
-import { requireRouterReady } from "../../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { z } from "zod";
 
@@ -12,9 +12,9 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const u = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const u = authed;
     let raw: unknown = {};
     try {
       raw = await req.json();

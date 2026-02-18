@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useMemo, useState } from 'react'
 import { formatMoney, REVENUE_SPLIT } from '@8fold/shared'
+import { FlagJobModal } from './jobs/FlagJobModal'
 
 interface JobCardProps {
   job: {
@@ -29,6 +30,9 @@ interface JobCardProps {
 
 export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
   const [imageError, setImageError] = useState(false)
+  const [flagOpen, setFlagOpen] = useState(false)
+  const [flagSubmitting, setFlagSubmitting] = useState(false)
+  const [flagToast, setFlagToast] = useState<string | null>(null)
   const tradeBadge = job.tradeCategory ? job.tradeCategory.replace(/_/g, ' ') : null
   const currency = (job.currency ?? (job.country === 'CA' ? 'CAD' : 'USD')) as 'USD' | 'CAD'
 
@@ -142,7 +146,19 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
       <div className="p-6 pb-4">
         <div className="flex items-start justify-between mb-2">
           <h3 className="text-xl font-bold text-gray-900 leading-tight">{job.title}</h3>
-          {getStatusBadge()}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFlagOpen(true)}
+              className="text-red-500 hover:text-red-600"
+              aria-label="Flag this job"
+              disabled={flagSubmitting}
+              title="Flag this job"
+            >
+              🚩
+            </button>
+            {getStatusBadge()}
+          </div>
         </div>
         {tradeBadge ? (
           <div className="mb-2">
@@ -159,6 +175,39 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
           {showTime ? <span className="ml-2">• {estimatedTime}</span> : null}
         </div>
       </div>
+
+      <FlagJobModal
+        open={flagOpen}
+        jobTitle={job.title}
+        onClose={() => {
+          if (flagSubmitting) return
+          setFlagOpen(false)
+        }}
+        onSubmit={async (reason) => {
+          setFlagSubmitting(true)
+          try {
+            const resp = await fetch('/api/public/jobs/flag', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ jobId: job.id, reason }),
+            })
+            const json = await resp.json().catch(() => ({}))
+            if (!resp.ok || json?.ok === false) {
+              throw new Error(json?.error ?? 'Failed to submit flag')
+            }
+            setFlagToast('Flag submitted. Thank you.')
+            setTimeout(() => setFlagToast(null), 2500)
+          } finally {
+            setFlagSubmitting(false)
+          }
+        }}
+      />
+
+      {flagToast ? (
+        <div className="fixed bottom-4 right-4 z-[60] rounded-xl bg-gray-900 text-white px-4 py-2 shadow-xl text-sm font-semibold">
+          {flagToast}
+        </div>
+      ) : null}
 
       {/* Image */}
       <div className="px-6">
@@ -259,6 +308,16 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
             }
 
             // Default for IN_PROGRESS / ASSIGNED (and any non-routable states).
+            if (job.isMock && assigned) {
+              return (
+                <button
+                  disabled
+                  className="w-full bg-orange-100 text-orange-900 font-semibold py-3 px-4 rounded-lg cursor-not-allowed border border-orange-200"
+                >
+                  Routing in Progress
+                </button>
+              )
+            }
             return (
               <button
                 disabled

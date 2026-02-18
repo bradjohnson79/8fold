@@ -1,6 +1,10 @@
 /**
  * DISE (Directory Intelligence & Submission Engine) schema.
- * Namespace: directory_engine
+ *
+ * Isolation boundary:
+ * - This schema is owned by DISE and lives ONLY in Postgres schema `directory_engine`.
+ * - DISE tables must not depend on Jobs lifecycle, Ledger, or Stripe/payments tables.
+ * - DISE code should write ONLY through these table definitions (no cross-schema writes).
  */
 import {
   boolean,

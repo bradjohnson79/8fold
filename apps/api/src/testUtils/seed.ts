@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
 import { db as appDb } from "@/server/db/drizzle";
 import { contractors, jobs, users } from "../../db/schema";
 
@@ -6,22 +7,31 @@ type DbLike = typeof appDb;
 
 export async function seedTestUser(
   db: DbLike,
-  authUserId: string,
+  clerkUserId: string,
   role: "JOB_POSTER" | "CONTRACTOR" | "ROUTER" | "ADMIN",
 ) {
   const id = randomUUID();
-  const out =
+  const inserted =
     (
       await db
         .insert(users)
-        .values({ id, authUserId, role: role as any })
-        .onConflictDoUpdate({
-          target: users.authUserId,
-          set: { role: role as any },
-        })
+        .values({ id, clerkUserId, role: role as any } as any)
+        .onConflictDoNothing({ target: users.clerkUserId })
         .returning()
     )[0] ?? null;
-  return out;
+  if (inserted) return inserted;
+
+  const existing = (
+    await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkUserId, clerkUserId))
+      .limit(1)
+  )[0] ?? null;
+  if (existing && String((existing as any).role ?? "").toUpperCase() !== role) {
+    throw new Error(`ROLE_IMMUTABLE: existing role=${String((existing as any).role)} attempted=${role}`);
+  }
+  return existing;
 }
 
 export async function seedApprovedContractor(db: DbLike, businessName: string) {

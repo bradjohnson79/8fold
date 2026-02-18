@@ -81,15 +81,16 @@ export default function TicketDetailPage() {
       const resp = await fetch(`/api/app/support/tickets/${ticketId}`, { cache: "no-store" });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(json?.error ?? "Failed to load ticket");
-      setTicket(json.ticket ?? null);
-      setMessages(Array.isArray(json.messages) ? json.messages : []);
+      setTicket(json?.data?.ticket ?? json?.ticket ?? null);
+      setMessages(Array.isArray(json?.data?.messages) ? json.data.messages : Array.isArray(json?.messages) ? json.messages : []);
 
       const [attResp, dispResp] = await Promise.all([
         fetch(`/api/app/support/tickets/${ticketId}/attachments`, { cache: "no-store" }),
         fetch(`/api/app/support/tickets/${ticketId}/dispute`, { cache: "no-store" })
       ]);
       const attJson = await attResp.json().catch(() => null);
-      setAttachments(attResp.ok && Array.isArray(attJson?.attachments) ? attJson.attachments : []);
+      const attList = Array.isArray(attJson?.data?.attachments) ? attJson.data.attachments : Array.isArray(attJson?.attachments) ? attJson.attachments : [];
+      setAttachments(attResp.ok ? attList : []);
 
       const dispJson = await dispResp.json().catch(() => null);
       setDispute(dispResp.ok ? (dispJson?.dispute ?? null) : null);

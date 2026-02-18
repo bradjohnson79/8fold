@@ -11,7 +11,9 @@
  * Dry run (default): logs what would be deleted
  * Execute: DRY_RUN=0 npx tsx apps/api/scripts/remove-mock-actors.ts
  */
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { contractorAccounts } from "../db/schema/contractorAccount";
@@ -25,6 +27,10 @@ import { materialsRequests } from "../db/schema/materialsRequest";
 import { repeatContractorRequests } from "../db/schema/repeatContractorRequest";
 import { routers } from "../db/schema/router";
 import { users } from "../db/schema/user";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(SCRIPT_DIR, "..", ".env.local") });
 
 const DRY_RUN = process.env.DRY_RUN !== "0";
 

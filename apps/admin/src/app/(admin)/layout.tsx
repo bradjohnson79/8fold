@@ -9,15 +9,20 @@ validateAdminEnv();
 
 export default async function AdminAppLayout({ children }: { children: React.ReactNode }) {
   try {
-    // Session validation is DB-authoritative in apps/api (admin_session cookie).
-    const me = await adminApiFetch<{ admin?: { email?: string | null } }>("/api/admin/me", {
-      method: "GET",
-    });
-    const adminEmail = me?.admin?.email ? String(me.admin.email) : null;
+    const me = await adminApiFetch<{
+      admin: { id: string; email: string; role: string };
+      adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
+    }>("/api/admin/me", { method: "GET" });
+    const admin = (me as any)?.admin ?? null;
+    const tier = String((me as any)?.adminTier ?? "ADMIN_OPERATOR").trim().toUpperCase();
 
-    return <AdminLayout adminEmail={adminEmail}>{children}</AdminLayout>;
-  } catch {
-    redirect("/login");
+    const adminEmail = admin?.email ? String(admin.email) : null;
+    return <AdminLayout adminEmail={adminEmail} adminTier={tier as any}>{children}</AdminLayout>;
+  } catch (err: any) {
+    const status = typeof err?.status === "number" ? err.status : null;
+    if (status === 401) redirect("/login");
+    if (status === 403) redirect("/403");
+    throw err;
   }
 }
 

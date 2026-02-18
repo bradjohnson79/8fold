@@ -33,6 +33,6 @@ export const env = {
     apiKey: optionalVars.OPENAI_API_KEY,
   },
   nominatim: {
-    userAgent: optionalVars.NOMINATIM_USER_AGENT || "8FoldLocal/1.0",
+    userAgent: optionalVars.NOMINATIM_USER_AGENT || "8FoldLocal/1.0 (contact@yourdomain.com)",
   },
 } as const;

@@ -56,7 +56,6 @@ function getAuthSchemaFromDbUrl(dbUrl: string): string {
 async function main() {
   const dotenv = await import("dotenv");
   dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
-  dotenv.config({ path: path.join(process.cwd(), ".env") });
 
   const DATABASE_URL = process.env.DATABASE_URL;
   if (!DATABASE_URL) throw new Error("DATABASE_URL missing");
@@ -122,14 +121,19 @@ async function main() {
 
   // Ensure actor User exists (same behavior as apps/admin/src/server/adminSession.ts)
   const actorUpsertId = crypto.randomUUID();
-  const actorRes = await pg.query(
+  // Role immutability: never update role on conflict.
+  await pg.query(
     `insert into "8fold_test"."User" ("id","authUserId","role")
      values ($1,$2,$3)
-     on conflict ("authUserId") do update set "role" = $3
-     returning "id";`,
+     on conflict ("authUserId") do nothing;`,
     [actorUpsertId, authUserId, "ADMIN"],
   );
+  const actorRes = await pg.query(`select "id","role" from "8fold_test"."User" where "authUserId" = $1 limit 1;`, [authUserId]);
   const actorUserId = (actorRes.rows[0]?.id ?? null) as string | null;
+  const actorRole = String(actorRes.rows[0]?.role ?? "").toUpperCase();
+  if (actorUserId && actorRole && actorRole !== "ADMIN") {
+    throw new Error(`ROLE_IMMUTABLE: existing role=${actorRole} attempted=ADMIN for ${authUserId}`);
+  }
   if (!actorUserId) throw new Error("Failed to upsert admin actor User");
 
   // Mint session token in auth schema Session table
@@ -299,13 +303,26 @@ async function main() {
       const password = String(process.env.ADMIN_AUDIT_LOGIN_PASSWORD ?? "Admin12345!");
 
       const adminSchema = await resolveAdminUserSchema();
+      // Avoid mutating role on conflict; fail if role is not ADMIN.
       await pg.query(
         `insert into "${adminSchema}"."AdminUser" ("id", "email", "passwordHash", "role")
          values ($1, $2, public.crypt($3, public.gen_salt('bf', 10)), $4)
-         on conflict ("email") do update
-           set "role" = excluded."role",
-               "passwordHash" = excluded."passwordHash";`,
+         on conflict ("email") do nothing;`,
         [crypto.randomUUID(), email, password, "ADMIN"],
+      );
+      const au = await pg.query<{ role: string }>(
+        `select "role" from "${adminSchema}"."AdminUser" where "email" = $1 limit 1;`,
+        [email],
+      );
+      const existingRole = String(au.rows[0]?.role ?? "").toUpperCase();
+      if (existingRole && existingRole !== "ADMIN") {
+        throw new Error(`ROLE_IMMUTABLE(AdminUser): existing role=${existingRole} attempted=ADMIN for ${email}`);
+      }
+      await pg.query(
+        `update "${adminSchema}"."AdminUser"
+         set "passwordHash" = public.crypt($2, public.gen_salt('bf', 10))
+         where "email" = $1;`,
+        [email, password],
       );
 
       const loginResp = await fetch(`${adminBase}/api/login`, {

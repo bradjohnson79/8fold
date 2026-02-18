@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useClerk } from "@clerk/nextjs";
 
 type Item = { href: string; label: string };
 type Badge = { kind: "dot" } | { kind: "count"; value: number };
@@ -22,14 +23,17 @@ type BellNotification = {
 export function DashboardShell({
   title,
   items,
+  navMode = "sidebar",
   extraUnreadCount,
   children
 }: {
   title: string;
   items: ItemWithBadge[];
+  navMode?: "sidebar" | "none";
   extraUnreadCount?: number;
   children: React.ReactNode;
 }) {
+  const { signOut } = useClerk();
   const path = usePathname();
   const router = useRouter();
   const [boot, setBoot] = useState<
@@ -53,22 +57,56 @@ export function DashboardShell({
   const [bellNotifications, setBellNotifications] = useState<BellNotification[]>([]);
   const [bellUnread, setBellUnread] = useState<number>(0);
 
+  function extractAuthCode(json: any): string {
+    const code = String(json?.error?.code ?? json?.code ?? json?.error?.code ?? "");
+    return code || "UNAUTHENTICATED";
+  }
+
   useEffect(() => {
     let cancelled = false;
+    let bootAttempt = 0;
     (async () => {
       try {
-        const resp = await fetch("/api/app/me", { cache: "no-store", credentials: "include" });
-        const json = (await resp.json().catch(() => null)) as any;
-        if (cancelled) return;
-        if (!resp.ok) {
-          setBoot({ loading: false, ok: false, code: String(json?.code || "UNAUTHENTICATED") });
+        const delaysMs = [0, 80, 160, 260, 420, 700] as const; // ~1.6s
+
+        for (let i = 0; i < delaysMs.length; i++) {
+          if (cancelled) return;
+          bootAttempt = i + 1;
+          const delay = delaysMs[i]!;
+          if (delay) await new Promise((r) => setTimeout(r, delay));
+          if (cancelled) return;
+
+          const resp = await fetch("/api/app/me", { cache: "no-store", credentials: "include" });
+          const json = (await resp.json().catch(() => null)) as any;
+          if (cancelled) return;
+
+          const code = extractAuthCode(json);
+          const isPendingAuth =
+            resp.status === 401 && (code === "AUTH_TOKEN_PENDING" || code === "AUTH_TOKEN_TIMEOUT");
+
+          if (isPendingAuth) {
+            if (process.env.NODE_ENV !== "production") {
+              // eslint-disable-next-line no-console
+              console.log("[WEB AUTH] dashboard bootstrap pending; retrying", { attempt: bootAttempt, code });
+            }
+            setBoot({ loading: true });
+            continue;
+          }
+
+          if (!resp.ok) {
+            setBoot({ loading: false, ok: false, code });
+            return;
+          }
+          if (json?.ok === false) {
+            setBoot({ loading: false, ok: false, code });
+            return;
+          }
+          setBoot({ loading: false, ok: true, superuser: Boolean(json?.superuser) });
           return;
         }
-        if (json?.ok === false) {
-          setBoot({ loading: false, ok: false, code: String(json?.code || "UNAUTHENTICATED") });
-          return;
-        }
-        setBoot({ loading: false, ok: true, superuser: Boolean(json?.superuser) });
+
+        // Final fallback: treat as unauthenticated (no infinite loading).
+        setBoot({ loading: false, ok: false, code: "AUTH_BOOTSTRAP_TIMEOUT" });
       } catch {
         if (!cancelled) setBoot({ loading: false, ok: false, code: "BOOTSTRAP_FAILED" });
       }
@@ -160,7 +198,7 @@ export function DashboardShell({
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => null);
+      await signOut({ redirectUrl: "/login" });
     } finally {
       // Clear client auth state (best-effort) and redirect to UI route.
       setBoot({ loading: false, ok: false, code: "UNAUTHENTICATED" });
@@ -281,53 +319,57 @@ export function DashboardShell({
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <aside className="lg:col-span-1">
-            <nav className="border border-gray-200 rounded-2xl p-3">
-              {items.map((it) => {
-                const active = path === it.href || path.startsWith(it.href + "/");
-                return (
-                  <Link
-                    key={it.href}
-                    href={it.href}
-                    className={
-                      "flex items-center justify-between gap-3 px-3 py-2 rounded-lg font-medium " +
-                      (active
-                        ? "bg-8fold-green text-white"
-                        : "text-gray-700 hover:bg-gray-100")
-                    }
-                  >
-                    <span className="min-w-0 truncate">{it.label}</span>
-                    {it.badge ? (
-                      it.badge.kind === "dot" ? (
-                        <span
-                          className={"inline-flex h-2.5 w-2.5 rounded-full " + (active ? "bg-white" : "bg-red-600")}
-                          aria-label="Unread"
-                        />
-                      ) : it.badge.value > 0 ? (
-                        <span
-                          className={
-                            "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold " +
-                            (active ? "bg-white text-8fold-green" : "bg-red-600 text-white")
-                          }
-                          aria-label="Unread count"
-                        >
-                          {it.badge.value > 99 ? "99+" : it.badge.value}
-                        </span>
-                      ) : null
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </nav>
-          </aside>
-
-          <section className="lg:col-span-4">
-            <div className="border border-gray-200 rounded-2xl p-6 shadow-sm">
-              {children}
-            </div>
+        {navMode === "none" ? (
+          <section className="mt-6">
+            <div className="border border-gray-200 rounded-2xl p-6 shadow-sm">{children}</div>
           </section>
-        </div>
+        ) : (
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <aside className="lg:col-span-1">
+              <nav className="border border-gray-200 rounded-2xl p-3">
+                {items.map((it) => {
+                  const active = path === it.href || path.startsWith(it.href + "/");
+                  return (
+                    <Link
+                      key={it.href}
+                      href={it.href}
+                      className={
+                        "flex items-center justify-between gap-3 px-3 py-2 rounded-lg font-medium " +
+                        (active
+                          ? "bg-8fold-green text-white"
+                          : "text-gray-700 hover:bg-gray-100")
+                      }
+                    >
+                      <span className="min-w-0 truncate">{it.label}</span>
+                      {it.badge ? (
+                        it.badge.kind === "dot" ? (
+                          <span
+                            className={"inline-flex h-2.5 w-2.5 rounded-full " + (active ? "bg-white" : "bg-red-600")}
+                            aria-label="Unread"
+                          />
+                        ) : it.badge.value > 0 ? (
+                          <span
+                            className={
+                              "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold " +
+                              (active ? "bg-white text-8fold-green" : "bg-red-600 text-white")
+                            }
+                            aria-label="Unread count"
+                          >
+                            {it.badge.value > 99 ? "99+" : it.badge.value}
+                          </span>
+                        ) : null
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </aside>
+
+            <section className="lg:col-span-4">
+              <div className="border border-gray-200 rounded-2xl p-6 shadow-sm">{children}</div>
+            </section>
+          </div>
+        )}
       </div>
     </div>
   );

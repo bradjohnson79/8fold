@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { users } from "../../db/schema/user";
 
@@ -18,7 +18,7 @@ export async function getOrCreatePlatformUserId(d: DrizzleLike = db): Promise<st
   const existing = await d
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.authUserId, PLATFORM_AUTH_USER_ID))
+    .where(or(eq(users.clerkUserId, PLATFORM_AUTH_USER_ID), eq(users.authUserId, PLATFORM_AUTH_USER_ID)))
     .limit(1);
   const row = existing[0] ?? null;
   if (row?.id) return row.id;
@@ -28,6 +28,8 @@ export async function getOrCreatePlatformUserId(d: DrizzleLike = db): Promise<st
     .insert(users)
     .values({
       id,
+      // DB requires clerkUserId; for system users we use a reserved sentinel value.
+      clerkUserId: PLATFORM_AUTH_USER_ID,
       authUserId: PLATFORM_AUTH_USER_ID,
       // Canonical role taxonomy: system identities must still use a valid role value.
       // This is not an admin operator account, but ADMIN is the least-wrong canonical bucket.

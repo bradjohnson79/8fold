@@ -24,35 +24,40 @@ export async function POST(req: Request) {
     const userId = getUserIdFromUrl(req);
 
     const userRows = await db
-      .select({ id: users.id, country: users.country })
+      .select({ id: users.id, country: users.country, role: users.role })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
     const user = userRows[0] ?? null;
     if (!user) return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });
 
+    // Role immutability: admin actions must not change user.role.
+    // If the user is not already a ROUTER, they must create a new Clerk account.
+    if (String((user as any).role ?? "").toUpperCase() !== "ROUTER") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "ROLE_IMMUTABLE",
+            message: "Role selection is permanent and cannot be changed.",
+          },
+        },
+        { status: 409 },
+      );
+    }
+
     const profileRows = await db
-      .select({ state: routerProfiles.state })
+      .select({ stateProvince: (routerProfiles as any).stateProvince })
       .from(routerProfiles)
       .where(eq(routerProfiles.userId, userId))
       .limit(1);
     const routerProfile = profileRows[0] ?? null;
 
-    const homeRegionCode = (routerProfile?.state ?? "").trim().toUpperCase() || "TX";
+    const homeRegionCode = String((routerProfile as any)?.stateProvince ?? "").trim().toUpperCase() || "TX";
 
     const now = new Date();
     const router = await db.transaction(async (tx: any) => {
-      // Role ↔ provisioning invariant:
-      // If we're provisioning a router row, ensure the app User.role is ROUTER (atomic).
-      const roleRows = await tx
-        .select({ role: users.role })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-      const currentRole = String(roleRows[0]?.role ?? "");
-      if (currentRole !== "ROUTER") {
-        await tx.update(users).set({ role: "ROUTER" } as any).where(eq(users.id, userId));
-      }
+      // Proxy/approval must never mutate user.role (lifetime immutable).
       await tx.update(users).set({ status: "ACTIVE" } as any).where(eq(users.id, userId));
 
       await tx

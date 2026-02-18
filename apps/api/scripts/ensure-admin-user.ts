@@ -13,11 +13,13 @@
  *   ADMIN_PASSWORD='Admin12345!'        (default: Admin12345!)
  *
  * Notes:
- * - Uses Postgres pgcrypto `crypt()` + `gen_salt('bf')` (bcrypt) to avoid JS hashing deps.
+ * - Uses bcryptjs.hash to match apps/api login (bcrypt.compare). Postgres crypt()
+ *   can produce incompatible hashes.
  * - Targets the schema from DATABASE_URL `?schema=...` when possible.
  */
 import path from "node:path";
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { Client } from "pg";
 import process from "node:process";
 
@@ -56,7 +58,6 @@ async function resolveAdminUserSchema(pg: Client, candidates: string[]): Promise
 async function main() {
   const dotenv = await import("dotenv");
   dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
-  dotenv.config({ path: path.join(process.cwd(), ".env") });
 
   const DATABASE_URL = requiredEnv("DATABASE_URL");
   const preferredSchema = getSchemaFromDbUrl(DATABASE_URL);
@@ -75,19 +76,22 @@ async function main() {
 
   const adminSchema = await resolveAdminUserSchema(pg, [preferredSchema, "8fold_test", "public"]);
 
+  const passwordHash = await bcrypt.hash(password, 10);
   const id = crypto.randomUUID();
   const upsert = await pg.query(
     `insert into "${adminSchema}"."AdminUser" ("id", "email", "passwordHash", "role")
-     values ($1, $2, public.crypt($3, public.gen_salt('bf', 10)), $4)
+     values ($1, $2, $3, $4)
      on conflict ("email") do update
-       set "role" = excluded."role",
-           "passwordHash" = excluded."passwordHash"
+       set "passwordHash" = excluded."passwordHash"
      returning "id", "email", "role";`,
-    [id, email, password, "ADMIN"],
+    [id, email, passwordHash, "ADMIN"],
   );
 
   const row = (upsert.rows[0] ?? null) as { id: string; email: string; role: string } | null;
   if (!row?.id) throw new Error("Upsert did not return an id");
+  if (String(row.role ?? "").toUpperCase() !== "ADMIN") {
+    throw new Error(`ROLE_IMMUTABLE(AdminUser): existing role=${row.role} attempted=ADMIN for ${email}`);
+  }
 
   await pg.end();
 

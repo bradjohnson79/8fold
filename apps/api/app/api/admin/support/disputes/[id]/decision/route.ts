@@ -50,11 +50,87 @@ const EnforcementActionSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+// Ops decision API (stable surface). Internally mapped to DB `DisputeDecision` enum.
+const OpsDecisionSchema = z.discriminatedUnion("decision", [
+  z.object({
+    decision: z.literal("CLOSE_NO_ACTION"),
+    decisionSummary: z.string().trim().min(10).max(5000),
+  }),
+  z.object({
+    decision: z.literal("WITHHOLD_ESCROW"),
+    decisionSummary: z.string().trim().min(10).max(5000),
+    notes: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    decision: z.literal("RELEASE_ESCROW_FULL"),
+    decisionSummary: z.string().trim().min(10).max(5000),
+    notes: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    decision: z.literal("PARTIAL_RELEASE"),
+    decisionSummary: z.string().trim().min(10).max(5000),
+    withholdAmountCents: z.number().int().positive(),
+    currency: z.enum(["USD", "CAD"]).default("USD"),
+    notes: z.string().trim().max(500).optional(),
+  }),
+]);
+
 const BodySchema = z.object({
-  decision: z.enum(["FAVOR_POSTER", "FAVOR_CONTRACTOR", "PARTIAL", "NO_ACTION", "FAVOR_JOB_POSTER"]),
-  decisionSummary: z.string().trim().min(10).max(5000),
+  // Back-compat: allow legacy decisions + explicit enforcement actions if sent.
+  legacyDecision: z.enum(["FAVOR_POSTER", "FAVOR_CONTRACTOR", "PARTIAL", "NO_ACTION", "FAVOR_JOB_POSTER"]).optional(),
+  legacyDecisionSummary: z.string().trim().min(10).max(5000).optional(),
   enforcementActions: z.array(EnforcementActionSchema).max(10).optional(),
+
+  // Preferred ops surface:
+  ops: OpsDecisionSchema.optional(),
 });
+
+function normalizeDecisionInput(body: z.infer<typeof BodySchema>): {
+  decision: "FAVOR_POSTER" | "FAVOR_CONTRACTOR" | "PARTIAL" | "NO_ACTION" | "FAVOR_JOB_POSTER";
+  decisionSummary: string;
+  enforcementActions: Array<z.infer<typeof EnforcementActionSchema>>;
+  opsDecision?: z.infer<typeof OpsDecisionSchema>["decision"];
+} {
+  if (body.ops) {
+    const s = body.ops.decisionSummary.trim();
+    if (body.ops.decision === "CLOSE_NO_ACTION") {
+      return { decision: "NO_ACTION", decisionSummary: s, enforcementActions: [], opsDecision: "CLOSE_NO_ACTION" };
+    }
+    if (body.ops.decision === "WITHHOLD_ESCROW") {
+      return {
+        decision: "PARTIAL",
+        decisionSummary: s,
+        enforcementActions: [{ type: "WITHHOLD_FUNDS", payload: { notes: body.ops.notes } } as any],
+        opsDecision: "WITHHOLD_ESCROW",
+      };
+    }
+    if (body.ops.decision === "RELEASE_ESCROW_FULL") {
+      return {
+        decision: "FAVOR_CONTRACTOR",
+        decisionSummary: s,
+        enforcementActions: [{ type: "RELEASE_ESCROW_FULL", payload: { notes: body.ops.notes } } as any],
+        opsDecision: "RELEASE_ESCROW_FULL",
+      };
+    }
+    // PARTIAL_RELEASE
+    return {
+      decision: "PARTIAL",
+      decisionSummary: s,
+      enforcementActions: [
+        {
+          type: "RELEASE_ESCROW_PARTIAL",
+          payload: { withholdAmountCents: body.ops.withholdAmountCents, currency: body.ops.currency, notes: body.ops.notes },
+        } as any,
+      ],
+      opsDecision: "PARTIAL_RELEASE",
+    };
+  }
+
+  const decision = body.legacyDecision ?? "NO_ACTION";
+  const decisionSummary = (body.legacyDecisionSummary ?? "").trim();
+  const enforcementActions = body.enforcementActions ?? [];
+  return { decision, decisionSummary, enforcementActions };
+}
 
 export async function POST(req: Request) {
   const auth = await requireAdmin(req);
@@ -67,16 +143,36 @@ export async function POST(req: Request) {
     const body = BodySchema.safeParse(j.json);
     if (!body.success) return NextResponse.json({ ok: false, error: "Invalid input" }, { status: 400 });
 
+    const normalized = normalizeDecisionInput(body.data);
+    if (!normalized.decisionSummary || normalized.decisionSummary.trim().length < 10) {
+      return NextResponse.json({ ok: false, error: "Invalid input" }, { status: 400 });
+    }
+
     const now = new Date();
 
     const updated = await db.transaction(async (tx: any) => {
+      // Require dispute exists; also used for audit metadata.
+      const existingRows = await tx
+        .select({ id: disputeCases.id, status: disputeCases.status, ticketId: disputeCases.ticketId, jobId: disputeCases.jobId })
+        .from(disputeCases)
+        .where(eq(disputeCases.id, id))
+        .limit(1);
+      const existing = existingRows[0] ?? null;
+      if (!existing) throw Object.assign(new Error("Not found"), { status: 404 });
+      if (String(existing.status) === "CLOSED") {
+        // Deterministic state machine: closed disputes are terminal.
+        throw Object.assign(new Error("Dispute is closed"), { status: 409, code: "dispute_closed" });
+      }
+
+      const nextStatus = normalized.opsDecision === "CLOSE_NO_ACTION" ? ("CLOSED" as const) : ("DECIDED" as const);
+
       const updatedRows = await tx
         .update(disputeCases)
         .set({
-          decision: body.data.decision as any,
-          decisionSummary: body.data.decisionSummary.trim(),
+          decision: normalized.decision as any,
+          decisionSummary: normalized.decisionSummary.trim(),
           decisionAt: now,
-          status: "DECIDED",
+          status: nextStatus as any,
           updatedAt: now,
         } as any)
         .where(eq(disputeCases.id, id))
@@ -94,7 +190,7 @@ export async function POST(req: Request) {
       const d = updatedRows[0] ?? null;
       if (!d) throw Object.assign(new Error("Not found"), { status: 404 });
 
-      const actions = body.data.enforcementActions ?? [];
+      const actions = normalized.enforcementActions ?? [];
       if (actions.length > 0) {
         await tx.insert(disputeEnforcementActions).values(
           actions.map((a) => ({
@@ -116,10 +212,14 @@ export async function POST(req: Request) {
         entityType: "DisputeCase",
         entityId: d.id,
         metadata: {
+          opsDecision: normalized.opsDecision ?? null,
           decision: d.decision,
           status: d.status,
           ticketId: d.ticketId,
+          jobId: existing.jobId,
           enforcementActionsCount: actions.length,
+          enforcementActionTypes: actions.map((a) => a.type),
+          decisionSummaryLen: normalized.decisionSummary.trim().length,
         } as any,
       });
 

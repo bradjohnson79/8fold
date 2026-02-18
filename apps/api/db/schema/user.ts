@@ -1,4 +1,4 @@
-import { text, timestamp } from "drizzle-orm/pg-core";
+import { doublePrecision, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { countryCodeEnum, userRoleEnum, userStatusEnum } from "./enums";
 import { dbSchema } from "./_dbSchema";
@@ -8,17 +8,31 @@ export const users = dbSchema.table("User", {
   // DB authoritative: text NOT NULL default (gen_random_uuid())::text
   id: text("id").primaryKey().default(sql`(gen_random_uuid())::text`),
 
+  // Clerk is the sole identity authority. Internal auth flow must key by clerkUserId.
+  clerkUserId: text("clerkUserId").notNull().unique(),
   authUserId: text("authUserId").unique(),
   email: text("email").unique(),
   phone: text("phone"),
   name: text("name"),
 
   // Canonical role taxonomy: JOB_POSTER | ROUTER | CONTRACTOR | ADMIN
-  role: userRoleEnum("role").notNull().default("JOB_POSTER"),
+  role: userRoleEnum("role").notNull(),
   status: userStatusEnum("status").notNull().default("ACTIVE"),
 
   // Router rewards: referral attribution (set once at signup).
   referredByRouterId: text("referredByRouterId"),
+
+  // Canonical geocoded location (required by address autocomplete flows).
+  formattedAddress: text("formattedAddress").notNull().default(""),
+  latitude: doublePrecision("latitude").notNull().default(0),
+  longitude: doublePrecision("longitude").notNull().default(0),
+
+  // Legal address (manual; not validated against OSM).
+  legalStreet: text("legalStreet").notNull().default(""),
+  legalCity: text("legalCity").notNull().default(""),
+  legalProvince: text("legalProvince").notNull().default(""),
+  legalPostalCode: text("legalPostalCode").notNull().default(""),
+  legalCountry: text("legalCountry").notNull().default("US"),
 
   // Account lifecycle (soft controls; never hard-delete financial data)
   accountStatus: text("accountStatus").notNull().default("ACTIVE"),

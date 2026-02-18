@@ -27,6 +27,18 @@ export async function POST(req: Request) {
 
     // Unified users system: if :id matches a User.id with a ContractorAccount, approve that record.
     const approvedAccount = await db.transaction(async (tx: any) => {
+      const uRows = await tx
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      const role = String(uRows[0]?.role ?? "").toUpperCase();
+      if (role !== "CONTRACTOR") {
+        // Role immutability: admin actions must not change user.role.
+        // If the user is not already a CONTRACTOR, they must create a new Clerk account.
+        return { __roleImmutable: true } as any;
+      }
+
       const updated = await tx
         .update(contractorAccounts)
         .set({ isApproved: true } as any)
@@ -34,7 +46,7 @@ export async function POST(req: Request) {
         .returning({ userId: contractorAccounts.userId });
       if (updated.length === 0) return null;
 
-      await tx.update(users).set({ role: "CONTRACTOR", status: "ACTIVE" } as any).where(eq(users.id, id));
+      await tx.update(users).set({ status: "ACTIVE" } as any).where(eq(users.id, id));
 
       await tx.insert(auditLogs).values({
         id: randomUUID(),
@@ -49,6 +61,16 @@ export async function POST(req: Request) {
       const rows = await tx.select().from(contractorAccounts).where(eq(contractorAccounts.userId, id)).limit(1);
       return rows[0] ?? { userId: id, isApproved: true };
     });
+
+    if ((approvedAccount as any)?.__roleImmutable) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: { code: "ROLE_IMMUTABLE", message: "Role selection is permanent and cannot be changed." },
+        },
+        { status: 409 },
+      );
+    }
 
     if (approvedAccount) {
       return NextResponse.json({ ok: true, data: { contractorAccount: approvedAccount } });

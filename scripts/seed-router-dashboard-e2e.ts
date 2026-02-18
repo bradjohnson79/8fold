@@ -1,7 +1,7 @@
-import "dotenv/config";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import dotenv from "dotenv";
 import { assertNotProductionSeed } from "../apps/api/scripts/_seedGuard";
 
 /**
@@ -10,6 +10,9 @@ import { assertNotProductionSeed } from "../apps/api/scripts/_seedGuard";
  * Usage:
  *   pnpm tsx scripts/seed-router-dashboard-e2e.ts
  */
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
 
 function ensureDatabaseUrl() {
   if (process.env.DATABASE_URL) return;
@@ -40,25 +43,25 @@ async function main() {
   const routerEmail = "router.e2e@8fold.local";
   const now = new Date();
 
-  const routerUserId = crypto.randomUUID();
-  const routerUser = await db
-    .insert(users)
-    .values({
-      id: routerUserId,
+  const existingUser = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.email, routerEmail)).limit(1);
+  let userId = existingUser[0]?.id ?? null;
+  if (userId) {
+    const currentRole = String(existingUser[0]?.role ?? "").toUpperCase();
+    if (currentRole !== "ROUTER") throw new Error(`ROLE_IMMUTABLE: existing role=${currentRole} attempted=ROUTER for ${routerEmail}`);
+    await db.update(users).set({ status: "ACTIVE", country: "US", updatedAt: now } as any).where(eq(users.id, userId));
+  } else {
+    userId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      clerkUserId: `seed:e2e:${routerEmail.toLowerCase()}`,
       email: routerEmail,
       role: "ROUTER",
       status: "ACTIVE",
       country: "US",
       createdAt: now,
       updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "ROUTER", status: "ACTIVE", country: "US", updatedAt: now } as any,
-    })
-    .returning({ id: users.id, email: users.email });
-
-  const userId = routerUser[0]!.id;
+    } as any);
+  }
 
   await db
     .insert(routerProfiles)

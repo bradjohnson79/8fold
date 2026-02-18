@@ -41,20 +41,42 @@ export function HomeJobFeedClient(props: {
       setLoading(true);
       setError(null);
       try {
-        const url =
-          props.mode === "guest_recent"
-            ? "/api/public/jobs/recent?limit=9"
-            : "/api/app/router/routable-jobs";
+        async function fetchJson(url: string) {
+          const resp = await fetch(url, { cache: "no-store" });
+          const data = (await resp.json().catch(() => null)) as any;
+          return { resp, data };
+        }
 
-            const resp = await fetch(url, { cache: "no-store" });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data?.error ?? "Failed to load jobs");
-            // FIX: Check for error fields even when resp.ok is true (normalized error responses)
-            if (data && typeof data === 'object' && ('error' in data || data.ok === false)) {
-              throw new Error(data?.error ?? data?.code ?? "Failed to load jobs");
-            }
-    
-            const list = Array.isArray(data?.jobs) ? (data.jobs as JobRow[]) : [];
+        const primaryUrl =
+          props.mode === "guest_recent" ? "/api/public/jobs/recent?limit=9" : "/api/app/router/routable-jobs";
+
+        let { resp, data } = await fetchJson(primaryUrl);
+
+        // If router isn't active yet, do NOT treat as an error on the homepage.
+        // Fall back to a public preview feed to avoid noisy overlays during onboarding.
+        if (resp.status === 403 && props.mode === "router_routable") {
+          const errCode = String(data?.error ?? data?.code ?? data?.error?.code ?? "");
+          const state = String(data?.state ?? data?.onboardingState ?? data?.error?.onboardingState ?? "");
+          if (errCode === "router_not_ready" || errCode === "router_not_active" || state) {
+            ({ resp, data } = await fetchJson("/api/public/jobs/recent?limit=9"));
+          }
+        }
+
+        // Normalize error handling across both API styles:
+        // - legacy: { jobs: [...] }
+        // - normalized: { ok: true, data: { jobs: [...] } }
+        if (!resp.ok || (data && typeof data === "object" && data.ok === false)) {
+          const message =
+            (data && typeof data === "object" && (data.error || data.message || data.code)) ||
+            "Failed to load jobs";
+          throw new Error(String(message));
+        }
+
+        const list = Array.isArray(data?.jobs)
+          ? (data.jobs as JobRow[])
+          : Array.isArray(data?.data?.jobs)
+            ? (data.data.jobs as JobRow[])
+            : [];
         if (cancelled) return;
         setJobs(list);
       } catch (e) {

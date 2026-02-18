@@ -16,5 +16,9 @@ export function logBootConfigOnce() {
   resolve("API_ORIGIN", process.env.API_ORIGIN);
   resolve("ADMIN_ORIGIN", process.env.ADMIN_ORIGIN);
   resolve("WEB_ORIGIN", process.env.WEB_ORIGIN);
+
+  // Clerk JWT verification must be configured in apps/api.
+  // Fail fast at boot to avoid confusing 500s later.
+  resolve("CLERK_ISSUER", process.env.CLERK_ISSUER);
 }
 

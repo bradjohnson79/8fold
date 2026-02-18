@@ -33,7 +33,7 @@ export function OnboardingProgressBar({
       <div className="mt-3 h-2 w-full bg-gray-100 rounded-full overflow-hidden">
         <div className="h-2 bg-8fold-green" style={{ width: `${pct}%` }} />
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-3">
         {items.map((it) => (
           <span
             key={it.key}

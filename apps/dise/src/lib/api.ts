@@ -1,3 +1,9 @@
+/**
+ * DISE client fetch helper (apps/dise).
+ *
+ * Isolation boundary: callers should hit `apps/dise` proxy routes under `/api/dise/*`,
+ * which forward to `apps/api`. This package must not speak to DB, jobs, ledger, or Stripe.
+ */
 export async function diseFetch<T>(
   path: string,
   opts?: RequestInit & { method?: "GET" | "POST" | "PATCH" }

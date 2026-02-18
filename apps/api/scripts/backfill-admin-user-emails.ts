@@ -11,7 +11,6 @@ import { sql } from "drizzle-orm";
 async function main() {
   const dotenv = await import("dotenv");
   dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
-  dotenv.config({ path: path.join(process.cwd(), ".env") });
 
   const result = await db.execute(sql`
     UPDATE "User" u

@@ -1,8 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { assertNotProductionSeed } from "../apps/api/scripts/_seedGuard";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
@@ -48,68 +51,38 @@ async function main() {
 
   const now = new Date();
 
-  const contractorUserId = crypto.randomUUID();
-  const contractorUser = await db
-    .insert(users)
-    .values({
-      id: contractorUserId,
-      email: contractorEmail,
-      role: "CONTRACTOR",
+  async function ensureUser(email: string, role: "JOB_POSTER" | "CONTRACTOR" | "ROUTER", extra: Record<string, unknown>) {
+    const existing = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
+    const id = existing[0]?.id ?? null;
+    if (id) {
+      const currentRole = String(existing[0]?.role ?? "").toUpperCase();
+      if (currentRole !== role) throw new Error(`ROLE_IMMUTABLE: existing role=${currentRole} attempted=${role} for ${email}`);
+      await db.update(users).set({ ...extra, status: "ACTIVE", updatedAt: now } as any).where(eq(users.id, id));
+      return id;
+    }
+    const newId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: newId,
+      clerkUserId: `seed:e2e:${email.toLowerCase()}`,
+      email,
+      role,
       status: "ACTIVE",
-      country: "US",
-      phone: "+1 555 0100",
       createdAt: now,
       updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "CONTRACTOR", status: "ACTIVE", country: "US", phone: "+1 555 0100", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
+      ...extra,
+    } as any);
+    return newId;
+  }
 
-  const posterUserId = crypto.randomUUID();
-  const posterUser = await db
-    .insert(users)
-    .values({
-      id: posterUserId,
-      email: posterEmail,
-      role: "JOB_POSTER",
-      status: "ACTIVE",
-      country: "US",
-      phone: "+1 555 0200",
-      name: "E2E Poster",
-      createdAt: now,
-      updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "JOB_POSTER", status: "ACTIVE", country: "US", phone: "+1 555 0200", name: "E2E Poster", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
-
-  const routerUserId = crypto.randomUUID();
-  const routerUser = await db
-    .insert(users)
-    .values({
-      id: routerUserId,
-      email: routerEmail,
-      role: "ROUTER",
-      status: "ACTIVE",
-      country: "US",
-      createdAt: now,
-      updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "ROUTER", status: "ACTIVE", country: "US", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
+  const contractorUserId = await ensureUser(contractorEmail, "CONTRACTOR", { country: "US", phone: "+1 555 0100" });
+  const posterUserId = await ensureUser(posterEmail, "JOB_POSTER", { country: "US", phone: "+1 555 0200", name: "E2E Poster" });
+  const routerUserId = await ensureUser(routerEmail, "ROUTER", { country: "US" });
 
   // Ensure contractor account exists (authenticated contractor surface).
   await db
     .insert(contractorAccounts)
     .values({
-      userId: contractorUser[0]!.id,
+      userId: contractorUserId,
       tradeCategory: "HANDYMAN",
       regionCode: "TX",
       country: "US",
@@ -185,14 +158,14 @@ async function main() {
       .set({
         status: "PUBLISHED",
         routingStatus: "UNROUTED",
-        claimedByUserId: routerUser[0]!.id,
+        claimedByUserId: routerUserId,
         claimedAt: null,
         contactedAt: null,
         routedAt: null,
         firstRoutedAt: null,
         adminRoutedById: null,
         contractorUserId: null,
-        jobPosterUserId: posterUser[0]!.id,
+        jobPosterUserId: posterUserId,
         customerApprovedAt: null,
         customerRejectedAt: null,
         routerApprovedAt: null,
@@ -232,8 +205,8 @@ async function main() {
       publishedAt: now,
       postedAt: now,
       createdAt: now,
-      claimedByUserId: routerUser[0]!.id,
-      jobPosterUserId: posterUser[0]!.id,
+      claimedByUserId: routerUserId,
+      jobPosterUserId: posterUserId,
     } as any);
   }
 
@@ -275,7 +248,7 @@ async function main() {
       tokenHash,
       jobId,
       contractorId,
-      routerUserId: routerUser[0]!.id,
+      routerUserId,
       expiresAt,
       createdAt: now,
       updatedAt: now,
@@ -292,12 +265,12 @@ async function main() {
       {
         ok: true,
         contractorEmail,
-        contractorUserId: contractorUser[0]!.id,
+        contractorUserId,
         contractorId,
         posterEmail,
-        posterUserId: posterUser[0]!.id,
+        posterUserId,
         routerEmail,
-        routerUserId: routerUser[0]!.id,
+        routerUserId,
         jobId,
         dispatchId: dispatchInserted[0]!.id,
         dispatchToken: process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_OTP_ECHO === "true" ? rawToken : undefined,

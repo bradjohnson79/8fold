@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { refundJobFunds } from "@/src/services/refundJobFunds";
 import { adminAuditLog } from "@/src/audit/adminAudit";
 import { logEvent } from "@/src/server/observability/log";
+import { db } from "@/server/db/drizzle";
+import { jobs } from "@/db/schema/job";
+import { eq } from "drizzle-orm";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../_lib/adminTier";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -13,13 +16,74 @@ function getIdFromUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_SUPER");
+  if (forbidden) return forbidden;
 
   const jobId = getIdFromUrl(req);
   if (!jobId) return NextResponse.json({ ok: false, error: "Invalid job id" }, { status: 400 });
 
   try {
+    const url = new URL(req.url);
+    const dryRun = String(url.searchParams.get("dryRun") ?? "").toLowerCase() === "true";
+
+    if (dryRun) {
+      const jobRows = await db
+        .select({
+          id: jobs.id,
+          amountCents: jobs.amountCents,
+          paymentStatus: jobs.paymentStatus,
+          payoutStatus: jobs.payoutStatus,
+          fundedAt: jobs.fundedAt,
+          releasedAt: jobs.releasedAt,
+          refundedAt: jobs.refundedAt,
+          stripeChargeId: jobs.stripeChargeId,
+          stripePaymentIntentId: jobs.stripePaymentIntentId,
+          status: jobs.status,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, jobId))
+        .limit(1);
+      const job = jobRows[0] ?? null;
+      if (!job) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
+      const payoutUpper = String(job.payoutStatus ?? "").toUpperCase();
+      const blockedAfterRelease = payoutUpper === "RELEASED";
+      const alreadyRefunded = Boolean(job.refundedAt);
+      const hasStripeRef = Boolean(job.stripeChargeId || job.stripePaymentIntentId);
+      const canAttempt = !blockedAfterRelease && !alreadyRefunded && hasStripeRef;
+
+      return NextResponse.json(
+        {
+          ok: true,
+          data: {
+            preview: {
+              action: "REFUND",
+              willMutate: false,
+              canAttemptRefund: canAttempt,
+              blockedReasons: [
+                ...(blockedAfterRelease ? ["refund_after_release"] : []),
+                ...(alreadyRefunded ? ["already_refunded"] : []),
+                ...(!hasStripeRef ? ["missing_stripe_ref"] : []),
+              ],
+              escrowAmountCents: Number(job.amountCents ?? 0),
+              current: {
+                status: String(job.status ?? ""),
+                paymentStatus: String(job.paymentStatus ?? ""),
+                payoutStatus: String(job.payoutStatus ?? ""),
+                fundedAt: job.fundedAt ? (job.fundedAt as Date).toISOString() : null,
+                releasedAt: job.releasedAt ? (job.releasedAt as Date).toISOString() : null,
+                refundedAt: job.refundedAt ? (job.refundedAt as Date).toISOString() : null,
+              },
+              notes: ["Dry run does not call Stripe and does not mutate DB. Backend guards may still refuse."],
+            },
+          },
+        },
+        { status: 200 },
+      );
+    }
+
     const result = await refundJobFunds(jobId);
     if (result.kind === "ok") {
       logEvent({
@@ -28,13 +92,13 @@ export async function POST(req: Request) {
         route: "/api/admin/jobs/[id]/refund",
         method: "POST",
         status: 200,
-        userId: auth.userId,
+        userId: identity.userId,
         code: "STRIPE_REFUND",
         context: { jobId, refundId: result.refundId },
       });
     }
 
-    await adminAuditLog(req, auth, {
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
       action: "ADMIN_JOB_REFUND",
       entityType: "Job",
       entityId: jobId,
@@ -55,6 +119,12 @@ export async function POST(req: Request) {
     if (result.kind === "refund_after_release") {
       return NextResponse.json({ ok: false, error: "Cannot refund after payout release" }, { status: 409 });
     }
+    if (result.kind === "refund_after_partial_release") {
+      return NextResponse.json(
+        { ok: false, error: "Cannot refund after partial release (one or more transfer legs already SENT)" },
+        { status: 409 },
+      );
+    }
     if (result.kind === "disputed") {
       return NextResponse.json({ ok: false, error: "Cannot refund while job is disputed. Resolve the dispute first." }, { status: 409 });
     }
@@ -64,7 +134,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, data: { refundId: result.refundId, status: result.status } }, { status: 200 });
   } catch (err) {
-    return handleApiError(err, "POST /api/admin/jobs/:id/refund", { route: "/api/admin/jobs/[id]/refund", userId: auth.userId });
+    return handleApiError(err, "POST /api/admin/jobs/:id/refund", {
+      route: "/api/admin/jobs/[id]/refund",
+      userId: identity.userId,
+    });
   }
 }
 

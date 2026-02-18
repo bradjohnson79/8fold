@@ -5,7 +5,7 @@ import { db } from "../../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
 import { jobAssignments } from "../../../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../../../db/schema/job";
-import { requireRouterReady } from "../../../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../../src/http/errors";
 
 function getIdFromUrl(req: Request): string {
@@ -17,9 +17,9 @@ function getIdFromUrl(req: Request): string {
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
     const id = getIdFromUrl(req);
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 

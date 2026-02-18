@@ -1,2 +1,2 @@
-export { default } from "../../../../support-inbox/tickets/[ticketId]/page";
+export { default } from "../../../../support/tickets/[ticketId]/page";
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IncentiveBadge, ProgressBar } from "../../../../../components/Progress";
+import { ProgressBar } from "../../../../../components/Progress";
 
 type RouterIncentives = {
+  ok?: boolean;
   routedTotal: number;
   successfulCompletedApproved: number;
   successfulEligible: number;
@@ -12,7 +13,6 @@ type RouterIncentives = {
     target: number;
     progress: number;
     eligible: boolean;
-    status: "LOCKED" | "IN_PROGRESS" | "ELIGIBLE_AWAITING_ADMIN";
     headline: string;
     summary: string;
     benefitSummary: string;
@@ -48,7 +48,7 @@ export default function RouterIncentivesPage() {
     <>
       <h2 className="text-lg font-bold text-gray-900">Incentives</h2>
       <p className="text-gray-600 mt-2">
-        Incentives are eligibility mechanics only. No automatic role changes. Admin approval is required.
+        Route 100 jobs to successful completion to become eligible for Senior Router privileges.
       </p>
 
       {error ? (
@@ -62,16 +62,20 @@ export default function RouterIncentivesPage() {
       ) : data ? (
         <div className="mt-6 space-y-6">
           <div className="border border-gray-200 rounded-2xl p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-xl font-bold text-gray-900">{data.incentive.headline}</div>
-                <div className="text-gray-600 mt-1">{data.incentive.summary}</div>
-              </div>
-              <IncentiveBadge status={data.incentive.status} />
-            </div>
+            <div className="text-xl font-bold text-gray-900">{data.incentive.headline}</div>
+            <div className="text-gray-600 mt-1">{data.incentive.summary}</div>
 
             <div className="mt-5">
               <ProgressBar value={data.incentive.progress} max={data.incentive.target} />
+              <div className="mt-2 text-sm text-gray-700">
+                <span className="font-semibold">{data.incentive.progress}</span> / {data.incentive.target} successful jobs
+                completed
+                {data.incentive.eligible ? (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                    Eligible
+                  </span>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -81,10 +85,10 @@ export default function RouterIncentivesPage() {
             </div>
 
             <div className="mt-5 bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <div className="font-semibold text-gray-900">Benefit (UI only)</div>
+              <div className="font-semibold text-gray-900">Senior Router benefit</div>
               <div className="text-gray-700 mt-1">{data.incentive.benefitSummary}</div>
               <div className="text-xs text-gray-500 mt-2">
-                Eligibility is based on successful routes with no unresolved holds/disputes. Admin review required.
+                Eligibility is based on successful routes with no unresolved holds/disputes.
               </div>
             </div>
           </div>

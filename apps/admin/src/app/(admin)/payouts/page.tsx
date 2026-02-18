@@ -45,6 +45,37 @@ type StripeRecon = {
   payments: { lifetime: any; window: any };
   ledger: { lifetime: any; window: any };
   payoutRequests: { lifetime: any; window: any };
+  transfers?: { lifetime: any; window: any };
+  stripe?: { balance: any | null };
+};
+
+type TransferActivityItem = {
+  id: string;
+  createdAt: string;
+  releasedAt: string | null;
+  status: string;
+  method: string;
+  role: string;
+  userId: string;
+  jobId: string;
+  amountCents: number;
+  currency: string;
+  stripeTransferId: string | null;
+  externalRef: string | null;
+  failureReason: string | null;
+  user: { id: string; email: string | null; name: string | null };
+  job: { id: string; title: string | null } | null;
+};
+
+type IntegrityAuditSummary = {
+  generatedAt: string;
+  window: { take: number; orphanDays: number };
+  summary: {
+    releasedJobsAudited: number;
+    jobsWithViolations: number;
+    violationCount: number;
+    violationsByType: Record<string, number>;
+  };
 };
 
 function qs(sp: Record<string, string | undefined>): string {
@@ -238,10 +269,12 @@ export default async function PayoutsPage({
   let contractorPaid: PayoutHistoryItem[] = [];
   let routerPaid: PayoutHistoryItem[] = [];
   let recon: StripeRecon | null = null;
+  let transferActivity: TransferActivityItem[] = [];
+  let integrity: IntegrityAuditSummary | null = null;
   let err: string | null = null;
 
   try {
-    const [pr, phC, phR, sr] = await Promise.all([
+    const [pr, phC, phR, sr, ta, ia] = await Promise.all([
       adminApiFetch<{ payoutRequests: PayoutRequestRow[] }>(`/api/admin/payout-requests${qs({ status })}`).then((d) => d.payoutRequests ?? []),
       adminApiFetch<{ items: PayoutHistoryItem[] }>(`/api/admin/finance/payout-history${qs({ role: "CONTRACTOR", status: "PAID", take: "60" })}`).then(
         (d) => d.items ?? [],
@@ -250,11 +283,17 @@ export default async function PayoutsPage({
         (d) => d.items ?? [],
       ),
       adminApiFetch<StripeRecon>(`/api/admin/finance/stripe-reconciliation${qs({ days })}`),
+      adminApiFetch<{ data: { items: TransferActivityItem[] } }>(`/api/admin/finance/transfers${qs({ take: "20" })}`).then((d: any) => d?.data?.items ?? []),
+      adminApiFetch<{ ok: true; data: IntegrityAuditSummary }>(`/api/admin/finance/payout-integrity${qs({ take: "500", includeViolations: "0" })}`).then(
+        (d: any) => d?.data ?? null,
+      ),
     ]);
     payoutRequestsRows = pr;
     contractorPaid = phC;
     routerPaid = phR;
     recon = sr;
+    transferActivity = ta;
+    integrity = ia;
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load finance data";
   }
@@ -266,7 +305,10 @@ export default async function PayoutsPage({
 
   return (
     <div>
-      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950, letterSpacing: 0.2 }}>Financial Controls</h1>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950, letterSpacing: 0.2 }}>Financial Controls</h1>
+        {integrity ? pill(`🔴 Integrity Violations: ${Number(integrity.summary?.violationCount ?? 0)}`, Number(integrity.summary?.violationCount ?? 0) > 0 ? "red" : "green") : null}
+      </div>
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)", maxWidth: 980 }}>
         Payout requests, payout history, Stripe reconciliation, and manual ledger adjustments.
       </p>
@@ -283,6 +325,94 @@ export default async function PayoutsPage({
         </div>
       ) : null}
       {err ? <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>{err}</div> : null}
+
+      <div style={{ marginTop: 12 }}>
+        <Card title="Transfer Activity (Release Monitor)" subtitle="Last 20 release legs (DB-authoritative).">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ color: "rgba(226,232,240,0.70)", fontSize: 12 }}>Shows who was paid, how, and with what external reference.</div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <a href="/payouts/integrity" style={linkStyle}>
+                Integrity drilldown →
+              </a>
+              <a href="/payouts/transfers" style={linkStyle}>
+                View all transfers →
+              </a>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+              <thead>
+                <tr>
+                  {["When", "User", "Role", "Job", "Amount", "Method", "Status", "External Ref", "Action"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: "left",
+                        fontSize: 12,
+                        color: "rgba(226,232,240,0.70)",
+                        fontWeight: 900,
+                        padding: "10px 10px",
+                        borderBottom: "1px solid rgba(148,163,184,0.12)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {transferActivity.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
+                      No transfers yet.
+                    </td>
+                  </tr>
+                ) : (
+                  transferActivity.map((t) => {
+                    const st = String(t.status ?? "");
+                    const tone = st === "SENT" ? "green" : st === "FAILED" || st === "REVERSED" ? "red" : "amber";
+                    const userLabel = t.user?.email ?? t.userId ?? "—";
+                    const jobLabel = t.job?.title ?? t.jobId ?? "—";
+                    const ref = t.stripeTransferId ?? t.externalRef ?? "—";
+                    return (
+                      <tr key={t.id}>
+                        <td style={tdStyle}>{String(t.createdAt ?? "").slice(0, 19).replace("T", " ") || "—"}</td>
+                        <td style={tdStyle}>
+                          <a href={`/users/${encodeURIComponent(String(t.userId ?? ""))}`} style={linkStyle}>
+                            {userLabel}
+                          </a>
+                        </td>
+                        <td style={tdStyle}>{String(t.role ?? "—")}</td>
+                        <td style={tdStyle}>
+                          <a href={`/jobs/${encodeURIComponent(String(t.jobId ?? ""))}`} style={linkStyle}>
+                            {jobLabel}
+                          </a>
+                        </td>
+                        <td style={tdStyle}>{fmtMoney(t.amountCents)}</td>
+                        <td style={tdStyle}>{String(t.method ?? "—")}</td>
+                        <td style={tdStyle}>{pill(st || "—", tone as any)}</td>
+                        <td style={tdStyle}>
+                          <code>{String(ref)}</code>
+                          {t.failureReason ? (
+                            <div style={{ marginTop: 4, color: "rgba(254,202,202,0.85)", fontSize: 12 }}>{String(t.failureReason)}</div>
+                          ) : null}
+                        </td>
+                        <td style={tdStyle}>
+                          <a href={`/users/${encodeURIComponent(String(t.userId ?? ""))}/payout-trace`} style={linkStyle}>
+                            View
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 12, alignItems: "start" }}>
         <Card title="Payout requests" subtitle="Review + mark paid. Filter is server-side by status. Role filter is client-side.">
@@ -529,6 +659,30 @@ export default async function PayoutsPage({
                 </div>
                 <div style={{ marginTop: 4, fontSize: 12, color: "rgba(226,232,240,0.60)" }}>
                   credit-to-paid {fmtMoney((recon.ledger?.window?.payoutCreditPaidCents as any) ?? 0)}
+                </div>
+              </div>
+
+              <div style={{ padding: 10, borderRadius: 14, border: "1px solid rgba(148,163,184,0.12)", background: "rgba(2,6,23,0.22)" }}>
+                <div style={{ fontSize: 12, color: "rgba(226,232,240,0.65)", fontWeight: 900 }}>Transfers created</div>
+                <div style={{ marginTop: 6, fontSize: 18, fontWeight: 950 }}>{String((recon as any)?.transfers?.window?.totalCount ?? 0)}</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(226,232,240,0.60)" }}>
+                  failed {String((recon as any)?.transfers?.window?.failedCount ?? 0)}
+                </div>
+              </div>
+
+              <div style={{ padding: 10, borderRadius: 14, border: "1px solid rgba(148,163,184,0.12)", background: "rgba(2,6,23,0.22)" }}>
+                <div style={{ fontSize: 12, color: "rgba(226,232,240,0.65)", fontWeight: 900 }}>Stripe transfer sum</div>
+                <div style={{ marginTop: 6, fontSize: 18, fontWeight: 950 }}>{fmtMoney((recon as any)?.transfers?.window?.stripeSentCents ?? 0)}</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(226,232,240,0.60)" }}>
+                  lifetime {fmtMoney((recon as any)?.transfers?.lifetime?.stripeSentCents ?? 0)}
+                </div>
+              </div>
+
+              <div style={{ padding: 10, borderRadius: 14, border: "1px solid rgba(148,163,184,0.12)", background: "rgba(2,6,23,0.22)" }}>
+                <div style={{ fontSize: 12, color: "rgba(226,232,240,0.65)", fontWeight: 900 }}>Platform retained</div>
+                <div style={{ marginTop: 6, fontSize: 18, fontWeight: 950 }}>{fmtMoney((recon as any)?.transfers?.window?.platformRetainedCents ?? 0)}</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(226,232,240,0.60)" }}>
+                  lifetime {fmtMoney((recon as any)?.transfers?.lifetime?.platformRetainedCents ?? 0)}
                 </div>
               </div>
             </div>

@@ -2,23 +2,34 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminOrSeniorRouter } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { disputeCases } from "@/db/schema/disputeCase";
 import { jobs } from "@/db/schema/job";
 import { supportTickets } from "@/db/schema/supportTicket";
 
-const DisputeStatusSchema = z.enum(["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFO", "DECIDED", "CLOSED"]);
+// Canonical ops statuses (API layer). Mapped to DB `DisputeStatus` enum.
+const OpsStatusSchema = z.enum(["OPEN", "UNDER_REVIEW", "DECIDED", "CLOSED"]);
 const DisputeReasonSchema = z.enum(["PRICING", "WORK_QUALITY", "NO_SHOW", "PAYMENT", "OTHER"]);
 const DisputeAgainstRoleSchema = z.enum(["JOB_POSTER", "CONTRACTOR"]);
 
 const QuerySchema = z.object({
-  status: DisputeStatusSchema.optional(),
+  status: OpsStatusSchema.optional(),
   reason: DisputeReasonSchema.optional(),
   againstRole: DisputeAgainstRoleSchema.optional(),
   jobId: z.string().optional(),
   take: z.preprocess((v) => Number(v), z.number().int().min(1).max(50).default(50)).optional(),
 });
+
+function toDbStatus(s: z.infer<typeof OpsStatusSchema>): "SUBMITTED" | "UNDER_REVIEW" | "DECIDED" | "CLOSED" {
+  if (s === "OPEN") return "SUBMITTED";
+  return s;
+}
+
+function whereForStatus(s: z.infer<typeof OpsStatusSchema>) {
+  if (s === "UNDER_REVIEW") return inArray(disputeCases.status, ["UNDER_REVIEW", "NEEDS_INFO"] as any);
+  return eq(disputeCases.status, toDbStatus(s) as any);
+}
 
 export async function GET(req: Request) {
   const auth = await requireAdminOrSeniorRouter(req);
@@ -35,7 +46,7 @@ export async function GET(req: Request) {
     const { status, reason, againstRole, jobId, take = 50 } = parsed.data;
 
     const where = and(
-      ...(status ? ([eq(disputeCases.status, status as any)] as any[]) : ([] as any[])),
+      ...(status ? ([whereForStatus(status)] as any[]) : ([] as any[])),
       ...(reason ? ([eq(disputeCases.disputeReason, reason as any)] as any[]) : ([] as any[])),
       ...(againstRole ? ([eq(disputeCases.againstRole, againstRole as any)] as any[]) : ([] as any[])),
       ...(jobId ? ([eq(disputeCases.jobId, jobId)] as any[]) : ([] as any[])),

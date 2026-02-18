@@ -26,8 +26,8 @@ export function AuthShell({
 
           <div className="mt-8 pt-6 border-t border-gray-100 text-sm text-gray-600">
             <div className="flex items-center justify-between">
-              <Link className="hover:text-8fold-green" href="/jobs">
-                Back to jobs
+              <Link className="hover:text-8fold-green" href="/">
+                ← Back to 8Fold
               </Link>
               {next ? (
                 <span className="text-gray-400">Continue to {next}</span>

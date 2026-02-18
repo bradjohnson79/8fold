@@ -1,4 +1,10 @@
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(SCRIPT_DIR, "..", ".env.local") });
 import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
@@ -29,8 +35,14 @@ async function main() {
 
   await db.transaction(async (tx) => {
     await tx.insert(users).values([
-      { id: posterUserId, email: `poster.payout.${runId}@8fold.local`, role: "JOB_POSTER" as any, updatedAt: now } as any,
-      { id: contractorUserId, email, role: "CONTRACTOR" as any, updatedAt: now } as any,
+      {
+        id: posterUserId,
+        clerkUserId: `seed:${posterUserId}`,
+        email: `poster.payout.${runId}@8fold.local`,
+        role: "JOB_POSTER" as any,
+        updatedAt: now,
+      } as any,
+      { id: contractorUserId, clerkUserId: `seed:${contractorUserId}`, email, role: "CONTRACTOR" as any, updatedAt: now } as any,
     ]);
 
     await tx.insert(contractors).values({

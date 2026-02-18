@@ -82,6 +82,7 @@ export async function POST(req: Request) {
         transactionFeeCents: jobs.transactionFeeCents,
         tradeCategory: jobs.tradeCategory,
         priceMedianCents: jobs.priceMedianCents,
+        country: jobs.country,
       })
       .from(jobs)
       .where(and(eq(jobs.id, id), eq(jobs.archived, false)))
@@ -178,7 +179,7 @@ export async function POST(req: Request) {
             }
             return Object.keys(out).length ? out : null;
           })();
-    const stepCents = 10 * 100;
+    const stepCents = 5 * 100;
     if (selectedPriceCents % stepCents !== 0) {
       return jobPosterRouteErrorResponse({
         route,
@@ -187,6 +188,7 @@ export async function POST(req: Request) {
         err: new Error("Price step invalid"),
         userId,
         jobId: job.id,
+        extraJson: { code: "INVALID_PRICE_INCREMENT" },
       });
     }
 
@@ -217,6 +219,8 @@ export async function POST(req: Request) {
         contractorPayoutCents: breakdown.contractorPayoutCents,
         routerEarningsCents: breakdown.routerEarningsCents,
         brokerFeeCents: breakdown.platformFeeCents,
+        amountCents,
+        paymentCurrency: (job as any)?.country === "CA" ? "cad" : "usd",
         repeatContractorDiscountCents: 0,
         availability: availabilityValue,
       })
@@ -248,10 +252,17 @@ export async function POST(req: Request) {
     }
 
     const idempotencyKey = idempotencyKeyForJobPayment(job.id, amountCents);
+    // Stripe currency is per-country; keep it consistent with the job.
+    const stripeCurrency = (job as any)?.country === "CA" ? "cad" : "usd";
     const pi = await createPaymentIntent(amountCents, {
-      currency: "usd",
+      currency: stripeCurrency,
       idempotencyKey,
-      metadata: { jobId: job.id, jobPosterUserId: user.userId },
+      metadata: {
+        type: "job_escrow",
+        jobId: job.id,
+        posterId: user.userId,
+        jobPosterUserId: user.userId,
+      },
     });
 
     if (existingPayments.length === 0) {

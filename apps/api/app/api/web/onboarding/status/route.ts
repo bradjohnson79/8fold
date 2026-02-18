@@ -4,9 +4,8 @@ import { db } from "@/server/db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
 import { contractorAccounts } from "../../../../../db/schema/contractorAccount";
 import { jobPosterProfiles } from "../../../../../db/schema/jobPosterProfile";
-import { routers } from "../../../../../db/schema/router";
-import { routerProfiles } from "../../../../../db/schema/routerProfile";
 import { requireUser } from "../../../../../src/auth/rbac";
+import { getRouterSessionData } from "../../../../../src/auth/routerSession";
 import { toHttpError } from "../../../../../src/http/errors";
 
 const JOB_POSTER_TOS_VERSION = "1.0";
@@ -118,41 +117,25 @@ export async function GET(req: Request) {
     }
 
     if (role === "ROUTER") {
-      const [routerRows, profileRows] = await Promise.all([
-        db
-          .select({ status: routers.status, termsAccepted: routers.termsAccepted, profileComplete: routers.profileComplete })
-          .from(routers)
-          .where(eq(routers.userId, u.userId))
-          .limit(1),
-        db
-          .select({ status: routerProfiles.status })
-          .from(routerProfiles)
-          .where(eq(routerProfiles.userId, u.userId))
-          .limit(1),
-      ]);
-      const router = routerRows[0] ?? null;
-      const prof = profileRows[0] ?? null;
-
-      const provisioned = Boolean(router && String(router.status) === "ACTIVE");
-      const active = Boolean(prof && String(prof.status) === "ACTIVE");
-      const termsAccepted = Boolean(router?.termsAccepted);
-      const profileComplete = Boolean(router?.profileComplete);
+      const snap = await getRouterSessionData(u.userId);
+      const termsAccepted = snap.hasAcceptedTerms;
+      const profileOk = snap.state === "READY";
 
       tos.ok = termsAccepted;
       if (!termsAccepted) tos.reason = "TERMS_REQUIRED";
 
-      profile.ok = profileComplete;
-      profile.missingFields = profileComplete ? [] : ["name", "addressPrivate"];
+      profile.ok = profileOk;
+      profile.missingFields = snap.missingFields;
 
-      verified.ok = provisioned && active;
-      if (!verified.ok) verified.reason = !active ? "ROUTER_NOT_ACTIVE" : "ROUTER_NOT_PROVISIONED";
+      verified.ok = snap.state === "READY";
+      if (!verified.ok) verified.reason = snap.state;
 
       return NextResponse.json({
         ok: true,
         role,
         roleRoot,
         onboardingRoute,
-        router: { provisioned, active, termsAccepted, profileComplete },
+        router: { state: snap.state, missingFields: snap.missingFields },
         steps: { tos, profile, verified },
       });
     }

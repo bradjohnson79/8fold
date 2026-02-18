@@ -14,6 +14,13 @@ import { supportMessages } from "../../../../../db/schema/supportMessage";
 import { supportTickets } from "../../../../../db/schema/supportTicket";
 import { sanitizeText } from "../../../../../src/utils/sanitizeText";
 
+/**
+ * Financial safety contract:
+ * - Creating a dispute NEVER refunds, releases escrow, or writes ledger/transfer records.
+ * - This endpoint only freezes payout by marking the job DISPUTED and adding a DISPUTE JobHold.
+ * - Any financial movement (refund/release) is handled by separate, explicitly-invoked finance workflows.
+ */
+
 const DisputeAgainstRoleSchema = z.enum(["JOB_POSTER", "CONTRACTOR"]);
 const DisputeReasonSchema = z.enum(["PRICING", "WORK_QUALITY", "NO_SHOW", "PAYMENT", "OTHER"]);
 const SupportRoleContextSchema = z.enum(["JOB_POSTER", "ROUTER", "CONTRACTOR"]);
@@ -131,13 +138,13 @@ export async function POST(req: Request) {
 
     // Dispute eligibility (frontend mirrors this).
     if (String(job.paymentStatus ?? "") !== "FUNDED") {
-      return badRequest("job_not_funded");
+      return fail(409, "job_not_funded");
     }
     if (String(job.payoutStatus ?? "") === "RELEASED") {
-      return badRequest("payout_already_released");
+      return fail(409, "payout_already_released");
     }
     if (job.routerApprovedAt) {
-      return badRequest("completion_already_approved");
+      return fail(409, "completion_already_approved");
     }
     if (String(job.status ?? "") === "DISPUTED") {
       return fail(409, "job_already_disputed");

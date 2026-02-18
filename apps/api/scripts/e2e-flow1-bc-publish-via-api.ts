@@ -1,14 +1,19 @@
-import "dotenv/config";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { calculatePayoutBreakdown } from "@8fold/shared";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const API_ENV_PATH = path.join(SCRIPT_DIR, "..", ".env.local");
+dotenv.config({ path: API_ENV_PATH });
 
 function ensureDatabaseUrl() {
   if (process.env.DATABASE_URL) return;
-  const p = path.join(process.cwd(), ".env.local");
-  if (!fs.existsSync(p)) throw new Error("DATABASE_URL not set and apps/api/.env.local not found");
-  const txt = fs.readFileSync(p, "utf8");
+  if (!fs.existsSync(API_ENV_PATH)) throw new Error("DATABASE_URL not set and apps/api/.env.local not found");
+  const txt = fs.readFileSync(API_ENV_PATH, "utf8");
   const m = txt.match(/^DATABASE_URL\s*=\s*(.+)$/m);
   if (!m) throw new Error("DATABASE_URL missing in apps/api/.env.local");
   process.env.DATABASE_URL = m[1].trim();

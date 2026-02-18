@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { requireUser, requireAdmin, requireSeniorRouter } from "../../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../../src/http/errors";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { disputeCases } from "../../../../../../db/schema/disputeCase";
@@ -21,6 +20,10 @@ async function requireAdminOrSeniorRouter(req: Request) {
   } catch {
     return await requireSeniorRouter(req);
   }
+}
+
+function fail(status: number, message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status });
 }
 
 export async function GET(req: Request) {
@@ -46,7 +49,7 @@ export async function GET(req: Request) {
       .where(eq(supportAttachments.id, id))
       .limit(1);
     const att = rows[0] ?? null;
-    if (!att) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!att) return fail(404, "Not found");
 
     // Authorization:
     // - ticket creator OR (dispute against party) OR Admin OR Senior Router.
@@ -68,8 +71,9 @@ export async function GET(req: Request) {
       }
     });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 

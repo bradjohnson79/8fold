@@ -87,8 +87,9 @@ export default function DisputeDetailPage() {
       const dJson = await dResp.json().catch(() => null);
       const eJson = await eResp.json().catch(() => null);
       if (!dResp.ok) throw new Error(dJson?.error ?? "Failed to load dispute");
-      setDetail(dJson?.dispute ?? null);
-      setEvidence(eResp.ok && Array.isArray(eJson?.evidence) ? eJson.evidence : []);
+      setDetail(dJson?.data?.dispute ?? dJson?.dispute ?? null);
+      const ev = Array.isArray(eJson?.data?.evidence) ? eJson.data.evidence : Array.isArray(eJson?.evidence) ? eJson.evidence : [];
+      setEvidence(eResp.ok ? ev : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {

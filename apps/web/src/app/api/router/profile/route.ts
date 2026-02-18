@@ -1,5 +1,5 @@
 import { ok } from "@/lib/apiSafe";
-import { getSidFromRequest, requireSession } from "@/server/auth/requireSession";
+import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
 
 export async function POST(req: Request) {
@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     try {
       const session = await requireSession(req);
       if (String(session.role ?? "").toUpperCase() !== "ROUTER") return ok({ ok: true });
-      const sessionToken = getSidFromRequest(req);
+      const sessionToken = await requireApiToken();
       if (!sessionToken) return ok({ ok: true });
       const body = await req.text();
 
@@ -15,7 +15,6 @@ export async function POST(req: Request) {
         path: "/api/router/profile",
         method: "POST",
         sessionToken,
-        request: req,
         headers: { "content-type": "application/json" },
         body,
       }).catch(() => null);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { optionalUser } from "../../../../src/auth/rbac";
+import { requireRouter } from "../../../../src/auth/rbac";
 import { toHttpError } from "../../../../src/http/errors";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
@@ -10,13 +10,12 @@ import { jobHolds, jobs } from "../../../../db/schema";
  * Auth is via existing session token (Authorization header).
  *
  * Router incentive:
- * - 50 successful routed jobs (job reaches COMPLETED_APPROVED with no ACTIVE holds)
- * - No automatic promotion; admin approval required (UI only).
+ * - 100 successful routed jobs (job reaches COMPLETED_APPROVED)
+ * - Instant access model: eligibility is automatic once you hit the target.
  */
 export async function GET(req: Request) {
   try {
-    const u = await optionalUser(req);
-    if (!u) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const u = await requireRouter(req);
 
     const routedTotal =
       (
@@ -50,7 +49,7 @@ export async function GET(req: Request) {
           )
       )[0]?.c ?? 0;
 
-    const target = 50;
+    const target = 100;
     const progress = Math.min(successfulEligible, target);
     const eligible = successfulEligible >= target;
 
@@ -58,6 +57,7 @@ export async function GET(req: Request) {
       routedTotal === 0 ? 0 : Math.round((successfulCompletedApproved / routedTotal) * 1000) / 10;
 
     return NextResponse.json({
+      ok: true,
       routedTotal,
       successfulCompletedApproved,
       successfulEligible,
@@ -66,18 +66,16 @@ export async function GET(req: Request) {
         target,
         progress,
         eligible,
-        status: eligible ? "ELIGIBLE_AWAITING_ADMIN" : progress === 0 ? "LOCKED" : "IN_PROGRESS",
-        headline: eligible
-          ? "Eligible for Senior Router Moderator Review"
-          : "Senior Router Track",
+        status: eligible ? "ELIGIBLE" : progress === 0 ? "LOCKED" : "IN_PROGRESS",
+        headline: "Senior Router Incentive",
         summary:
-          "Route 50 successful jobs to become eligible for Senior Router Moderator review (admin approval required).",
-        benefitSummary: "Opportunity to earn $250/month for senior router duties (admin approval required)."
+          "Route 100 jobs to successful completion to become eligible for Senior Router privileges.",
+        benefitSummary: "Senior Routers have increased routing privileges.",
       }
     });
   } catch (err) {
     const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
 

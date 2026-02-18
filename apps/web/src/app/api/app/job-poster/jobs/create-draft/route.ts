@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSidFromRequest, requireSession } from "@/server/auth/requireSession";
+import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
 
 export async function POST(req: Request) {
   try {
     await requireSession(req);
-    const token = getSidFromRequest(req);
-    if (!token) return NextResponse.json({ ok: false, error: "Unauthorized", code: "UNAUTHENTICATED" }, { status: 401 });
+    const token = await requireApiToken();
 
     const contentType = req.headers.get("content-type") ?? "application/json";
     const body = await req.arrayBuffer();
@@ -14,7 +13,6 @@ export async function POST(req: Request) {
       path: "/api/web/job-poster/jobs/create-draft",
       method: "POST",
       sessionToken: token,
-      request: req,
       headers: { "content-type": contentType },
       body,
     });

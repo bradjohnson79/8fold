@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import crypto from "node:crypto";
-import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { jobOverdueWhere } from "@/src/services/monitoringService";
 import { db } from "../../../../../../db/drizzle";
 import { adminRouterContexts } from "../../../../../../db/schema/adminRouterContext";
 import { auditLogs } from "../../../../../../db/schema/auditLog";
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
       eq(jobs.regionCode, ctx.regionCode),
       eq(jobs.routingStatus, "UNROUTED"),
       isNull(jobs.claimedByUserId),
-      lt(jobs.routingDueAt, now),
+      jobOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
       inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
       eq(jobs.isMock, false),
       ...(cursor && cursorDueAt

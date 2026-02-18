@@ -79,6 +79,28 @@ function statusPill(s: string) {
   );
 }
 
+function filterPill(label: string, value: string) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(148,163,184,0.14)",
+        background: "rgba(2,6,23,0.25)",
+        color: "rgba(226,232,240,0.85)",
+        fontSize: 12,
+        fontWeight: 850,
+        whiteSpace: "nowrap",
+      }}
+      title="Active server-side filter"
+    >
+      {label}: <b style={{ marginLeft: 6, color: "rgba(226,232,240,0.95)" }}>{value}</b>
+    </span>
+  );
+}
+
 export default async function JobsPage({
   searchParams,
 }: {
@@ -88,19 +110,22 @@ export default async function JobsPage({
   const get = (k: string) => String(Array.isArray((sp as any)[k]) ? (sp as any)[k][0] : (sp as any)[k] ?? "").trim();
 
   const q = get("q");
-  const status = get("status") || "ASSIGNED";
+  const status = get("status") || null;
   const dateRange = get("dateRange") || "ALL";
   const jobSource = get("jobSource");
+  const archived = get("archived");
   const country = get("country");
   const state = get("state");
   const city = get("city");
   const tradeCategory = get("tradeCategory");
+  const msg = get("msg");
 
   const apiQuery = qs({
-    status,
+    status: status ? status : undefined,
     q: q || undefined,
     dateRange,
     jobSource: jobSource || undefined,
+    archived: archived || undefined,
     country: country || undefined,
     state: state || undefined,
     city: city || undefined,
@@ -110,12 +135,28 @@ export default async function JobsPage({
   let data: JobsResp | null = null;
   let err: string | null = null;
   try {
-    data = await adminApiFetch<{ jobs: JobRow[] }>(`/api/admin/jobs${apiQuery}`).then((d) => ({ jobs: (d as any).jobs ?? [] }));
+    data = await adminApiFetch<JobsResp>(`/api/admin/jobs${apiQuery}`);
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load jobs";
   }
 
   const jobs = data?.jobs ?? [];
+  if (process.env.NODE_ENV !== "production") {
+    // Temporary debugging (dev-only): confirm jobs list is data-driven.
+    // eslint-disable-next-line no-console
+    console.log("ADMIN JOBS:", jobs);
+  }
+
+  const activePills: React.ReactNode[] = [];
+  if (status) activePills.push(filterPill("status", status));
+  if (jobSource) activePills.push(filterPill("source", jobSource.toUpperCase()));
+  if (archived) activePills.push(filterPill("archived", archived));
+  if (country) activePills.push(filterPill("country", country.toUpperCase()));
+  if (state) activePills.push(filterPill("state", state.toUpperCase()));
+  if (city) activePills.push(filterPill("city", city));
+  if (tradeCategory) activePills.push(filterPill("trade", tradeCategory.toUpperCase()));
+  if (q) activePills.push(filterPill("q", q));
+  if (dateRange && dateRange !== "ALL") activePills.push(filterPill("range", dateRange));
 
   return (
     <div>
@@ -123,6 +164,22 @@ export default async function JobsPage({
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)", maxWidth: 980 }}>
         Full job search + controls. All filtering is server-side.
       </p>
+
+      {msg === "archived" ? (
+        <div
+          style={{
+            marginTop: 10,
+            border: "1px solid rgba(34,197,94,0.35)",
+            background: "rgba(34,197,94,0.10)",
+            borderRadius: 14,
+            padding: "10px 12px",
+            color: "rgba(134,239,172,0.95)",
+            fontWeight: 950,
+          }}
+        >
+          Job archived. You are viewing archived jobs.
+        </div>
+      ) : null}
 
       <div
         style={{
@@ -136,8 +193,11 @@ export default async function JobsPage({
         <form method="GET" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <input name="q" defaultValue={q} placeholder="Search job id/title/address/city" style={{ ...inputStyle, minWidth: 320 }} />
 
-          <select name="status" defaultValue={status} style={selectStyle} aria-label="Status">
-            {/* Mirrors apps/api ALLOWED_ADMIN_STATUSES */}
+          <select name="status" defaultValue={status ?? ""} style={selectStyle} aria-label="Status">
+            <option value="">ALL</option>
+            {/* Mirrors apps/api ADMIN_STATUSES */}
+            <option value="DRAFT">DRAFT</option>
+            <option value="OPEN_FOR_ROUTING">OPEN_FOR_ROUTING</option>
             <option value="ASSIGNED">ASSIGNED</option>
             <option value="IN_PROGRESS">IN_PROGRESS</option>
             <option value="CONTRACTOR_COMPLETED">CONTRACTOR_COMPLETED</option>
@@ -170,12 +230,29 @@ export default async function JobsPage({
             <option value="AI_REGENERATED">AI_REGENERATED</option>
           </select>
 
+          <select name="archived" defaultValue={archived} style={selectStyle} aria-label="Archived filter">
+            <option value="">Hide archived (default)</option>
+            <option value="true">Archived only</option>
+            <option value="false">Non-archived only</option>
+          </select>
+
           <input name="tradeCategory" defaultValue={tradeCategory} placeholder="TradeCategory (enum)" style={{ ...inputStyle, minWidth: 220 }} />
 
           <button type="submit" style={buttonStyle}>
             Search
           </button>
         </form>
+
+        {activePills.length ? (
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ color: "rgba(226,232,240,0.65)", fontSize: 12, fontWeight: 900 }}>Active filters</div>
+            {activePills}
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, color: "rgba(226,232,240,0.60)", fontSize: 12 }}>
+            No filters applied (includes mock + real jobs).
+          </div>
+        )}
       </div>
 
       {err ? <div style={{ marginTop: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>{err}</div> : null}
@@ -206,7 +283,7 @@ export default async function JobsPage({
             {jobs.length === 0 ? (
               <tr>
                 <td colSpan={8} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
-                  No results.
+                  No jobs found for current filters.
                 </td>
               </tr>
             ) : (

@@ -60,10 +60,10 @@ export function RewardsClient(props: { referralLink: string }) {
 
   return (
     <>
-      <h2 className="text-lg font-bold text-gray-900">Router Rewards Program</h2>
+      <h2 className="text-lg font-bold text-gray-900">Referral Rewards</h2>
       <p className="text-gray-600 mt-2 max-w-3xl">
         Share your referral link. When a Job Poster or Contractor signs up through your link and completes their first job,
-        you earn $5 from the platform fee pool.
+        a $5 reward is deducted from the platform fee for that job and added to your router earnings.
       </p>
 
       <div className="mt-6 border border-gray-200 rounded-2xl p-6 bg-white">

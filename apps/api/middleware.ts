@@ -40,7 +40,34 @@ export function middleware(req: Request) {
     return resp;
   }
 
-  // Global protection: block non-admin requests before route handler executes.
+  // Public admin auth endpoints: login, logout, signup. No internal headers required.
+  // These endpoints handle their own validation and return 401/403 as needed.
+  const publicAdminPaths = ["/api/admin/login", "/api/admin/logout", "/api/admin/signup"];
+  if (publicAdminPaths.includes(url.pathname)) {
+    return withCors(NextResponse.next());
+  }
+
+  function cookieValueFromHeader(cookieHeader: string | null, name: string): string {
+    const raw = cookieHeader ?? "";
+    if (!raw) return "";
+    for (const part of raw.split(";")) {
+      const idx = part.indexOf("=");
+      if (idx === -1) continue;
+      const k = part.slice(0, idx).trim();
+      if (k !== name) continue;
+      return part.slice(idx + 1).trim();
+    }
+    return "";
+  }
+
+  // Cookie-auth admin UI: if an `admin_session` cookie is present, let the route handler
+  // verify it in the DB (edge middleware must not query DB).
+  const adminSessionCookie = cookieValueFromHeader(req.headers.get("cookie"), "admin_session");
+  if (adminSessionCookie) {
+    return withCors(NextResponse.next());
+  }
+
+  // Internal-header admin access (server-to-server). Keep for scripts and non-cookie clients.
   // Note: middleware runs in the edge runtime; do not query the DB here.
   const expectedSecret = (process.env.INTERNAL_SECRET ?? "").trim();
   const providedSecret = String(req.headers.get("x-internal-secret") ?? "").trim();

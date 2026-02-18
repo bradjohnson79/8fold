@@ -1,71 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { adminAuthFetch } from "@/lib/authClient";
+import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 
 export default function AdminSignupClient() {
-  const router = useRouter();
   const sp = useSearchParams();
   const codeFromUrl = (sp.get("code") ?? "").trim();
+  const backHref = (process.env.NEXT_PUBLIC_WEB_ORIGIN ?? "").trim() || "/";
+  const initialSecret = useMemo(() => codeFromUrl, [codeFromUrl]);
 
-  const emailRef = useRef<HTMLInputElement | null>(null);
-  const passwordRef = useRef<HTMLInputElement | null>(null);
-  const secretRef = useRef<HTMLInputElement | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [adminSecret, setAdminSecret] = useState(initialSecret);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState(false);
-
-  useEffect(() => {
-    if (codeFromUrl && secretRef.current) {
-      secretRef.current.value = codeFromUrl;
-    }
-  }, [codeFromUrl]);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    setOk(false);
+  async function submit() {
+    setBusy(true);
+    setError(null);
     try {
-      const email = (emailRef.current?.value ?? "").trim();
-      const password = (passwordRef.current?.value ?? "").trim();
-      const adminSecret = (secretRef.current?.value ?? "").trim();
-      if (!email || !password || !adminSecret) {
-        setError("Missing required fields");
-        return;
-      }
-
-      const result = await adminAuthFetch("/api/admin/signup", {
+      const resp = await fetch("/api/admin/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password, adminSecret }),
-      }, {
-        redirectOnAuthError: false,
       });
-      if (!result.ok) {
-        const msg = String(result.error || (result.status === 403 ? "Forbidden" : "Signup failed"));
-        console.error("[ADMIN:signup:client:error]", {
-          status: result.status,
-          message: "Signup request failed",
-        });
-        setError(msg);
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json || json.ok !== true) {
+        setError(resp.status === 403 ? "Invalid admin secret code" : "Signup failed");
         return;
       }
-
-      setOk(true);
-      // Send user back to login with a hint; they can now login with password.
-      router.replace("/login");
-    } catch (err) {
-      console.error("[ADMIN:signup:client:error]", {
-        message: "Signup submission failed",
-        cause: err instanceof Error ? err.message : "Unknown error",
-      });
+      setSuccess(true);
+    } catch {
       setError("Signup failed");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
@@ -81,98 +51,130 @@ export default function AdminSignupClient() {
           background: "rgba(2,6,23,0.35)",
         }}
       >
+        <div style={{ marginBottom: 10 }}>
+          <Link href={backHref} style={{ color: "rgba(226,232,240,0.85)", textDecoration: "none", fontSize: 13, fontWeight: 800 }}>
+            ← Back to 8Fold
+          </Link>
+        </div>
         <div style={{ fontWeight: 950, fontSize: 18 }}>Create Admin Account</div>
         <div style={{ marginTop: 6, color: "rgba(226,232,240,0.72)", fontSize: 13 }}>
-          You must have an Admin Signup Secret (see <code style={{ color: "rgba(226,232,240,0.9)" }}>scripts/admin-signup-secret.md</code>).
+          This creates an internal <code>AdminUser</code>. You will need the Admin Secret Code.
         </div>
 
-        {error ? <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>{error}</div> : null}
-        {ok ? <div style={{ marginTop: 10, color: "rgba(134,239,172,0.95)", fontWeight: 900 }}>Admin created.</div> : null}
-
-        <form onSubmit={(e) => void submit(e)} style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          <label>
-            <div style={{ fontSize: 12, color: "rgba(226,232,240,0.72)", fontWeight: 800 }}>Email</div>
-            <input
-              ref={emailRef}
-              placeholder="bradjohnson79@gmail.com"
-              autoComplete="email"
-              style={{
-                marginTop: 6,
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(148,163,184,0.14)",
-                background: "rgba(2,6,23,0.35)",
-                color: "rgba(226,232,240,0.92)",
-              }}
-            />
-          </label>
-
-          <label>
-            <div style={{ fontSize: 12, color: "rgba(226,232,240,0.72)", fontWeight: 800 }}>Password</div>
-            <input
-              ref={passwordRef}
-              type="password"
-              placeholder="Choose a strong password"
-              autoComplete="new-password"
-              style={{
-                marginTop: 6,
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(148,163,184,0.14)",
-                background: "rgba(2,6,23,0.35)",
-                color: "rgba(226,232,240,0.92)",
-              }}
-            />
-          </label>
-
-          <label>
-            <div style={{ fontSize: 12, color: "rgba(226,232,240,0.72)", fontWeight: 800 }}>Admin Signup Secret</div>
-            <input
-              ref={secretRef}
-              placeholder="Paste secret code"
-              autoComplete="off"
-              style={{
-                marginTop: 6,
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(148,163,184,0.14)",
-                background: "rgba(2,6,23,0.35)",
-                color: "rgba(226,232,240,0.92)",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-              }}
-            />
-          </label>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(251,191,36,0.35)",
-              background: "rgba(251,191,36,0.12)",
-              color: "rgba(253,230,138,0.95)",
-              fontWeight: 950,
-              cursor: "pointer",
-            }}
-          >
-            {loading ? "Creating…" : "Create admin"}
-          </button>
-
-          <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
-            <Link href="/login" style={{ color: "rgba(56,189,248,0.95)", fontWeight: 900, textDecoration: "none" }}>
-              Back to login
-            </Link>
-            {codeFromUrl ? (
-              <span style={{ color: "rgba(226,232,240,0.55)" }}>Secret prefilled from URL</span>
-            ) : (
-              <span style={{ color: "rgba(226,232,240,0.55)" }}>Tip: `/admin-signup?code=...`</span>
-            )}
+        {success ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ color: "rgba(134,239,172,0.95)", fontWeight: 950, fontSize: 13 }}>Admin account created.</div>
+            <div style={{ marginTop: 8 }}>
+              <Link href="/login" style={{ color: "rgba(56,189,248,0.95)", fontWeight: 900, textDecoration: "none" }}>
+                Go to login →
+              </Link>
+            </div>
           </div>
-        </form>
+        ) : (
+          <>
+            <div style={{ marginTop: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "rgba(226,232,240,0.7)", fontWeight: 900 }}>
+                Email
+              </label>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@example.com"
+                autoComplete="email"
+                style={{
+                  marginTop: 6,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(148,163,184,0.22)",
+                  background: "rgba(2,6,23,0.25)",
+                  color: "rgba(226,232,240,0.95)",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "rgba(226,232,240,0.7)", fontWeight: 900 }}>
+                Password (min 8 chars)
+              </label>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete="new-password"
+                style={{
+                  marginTop: 6,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(148,163,184,0.22)",
+                  background: "rgba(2,6,23,0.25)",
+                  color: "rgba(226,232,240,0.95)",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "rgba(226,232,240,0.7)", fontWeight: 900 }}>
+                Admin Secret Code
+              </label>
+              <input
+                value={adminSecret}
+                onChange={(e) => setAdminSecret(e.target.value)}
+                placeholder={codeFromUrl ? "" : "Enter the secret code"}
+                autoComplete="off"
+                style={{
+                  marginTop: 6,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(148,163,184,0.22)",
+                  background: "rgba(2,6,23,0.25)",
+                  color: "rgba(226,232,240,0.95)",
+                  outline: "none",
+                }}
+              />
+              {codeFromUrl ? (
+                <div style={{ marginTop: 6, color: "rgba(226,232,240,0.55)", fontSize: 12 }}>
+                  Prefilled from URL param <code>?code=...</code>
+                </div>
+              ) : null}
+            </div>
+
+            {error ? (
+              <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontSize: 13, fontWeight: 900 }}>{error}</div>
+            ) : null}
+
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                disabled={busy || !email.trim() || password.trim().length < 8 || adminSecret.trim().length < 8}
+                onClick={() => void submit()}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(56,189,248,0.35)",
+                  background: busy ? "rgba(56,189,248,0.08)" : "rgba(56,189,248,0.12)",
+                  color: "rgba(125,211,252,0.95)",
+                  fontWeight: 950,
+                  cursor: busy ? "default" : "pointer",
+                  opacity: busy || !email.trim() || password.trim().length < 8 || adminSecret.trim().length < 8 ? 0.6 : 1,
+                }}
+              >
+                {busy ? "Creating..." : "Create admin"}
+              </button>
+            </div>
+          </>
+        )}
+
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
+          <Link href="/login" style={{ color: "rgba(56,189,248,0.95)", fontWeight: 900, textDecoration: "none" }}>
+            Back to login
+          </Link>
+          <span style={{ color: "rgba(226,232,240,0.55)" }}>Access is provisioned internally</span>
+        </div>
       </div>
     </div>
   );

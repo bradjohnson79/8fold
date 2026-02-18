@@ -1,14 +1,4 @@
 .shell {
-  --bg: #0b1220;
-  --panel: #0f172a;
-  --panel2: #0b1220;
-  --border: rgba(148, 163, 184, 0.14);
-  --text: rgba(226, 232, 240, 0.92);
-  --muted: rgba(226, 232, 240, 0.66);
-  --accent: #22c55e;
-  --accent2: rgba(34, 197, 94, 0.14);
-  --link: rgba(56, 189, 248, 0.95);
-
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
@@ -44,7 +34,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 0 20px;
-  background: rgba(11, 18, 32, 0.78);
+  background: var(--topbar-bg);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -89,8 +79,8 @@
     height: 40px;
     border-radius: 12px;
     border: 1px solid var(--border);
-    background: rgba(2, 6, 23, 0.35);
-    color: rgba(226, 232, 240, 0.92);
+    background: var(--hover-bg);
+    color: var(--text);
     cursor: pointer;
     user-select: none;
   }

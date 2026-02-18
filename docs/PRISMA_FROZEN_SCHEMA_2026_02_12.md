@@ -1181,7 +1181,7 @@ model JobDraft {
   // Customer must choose job type (no defaults).
   jobType JobType
   // Job location coordinates (required for distance-based assignment).
-  // Optional input: if missing, server resolves city centroid coords from region (city-state) via Nominatim.
+  // Optional input: if missing, server resolves city centroid coords from region (city-state) via Mapbox.
   lat     Float?
   lng     Float?
 
@@ -1253,7 +1253,7 @@ model Job {
   junkHaulingItems Json?
 
   jobType JobType
-  // Optional input: if missing, server resolves city centroid coords from region (city-state) via Nominatim.
+  // Optional input: if missing, server resolves city centroid coords from region (city-state) via Mapbox.
   lat     Float?
   lng     Float?
 

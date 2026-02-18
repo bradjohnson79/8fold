@@ -7,7 +7,7 @@ import Stripe from "stripe";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "../../../db/drizzle";
-import { auditLogs, contractorAccounts, jobPosterProfiles, payoutMethods, routerProfiles, users } from "../../../db/schema";
+import { auditLogs, contractorAccounts, jobPosterProfiles, payoutMethods, users } from "../../../db/schema";
 import { logApiError } from "@/src/lib/errors/errorLogger";
 
 const CurrencySchema = z.enum(["CAD", "USD"]);
@@ -27,11 +27,12 @@ function requireStripe(): Stripe {
 }
 
 async function existingStripeAccountIdForUser(userId: string): Promise<string | null> {
-  const [router, poster, contractor] = await Promise.all([
+  const [method, poster, contractor] = await Promise.all([
     db
-      .select({ stripeAccountId: routerProfiles.stripeAccountId })
-      .from(routerProfiles)
-      .where(eq(routerProfiles.userId, userId))
+      .select({ details: payoutMethods.details })
+      .from(payoutMethods)
+      .where(and(eq(payoutMethods.userId, userId), eq(payoutMethods.provider, "STRIPE" as any)))
+      .orderBy(desc(payoutMethods.createdAt))
       .limit(1)
       .then((r) => r[0] ?? null),
     db
@@ -47,7 +48,8 @@ async function existingStripeAccountIdForUser(userId: string): Promise<string | 
       .limit(1)
       .then((r) => r[0] ?? null),
   ]);
-  return router?.stripeAccountId ?? poster?.stripeAccountId ?? contractor?.stripeAccountId ?? null;
+  const fromMethod = String((method?.details as any)?.stripeAccountId ?? "").trim();
+  return fromMethod || poster?.stripeAccountId || contractor?.stripeAccountId || null;
 }
 
 export async function GET(req: Request) {
@@ -107,10 +109,6 @@ export async function POST(req: Request) {
 
       await db.transaction(async (tx) => {
         await tx
-          .update(routerProfiles)
-          .set({ payoutMethod: "PAYPAL" as any, payoutStatus: "ACTIVE" as any, paypalEmail })
-          .where(eq(routerProfiles.userId, user.userId));
-        await tx
           .update(jobPosterProfiles)
           .set({ payoutMethod: "PAYPAL" as any, payoutStatus: "ACTIVE" as any, paypalEmail })
           .where(eq(jobPosterProfiles.userId, user.userId));
@@ -146,10 +144,6 @@ export async function POST(req: Request) {
 
       await db.transaction(async (tx) => {
         // Only set stripeAccountId if currently null (never overwrite).
-        await tx
-          .update(routerProfiles)
-          .set({ stripeAccountId, payoutMethod: "STRIPE" as any, payoutStatus: "PENDING" as any })
-          .where(and(eq(routerProfiles.userId, user.userId), isNull(routerProfiles.stripeAccountId)));
         await tx
           .update(jobPosterProfiles)
           .set({ stripeAccountId, payoutMethod: "STRIPE" as any, payoutStatus: "PENDING" as any })

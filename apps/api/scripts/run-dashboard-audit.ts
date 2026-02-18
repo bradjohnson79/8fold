@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 type CheckResult = {
   role: "job-poster" | "router" | "contractor" | "public";
@@ -43,7 +44,8 @@ function snippet(s: string, max = 1200) {
 
 async function main() {
   const dotenv = await import("dotenv");
-  dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: path.join(scriptDir, "..", ".env.local") });
   const DATABASE_URL = process.env.DATABASE_URL;
   if (!DATABASE_URL) throw new Error("DATABASE_URL missing (apps/api/.env.local)");
 

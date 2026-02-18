@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireSupportRequester } from "../../../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../../../src/http/errors";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../../../../db/drizzle";
 import { jobs } from "../../../../../../../db/schema/job";
@@ -16,12 +15,19 @@ function isSupportRequesterRole(role: string): boolean {
   return role === "JOB_POSTER" || role === "ROUTER" || role === "CONTRACTOR";
 }
 
+function ok<T>(data: T) {
+  return NextResponse.json({ ok: true, data }, { status: 200 });
+}
+function fail(status: number, message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireSupportRequester(req);
     const role = String(user.role);
     if (!isSupportRequesterRole(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return fail(403, "Forbidden");
     }
 
     const jobId = getJobIdFromUrl(req);
@@ -37,23 +43,24 @@ export async function GET(req: Request) {
       .where(eq(jobs.id, jobId))
       .limit(1);
     const job = jobRows[0] ?? null;
-    if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (job.isMock) return NextResponse.json({ error: "Mock jobs have no dispute participants" }, { status: 400 });
+    if (!job) return fail(404, "Not found");
+    if (job.isMock) return fail(400, "Mock jobs have no dispute participants");
 
     const involved =
       job.jobPosterUserId === user.userId || job.routerId === user.userId || job.contractorUserId === user.userId;
-    if (!involved) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!involved) return fail(403, "Forbidden");
 
-    return NextResponse.json({
+    return ok({
       participants: {
         jobPosterUserId: job.jobPosterUserId,
         contractorUserId: job.contractorUserId,
         routerId: job.routerId
-      }
+      },
     });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 

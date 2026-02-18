@@ -1,3 +1,10 @@
+/**
+ * DISE isolation boundary (Directory Intelligence & Submission Engine).
+ *
+ * - No dependencies on job lifecycle (jobs/dispatch/completion).
+ * - No dependencies on ledger or Stripe/payments.
+ * - DB access must target ONLY `directory_engine` tables via `@/db/schema/directoryEngine`.
+ */
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";

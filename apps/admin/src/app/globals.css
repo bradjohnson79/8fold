@@ -9,3 +9,42 @@ body {
   box-sizing: border-box;
 }
 
+/* Theme tokens (default: dark). */
+:root {
+  color-scheme: dark;
+
+  --bg: #0b1220;
+  --panel: #0f172a;
+  --panel2: #0b1220;
+  --topbar-bg: rgba(11, 18, 32, 0.78);
+  --card-bg: rgba(15, 23, 42, 0.45);
+  --input-bg: rgba(2, 6, 23, 0.25);
+
+  --border: rgba(148, 163, 184, 0.14);
+  --text: rgba(226, 232, 240, 0.92);
+  --muted: rgba(226, 232, 240, 0.66);
+  --muted2: rgba(226, 232, 240, 0.55);
+
+  --link: rgba(56, 189, 248, 0.95);
+  --hover-bg: rgba(2, 6, 23, 0.35);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --panel2: #f1f5f9;
+  --topbar-bg: rgba(248, 250, 252, 0.86);
+  --card-bg: rgba(255, 255, 255, 0.92);
+  --input-bg: rgba(241, 245, 249, 0.92);
+
+  --border: rgba(15, 23, 42, 0.14);
+  --text: rgba(15, 23, 42, 0.92);
+  --muted: rgba(15, 23, 42, 0.62);
+  --muted2: rgba(15, 23, 42, 0.52);
+
+  --link: rgba(37, 99, 235, 0.95);
+  --hover-bg: rgba(15, 23, 42, 0.06);
+}
+

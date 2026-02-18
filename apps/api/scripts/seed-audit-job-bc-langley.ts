@@ -1,5 +1,6 @@
 import path from "node:path";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { assertNotProductionSeed } from "./_seedGuard";
 
 function envOrThrow(name: string): string {
@@ -11,7 +12,8 @@ function envOrThrow(name: string): string {
 async function main() {
   assertNotProductionSeed("seed-audit-job-bc-langley.ts");
   const dotenv = await import("dotenv");
-  dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: path.join(scriptDir, "..", ".env.local") });
   envOrThrow("DATABASE_URL");
 
   const { isDevelopmentMocksEnabled } = await import("../src/config/developmentMocks");

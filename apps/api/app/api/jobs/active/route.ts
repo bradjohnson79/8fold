@@ -3,7 +3,7 @@ import { desc, eq, inArray, and } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../../db/schema/job";
 import { optionalUser } from "../../../../src/auth/rbac";
-import { requireRouterReady } from "../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../src/http/errors";
 
 const ACTIVE_STATUSES = [
@@ -22,9 +22,9 @@ export async function GET(req: Request) {
   try {
     const maybe = await optionalUser(req);
     if (!maybe) return NextResponse.json({ job: null });
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const user = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const user = authed;
 
     const rows = await db
       .select({

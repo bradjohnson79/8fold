@@ -9,6 +9,13 @@ import { jobHolds } from "../../db/schema/jobHold";
 import { jobPayments } from "../../db/schema/jobPayment";
 import { jobs } from "../../db/schema/job";
 
+/**
+ * Financial safety contract:
+ * - Enforcement actions here do NOT charge/refund/release funds and do NOT write ledger entries.
+ * - "Release escrow" actions in this module only set DB flags (e.g. `paymentReleasedAt`) and release holds.
+ * - Actual payout/ledger/transfer mutations happen in the separate payout engine, which can still refuse
+ *   to move money (e.g. if the job remains disputed).
+ */
 export type EnforcementPayload =
   | { kind: "none" }
   | { kind: "withhold"; notes?: string }

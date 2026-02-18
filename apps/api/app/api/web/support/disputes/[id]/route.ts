@@ -4,6 +4,7 @@ import { toHttpError } from "../../../../../../src/http/errors";
 import { asc, eq, or } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { disputeCases } from "../../../../../../db/schema/disputeCase";
+import { disputeEvidence } from "../../../../../../db/schema/disputeEvidence";
 import { jobs } from "../../../../../../db/schema/job";
 import { supportMessages } from "../../../../../../db/schema/supportMessage";
 import { supportTickets } from "../../../../../../db/schema/supportTicket";
@@ -46,6 +47,7 @@ export async function GET(req: Request) {
         jobContractorCompletedAt: jobs.contractorCompletedAt,
         jobCustomerApprovedAt: jobs.customerApprovedAt,
         jobPosterUserId: jobs.jobPosterUserId,
+        routerUserId: jobs.claimedByUserId,
         contractorUserId: jobs.contractorUserId,
       })
       .from(disputeCases)
@@ -56,7 +58,12 @@ export async function GET(req: Request) {
     const dispute = rows[0] ?? null;
     if (!dispute) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const allowed = dispute.filedByUserId === user.userId || dispute.againstUserId === user.userId;
+    const role = String((user as any).role ?? "").toUpperCase();
+    const allowed =
+      role === "ADMIN" ||
+      dispute.filedByUserId === user.userId ||
+      dispute.againstUserId === user.userId ||
+      (role === "ROUTER" && String(dispute.routerUserId ?? "") === user.userId);
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const msgs = await db
@@ -69,6 +76,21 @@ export async function GET(req: Request) {
       .from(supportMessages)
       .where(eq(supportMessages.ticketId, dispute.ticketId))
       .orderBy(asc(supportMessages.createdAt))
+      .limit(500);
+
+    const evidence = await db
+      .select({
+        id: disputeEvidence.id,
+        createdAt: disputeEvidence.createdAt,
+        submittedByUserId: disputeEvidence.submittedByUserId,
+        kind: disputeEvidence.kind,
+        summary: disputeEvidence.summary,
+        url: disputeEvidence.url,
+        metadata: disputeEvidence.metadata,
+      })
+      .from(disputeEvidence)
+      .where(eq(disputeEvidence.disputeCaseId, disputeId))
+      .orderBy(asc(disputeEvidence.createdAt))
       .limit(500);
 
     const jobPosterId = dispute.jobPosterUserId ?? null;
@@ -109,6 +131,10 @@ export async function GET(req: Request) {
         messages: msgs.map((m) => ({
           ...m,
           createdAt: m.createdAt.toISOString(),
+        })),
+        evidence: evidence.map((e) => ({
+          ...e,
+          createdAt: e.createdAt.toISOString(),
         })),
       },
     });

@@ -99,18 +99,17 @@ export async function DELETE(req: Request) {
       .catch(() => null);
 
     await db.transaction(async (tx) => {
-      await tx.delete(jobPhotos).where(eq(jobPhotos.jobId, id));
-      await tx.delete(jobPayments).where(eq(jobPayments.jobId, id));
-      await tx.delete(jobAssignments).where(eq(jobAssignments.jobId, id));
-
-      // Best-effort cleanup for repeat contractor request (may not exist everywhere).
-      await tx.execute(sql`delete from "RepeatContractorRequest" where "jobId" = ${id}`).catch(() => null);
-
-      await tx.delete(jobs).where(eq(jobs.id, id));
+      // Never hard-delete jobs. Soft-delete the draft to preserve referential integrity and auditability.
+      // Related rows (photos/payments/assignments/etc.) remain intact and are naturally excluded by archived=false
+      // in draft lists + job poster dashboards.
+      await tx
+        .update(jobs)
+        .set({ archived: true, updatedAt: new Date() } as any)
+        .where(eq(jobs.id, id));
 
       await tx.insert(auditLogs).values({
         id: randomUUID(),
-        action: "JOB_POSTING_DRAFT_DELETED",
+        action: "JOB_POSTING_DRAFT_ARCHIVED",
         entityType: "Job",
         entityId: id,
         metadata: {},

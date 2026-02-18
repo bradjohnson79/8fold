@@ -7,10 +7,10 @@ import { jobAssignments } from "../../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../../db/schema/job";
 import { routers } from "../../../../../../db/schema/router";
 import { users } from "../../../../../../db/schema/user";
-import { requireRouterReady } from "../../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { haversineKm, stateFromRegion } from "../../../../../../src/jobs/geo";
-import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/nominatim";
+import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/geocode";
 import { serviceTypeToTradeCategory } from "../../../../../../src/contractors/tradeMap";
 
 function getJobIdFromUrl(req: Request): string {
@@ -26,9 +26,9 @@ function normalizeCategory(s: string) {
 
 export async function GET(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
     const jobId = getJobIdFromUrl(req);
 
     const routerRows = await db
@@ -41,11 +41,10 @@ export async function GET(req: Request) {
       .where(eq(routers.userId, router.userId))
       .limit(1);
     const routerRow = routerRows[0] ?? null;
-    if (!routerRow || routerRow.status !== "ACTIVE") {
-      return NextResponse.json({ error: "Router not provisioned" }, { status: 403 });
-    }
+    if (!routerRow) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (!String(routerRow.homeRegionCode ?? "").trim()) {
-      return NextResponse.json({ error: "Router not eligible", blocked: true, missing: ["HOME_REGION"] }, { status: 403 });
+      // Should be unreachable: profile completeness is required by requireRouterActive().
+      return NextResponse.json({ error: "Router home region required" }, { status: 409 });
     }
 
     const jobRows = await db

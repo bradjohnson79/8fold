@@ -2,29 +2,46 @@
 
 import React from "react";
 import { z } from "zod";
-import { PayoutMethodSetup } from "../../../../components/PayoutMethodSetup";
+import { useUser } from "@clerk/nextjs";
 import { REGION_OPTIONS } from "@/lib/regions";
+import { GeoAutocomplete, type GeoAutocompleteResult } from "@/components/GeoAutocomplete";
 
 const FormSchema = z.object({
   name: z.string().trim().min(1),
-  email: z.string().trim().email(),
-  addressPrivate: z.string().trim().min(1),
+  address: z.string().trim().min(1).max(200),
+  city: z.string().trim().min(1).max(120),
+  postalCode: z.string().trim().min(3).max(24),
 });
 
 type RouterProfileForm = z.infer<typeof FormSchema>;
 
-type RouterProfileResp = {
-  ok?: boolean;
-  router?: {
-    homeRegionCode?: string;
-    homeCountry?: string;
-    email?: string | null;
-    termsAccepted?: boolean;
-    profileComplete?: boolean;
-  };
-  profile?: { name?: string | null; addressPrivate?: string | null; state?: string | null };
-  error?: string;
-};
+type RouterProfileResp =
+  | {
+      ok: true;
+      data: {
+        router: {
+          userId: string;
+          email: string | null;
+          formattedAddress: string | null;
+          hasAcceptedTerms: boolean;
+          homeCountry: string | null;
+          homeRegionCode: string | null;
+        };
+        profile:
+          | null
+          | {
+              name: string | null;
+              address: string | null;
+              city: string | null;
+              stateProvince: string | null;
+              postalCode: string | null;
+              country: string | null;
+              lat: number | null;
+              lng: number | null;
+            };
+      };
+    }
+  | { ok: false; error: string };
 
 function regionLabel(codeRaw: string, nameRaw: string): string {
   const code = String(codeRaw ?? "").trim().toUpperCase();
@@ -33,20 +50,27 @@ function regionLabel(codeRaw: string, nameRaw: string): string {
   return name ? `${code} — ${name}` : code;
 }
 
-export default function RouterProfileClient() {
+export default function RouterProfileClient(props?: { onComplete?: () => void }) {
+  const { user } = useUser();
+  const clerkEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+
   const [form, setForm] = React.useState<RouterProfileForm>({
     name: "",
-    email: "",
-    addressPrivate: "",
+    address: "",
+    city: "",
+    postalCode: "",
   });
   const [country, setCountry] = React.useState<"CA" | "US" | "">("");
-  const [regionCode, setRegionCode] = React.useState<string>("");
+  const [stateProvince, setStateProvince] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string>("");
   const [notice, setNotice] = React.useState<string>("");
-  const [isAdmin, setIsAdmin] = React.useState(false);
-  const [termsAccepted, setTermsAccepted] = React.useState(false);
+  const [attemptedSave, setAttemptedSave] = React.useState(false);
+  const [email, setEmail] = React.useState<string>("");
+  const [mapDisplayName, setMapDisplayName] = React.useState("");
+  const [mapLat, setMapLat] = React.useState<number>(0);
+  const [mapLng, setMapLng] = React.useState<number>(0);
 
   const regionOptions = React.useMemo(() => {
     if (country !== "CA" && country !== "US") return [];
@@ -57,30 +81,34 @@ export default function RouterProfileClient() {
     let alive = true;
     (async () => {
       try {
-        const [meResp, resp] = await Promise.all([
-          fetch("/api/app/me", { cache: "no-store" }).catch(() => null as any),
-          fetch("/api/app/router/profile", { cache: "no-store" }),
-        ]);
-        const meJson = await meResp?.json?.().catch(() => null);
+        const resp = await fetch("/api/app/router/profile", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as RouterProfileResp | null;
         if (!alive) return;
-        setIsAdmin(Boolean(meJson?.superuser));
-        if (!resp.ok) throw new Error(json?.error ?? "Failed to load profile");
+        if (!resp.ok || !json || json.ok !== true) {
+          throw new Error(typeof (json as any)?.error === "string" ? (json as any).error : "Failed to load profile");
+        }
 
-        const nextName = json?.profile?.name ?? "";
-        const nextEmail = json?.router?.email ?? "";
-        const nextAddr = (json as any)?.profile?.addressPrivate ?? "";
-        const nextCountry = String(json?.router?.homeCountry ?? "").trim().toUpperCase();
-        const nextRegion = String(json?.router?.homeRegionCode ?? "").trim().toUpperCase();
+        const data = json.data;
+        const nextName = data.profile?.name ?? "";
+        const nextEmail = String(data.router.email ?? "").trim() || String(clerkEmail ?? "").trim();
+        const nextAddr = String(data.profile?.address ?? "").trim();
+        const nextCity = String(data.profile?.city ?? "").trim();
+        const nextPostal = String(data.profile?.postalCode ?? "").trim();
+        const nextCountry = String(data.profile?.country ?? data.router.homeCountry ?? "").trim().toUpperCase();
+        const nextState = String(data.profile?.stateProvince ?? data.router.homeRegionCode ?? "").trim().toUpperCase();
         setCountry(nextCountry === "CA" || nextCountry === "US" ? (nextCountry as any) : "");
-        setRegionCode(nextRegion);
+        setStateProvince(nextState);
         setForm((s) => ({
           ...s,
           name: String(nextName ?? ""),
-          email: String(nextEmail ?? ""),
-          addressPrivate: String(nextAddr ?? ""),
+          address: nextAddr,
+          city: nextCity,
+          postalCode: nextPostal,
         }));
-        setTermsAccepted(Boolean((json as any)?.router?.termsAccepted));
+        setEmail(String(nextEmail ?? ""));
+        setMapDisplayName(String(data.router.formattedAddress ?? "").trim());
+        setMapLat(Number(data.profile?.lat ?? 0) || 0);
+        setMapLng(Number(data.profile?.lng ?? 0) || 0);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed to load");
@@ -94,37 +122,57 @@ export default function RouterProfileClient() {
   }, []);
 
   async function save() {
-    setSaving(true);
+    setAttemptedSave(true);
     setError("");
     setNotice("");
     try {
       const parsed = FormSchema.safeParse(form);
       if (!parsed.success) throw new Error("Please fill all required fields correctly.");
       if (country !== "CA" && country !== "US") throw new Error("Please select a country.");
-      const rc = String(regionCode ?? "").trim().toUpperCase();
-      if (!rc) throw new Error("Please select a state / province.");
+      const sp = String(stateProvince ?? "").trim().toUpperCase();
+      if (!sp) throw new Error("Please select a state / province.");
+      if (!Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0) {
+        // Inline error is rendered under the map field; do not show a global error banner.
+        return;
+      }
 
+      setSaving(true);
+      const mapDisplayNameToSend =
+        mapDisplayName.trim() || `Saved location (${mapLat.toFixed(6)}, ${mapLng.toFixed(6)})`;
       const resp = await fetch("/api/app/router/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: parsed.data.name,
-          email: parsed.data.email,
-          addressPrivate: parsed.data.addressPrivate,
-          termsAccepted,
+          address: parsed.data.address,
+          city: parsed.data.city,
+          stateProvince: sp,
+          postalCode: parsed.data.postalCode,
           country,
-          regionCode: rc,
+          mapDisplayName: mapDisplayNameToSend,
+          lat: mapLat,
+          lng: mapLng,
         }),
       });
       const json = await resp.json().catch(() => null);
-      if (!resp.ok) throw new Error(json?.error ?? "Failed to save");
+      if (!resp.ok) {
+        const code = String(json?.error ?? "");
+        if (code === "INVALID_INPUT") throw new Error("Please fill all required fields.");
+        if (code === "INVALID_GEO") throw new Error("Please select a map location result.");
+        throw new Error("Unable to save profile. Please try again.");
+      }
       setNotice("Saved.");
+      props?.onComplete?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
   }
+
+  const geoSelected = Number.isFinite(mapLat) && Number.isFinite(mapLng) && !(mapLat === 0 && mapLng === 0);
+  const showMapError = !geoSelected && (attemptedSave || (form.address.trim() && mapDisplayName.trim()));
+  const displayEmail = String(email || clerkEmail || "").trim();
 
   return (
     <>
@@ -135,23 +183,47 @@ export default function RouterProfileClient() {
       {notice ? <div className="mt-4 text-sm text-8fold-green font-semibold">{notice}</div> : null}
 
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="Name" placeholder="Jane Router" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} />
-        <Field label="Email" placeholder="jane@domain.com" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} />
         <Field
-          label="Address (private)"
-          placeholder="123 Main St"
-          value={form.addressPrivate}
-          onChange={(v) => setForm((s) => ({ ...s, addressPrivate: v }))}
+          label="Name *"
+          placeholder="Jane Router"
+          value={form.name}
+          onChange={(v) => setForm((s) => ({ ...s, name: v }))}
+        />
+        <Field
+          label="Email"
+          placeholder="jane@domain.com"
+          value={displayEmail}
+          onChange={() => {}}
+          disabled
+          helperText="Email is managed by your account."
+        />
+        <Field
+          label="Address *"
+          placeholder="5393 201 Street"
+          value={form.address}
+          onChange={(v) => setForm((s) => ({ ...s, address: v }))}
+        />
+        <Field
+          label="City *"
+          placeholder="Langley"
+          value={form.city}
+          onChange={(v) => setForm((s) => ({ ...s, city: v }))}
+        />
+        <Field
+          label="Postal / ZIP *"
+          placeholder="V2Y 0R2"
+          value={form.postalCode}
+          onChange={(v) => setForm((s) => ({ ...s, postalCode: v }))}
         />
         <Select
-          label="Country"
+          label="Country *"
           value={country}
           onChange={(v) => {
             const next = String(v ?? "").toUpperCase();
             const nextCountry = next === "CA" || next === "US" ? (next as any) : "";
             setCountry(nextCountry);
-            // On country change: reset regionCode and refresh dropdown options.
-            setRegionCode("");
+            // On country change: reset state/province selection.
+            setStateProvince("");
           }}
           options={[
             { value: "", label: "Select…" },
@@ -160,40 +232,94 @@ export default function RouterProfileClient() {
           ]}
         />
         <Select
-          label="State / Province"
-          value={regionCode}
-          onChange={(v) => setRegionCode(String(v ?? "").toUpperCase())}
-          disabled={!country}
+          label="State / Province *"
+          value={stateProvince}
+          onChange={(v) => setStateProvince(String(v ?? "").toUpperCase())}
+          disabled={false}
           options={[
             { value: "", label: country ? "Select…" : "Select a country first" },
             ...regionOptions.map((o) => ({ value: o.code, label: regionLabel(o.code, o.name) })),
           ]}
-          helperText={isAdmin ? undefined : "Changing country resets the state/province selection."}
+          helperText="Changing country resets the state/province selection."
         />
       </div>
 
       <div className="mt-6 border border-gray-200 rounded-2xl p-5">
-        <div className="font-bold text-gray-900">Router Terms & Conditions</div>
-        <div className="text-sm text-gray-600 mt-1">Required to access routing tools.</div>
-        <label className="mt-4 inline-flex items-center gap-2 text-sm text-gray-800">
-          <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
-          I accept the Router Terms & Conditions.
-        </label>
+        <div className="font-bold text-gray-900">Map location</div>
+        <div className="text-sm text-gray-600 mt-1">Required. Used to calculate routing distance.</div>
+        <div className="mt-3">
+          <GeoAutocomplete
+            label="Map location search *"
+            required
+            value={mapDisplayName}
+            onChange={(v) => {
+              setMapDisplayName(v);
+              setMapLat(0);
+              setMapLng(0);
+            }}
+            onPick={(r: GeoAutocompleteResult) => {
+              setMapDisplayName(r.display_name);
+              setMapLat(r.lat);
+              setMapLng(r.lon);
+            }}
+            errorText={showMapError ? "Please select a result to capture coordinates (required)." : ""}
+          />
+        </div>
+
+        {geoSelected ? (
+          <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <div className="text-sm font-semibold text-gray-900">Saved location</div>
+            <div className="text-sm text-gray-700 mt-1">{mapDisplayName.trim() || "Location saved"}</div>
+            <div className="text-xs text-gray-600 font-mono mt-2">
+              lat {mapLat.toFixed(6)}, lng {mapLng.toFixed(6)}
+            </div>
+            <div className="mt-2">
+              <a
+                href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(String(mapLat))}&mlon=${encodeURIComponent(
+                  String(mapLng),
+                )}#map=18/${encodeURIComponent(String(mapLat))}/${encodeURIComponent(String(mapLng))}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-semibold text-8fold-green hover:text-8fold-green-dark"
+              >
+                View on OpenStreetMap
+              </a>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-6">
         <button
-          disabled={loading || saving}
+          disabled={
+            loading ||
+            saving ||
+            !form.name.trim() ||
+            !form.address.trim() ||
+            !form.city.trim() ||
+            !form.postalCode.trim() ||
+            !(country === "CA" || country === "US") ||
+            !String(stateProvince ?? "").trim() ||
+            !geoSelected
+          }
           onClick={save}
           className={`font-semibold px-4 py-2 rounded-lg ${
-            loading || saving ? "bg-gray-200 text-gray-600" : "bg-8fold-green text-white hover:bg-8fold-green-dark"
+            loading ||
+            saving ||
+            !form.name.trim() ||
+            !form.address.trim() ||
+            !form.city.trim() ||
+            !form.postalCode.trim() ||
+            !(country === "CA" || country === "US") ||
+            !String(stateProvince ?? "").trim() ||
+            !geoSelected
+              ? "bg-gray-200 text-gray-600"
+              : "bg-8fold-green text-white hover:bg-8fold-green-dark"
           }`}
         >
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
-
-      <PayoutMethodSetup title="Payout setup" subtitle="Choose how you’d like to receive router payouts." />
     </>
   );
 }

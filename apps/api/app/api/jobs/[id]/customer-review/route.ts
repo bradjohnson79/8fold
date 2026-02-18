@@ -5,7 +5,7 @@ import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
-import { auditLogs, jobHolds, jobs, routerProfiles, users } from "../../../../../db/schema";
+import { auditLogs, jobHolds, jobs, users } from "../../../../../db/schema";
 import { randomUUID } from "crypto";
 
 function getIdFromUrl(req: Request): string {
@@ -158,18 +158,12 @@ export async function POST(req: Request) {
             .limit(1)
         )[0] ?? null;
       if (job?.routerId) {
-        const profile =
+        const u =
           (
             await db
-              .select({
-                notifyViaEmail: routerProfiles.notifyViaEmail,
-                notifyViaSms: routerProfiles.notifyViaSms,
-                phone: routerProfiles.phone,
-                email: users.email,
-              })
-              .from(routerProfiles)
-              .leftJoin(users, eq(users.id, routerProfiles.userId))
-              .where(eq(routerProfiles.userId, job.routerId))
+              .select({ email: users.email })
+              .from(users)
+              .where(eq(users.id, job.routerId))
               .limit(1)
           )[0] ?? null;
         const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -182,8 +176,8 @@ export async function POST(req: Request) {
           metadata: {
             routerUserId: job.routerId,
             methods: {
-              email: Boolean(profile?.notifyViaEmail && profile?.email),
-              sms: Boolean(profile?.notifyViaSms && profile?.phone),
+              email: Boolean(u?.email),
+              sms: false,
             },
             deadlineAt,
           } as any,

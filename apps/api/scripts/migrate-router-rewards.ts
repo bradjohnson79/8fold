@@ -8,7 +8,13 @@
  * Run:
  *   pnpm -C apps/api exec tsx scripts/migrate-router-rewards.ts
  */
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(SCRIPT_DIR, "..", ".env.local") });
 import { Client } from "pg";
 
 function mustEnv(name: string): string {

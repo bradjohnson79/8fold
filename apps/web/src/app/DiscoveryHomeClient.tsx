@@ -2,13 +2,9 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { REGION_OPTIONS } from "@/lib/regions";
 
-type RegionWithJobs = {
-  country: "US" | "CA";
-  regionCode: string;
-  regionName: string;
-  jobCount: number;
-};
+type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
 type CityWithJobs = {
   city: string;
@@ -22,13 +18,16 @@ function slugCity(city: string): string {
 export function DiscoveryHomeClient() {
   const router = useRouter();
 
-  const [regions, setRegions] = React.useState<RegionWithJobs[]>([]);
+  const regions = React.useMemo<RegionRow[]>(() => {
+    const us = REGION_OPTIONS.US.map((r) => ({ country: "US" as const, regionCode: r.code, regionName: r.name }));
+    const ca = REGION_OPTIONS.CA.map((r) => ({ country: "CA" as const, regionCode: r.code, regionName: r.name }));
+    return [...us, ...ca];
+  }, []);
   const [cities, setCities] = React.useState<CityWithJobs[]>([]);
 
   const [regionKey, setRegionKey] = React.useState<string>("");
   const [city, setCity] = React.useState<string>("");
 
-  const [loadingRegions, setLoadingRegions] = React.useState(true);
   const [loadingCities, setLoadingCities] = React.useState(false);
   const [error, setError] = React.useState<string>("");
 
@@ -37,48 +36,6 @@ export function DiscoveryHomeClient() {
     const [country, regionCode] = regionKey.split(":");
     return regions.find((r) => r.country === country && r.regionCode === regionCode) ?? null;
   }, [regionKey, regions]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    async function loadRegions() {
-      setLoadingRegions(true);
-      setError("");
-      try {
-        const resp = await fetch("/api/public/locations/regions-with-jobs", { cache: "no-store" });
-        if (!resp.ok) {
-          // Don't assume JSON on failures.
-          throw new Error("Failed to load regions");
-        }
-        const data = (await resp.json().catch(() => null)) as any;
-        const list = Array.isArray(data) ? (data as RegionWithJobs[]) : Array.isArray(data?.regions) ? (data.regions as RegionWithJobs[]) : [];
-        // Sort deterministically: USA first (alphabetical), then Canada (alphabetical).
-        list.sort((a, b) => {
-          if (a.country === b.country) return a.regionName.localeCompare(b.regionName, undefined, { sensitivity: "base" });
-          if (a.country === "US") return -1;
-          if (b.country === "US") return 1;
-          // non-US (e.g., CA) fallback
-          return a.regionName.localeCompare(b.regionName, undefined, { sensitivity: "base" });
-        });
-        if (cancelled) return;
-        setRegions(list);
-
-        // Auto-select if only one region exists
-        if (list.length === 1) {
-          const only = list[0]!;
-          setRegionKey(`${only.country}:${only.regionCode}`);
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load regions");
-      } finally {
-        if (!cancelled) setLoadingRegions(false);
-      }
-    }
-    void loadRegions();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -145,13 +102,13 @@ export function DiscoveryHomeClient() {
           <select
             value={regionKey}
             onChange={(e) => setRegionKey(e.target.value)}
-            disabled={loadingRegions || regions.length === 0}
+            disabled={regions.length === 0}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
           >
-            <option value="">{loadingRegions ? "Loading..." : "Select a region"}</option>
+            <option value="">Select a region</option>
             {regions.map((r) => (
               <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
-                {r.regionName} ({r.country}) · {r.jobCount}
+                {r.regionName} ({r.country})
               </option>
             ))}
           </select>

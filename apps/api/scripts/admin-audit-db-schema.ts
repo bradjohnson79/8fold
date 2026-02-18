@@ -30,7 +30,6 @@ function mdCode(sql: string, rows: unknown) {
 async function main() {
   const dotenv = await import("dotenv");
   dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
-  dotenv.config({ path: path.join(process.cwd(), ".env") });
 
   const DATABASE_URL = process.env.DATABASE_URL;
   if (!DATABASE_URL) throw new Error("DATABASE_URL missing");

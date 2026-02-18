@@ -40,7 +40,8 @@ export default function SupportDisputesPage() {
       const resp = await fetch("/api/app/support/disputes", { cache: "no-store" });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(json?.error ?? "Failed to load disputes");
-      setDisputes(Array.isArray(json?.disputes) ? json.disputes : []);
+      const list = Array.isArray(json?.data?.disputes) ? json.data.disputes : Array.isArray(json?.disputes) ? json.disputes : [];
+      setDisputes(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {

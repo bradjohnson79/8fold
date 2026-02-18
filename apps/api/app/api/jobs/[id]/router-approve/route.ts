@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { getOrCreatePlatformUserId } from "../../../../../src/system/platformUser";
+import { releaseJobFunds } from "../../../../../src/payouts/releaseJobFunds";
 import { maybeCreateRouterReferralRewardForUser, trySettleRouterReward } from "../../../../../src/rewards/routerRewards";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
-import { auditLogs, contractors, jobAssignments, jobs, ledgerEntries, materialsRequests, routers, users } from "../../../../../db/schema";
+import { auditLogs, contractors, jobAssignments, jobs, materialsRequests, routers, users } from "../../../../../db/schema";
 import { randomUUID } from "crypto";
 
 function getIdFromUrl(req: Request): string {
@@ -23,9 +24,9 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const user = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const user = authed;
     const id = getIdFromUrl(req);
     let raw: unknown = {};
     try {
@@ -35,8 +36,6 @@ export async function POST(req: Request) {
     }
     const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
-
-    const platformUserId = await getOrCreatePlatformUserId();
 
     const result = await db.transaction(async (tx) => {
       const job =
@@ -85,19 +84,26 @@ export async function POST(req: Request) {
         )[0] ?? null;
       if (!assignment) return { kind: "no_assignment" as const };
 
-      await tx
-        .update(jobAssignments)
-        .set({ status: "COMPLETED", completedAt: new Date() })
-        .where(eq(jobAssignments.id, assignment.id));
+      const approvedAt = new Date();
 
-      await tx
+      const jobUpdated = await tx
         .update(jobs)
         .set({
           status: "COMPLETED_APPROVED" as any,
-          routerApprovedAt: new Date(),
+          routerApprovedAt: approvedAt,
           routerApprovalNotes: body.data.notes?.trim() || null,
         })
-        .where(eq(jobs.id, id));
+        .where(and(eq(jobs.id, id), eq(jobs.claimedByUserId, user.userId)))
+        .returning({ id: jobs.id });
+
+      // Concurrency guard: if admin rerouted (or router unclaimed) mid-flight, do not proceed.
+      // (The read-time check above is not sufficient under concurrent writes.)
+      if (!jobUpdated.length) return { kind: "conflict" as const };
+
+      await tx
+        .update(jobAssignments)
+        .set({ status: "COMPLETED", completedAt: approvedAt })
+        .where(eq(jobAssignments.id, assignment.id));
 
       const updated =
         (
@@ -108,29 +114,6 @@ export async function POST(req: Request) {
             .limit(1)
         )[0] ?? null;
       if (!updated) throw Object.assign(new Error("Job not found after update"), { status: 404 });
-
-      // Credit earnings only when completion is fully approved (customer + router).
-      await tx.insert(ledgerEntries).values({
-        id: randomUUID(),
-        userId: user.userId,
-        jobId: id,
-        type: "ROUTER_EARNING",
-        direction: "CREDIT",
-        bucket: "AVAILABLE",
-        amountCents: job.routerEarningsCents ?? 0,
-        memo: "Router earning (COMPLETED_APPROVED)",
-      });
-
-      await tx.insert(ledgerEntries).values({
-        id: randomUUID(),
-        userId: platformUserId,
-        jobId: id,
-        type: "BROKER_FEE",
-        direction: "CREDIT",
-        bucket: "AVAILABLE",
-        amountCents: job.brokerFeeCents ?? 0,
-        memo: "Broker fee (COMPLETED_APPROVED)",
-      });
 
       // Router referral rewards (automated; one per referred user; funded only from platform fee pool).
       // Resolve contractorUserId from assignment when job.contractorUserId is null (assignment flow may not populate it).
@@ -166,6 +149,7 @@ export async function POST(req: Request) {
 
       // Attempt settlement immediately only if payout is released (refund-safe).
       if (String((updated as any)?.payoutStatus ?? "").toUpperCase() === "RELEASED") {
+        const platformUserId = await getOrCreatePlatformUserId(tx as any);
         for (const r of createdRewards) {
           await trySettleRouterReward({
             tx,
@@ -208,6 +192,14 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
+    if (result.kind === "conflict") return NextResponse.json({ error: "Job routing changed; retry." }, { status: 409 });
+    // Release funds (Connect transfers / PayPal credit). Best-effort: completion approval is authoritative even if payout fails.
+    try {
+      await releaseJobFunds({ jobId: id, triggeredByUserId: user.userId });
+    } catch {
+      // Failure is reflected via TransferRecord + Job.payoutStatus; client can retry or admin can force retry.
+    }
+
     return NextResponse.json({ job: result.job });
   } catch (err) {
     const { status, message } = toHttpError(err);

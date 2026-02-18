@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { GPT_MODEL } from "@8fold/shared";
-import { loadRootEnvOnce } from "../config/loadRootEnv";
 import type { JobType, TradeCategory } from "../types/dbEnums";
 
 export const PricingIntelSchema = z.object({
@@ -40,7 +39,6 @@ export async function getPricingIntel(opts: {
   // Anchor the range to the already-computed median when available (keeps suggestions conservative).
   anchorMedianCents?: number | null;
 }): Promise<{ model: string; intel: PricingIntel } | null> {
-  loadRootEnvOnce();
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
 

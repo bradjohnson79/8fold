@@ -53,7 +53,6 @@ export function authHeadersFromSessionToken(
   if (!token) return {};
   return {
     authorization: `Bearer ${token}`,
-    "x-session-token": token,
   };
 }
 
@@ -68,6 +67,8 @@ async function originFetch(reqInit: {
   request?: Request;
   headers?: Record<string, string>;
   body?: BodyInit | null;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<Response> {
   const url = `${reqInit.origin}${reqInit.path.startsWith("/") ? "" : "/"}${reqInit.path}`;
 
@@ -80,16 +81,43 @@ async function originFetch(reqInit: {
     ...(reqInit.headers ?? {}),
     ...authHeadersFromSessionToken(reqInit.sessionToken),
   };
-  if (forwardedCookie && !("cookie" in mergedHeaders) && !("Cookie" in mergedHeaders)) {
-    mergedHeaders.cookie = forwardedCookie;
+  // Do not forward cookies to apps/api; API boundary is Bearer-token based.
+  void forwardedCookie;
+
+  const timeoutMs = typeof reqInit.timeoutMs === "number" && reqInit.timeoutMs > 0 ? reqInit.timeoutMs : null;
+
+  if (!timeoutMs && !reqInit.signal) {
+    return await fetch(url, {
+      method: reqInit.method ?? "GET",
+      headers: mergedHeaders,
+      body: reqInit.body,
+      cache: "no-store",
+    });
   }
 
-  return await fetch(url, {
-    method: reqInit.method ?? "GET",
-    headers: mergedHeaders,
-    body: reqInit.body,
-    cache: "no-store",
-  });
+  // Optional timeout/abort support for auth-stabilization paths (and any caller that opts in).
+  const controller = new AbortController();
+  const signals: AbortSignal[] = [];
+  if (reqInit.signal) signals.push(reqInit.signal);
+
+  for (const s of signals) {
+    if (s.aborted) controller.abort();
+    else s.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
+  let t: ReturnType<typeof setTimeout> | null = null;
+  if (timeoutMs) t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: reqInit.method ?? "GET",
+      headers: mergedHeaders,
+      body: reqInit.body,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    if (t) clearTimeout(t);
+  }
 }
 
 export async function apiFetch(reqInit: {
@@ -104,6 +132,8 @@ export async function apiFetch(reqInit: {
   request?: Request;
   headers?: Record<string, string>;
   body?: BodyInit | null;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<Response> {
   const target = reqInit.target ?? "api";
   const origin =
@@ -123,6 +153,8 @@ export async function adminFetch(reqInit: {
   request?: Request;
   headers?: Record<string, string>;
   body?: BodyInit | null;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<Response> {
   // Back-compat wrapper. Prefer `apiFetch({ target: "admin", ... })`.
   return await apiFetch({ ...(reqInit as any), target: "admin" });

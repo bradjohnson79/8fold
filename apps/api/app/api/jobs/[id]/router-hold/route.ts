@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { z } from "zod";
@@ -23,9 +23,9 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const user = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const user = authed;
     const id = getIdFromUrl(req);
     let raw: unknown = {};
     try {

@@ -3,7 +3,8 @@ import { stateProvinceMap } from "@8fold/shared";
 export type RegionCountryCode = "US" | "CA";
 export type RegionOption = { code: string; name: string };
 
-const CA_CODES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"] as const;
+// Canonical list: 10 Canadian provinces (no territories).
+const CA_CODES = ["AB", "BC", "MB", "NB", "NL", "NS", "ON", "PE", "QC", "SK"] as const;
 const US_CODES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
 ] as const;

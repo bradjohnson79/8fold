@@ -7,9 +7,11 @@ import { AdminTopbar } from "./AdminTopbar";
 
 export function AdminLayout({
   adminEmail,
+  adminTier,
   children,
 }: {
   adminEmail: string | null;
+  adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -35,6 +37,7 @@ export function AdminLayout({
         <header className={styles.topbar}>
           <AdminTopbar
             adminEmail={adminEmail}
+            adminTier={adminTier}
             onOpenSidebar={() => setSidebarOpen(true)}
             menuButtonClassName={styles.mobileMenuButton}
           />

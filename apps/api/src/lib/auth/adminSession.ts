@@ -68,7 +68,17 @@ export async function ensureAdminSessionsTable(): Promise<void> {
   return await ensured;
 }
 
-export type AdminIdentity = { id: string; email: string; role: string };
+export type AdminIdentity = {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: Date;
+  fullName: string | null;
+  country: string | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+};
 
 export async function getAdminIdentityBySessionToken(token: string): Promise<AdminIdentity | null> {
   await ensureAdminSessionsTable();
@@ -80,7 +90,17 @@ export async function getAdminIdentityBySessionToken(token: string): Promise<Adm
 
   // Join session -> admin user.
   const rows = await db
-    .select({ id: adminUsers.id, email: adminUsers.email, role: adminUsers.role })
+    .select({
+      id: adminUsers.id,
+      email: adminUsers.email,
+      role: adminUsers.role,
+      createdAt: adminUsers.createdAt,
+      fullName: adminUsers.fullName,
+      country: adminUsers.country,
+      state: adminUsers.state,
+      city: adminUsers.city,
+      address: adminUsers.address,
+    })
     .from(adminSessions)
     .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.adminUserId))
     .where(and(eq(adminSessions.sessionTokenHash, hash), gt(adminSessions.expiresAt, now)))
@@ -88,7 +108,17 @@ export async function getAdminIdentityBySessionToken(token: string): Promise<Adm
 
   const r = rows[0] ?? null;
   if (!r?.id) return null;
-  return { id: String(r.id), email: String(r.email), role: String(r.role ?? "ADMIN") };
+  return {
+    id: String(r.id),
+    email: String(r.email),
+    role: String(r.role ?? "ADMIN"),
+    createdAt: r.createdAt,
+    fullName: r.fullName ?? null,
+    country: r.country ?? null,
+    state: r.state ?? null,
+    city: r.city ?? null,
+    address: r.address ?? null,
+  };
 }
 
 export async function revokeAdminSessionToken(token: string): Promise<void> {

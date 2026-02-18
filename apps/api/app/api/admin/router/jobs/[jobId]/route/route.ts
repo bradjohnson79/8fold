@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import crypto from "node:crypto";
-import { and, eq, isNull, lt, desc } from "drizzle-orm";
+import { and, eq, isNull, desc, ne, sql } from "drizzle-orm";
+import { isJobOverdue, jobOverdueWhere } from "@/src/services/monitoringService";
 import { db } from "../../../../../../../db/drizzle";
 import { adminRouterContexts } from "../../../../../../../db/schema/adminRouterContext";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
+import { jobAssignments } from "../../../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../../../db/schema/job";
 import { ledgerEntries } from "../../../../../../../db/schema/ledgerEntry";
 import { routingHubs } from "../../../../../../../db/schema/routingHub";
 import { adminAuditLog } from "@/src/audit/adminAudit";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 
 function getJobIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -19,12 +21,15 @@ function getJobIdFromUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_OPERATOR");
+  if (forbidden) return forbidden;
 
   try {
     const jobId = getJobIdFromUrl(req);
     const now = new Date();
+    const STALE_ASSIGNMENT_GRACE_MS = 5 * 60 * 1000;
 
     const ctxRows = await db
       .select({
@@ -35,7 +40,7 @@ export async function POST(req: Request) {
       })
       .from(adminRouterContexts)
       .innerJoin(routingHubs, eq(routingHubs.id, adminRouterContexts.routingHubId as any))
-      .where(and(eq(adminRouterContexts.adminId, auth.userId), isNull(adminRouterContexts.deactivatedAt)))
+      .where(and(eq(adminRouterContexts.adminId, identity.userId), isNull(adminRouterContexts.deactivatedAt)))
       .orderBy(desc(adminRouterContexts.activatedAt))
       .limit(1);
     const ctx = ctxRows[0] ?? null;
@@ -54,6 +59,7 @@ export async function POST(req: Request) {
         routingStatus: jobs.routingStatus,
         routerUserId: jobs.claimedByUserId,
         routingDueAt: jobs.routingDueAt,
+        postedAt: jobs.postedAt,
         firstRoutedAt: jobs.firstRoutedAt,
         routerEarningsCents: jobs.routerEarningsCents,
       })
@@ -64,7 +70,7 @@ export async function POST(req: Request) {
     if (!job) {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_ROUTE_ATTEMPT_NOT_FOUND",
         entityType: "Job",
         entityId: jobId,
@@ -75,7 +81,7 @@ export async function POST(req: Request) {
     if (job.isMock) {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_ROUTE_ATTEMPT_MOCK_JOB",
         entityType: "Job",
         entityId: jobId,
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
     if (job.archived) {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_ROUTE_ATTEMPT_ARCHIVED_JOB",
         entityType: "Job",
         entityId: job.id,
@@ -99,7 +105,7 @@ export async function POST(req: Request) {
     if (job.country !== ctx.country || (job.regionCode ?? "").toUpperCase() !== ctx.regionCode.toUpperCase()) {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_ROUTE_ATTEMPT_WRONG_REGION",
         entityType: "Job",
         entityId: job.id,
@@ -118,7 +124,7 @@ export async function POST(req: Request) {
     if (job.routingStatus !== "UNROUTED" || job.routerUserId) {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_ROUTE_ATTEMPT_NOT_UNROUTED",
         entityType: "Job",
         entityId: job.id,
@@ -127,10 +133,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "job_already_routed" }, { status: 409 });
     }
 
-    if (!job.routingDueAt || now.getTime() <= job.routingDueAt.getTime()) {
+    // Invariant: reroute must NOT occur once work is in progress.
+    if (String(job.status ?? "").toUpperCase() === "IN_PROGRESS") {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
+        action: "ADMIN_ROUTER_ROUTE_ATTEMPT_IN_PROGRESS",
+        entityType: "Job",
+        entityId: job.id,
+        metadata: { actorRole: "ADMIN", status: job.status } as any,
+      });
+      return NextResponse.json({ ok: false, error: "job_in_progress" }, { status: 409 });
+    }
+
+    // Routing status should not contradict lifecycle: only reroute jobs that are still pre-assignment.
+    if (!["PUBLISHED", "OPEN_FOR_ROUTING"].includes(String(job.status ?? "").toUpperCase())) {
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(),
+        actorUserId: identity.userId,
+        action: "ADMIN_ROUTER_ROUTE_ATTEMPT_NOT_ROUTABLE_STATUS",
+        entityType: "Job",
+        entityId: job.id,
+        metadata: { actorRole: "ADMIN", status: job.status } as any,
+      });
+      return NextResponse.json({ ok: false, error: "job_not_routable" }, { status: 409 });
+    }
+
+    // Invariant: reroute must NOT occur when a contractor is actively assigned.
+    // (We also treat status=ASSIGNED as an "active contractor" signal, even if the assignment row is missing.)
+    if (String(job.status ?? "").toUpperCase() === "ASSIGNED") {
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(),
+        actorUserId: identity.userId,
+        action: "ADMIN_ROUTER_ROUTE_ATTEMPT_ACTIVE_CONTRACTOR",
+        entityType: "Job",
+        entityId: job.id,
+        metadata: { actorRole: "ADMIN", status: job.status } as any,
+      });
+      return NextResponse.json({ ok: false, error: "job_has_active_contractor" }, { status: 409 });
+    }
+
+    if (!isJobOverdue({ routingDueAt: job.routingDueAt, postedAt: job.postedAt }, now)) {
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(),
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_ROUTE_ATTEMPT_NOT_OVERDUE",
         entityType: "Job",
         entityId: job.id,
@@ -141,23 +187,68 @@ export async function POST(req: Request) {
 
     // Route job as admin, reserve router payout for admin (pending)
     const routed = await db.transaction(async (tx: any) => {
+      const activeAssignment =
+        (
+          await tx
+            .select({ id: jobAssignments.id, createdAt: jobAssignments.createdAt })
+            .from(jobAssignments)
+            .where(and(eq(jobAssignments.jobId, job.id), eq(jobAssignments.status, "ASSIGNED")))
+            .limit(1)
+        )[0] ?? null;
+      if (activeAssignment) {
+        // Stale-assignment defense:
+        // - If lifecycle says ASSIGNED/IN_PROGRESS, always block (handled above, but keep for safety).
+        // - If lifecycle does NOT say assigned/in-progress, treat ASSIGNED rows as blocking only briefly
+        //   to avoid races with an assignment just being created in a concurrent transaction.
+        const ageMs = now.getTime() - new Date(activeAssignment.createdAt).getTime();
+        if (ageMs <= STALE_ASSIGNMENT_GRACE_MS) {
+          return { kind: "has_active_contractor" as const };
+        }
+
+        await tx.insert(auditLogs).values({
+          id: crypto.randomUUID(),
+            actorUserId: identity.userId,
+          action: "ADMIN_ROUTER_ROUTE_STALE_ASSIGNMENT_IGNORED",
+          entityType: "Job",
+          entityId: job.id,
+          metadata: {
+            actorRole: "ADMIN",
+            assignmentId: activeAssignment.id,
+            assignmentCreatedAt: new Date(activeAssignment.createdAt).toISOString(),
+            ageMs,
+          } as any,
+        });
+      }
+
       const updatedRows = await tx
         .update(jobs)
         .set({
           routingStatus: "ROUTED_BY_ADMIN",
-          adminRoutedById: auth.userId,
+          adminRoutedById: identity.userId,
           claimedByUserId: null,
           failsafeRouting: true,
-          firstRoutedAt: (job.firstRoutedAt ?? now) as any,
+          // firstRoutedAt is immutable once set, even under concurrent reroutes.
+          firstRoutedAt: sql`coalesce(${jobs.firstRoutedAt}, ${now})` as any,
           routedAt: now,
         } as any)
-        .where(eq(jobs.id, job.id))
+        .where(
+          and(
+            eq(jobs.id, job.id),
+            eq(jobs.routingStatus, "UNROUTED"),
+            isNull(jobs.claimedByUserId),
+            ne(jobs.status, "IN_PROGRESS" as any),
+            ne(jobs.status, "ASSIGNED" as any),
+            // Re-check overdue at update time to avoid racey early reroutes.
+            jobOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
+          ),
+        )
         .returning({ id: jobs.id, routingStatus: jobs.routingStatus, adminRoutedById: jobs.adminRoutedById, firstRoutedAt: jobs.firstRoutedAt });
       const updated = updatedRows[0] as any;
+      if (!updated) return { kind: "stale" as const };
 
       await tx.insert(ledgerEntries).values({
         id: crypto.randomUUID(),
-        userId: auth.userId,
+        userId: identity.userId,
         jobId: job.id,
         type: "ROUTER_EARNING",
         direction: "CREDIT",
@@ -168,7 +259,7 @@ export async function POST(req: Request) {
 
       await tx.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "ADMIN_ROUTER_JOB_ROUTED",
         entityType: "Job",
         entityId: job.id,
@@ -182,10 +273,27 @@ export async function POST(req: Request) {
         } as any,
       });
 
-      return updated;
+      return { kind: "ok" as const, updated };
     });
 
-    await adminAuditLog(req, auth, {
+    if ((routed as any)?.kind === "has_active_contractor") {
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(),
+        actorUserId: identity.userId,
+        action: "ADMIN_ROUTER_ROUTE_ATTEMPT_ACTIVE_CONTRACTOR",
+        entityType: "Job",
+        entityId: job.id,
+        metadata: { actorRole: "ADMIN" } as any,
+      });
+      return NextResponse.json({ ok: false, error: "job_has_active_contractor" }, { status: 409 });
+    }
+    if ((routed as any)?.kind === "stale") {
+      // Another actor updated the job between read and write.
+      // Treat as conflict rather than silently routing.
+      return NextResponse.json({ ok: false, error: "conflict" }, { status: 409 });
+    }
+
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
       action: "ADMIN_MANUAL_ROUTING",
       entityType: "Job",
       entityId: jobId,
@@ -197,7 +305,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true, data: { job: routed } });
+    return NextResponse.json({ ok: true, data: { job: (routed as any).updated } });
   } catch (err) {
     return handleApiError(err, "POST /api/admin/router/jobs/[jobId]/route");
   }

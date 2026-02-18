@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { jobs } from "../../../../../../db/schema/job";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { adminAuditLog } from "@/src/audit/adminAudit";
+import { z } from "zod";
+import { readJsonBody } from "@/src/lib/api/readJsonBody";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../_lib/adminTier";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -14,8 +16,10 @@ function getIdFromUrl(req: Request): string {
 }
 
 export async function PATCH(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_OPERATOR");
+  if (forbidden) return forbidden;
 
   const jobId = getIdFromUrl(req);
   if (!jobId) {
@@ -23,6 +27,12 @@ export async function PATCH(req: Request) {
   }
 
   try {
+    const BodySchema = z.object({ reason: z.string().trim().min(3).max(500) });
+    const j = await readJsonBody(req);
+    if (!j.ok) return j.resp;
+    const body = BodySchema.safeParse(j.json);
+    if (!body.success) return NextResponse.json({ ok: false, error: "archive_reason_required" }, { status: 400 });
+
     // Idempotent archive: set archived=true. No other side effects.
     const updatedRows = await db
       .update(jobs)
@@ -32,16 +42,19 @@ export async function PATCH(req: Request) {
     const updated = updatedRows[0] ?? null;
     if (!updated) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
-    await adminAuditLog(req, auth, {
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
       action: "ADMIN_JOB_ARCHIVE",
       entityType: "Job",
       entityId: jobId,
-      metadata: { archived: true },
+      metadata: { archived: true, reason: body.data.reason },
     });
 
     return NextResponse.json({ ok: true, data: { job: updated } });
   } catch (err) {
-    return handleApiError(err, "PATCH /api/admin/jobs/:id/archive", { route: "/api/admin/jobs/[id]/archive", userId: auth.userId });
+    return handleApiError(err, "PATCH /api/admin/jobs/:id/archive", {
+      route: "/api/admin/jobs/[id]/archive",
+      userId: identity.userId,
+    });
   }
 }
 

@@ -29,10 +29,12 @@ function titleForPath(pathname: string): { title: string; subtitle?: string } {
 
 export function AdminTopbar({
   adminEmail,
+  adminTier,
   onOpenSidebar,
   menuButtonClassName,
 }: {
   adminEmail: string | null;
+  adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
   onOpenSidebar?: () => void;
   menuButtonClassName?: string;
 }) {
@@ -57,8 +59,8 @@ export function AdminTopbar({
       </div>
 
       <div className={styles.right}>
-        <span className={styles.role} title="Role">
-          ADMIN
+        <span className={styles.role} title="Admin tier">
+          {adminTier === "ADMIN_SUPER" ? "SUPER" : adminTier === "ADMIN_OPERATOR" ? "OPERATOR" : "VIEWER"}
         </span>
         <span className={styles.email} title={adminEmail ?? undefined}>
           {adminEmail ?? "—"}

@@ -1,4 +1,4 @@
-import { and, eq, gt, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import { db } from "../../db/drizzle";
 import { jobAssignments } from "../../db/schema/jobAssignment";
 import { jobs } from "../../db/schema/job";
@@ -6,8 +6,44 @@ import { monitoringEvents } from "../../db/schema/monitoringEvent";
 
 type MonitoringEventType = "JOB_APPROACHING_24H" | "JOB_OVERDUE_UNROUTED" | "JOB_ROUTED" | "JOB_COMPLETED";
 
-function hours(n: number): number {
-  return n * 60 * 60 * 1000;
+export const MS_PER_HOUR = 60 * 60 * 1000;
+export const HOURS_24_MS = 24 * MS_PER_HOUR;
+
+function msFromHours(n: number): number {
+  return n * MS_PER_HOUR;
+}
+
+export type JobOverdueInput = {
+  routingDueAt: Date | null;
+  postedAt: Date;
+};
+
+export function getJobOverdueAt(job: JobOverdueInput): Date {
+  if (job.routingDueAt) return job.routingDueAt;
+  return new Date(job.postedAt.getTime() + HOURS_24_MS);
+}
+
+export function isJobOverdue(job: JobOverdueInput, now: Date): boolean {
+  return now.getTime() > getJobOverdueAt(job).getTime();
+}
+
+export function getPostedAtCutoffForOverdue(now: Date): Date {
+  return new Date(now.getTime() - HOURS_24_MS);
+}
+
+type OverdueColumns = {
+  routingDueAt: any;
+  postedAt: any;
+};
+
+export function jobOverdueWhere(cols: OverdueColumns, now: Date) {
+  const postedAt24h = getPostedAtCutoffForOverdue(now);
+  return or(lt(cols.routingDueAt, now), and(isNull(cols.routingDueAt), lte(cols.postedAt, postedAt24h)));
+}
+
+export function jobNotOverdueWhere(cols: OverdueColumns, now: Date) {
+  const postedAt24h = getPostedAtCutoffForOverdue(now);
+  return or(gt(cols.routingDueAt, now), and(isNull(cols.routingDueAt), gt(cols.postedAt, postedAt24h)));
 }
 
 /**
@@ -20,8 +56,7 @@ export async function runMonitoringEvaluation(): Promise<{
 }> {
   const now = new Date();
   const nowMs = now.getTime();
-  const postedAt20h = new Date(nowMs - hours(20));
-  const postedAt24h = new Date(nowMs - hours(24));
+  const postedAt20h = new Date(nowMs - msFromHours(20));
 
   const emitted: Record<MonitoringEventType, number> = {
     JOB_APPROACHING_24H: 0,
@@ -36,24 +71,24 @@ export async function runMonitoringEvaluation(): Promise<{
     // - now >= postedAt + 20h
     // - now < routingDueAt (if routingDueAt null, assume postedAt + 24h)
     const approaching = await tx
-      .select({ id: jobs.id })
+      .select({ id: jobs.id, routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt })
       .from(jobs)
       .where(
         and(
           eq(jobs.isMock, false),
           eq(jobs.routingStatus, "UNROUTED"),
+          // Avoid routing alerts once work has started (or is already assigned).
+          inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
           lte(jobs.postedAt, postedAt20h),
-          or(
-            gt(jobs.routingDueAt, now),
-            and(isNull(jobs.routingDueAt), gt(jobs.postedAt, postedAt24h)),
-          ),
+          jobNotOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
         ),
       );
-    if (approaching.length) {
+    const approachingFiltered = approaching.filter((j) => !isJobOverdue({ routingDueAt: j.routingDueAt, postedAt: j.postedAt }, now));
+    if (approachingFiltered.length) {
       const inserted = await tx
         .insert(monitoringEvents)
         .values(
-          approaching.map((j) => ({
+          approachingFiltered.map((j) => ({
             type: "JOB_APPROACHING_24H",
             jobId: j.id,
             role: "ADMIN",
@@ -69,20 +104,23 @@ export async function runMonitoringEvaluation(): Promise<{
     // - UNROUTED
     // - now > routingDueAt (if routingDueAt null, assume postedAt+24h)
     const overdue = await tx
-      .select({ id: jobs.id })
+      .select({ id: jobs.id, routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt })
       .from(jobs)
       .where(
         and(
           eq(jobs.isMock, false),
           eq(jobs.routingStatus, "UNROUTED"),
-          or(lt(jobs.routingDueAt, now), and(isNull(jobs.routingDueAt), lte(jobs.postedAt, postedAt24h))),
+          // Avoid routing alerts once work has started (or is already assigned).
+          inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
+          jobOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
         ),
       );
-    if (overdue.length) {
+    const overdueFiltered = overdue.filter((j) => isJobOverdue({ routingDueAt: j.routingDueAt, postedAt: j.postedAt }, now));
+    if (overdueFiltered.length) {
       const inserted = await tx
         .insert(monitoringEvents)
         .values(
-          overdue.map((j) => ({
+          overdueFiltered.map((j) => ({
             type: "JOB_OVERDUE_UNROUTED",
             jobId: j.id,
             role: "ADMIN",

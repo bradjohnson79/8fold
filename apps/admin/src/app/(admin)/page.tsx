@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { adminApiFetch } from "@/server/adminApi";
 import styles from "./overview.module.css";
+import { RoutingUrgencyCard } from "@/components/admin/RoutingUrgencyCard";
+import { FlaggedJobsCard } from "@/components/admin/FlaggedJobsCard";
 
 type JobsStatusResp = {
   activeJobs: number;
@@ -11,6 +13,7 @@ type JobsStatusResp = {
     id: string;
     title: string | null;
     status: string;
+    jobSource: string;
     regionName: string;
     region: string;
     location: string;
@@ -25,6 +28,12 @@ type DashboardResp = {
   contractors: { pendingApproval: number; active: number; suspended: number };
   money: { pendingPayouts: number; feesCollected: { todayCents: number; weekCents: number } };
   alerts: { stalledJobsRoutedOver24h: number; stalledAssignmentsOver72h: number; failedPayouts: number };
+  systemStatus?: { routerOnboardingFailures: number; jobsStuckOpenForRoutingOver48h: number };
+  routingUrgency?: {
+    count: number;
+    jobs: Array<{ id: string; title: string; country: string; regionCode: string; city: string | null; createdAt: string }>;
+  };
+  flaggedJobs?: Array<{ id: string; title: string | null; city: string | null; regionCode: string | null; flagCount: number }>;
 };
 
 type ContractorSignup = {
@@ -71,6 +80,14 @@ type DisputesResp = { disputes: Dispute[] };
 type StripeRevenueResp = {
   stripeRevenue: { lifetimeCents: number; monthCents: number; todayCents: number };
   pendingPayoutBalanceCents: number;
+};
+
+type FinanceReconResp = {
+  window?: { days: number; since: string };
+  transfers?: {
+    lifetime?: { totalCount?: number; sentCount?: number; failedCount?: number };
+    window?: { totalCount?: number; sentCount?: number; failedCount?: number };
+  };
 };
 
 type VisualIntegrityResp = {
@@ -122,6 +139,35 @@ function fmtMoney(cents: number): string {
   return `$${v}`;
 }
 
+function sourcePill(src: string) {
+  const upper = String(src || "").toUpperCase();
+  const tone =
+    upper === "MOCK"
+      ? { bg: "rgba(251,191,36,0.14)", border: "rgba(251,191,36,0.35)", fg: "rgba(253,230,138,0.95)" }
+      : upper === "AI_REGENERATED"
+        ? { bg: "rgba(167,139,250,0.14)", border: "rgba(167,139,250,0.35)", fg: "rgba(221,214,254,0.95)" }
+        : { bg: "rgba(34,197,94,0.14)", border: "rgba(34,197,94,0.35)", fg: "rgba(134,239,172,0.95)" };
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "5px 9px",
+        borderRadius: 999,
+        border: `1px solid ${tone.border}`,
+        background: tone.bg,
+        color: tone.fg,
+        fontSize: 12,
+        fontWeight: 900,
+        whiteSpace: "nowrap",
+      }}
+      title="Job source (DB)"
+    >
+      {upper || "—"}
+    </span>
+  );
+}
+
 async function actAsRouter(formData: FormData) {
   "use server";
   const jobId = String(formData.get("jobId") ?? "").trim();
@@ -143,6 +189,9 @@ export default async function OverviewPage({
   const sp = (await searchParams) ?? {};
   const selectedRegion = String(Array.isArray(sp.region) ? sp.region[0] : sp.region ?? "").trim().toUpperCase();
   const selectedContractorRegion = String(Array.isArray(sp.cRegion) ? sp.cRegion[0] : sp.cRegion ?? "").trim().toUpperCase();
+  const selectedJobSource = String(Array.isArray(sp.jobSource) ? sp.jobSource[0] : sp.jobSource ?? "")
+    .trim()
+    .toUpperCase();
   const ageDaysRaw = String(Array.isArray(sp.ageDays) ? sp.ageDays[0] : sp.ageDays ?? "14");
   const ageDays = Math.max(1, Math.min(365, Number(ageDaysRaw) || 14));
 
@@ -153,11 +202,12 @@ export default async function OverviewPage({
   let disputes: DisputesResp | null = null;
   let revenue: StripeRevenueResp | null = null;
   let visual: VisualIntegrityResp | null = null;
+  let financeRecon: FinanceReconResp | null = null;
   let fatalAuthError: string | null = null;
 
   try {
     // Parallel fetches (server-side). All are DB-authoritative via apps/api internal admin headers.
-    [dashboard, jobsStatus, contractors, tickets, disputes, revenue, visual] = await Promise.all([
+    [dashboard, jobsStatus, contractors, tickets, disputes, revenue, visual, financeRecon] = await Promise.all([
       adminApiFetch<DashboardResp>("/api/admin/dashboard").catch(() => null),
       adminApiFetch<JobsStatusResp>("/api/admin/jobs/status?limit=200").catch(() => null),
       adminApiFetch<ContractorsResp>("/api/admin/users/contractors").catch(() => null),
@@ -165,6 +215,7 @@ export default async function OverviewPage({
       adminApiFetch<DisputesResp>("/api/admin/support/disputes?take=20").catch(() => null),
       adminApiFetch<StripeRevenueResp>("/api/admin/stripe/revenue").catch(() => null),
       adminApiFetch<VisualIntegrityResp>(`/api/admin/jobs/visual-integrity?ageDays=${encodeURIComponent(String(ageDays))}`).catch(() => null),
+      adminApiFetch<FinanceReconResp>("/api/admin/finance/stripe-reconciliation?days=30").catch(() => null),
     ]);
   } catch (e) {
     // Missing INTERNAL_SECRET / ADMIN_ID throws synchronously inside adminApiFetch.
@@ -181,7 +232,19 @@ export default async function OverviewPage({
   ).sort();
 
   const effectiveRegion = selectedRegion && regions.includes(selectedRegion) ? selectedRegion : "";
-  const jobsFiltered = effectiveRegion ? jobs.filter((j) => String(j.region ?? "").toUpperCase() === effectiveRegion) : jobs;
+  let jobsFiltered = effectiveRegion ? jobs.filter((j) => String(j.region ?? "").toUpperCase() === effectiveRegion) : jobs;
+
+  const allowedSources = new Set(["", "REAL", "MOCK", "AI_REGENERATED"]);
+  const effectiveJobSource = allowedSources.has(selectedJobSource) ? selectedJobSource : "";
+  if (effectiveJobSource) {
+    jobsFiltered = jobsFiltered.filter((j) => String(j.jobSource ?? "").toUpperCase() === effectiveJobSource);
+  }
+
+  const sourceCounts = jobs.reduce<Record<string, number>>((acc, j) => {
+    const k = String(j.jobSource ?? "UNKNOWN").toUpperCase() || "UNKNOWN";
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const unroutedOver24h = jobsFiltered.filter((j) => {
     const published = parseIso(j.publishedAt) ?? parseIso(j.createdAt);
@@ -233,11 +296,18 @@ export default async function OverviewPage({
       <div className={styles.gridKpi}>
         <Card title="Jobs (available)">
           <div className={styles.kpiValue}>{dashboard?.jobs.available ?? "—"}</div>
-          <div className={styles.muted}>Published, not archived</div>
+          <div className={styles.muted}>ASSIGNED + awaiting routing (not archived)</div>
         </Card>
         <Card title="Pending payouts">
           <div className={styles.kpiValue}>{dashboard?.money.pendingPayouts ?? "—"}</div>
           <div className={styles.muted}>Balance: {revenue ? fmtMoney(revenue.pendingPayoutBalanceCents) : "—"}</div>
+        </Card>
+        <Card title="Finance integrity violations">
+          <div className={styles.kpiValue}>{financeRecon?.transfers?.window?.failedCount ?? "—"}</div>
+          <div className={styles.muted}>Failed transfers (finance endpoint)</div>
+          <div className={styles.muted} style={{ marginTop: 4 }}>
+            Stripe reconciliation window (30 days)
+          </div>
         </Card>
         <Card title="Support tickets">
           <div className={styles.kpiValue}>{ticketRows.length || "—"}</div>
@@ -254,8 +324,33 @@ export default async function OverviewPage({
         </Card>
       </div>
 
+      <div style={{ marginTop: 18 }}>
+        <Card title="System status">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <span style={pillStyle}>
+              Router onboarding failures:{" "}
+              <b style={{ marginLeft: 6 }}>{dashboard?.systemStatus?.routerOnboardingFailures ?? "—"}</b>
+            </span>
+            <span style={pillStyle}>
+              Open disputes: <b style={{ marginLeft: 6 }}>{activeDisputes.length}</b>
+            </span>
+            <span style={pillStyle}>
+              Jobs stuck OPEN_FOR_ROUTING &gt; 48h:{" "}
+              <b style={{ marginLeft: 6 }}>{dashboard?.systemStatus?.jobsStuckOpenForRoutingOver48h ?? "—"}</b>
+            </span>
+            <span style={pillStyle}>
+              Payout integrity violations (30d):{" "}
+              <b style={{ marginLeft: 6 }}>{financeRecon?.transfers?.window?.failedCount ?? "—"}</b>
+            </span>
+          </div>
+          <div style={{ marginTop: 10, color: "rgba(226,232,240,0.65)", fontSize: 12 }}>
+            Lightweight indicators. Use drill-down pages for diagnosis; counts are not a substitute for finance/source-of-truth.
+          </div>
+        </Card>
+      </div>
+
       {/* Quality health */}
-      <div style={{ marginTop: 24 }}>
+      <div className={styles.grid2} style={{ marginTop: 24 }}>
         <Card title="Visual integrity (quality health)">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 24 }}>
             <div>
@@ -288,6 +383,7 @@ export default async function OverviewPage({
                 <input name="ageDays" defaultValue={String(ageDays)} style={{ ...inputStyle, minWidth: 120 }} />
                 {effectiveRegion ? <input type="hidden" name="region" value={effectiveRegion} /> : null}
                 {effectiveCRegion ? <input type="hidden" name="cRegion" value={effectiveCRegion} /> : null}
+                {effectiveJobSource ? <input type="hidden" name="jobSource" value={effectiveJobSource} /> : null}
                 <button type="submit" style={buttonStyle}>
                   Update
                 </button>
@@ -317,93 +413,86 @@ export default async function OverviewPage({
             </div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 950 }}>{visual ? visual.totalJobs : "—"}</div>
-              <div style={{ marginTop: 4, color: "rgba(226,232,240,0.72)" }}>Total jobs (non-mock)</div>
+              <div style={{ marginTop: 4, color: "rgba(226,232,240,0.72)" }}>Total eligible jobs</div>
             </div>
           </div>
         </Card>
+
+        <RoutingUrgencyCard data={dashboard?.routingUrgency ?? null} />
       </div>
 
-      {/* Latest jobs + escalations */}
+      {/* Latest jobs + routing urgency */}
       <div className={styles.grid2}>
-        <Card title="Latest jobs by State/Province">
-          <form method="GET" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-            <label style={{ fontSize: 12, color: "rgba(226,232,240,0.72)" }}>Region</label>
-            <select name="region" defaultValue={effectiveRegion} style={selectStyle} aria-label="Select region">
-              <option value="">All</option>
-              {regions.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            {effectiveCRegion ? <input type="hidden" name="cRegion" value={effectiveCRegion} /> : null}
-            <button type="submit" style={buttonStyle}>
-              Apply
-            </button>
-          </form>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Card title="Latest jobs by State/Province">
+            <form method="GET" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 12, color: "rgba(226,232,240,0.72)" }}>Region</label>
+              <select name="region" defaultValue={effectiveRegion} style={selectStyle} aria-label="Select region">
+                <option value="">All</option>
+                {regions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <label style={{ fontSize: 12, color: "rgba(226,232,240,0.72)" }}>Source</label>
+              <select name="jobSource" defaultValue={effectiveJobSource} style={selectStyle} aria-label="Select job source">
+                <option value="">All</option>
+                <option value="REAL">REAL</option>
+                <option value="MOCK">MOCK</option>
+                <option value="AI_REGENERATED">AI_REGENERATED</option>
+              </select>
+              {effectiveCRegion ? <input type="hidden" name="cRegion" value={effectiveCRegion} /> : null}
+              <input type="hidden" name="ageDays" value={String(ageDays)} />
+              <button type="submit" style={buttonStyle}>
+                Apply
+              </button>
+            </form>
 
-          <Table
-            head={["Age", "Status", "Routing", "Title", "Location"]}
-            rows={jobsFiltered.slice(0, 12).map((j) => {
-              const published = parseIso(j.publishedAt) ?? parseIso(j.createdAt);
-              const ms = ageMs(published);
-              const routed = j.routingStatus === "ROUTED_BY_ROUTER" || j.routingStatus === "ROUTED_BY_ADMIN";
-              const isPublished = String(j.status ?? "") === "PUBLISHED";
-              const overdue = isPublished && !routed && ms != null && ms > 24 * 60 * 60 * 1000;
-              return {
-                key: j.id,
-                danger: overdue,
-                cols: [
-                  fmtAge(ms),
-                  String(j.status ?? ""),
-                  routed ? String(j.routingStatus) : "UNROUTED",
-                  String(j.title ?? "—"),
-                  String(j.location ?? j.regionName ?? j.region ?? "—"),
-                ],
-              };
-            })}
-          />
-        </Card>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {effectiveJobSource ? (
+                <span style={pillStyle} title="Explicit filter applied">
+                  source filter: <b style={{ marginLeft: 6 }}>{effectiveJobSource}</b>
+                </span>
+              ) : null}
+              {Object.keys(sourceCounts).length ? (
+                <span style={pillStyle} title="Counts from DB-backed /api/admin/jobs/status (not archived)">
+                  mix:{" "}
+                  <b style={{ marginLeft: 6 }}>
+                    REAL {sourceCounts.REAL ?? 0} · MOCK {sourceCounts.MOCK ?? 0} · AI {sourceCounts.AI_REGENERATED ?? 0}
+                  </b>
+                </span>
+              ) : null}
+            </div>
 
-        <Card title="Pending job escalations">
-          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12 }}>
-            Jobs &gt; 24h <b>unrouted</b> (computed server-side).
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            {unroutedOver24h.length === 0 ? (
-              <div style={{ color: "rgba(226,232,240,0.72)" }}>No escalations.</div>
-            ) : (
-              <Table
-                head={["Age", "Region", "Title", "Action"]}
-                rows={unroutedOver24h.slice(0, 10).map((j) => {
-                  const published = parseIso(j.publishedAt) ?? parseIso(j.createdAt);
-                  const ms = ageMs(published);
-                  return {
-                    key: j.id,
-                    danger: true,
-                    cols: [
-                      fmtAge(ms),
-                      String(j.region ?? "—"),
-                      String(j.title ?? "—"),
-                      <form key={j.id} action={actAsRouter}>
-                        <input type="hidden" name="jobId" value={j.id} />
-                        {effectiveRegion ? <input type="hidden" name="region" value={effectiveRegion} /> : null}
-                        <button type="submit" style={miniDangerButtonStyle}>
-                          Act as Router
-                        </button>
-                      </form>,
-                    ],
-                  };
-                })}
-              />
-            )}
-          </div>
-        </Card>
+            <Table
+              head={["Age", "Status", "Source", "Routing", "Title", "Location"]}
+              rows={jobsFiltered.slice(0, 12).map((j) => {
+                const published = parseIso(j.publishedAt) ?? parseIso(j.createdAt);
+                const ms = ageMs(published);
+                const routed = j.routingStatus === "ROUTED_BY_ROUTER" || j.routingStatus === "ROUTED_BY_ADMIN";
+                const isPublished = String(j.status ?? "") === "PUBLISHED";
+                const overdue = isPublished && !routed && ms != null && ms > 24 * 60 * 60 * 1000;
+                return {
+                  key: j.id,
+                  danger: overdue,
+                  cols: [
+                    fmtAge(ms),
+                    String(j.status ?? ""),
+                    sourcePill(j.jobSource),
+                    routed ? String(j.routingStatus) : "UNROUTED",
+                    String(j.title ?? "—"),
+                    String(j.location ?? j.regionName ?? j.region ?? "—"),
+                  ],
+                };
+              })}
+            />
+          </Card>
+        </div>
       </div>
 
-      {/* Contractors + tickets + disputes */}
-      <div className={styles.grid3}>
+      {/* Row 1: contractors + tickets */}
+      <div className={styles.grid2}>
         <Card title="Latest contractors signed-up">
           <form method="GET" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12, color: "rgba(226,232,240,0.72)" }}>Region</label>
@@ -416,6 +505,8 @@ export default async function OverviewPage({
               ))}
             </select>
             {effectiveRegion ? <input type="hidden" name="region" value={effectiveRegion} /> : null}
+            {effectiveJobSource ? <input type="hidden" name="jobSource" value={effectiveJobSource} /> : null}
+            <input type="hidden" name="ageDays" value={String(ageDays)} />
             <button type="submit" style={buttonStyle}>
               Apply
             </button>
@@ -458,7 +549,10 @@ export default async function OverviewPage({
             />
           </div>
         </Card>
+      </div>
 
+      {/* Row 2: disputes + flagged jobs */}
+      <div className={styles.grid2} style={{ marginTop: 24 }}>
         <Card title="Active disputes">
           <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12 }}>Showing non-decided disputes.</div>
           <div style={{ marginTop: 10 }}>
@@ -485,6 +579,8 @@ export default async function OverviewPage({
             )}
           </div>
         </Card>
+
+        <FlaggedJobsCard jobs={dashboard?.flaggedJobs ?? []} />
       </div>
     </div>
   );

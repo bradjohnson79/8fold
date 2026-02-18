@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { db } from "@/db/drizzle";
@@ -29,8 +29,16 @@ export async function GET(req: Request) {
     const includeArchived = parsed.data.includeArchived ?? false;
     const cutoff = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
 
-    const base: any[] = [eq(jobs.isMock, false)];
+    // Admin overview should match the routing pool (includes mocks in local dev).
+    // ACTIVE_STATUSES: ASSIGNED + CUSTOMER_APPROVED_AWAITING_ROUTER (mapped).
+    const base: any[] = [];
     if (!includeArchived) base.push(eq(jobs.archived, false));
+    base.push(
+      or(
+        eq(jobs.status, "ASSIGNED" as any),
+        and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
+      ),
+    );
     const baseWhere = base.length ? and(...base) : undefined;
 
     const [totalRes, olderRes, unroutedRes, missingScopeRes, missingTradeRes, withImagesRes, titlesRes] = await Promise.all([
@@ -38,11 +46,11 @@ export async function GET(req: Request) {
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(baseWhere, eq(jobs.status, "PUBLISHED"), lt(jobs.publishedAt, cutoff))),
+        .where(and(baseWhere, lt(jobs.createdAt, cutoff))),
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(baseWhere, eq(jobs.status, "PUBLISHED"), eq(jobs.routingStatus, "UNROUTED"))),
+        .where(and(baseWhere, eq(jobs.routingStatus, "UNROUTED"))),
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)

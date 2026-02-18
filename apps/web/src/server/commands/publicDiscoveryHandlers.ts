@@ -9,6 +9,7 @@ type JobsByLocationPayload = {
   limit?: number | string | null;
 };
 type CitiesWithJobsPayload = { country?: "US" | "CA" | string | null; regionCode?: string | null };
+type FlagJobPayload = { jobId?: string | null; reason?: string | null };
 
 function unwrapOkData(json: any): any {
   if (json && typeof json === "object" && "data" in json) return (json as any).data;
@@ -25,12 +26,40 @@ async function fetchJson(path: string): Promise<any> {
   return unwrapOkData(json);
 }
 
-export function registerPublicDiscoveryHandlers() {
-  const KEY = "__ROME_PUBLIC_DISCOVERY_HANDLERS__";
-  if ((globalThis as any)[KEY]) return;
-  (globalThis as any)[KEY] = true;
+async function postJson(path: string, body: unknown): Promise<any> {
+  const resp = await apiFetch({
+    path,
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const msg = typeof json?.error === "string" ? json.error : `Upstream error (${resp.status})`;
+    throw Object.assign(new Error(msg), { status: resp.status });
+  }
+  return unwrapOkData(json);
+}
 
-  bus.register("public.jobs.recent", async ({ payload }: { payload: RecentJobsPayload }) => {
+export function registerPublicDiscoveryHandlers() {
+  // In dev, module hot-reload keeps `globalThis` but reloads modules.
+  // If we guard registration with a single boolean, newly-added handlers won't
+  // be registered until a full server restart. Instead, attempt to register and
+  // ignore duplicate-registration errors.
+  function safeRegister<TPayload, TResult>(
+    type: string,
+    handler: (args: { payload: TPayload }) => Promise<TResult>,
+  ) {
+    try {
+      bus.register(type as any, handler as any);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("Handler already registered for:")) return;
+      throw e;
+    }
+  }
+
+  safeRegister("public.jobs.recent", async ({ payload }: { payload: RecentJobsPayload }) => {
     const qs = new URLSearchParams();
     if (payload?.limit != null) qs.set("limit", String(payload.limit));
     const data = await fetchJson(`/api/public/jobs/recent${qs.toString() ? `?${qs.toString()}` : ""}`);
@@ -38,7 +67,7 @@ export function registerPublicDiscoveryHandlers() {
     return { ok: true, jobs };
   });
 
-  bus.register("public.jobs.byLocation", async ({ payload }: { payload: JobsByLocationPayload }) => {
+  safeRegister("public.jobs.byLocation", async ({ payload }: { payload: JobsByLocationPayload }) => {
     const qs = new URLSearchParams();
     if (payload?.country) qs.set("country", String(payload.country));
     if (payload?.regionCode) qs.set("regionCode", String(payload.regionCode));
@@ -49,12 +78,12 @@ export function registerPublicDiscoveryHandlers() {
     return { ok: true, jobs };
   });
 
-  bus.register("public.locations.regionsWithJobs", async () => {
+  safeRegister("public.locations.regionsWithJobs", async () => {
     // apps/api returns an array already.
     return await fetchJson("/api/public/locations/regions-with-jobs");
   });
 
-  bus.register("public.locations.citiesWithJobs", async ({ payload }: { payload: CitiesWithJobsPayload }) => {
+  safeRegister("public.locations.citiesWithJobs", async ({ payload }: { payload: CitiesWithJobsPayload }) => {
     const qs = new URLSearchParams();
     if (payload?.country) qs.set("country", String(payload.country));
     if (payload?.regionCode) qs.set("regionCode", String(payload.regionCode));
@@ -62,6 +91,14 @@ export function registerPublicDiscoveryHandlers() {
       ? await fetchJson(`/api/public/locations/cities-with-jobs?${qs.toString()}`)
       : [];
     return out;
+  });
+
+  safeRegister("public.jobs.flag", async ({ payload }: { payload: FlagJobPayload }) => {
+    const jobId = String(payload?.jobId ?? "").trim();
+    const reason = String(payload?.reason ?? "").trim();
+    if (!jobId || !reason) return { ok: false, error: "Missing jobId or reason" };
+    await postJson("/api/public/jobs/flag", { jobId, reason });
+    return { ok: true };
   });
 }
 

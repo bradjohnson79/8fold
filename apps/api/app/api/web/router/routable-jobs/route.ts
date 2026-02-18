@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
-import { fail, ok } from "../../../../../src/lib/api/respond";
+import { ok } from "../../../../../src/lib/api/respond";
 import { db } from "../../../../../db/drizzle";
 import { jobDispatches } from "../../../../../db/schema/jobDispatch";
 import { jobs } from "../../../../../db/schema/job";
@@ -10,9 +10,9 @@ import { routers } from "../../../../../db/schema/router";
 
 export async function GET(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
 
     const routerRows = await db
       .select({
@@ -25,11 +25,10 @@ export async function GET(req: Request) {
       .limit(1);
 
     const routerRow = routerRows[0] ?? null;
-    if (!routerRow || routerRow.status !== "ACTIVE") {
-      return fail(403, "router_not_provisioned");
-    }
+    if (!routerRow) return ok({ jobs: [] });
     if (!String(routerRow.homeRegionCode ?? "").trim()) {
-      return ok({ blocked: true, missing: ["HOME_REGION"], jobs: [] });
+      // Should be unreachable: profile completeness is required by requireRouterActive().
+      return ok({ jobs: [] });
     }
 
     // Keep the marketplace fresh: expire stale routing + recycle jobs back to OPEN automatically.

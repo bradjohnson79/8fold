@@ -1,4 +1,4 @@
-import { requireSession, type Session } from "./requireSession";
+import { requireSession, type Session } from "./meSession";
 
 function isAdminRole(roleRaw: string): boolean {
   const r = String(roleRaw ?? "").trim().toUpperCase();

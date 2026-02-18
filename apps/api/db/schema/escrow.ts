@@ -19,6 +19,7 @@ export const escrows = dbSchema.table("Escrow", {
   stripeCheckoutSessionId: text("stripeCheckoutSessionId").unique(),
   stripePaymentIntentId: text("stripePaymentIntentId").unique(),
   webhookProcessedAt: timestamp("webhookProcessedAt", { mode: "date" }),
+  releasedAt: timestamp("releasedAt", { mode: "date" }),
 
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),

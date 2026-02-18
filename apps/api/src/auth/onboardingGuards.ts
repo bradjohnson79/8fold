@@ -9,8 +9,7 @@ import { db } from "@/server/db/drizzle";
 import { auditLogs } from "../../db/schema/auditLog";
 import { contractorAccounts } from "../../db/schema/contractorAccount";
 import { jobPosterProfiles } from "../../db/schema/jobPosterProfile";
-import { routers } from "../../db/schema/router";
-import { requireContractor, requireJobPoster, requireRouter } from "./rbac";
+import { requireContractor, requireJobPoster } from "./rbac";
 import type { ApiAuthedUser } from "./rbac";
 import { toHttpError } from "../http/errors";
 import { incCounter } from "../server/observability/metrics";
@@ -146,67 +145,6 @@ export async function requireJobPosterReady(
         missingFields,
         acceptedCurrent,
         profileComplete,
-      },
-    );
-  }
-
-  return user;
-}
-
-/**
- * Router: termsAccepted + profileComplete on routers table.
- * Use for: routable-jobs, routed-jobs, apply-routing, contractors/eligible, dashboard.
- * Exclude: router/terms/accept, router/profile (used to complete onboarding).
- */
-export async function requireRouterReady(
-  req: Request
-): Promise<ApiAuthedUser | NextResponse> {
-  let user: ApiAuthedUser;
-  try {
-    user = await requireRouter(req);
-  } catch (err) {
-    const { status, message, code, context } = toHttpError(err);
-    return NextResponse.json({ ok: false, error: message, code, context }, { status });
-  }
-
-  const route = new URL(req.url).pathname;
-  const method = req.method;
-
-  const routerRows = await db
-    .select({
-      termsAccepted: routers.termsAccepted,
-      profileComplete: routers.profileComplete,
-    })
-    .from(routers)
-    .where(eq(routers.userId, user.userId))
-    .limit(1);
-  const router = routerRows[0] ?? null;
-
-  const termsAccepted = Boolean(router?.termsAccepted);
-  const profileCompleteRouter = Boolean(router?.profileComplete);
-  const ready = Boolean(router) && termsAccepted && profileCompleteRouter;
-  if (!ready) {
-    return onboardingNotReady(
-      {
-        ok: true,
-        ready: false,
-        code: "ONBOARDING_INCOMPLETE",
-        role: "ROUTER",
-        onboardingRoute: "/app/router",
-        termsAccepted,
-        profileCompleteRouter,
-      },
-      {
-        role: "ROUTER",
-        userId: user.userId,
-        route,
-        method,
-        missing: [
-          !termsAccepted ? "TERMS" : null,
-          !profileCompleteRouter ? "PROFILE" : null,
-        ].filter(Boolean),
-        termsAccepted,
-        profileComplete: profileCompleteRouter,
       },
     );
   }

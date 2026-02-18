@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
@@ -27,9 +27,9 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
     await ensureActiveAccount(router.userId);
     let raw: unknown = {};
     try {
@@ -53,9 +53,8 @@ export async function POST(req: Request) {
         .where(eq(routers.userId, router.userId))
         .limit(1);
       const routerRow = routerRows[0] ?? null;
-      if (!routerRow || routerRow.status !== "ACTIVE") return { kind: "forbidden" as const };
-
-      if (!String(routerRow.homeRegionCode ?? "").trim()) return { kind: "blocked" as const, missing: ["HOME_REGION"] };
+      if (!routerRow) return { kind: "forbidden" as const };
+      if (!String(routerRow.homeRegionCode ?? "").trim()) return { kind: "forbidden" as const };
 
       const jobRows = await tx
         .select({
@@ -210,8 +209,6 @@ export async function POST(req: Request) {
     });
 
     if (result.kind === "not_found") return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (result.kind === "blocked")
-      return NextResponse.json({ error: "Router not eligible", blocked: true, missing: result.missing }, { status: 403 });
     if (result.kind === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (result.kind === "job_archived") return NextResponse.json({ error: "Archived jobs cannot be routed" }, { status: 409 });
     if (result.kind === "job_not_available") return NextResponse.json({ error: "Job not available" }, { status: 409 });

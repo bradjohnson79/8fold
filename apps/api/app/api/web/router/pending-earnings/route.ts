@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { db } from "../../../../../db/drizzle";
 import { jobs } from "../../../../../db/schema/job";
@@ -17,9 +17,9 @@ const PENDING_EARNING_STATUSES = [
 
 export async function GET(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
 
     const jobRows = await db
       .select({ routerEarningsCents: jobs.routerEarningsCents })

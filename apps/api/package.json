@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "audit:finance": "DOTENV_CONFIG_PATH=.env.local pnpm exec tsx -r dotenv/config src/payouts/auditFinanceCi.ts",
     "db:verify": "tsx scripts/verifyDbSchema.ts",
     "remove-mock-actors": "tsx scripts/remove-mock-actors.ts",
     "financial-db-introspect": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/financial-db-introspect.ts",

@@ -102,6 +102,44 @@ if (adminBad.length) {
   );
 }
 
+// ---- Rule E: DISE routes must remain operationally isolated ----
+// DISE isolation contract:
+// - Must not couple to job lifecycle, ledger, or Stripe/payments.
+// - Must not import non-DISE schemas in DISE routes (DB writes/read must be via directoryEngine tables only).
+//
+// We scan import strings (not full AST) intentionally to keep this check dependency-free.
+const diseRouteDirs = [
+  path.join(ROOT, "apps/api/app/api/dise"),
+  path.join(ROOT, "apps/dise/src/app/api/dise"),
+];
+const diseFiles = diseRouteDirs.flatMap((d) => walk(d, [".ts", ".tsx", ".js", ".jsx"]));
+
+const diseForbiddenImports: RegExp[] = [
+  // Schema boundary: only allow directoryEngine in DISE routes
+  /from\s+["']@\/db\/schema\/(?!directoryEngine\b)[^"']+["']/,
+
+  // No job lifecycle coupling
+  /from\s+["']@\/.*\bjobs?\b[^"']*["']/,
+
+  // No ledger coupling
+  /from\s+["']@\/.*\bledger\b[^"']*["']/,
+
+  // No Stripe / payments coupling (direct + common internal modules)
+  /from\s+["']stripe\b["']/,
+  /from\s+["']@\/.*\bstripe\b[^"']*["']/,
+  /from\s+["']@\/.*\bpayments?\b[^"']*["']/,
+  /from\s+["']@\/.*\bpayouts?\b[^"']*["']/,
+  /from\s+["']@\/.*\bwebhooks?\b[^"']*["']/,
+];
+
+const diseBad = diseFiles.filter((f) => fileContains(f, diseForbiddenImports));
+if (diseBad.length) {
+  fail(
+    "DISE routes must not import jobs/ledger/stripe/payments, and must only import DB schema from @/db/schema/directoryEngine",
+    diseBad.map(rel)
+  );
+}
+
 // ---- Rule D: canonical db file must exist in apps/api ----
 const canonicalDb = path.join(ROOT, "apps/api/src/server/db/drizzle.ts");
 if (!fs.existsSync(canonicalDb)) {

@@ -47,11 +47,11 @@ export async function maybeCreateRouterReferralRewardForUser(opts: {
   if (!rUser || asUpper(rUser.role) !== "ROUTER") return { created: false };
 
   const rRows = await tx
-    .select({ id: routers.id, status: routers.status })
+    .select({ userId: routers.userId, status: routers.status })
     .from(routers)
     .where(and(eq(routers.userId, referredBy), eq(routers.status, "ACTIVE" as any)))
     .limit(1);
-  if (!rRows[0]?.id) return { created: false };
+  if (!rRows[0]?.userId) return { created: false };
 
   // "First completed job" guard: only issue reward for first COMPLETED_APPROVED job.
   // Note: We check against existing completed jobs before this one.

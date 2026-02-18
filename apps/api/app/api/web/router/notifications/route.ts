@@ -1,4 +1,4 @@
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { ok } from "../../../../../src/lib/api/respond";
 import { db } from "../../../../../db/drizzle";
@@ -7,9 +7,9 @@ import { notificationDeliveries } from "../../../../../db/schema/notificationDel
 
 export async function GET(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
     const rows = await db
       .select({
         id: notificationDeliveries.id,

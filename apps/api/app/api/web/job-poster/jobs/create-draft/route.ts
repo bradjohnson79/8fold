@@ -15,7 +15,7 @@ import { geocodeAddress } from "../../../../../../src/jobs/location";
 import { calculatePayoutBreakdown } from "@8fold/shared";
 import { PRICING_VERSION } from "../../../../../../src/pricing/constants";
 import { rateLimit } from "../../../../../../src/middleware/rateLimit";
-import { getRegionName } from "../../../../../../src/locations/datasets";
+import { getRegionDatasets, getRegionName } from "../../../../../../src/locations/datasets";
 import { validateAndNormalizePostalCode } from "../../../../../../src/locations/postal";
 import { ensureActiveAccount } from "../../../../../../src/server/accountGuard";
 
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     } = parsed.data;
 
     const city = addr.city;
-    const stateProvince = addr.provinceOrState;
+    const stateProvinceRaw = addr.provinceOrState;
     const address = addr.street;
     const postalCode = addr.postalCode ?? "";
     const junkHaulingItems = (items ?? []).map((it: any) => ({
@@ -94,8 +94,26 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate location matches profile
-    const locationCheck = validateJobLocationMatchesProfile(stateProvince, profile.stateProvince);
+    function canonicalRegionCode(country: "CA" | "US", v: string): string {
+      const raw = String(v ?? "").trim();
+      if (!raw) return "";
+      const norm = raw.toUpperCase().replace(/[\s._-]+/g, "");
+      const dataset = getRegionDatasets().find((d) => d.country === country);
+      if (!dataset) return raw.toUpperCase();
+      // Accept both "BC" and "British Columbia" (and similar).
+      for (const r of dataset.regions) {
+        const codeNorm = String(r.regionCode).toUpperCase().replace(/[\s._-]+/g, "");
+        const nameNorm = String(r.regionName).toUpperCase().replace(/[\s._-]+/g, "");
+        if (norm === codeNorm || norm === nameNorm) return String(r.regionCode).toUpperCase();
+      }
+      return raw.toUpperCase();
+    }
+
+    const stateProvince = canonicalRegionCode(country2, stateProvinceRaw);
+    const profileProvince = canonicalRegionCode(country2, String(profile.stateProvince ?? ""));
+
+    // Validate location matches profile (canonicalized to 2-letter code when possible).
+    const locationCheck = validateJobLocationMatchesProfile(stateProvince, profileProvince);
     if (!locationCheck.valid) {
       return NextResponse.json(
         { error: locationCheck.error },
@@ -198,7 +216,8 @@ export async function POST(req: Request) {
             id: crypto.randomUUID(),
             jobId,
             kind: "CUSTOMER_SCOPE",
-            actor: "JOB_POSTER",
+            // Postgres enum `JobPhotoActor` is { CUSTOMER, CONTRACTOR } in current DB snapshots.
+            actor: "CUSTOMER",
             url,
             metadata: { label: "JOB_POSTING_DRAFT", city, stateProvince } as any,
             createdAt: new Date(),

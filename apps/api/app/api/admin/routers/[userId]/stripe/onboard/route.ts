@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import crypto from "node:crypto";
+import { and, desc, eq } from "drizzle-orm";
 import { stripe } from "@/src/stripe/stripe";
 import { db } from "@/db/drizzle";
-import { routerProfiles } from "@/db/schema/routerProfile";
+import { payoutMethods } from "@/db/schema/payoutMethod";
+import { users } from "@/db/schema/user";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 
@@ -36,22 +38,52 @@ export async function POST(req: Request) {
     const refreshUrl = requireUrl("STRIPE_REFRESH_URL");
     const returnUrl = requireUrl("STRIPE_RETURN_URL");
 
-    const rows = await db
-      .select({ id: routerProfiles.id, stripeAccountId: routerProfiles.stripeAccountId })
-      .from(routerProfiles)
-      .where(eq(routerProfiles.userId, userId))
-      .limit(1);
-    const rp = rows[0] ?? null;
-    if (!rp) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    const [pm, userRow] = await Promise.all([
+      db
+        .select({ details: payoutMethods.details })
+        .from(payoutMethods)
+        .where(and(eq(payoutMethods.userId, userId), eq(payoutMethods.provider, "STRIPE" as any)))
+        .orderBy(desc(payoutMethods.createdAt))
+        .limit(1)
+        .then((r) => r[0] ?? null),
+      db
+        .select({ country: users.country, email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1)
+        .then((r) => r[0] ?? null),
+    ]);
 
-    let accountId = rp.stripeAccountId ? String(rp.stripeAccountId) : "";
+    const currency = String(userRow?.country ?? "US").toUpperCase() === "CA" ? "CAD" : "USD";
+    let accountId = String((pm?.details as any)?.stripeAccountId ?? "").trim();
+
     if (!accountId) {
       const acct = await s.accounts.create({
         type: "express",
+        email: userRow?.email ?? undefined,
+        capabilities: { transfers: { requested: true } },
         metadata: { type: "router", userId },
       });
       accountId = acct.id;
-      await db.update(routerProfiles).set({ stripeAccountId: accountId } as any).where(eq(routerProfiles.id, rp.id));
+
+      const now = new Date();
+      await db.transaction(async (tx) => {
+        // One active payout method per currency: deactivate existing
+        await tx
+          .update(payoutMethods)
+          .set({ isActive: false, updatedAt: now })
+          .where(and(eq(payoutMethods.userId, userId), eq(payoutMethods.currency, currency as any), eq(payoutMethods.isActive, true)));
+
+        await tx.insert(payoutMethods).values({
+          id: crypto.randomUUID(),
+          userId,
+          currency: currency as any,
+          provider: "STRIPE" as any,
+          isActive: true,
+          details: { stripeAccountId: accountId } as any,
+          updatedAt: now,
+        } as any);
+      });
     }
 
     const link = await s.accountLinks.create({

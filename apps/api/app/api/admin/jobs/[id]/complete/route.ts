@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { badRequest, fail, ok } from "@/src/lib/api/respond";
 import { assertJobTransition } from "../../../../../../src/jobs/jobTransitions";
-import { getOrCreatePlatformUserId } from "../../../../../../src/system/platformUser";
+import { releaseJobFunds } from "../../../../../../src/payouts/releaseJobFunds";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -11,9 +10,9 @@ import { db } from "../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../db/schema/auditLog";
 import { jobs } from "../../../../../../db/schema/job";
 import { jobAssignments } from "../../../../../../db/schema/jobAssignment";
-import { ledgerEntries } from "../../../../../../db/schema/ledgerEntry";
 import { routers } from "../../../../../../db/schema/router";
 import { readJsonBody } from "@/src/lib/api/readJsonBody";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../_lib/adminTier";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -23,11 +22,15 @@ function getIdFromUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_SUPER");
+  if (forbidden) return forbidden;
 
   try {
     const jobId = getIdFromUrl(req);
+    const url = new URL(req.url);
+    const dryRun = String(url.searchParams.get("dryRun") ?? "").toLowerCase() === "true";
 
     const BodySchema = z.object({
       override: z.literal(true),
@@ -41,8 +44,6 @@ export async function POST(req: Request) {
     }
 
     const result = await db.transaction(async (tx: any) => {
-      const platformUserId = await getOrCreatePlatformUserId(tx as any);
-
       const jobRows = await tx
         .select({
           id: jobs.id,
@@ -51,6 +52,12 @@ export async function POST(req: Request) {
           routerUserId: jobs.claimedByUserId,
           routerEarningsCents: jobs.routerEarningsCents,
           brokerFeeCents: jobs.brokerFeeCents,
+          contractorPayoutCents: jobs.contractorPayoutCents,
+          amountCents: jobs.amountCents,
+          paymentStatus: jobs.paymentStatus,
+          payoutStatus: jobs.payoutStatus,
+          fundedAt: jobs.fundedAt,
+          releasedAt: jobs.releasedAt,
         })
         .from(jobs)
         .where(eq(jobs.id, jobId))
@@ -68,7 +75,11 @@ export async function POST(req: Request) {
 
       // Admin is not a shortcut: this endpoint is an explicit OVERRIDE only.
       // Require the job to already be CUSTOMER_APPROVED; then admin can override the final router approval.
-      assertJobTransition(job.status, "COMPLETED_APPROVED");
+      try {
+        assertJobTransition(job.status, "COMPLETED_APPROVED");
+      } catch (e) {
+        return { kind: "invalid_transition" as const, message: e instanceof Error ? e.message : "invalid_transition" };
+      }
 
       const assignmentRows = await tx
         .select({ id: jobAssignments.id, status: jobAssignments.status })
@@ -77,6 +88,31 @@ export async function POST(req: Request) {
         .limit(1);
       const assignment = assignmentRows[0] ?? null;
       if (!assignment) return { kind: "no_assignment" as const };
+
+      if (dryRun) {
+        return {
+          kind: "dry_run" as const,
+          preview: {
+            action: "FORCE_APPROVE",
+            willMutate: false,
+            willRelease: true,
+            escrowAmountCents: Number(job.amountCents ?? 0),
+            payoutLegs: [
+              { role: "CONTRACTOR", amountCents: Number(job.contractorPayoutCents ?? 0) },
+              { role: "ROUTER", amountCents: Number(job.routerEarningsCents ?? 0) },
+              { role: "PLATFORM_FEE", amountCents: Number(job.brokerFeeCents ?? 0) },
+            ],
+            current: {
+              status: String(job.status ?? ""),
+              paymentStatus: String(job.paymentStatus ?? ""),
+              payoutStatus: String(job.payoutStatus ?? ""),
+              fundedAt: job.fundedAt ? (job.fundedAt as Date).toISOString() : null,
+              releasedAt: job.releasedAt ? (job.releasedAt as Date).toISOString() : null,
+            },
+            notes: ["Dry run does not mutate DB or trigger Stripe/release engine."],
+          },
+        };
+      }
 
       const now = new Date();
       await tx
@@ -95,33 +131,9 @@ export async function POST(req: Request) {
         .returning();
       const updatedJob = updatedJobRows[0] as any;
 
-      // Router earning becomes AVAILABLE after completion is approved (override).
-      await tx.insert(ledgerEntries).values({
-        id: crypto.randomUUID(),
-        userId: job.routerUserId,
-        jobId,
-        type: "ROUTER_EARNING",
-        direction: "CREDIT",
-        bucket: "AVAILABLE",
-        amountCents: job.routerEarningsCents,
-        memo: "Router earning (completion approved via admin override)",
-      } as any);
-
-      // Broker fee recorded in platform ledger (internal accounting).
-      await tx.insert(ledgerEntries).values({
-        id: crypto.randomUUID(),
-        userId: platformUserId,
-        jobId,
-        type: "BROKER_FEE",
-        direction: "CREDIT",
-        bucket: "AVAILABLE",
-        amountCents: job.brokerFeeCents,
-        memo: "Broker fee (completion approved via admin override)",
-      } as any);
-
       await tx.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "JOB_ADMIN_OVERRIDE_COMPLETE_APPROVED",
         entityType: "Job",
         entityId: jobId,
@@ -142,15 +154,27 @@ export async function POST(req: Request) {
       return { kind: "ok" as const, job: updatedJob };
     });
 
+    if (result.kind === "dry_run") return ok({ preview: (result as any).preview });
     if (result.kind === "not_found") return fail(404, "not_found");
     if (result.kind === "mock_job") return fail(409, "mock_job_cannot_complete");
     if (result.kind === "no_router") return fail(409, "job_has_no_router");
     if (result.kind === "no_assignment") return fail(409, "job_not_assigned");
     if (result.kind === "materials_pending") return fail(409, "materials_request_pending");
+    if (result.kind === "invalid_transition") return fail(409, (result as any).message ?? "invalid_transition");
+
+    // Release funds (best-effort; completion approval is authoritative even if payout fails).
+    try {
+      await releaseJobFunds({ jobId: String((result as any).job?.id ?? jobId), triggeredByUserId: identity.userId });
+    } catch {
+      // Failure is reflected via TransferRecord + Job.payoutStatus.
+    }
 
     return ok({ job: result.job });
   } catch (err) {
-    return handleApiError(err, "POST /api/admin/jobs/:id/complete", { route: "/api/admin/jobs/[id]/complete", userId: auth.userId });
+    return handleApiError(err, "POST /api/admin/jobs/:id/complete", {
+      route: "/api/admin/jobs/[id]/complete",
+      userId: identity.userId,
+    });
   }
 }
 

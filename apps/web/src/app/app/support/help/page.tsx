@@ -12,14 +12,6 @@ type Category =
   | "PAYOUTS"
   | "OTHER";
 
-type RoleContext = "JOB_POSTER" | "ROUTER" | "CONTRACTOR";
-
-function roleContextFromWebRole(webRole: string | null): RoleContext {
-  if (webRole === "router") return "ROUTER";
-  if (webRole === "contractor") return "CONTRACTOR";
-  return "JOB_POSTER";
-}
-
 export default function GetHelpPage() {
   const router = useRouter();
   const path = usePathname();
@@ -32,20 +24,6 @@ export default function GetHelpPage() {
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
 
-  const [role, setRole] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      const resp = await fetch("/api/app/me", { cache: "no-store" });
-      const json = (await resp.json().catch(() => null)) as any;
-      if (!alive) return;
-      setRole(json?.role ?? null);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   const [category, setCategory] = React.useState<Category>("OTHER");
   const [subject, setSubject] = React.useState("");
   const [message, setMessage] = React.useState("");
@@ -56,10 +34,7 @@ export default function GetHelpPage() {
     setNotice("");
     try {
       const body = {
-        type: "HELP",
         category,
-        priority: "NORMAL",
-        roleContext: roleContextFromWebRole(role),
         subject: subject.trim(),
         message: message.trim(),
       };
@@ -73,7 +48,7 @@ export default function GetHelpPage() {
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(json?.error ?? "Failed to create ticket");
 
-      const ticketId = json?.ticket?.id as string | undefined;
+      const ticketId = (json?.data?.ticket?.id ?? json?.ticket?.id) as string | undefined;
       setNotice("Submitted.");
       if (ticketId) router.push(`${base}/tickets/${ticketId}`);
       else router.push(`${base}/history`);

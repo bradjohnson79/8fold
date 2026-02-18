@@ -16,6 +16,7 @@ export const jobPosterProfiles = dbSchema.table("JobPosterProfile", {
   address: text("address"),
   city: text("city").notNull(),
   stateProvince: text("stateProvince").notNull(),
+  postalCode: text("postalCode"),
   country: countryCodeEnum("country").notNull().default("US"),
   lat: doublePrecision("lat"),
   lng: doublePrecision("lng"),

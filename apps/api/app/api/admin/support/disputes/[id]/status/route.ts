@@ -16,9 +16,30 @@ function getIdFromUrl(req: Request): string {
   return parts[idx] ?? "";
 }
 
+const OpsStatusSchema = z.enum(["OPEN", "UNDER_REVIEW", "DECIDED", "CLOSED"]);
 const BodySchema = z.object({
-  status: z.enum(["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFO", "DECIDED", "CLOSED"]),
+  status: OpsStatusSchema,
 });
+
+function toDbStatus(s: z.infer<typeof OpsStatusSchema>): "SUBMITTED" | "UNDER_REVIEW" | "DECIDED" | "CLOSED" {
+  if (s === "OPEN") return "SUBMITTED";
+  return s;
+}
+
+function isAllowedTransition(from: string, to: string): boolean {
+  // Deterministic state machine (API layer):
+  // OPEN (SUBMITTED) -> UNDER_REVIEW | DECIDED | CLOSED
+  // UNDER_REVIEW (UNDER_REVIEW/NEEDS_INFO) -> UNDER_REVIEW | DECIDED | CLOSED
+  // DECIDED -> CLOSED
+  // CLOSED -> CLOSED (idempotent only)
+  const f = from === "NEEDS_INFO" ? "UNDER_REVIEW" : from === "SUBMITTED" ? "OPEN" : from;
+  const t = to === "SUBMITTED" ? "OPEN" : to;
+  if (f === "CLOSED") return t === "CLOSED";
+  if (f === "DECIDED") return t === "DECIDED" || t === "CLOSED";
+  if (f === "UNDER_REVIEW") return t === "UNDER_REVIEW" || t === "DECIDED" || t === "CLOSED";
+  if (f === "OPEN") return t === "OPEN" || t === "UNDER_REVIEW" || t === "DECIDED" || t === "CLOSED";
+  return false;
+}
 
 export async function POST(req: Request) {
   const auth = await requireAdminOrSeniorRouter(req);
@@ -37,11 +58,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Only Admin can finalize/close disputes" }, { status: 403 });
     }
 
+    const nextDbStatus = toDbStatus(body.data.status);
+
     const updated = await db.transaction(async (tx: any) => {
       const now = new Date();
+      const existing = await tx
+        .select({ id: disputeCases.id, status: disputeCases.status, ticketId: disputeCases.ticketId })
+        .from(disputeCases)
+        .where(eq(disputeCases.id, id))
+        .limit(1);
+      const prev = existing[0] ?? null;
+      if (!prev) throw Object.assign(new Error("Not found"), { status: 404 });
+      if (!isAllowedTransition(String(prev.status ?? ""), String(nextDbStatus))) {
+        throw Object.assign(new Error("Invalid dispute status transition"), { status: 409, code: "invalid_transition" });
+      }
+
       const updatedRows = await tx
         .update(disputeCases)
-        .set({ status: body.data.status as any, updatedAt: now } as any)
+        .set({ status: nextDbStatus as any, updatedAt: now } as any)
         .where(eq(disputeCases.id, id))
         .returning({ id: disputeCases.id, status: disputeCases.status, updatedAt: disputeCases.updatedAt, ticketId: disputeCases.ticketId });
       const d = updatedRows[0] ?? null;

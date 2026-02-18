@@ -3,13 +3,8 @@
 import React from "react";
 import { PayoutMethodSetup } from "../../../../../components/PayoutMethodSetup";
 import { TradeCategoryLabel, TradeCategorySchema } from "@8fold/shared";
-import { OnboardingProgressBar } from "@/components/onboarding/OnboardingProgressBar";
-
-type AddressResult = {
-  place_id: string | number | null;
-  display_name: string;
-  address: any | null;
-};
+import { ProgressSteps } from "@/components/ProgressSteps";
+import { GeoAutocomplete, type GeoAutocompleteResult } from "@/components/GeoAutocomplete";
 
 type ContractorProfile = {
   // identity
@@ -19,8 +14,6 @@ type ContractorProfile = {
   businessNumber: string;
 
   // address
-  addressMode: "SEARCH" | "MANUAL";
-  addressSearchDisplayName: string;
   address1: string;
   address2: string;
   apt: string;
@@ -77,8 +70,6 @@ export default function ContractorProfilePage() {
     lastName: "",
     businessName: "",
     businessNumber: "",
-    addressMode: "SEARCH",
-    addressSearchDisplayName: "",
     address1: "",
     address2: "",
     apt: "",
@@ -94,6 +85,10 @@ export default function ContractorProfilePage() {
     wizardCompleted: false,
   });
 
+  const [mapDisplayName, setMapDisplayName] = React.useState("");
+  const [mapLat, setMapLat] = React.useState<number>(0);
+  const [mapLng, setMapLng] = React.useState<number>(0);
+
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -107,10 +102,13 @@ export default function ContractorProfilePage() {
     };
   }, []);
 
-  // Address search UI
-  const [addrQuery, setAddrQuery] = React.useState("");
-  const [addrResults, setAddrResults] = React.useState<AddressResult[]>([]);
-  const [addrLoading, setAddrLoading] = React.useState(false);
+  const steps = (status?.steps ?? null) as any;
+  const doneCount = [
+    Boolean(steps?.tos?.ok),
+    Boolean(steps?.profile?.ok),
+    Boolean(steps?.verified?.ok),
+  ].filter(Boolean).length;
+  const currentIdx = Math.min(doneCount, 2);
 
   // Start-date confirmation modal
   const [confirmOpen, setConfirmOpen] = React.useState(false);
@@ -150,8 +148,6 @@ export default function ContractorProfilePage() {
           lastName: String(p.lastName ?? ""),
           businessName: String(p.businessName ?? ""),
           businessNumber: String(p.businessNumber ?? ""),
-          addressMode: String(p.addressMode ?? "SEARCH") === "MANUAL" ? "MANUAL" : "SEARCH",
-          addressSearchDisplayName: String(p.addressSearchDisplayName ?? ""),
           address1: String(p.address1 ?? ""),
           address2: String(p.address2 ?? ""),
           apt: String(p.apt ?? ""),
@@ -166,6 +162,9 @@ export default function ContractorProfilePage() {
           status: String(p.status ?? ""),
           wizardCompleted: Boolean(p.wizardCompleted),
         }));
+        setMapDisplayName(String((p as any)?.mapDisplayName ?? (p as any)?.formattedAddress ?? (p as any)?.addressSearchDisplayName ?? "").trim());
+        setMapLat(Number((p as any)?.lat ?? 0) || 0);
+        setMapLng(Number((p as any)?.lng ?? 0) || 0);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
@@ -177,70 +176,15 @@ export default function ContractorProfilePage() {
     };
   }, []);
 
-  React.useEffect(() => {
-    if (form.addressMode !== "SEARCH") return;
-    const q = addrQuery.trim();
-    if (!q) {
-      setAddrResults([]);
-      return;
-    }
-    let cancelled = false;
-    setAddrLoading(true);
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          const resp = await fetch(`/api/app/contractor/address-search?q=${encodeURIComponent(q)}`, {
-            cache: "no-store",
-          });
-          const json = await resp.json().catch(() => null);
-          const list = Array.isArray(json?.results) ? (json.results as AddressResult[]) : [];
-          if (!cancelled) setAddrResults(list);
-        } finally {
-          if (!cancelled) setAddrLoading(false);
-        }
-      })();
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [addrQuery, form.addressMode]);
-
-  function pickAddress(r: AddressResult) {
-    const display = String(r?.display_name ?? "").trim();
-    const a = (r?.address ?? {}) as any;
-    const city = String(a.city ?? a.town ?? a.village ?? a.hamlet ?? "").trim();
-    const state = String(a.state ?? a.state_code ?? a.region ?? "").trim();
-    const postcode = String(a.postcode ?? "").trim();
-    const countryCode = String(a.country_code ?? "").trim().toUpperCase();
-    const country = countryCode === "US" ? "US" : countryCode === "CA" ? "CA" : form.country;
-
-    setForm((s) => ({
-      ...s,
-      addressSearchDisplayName: display,
-      city: city || s.city,
-      postalCode: postcode || s.postalCode,
-      stateProvince: (state.length === 2 ? state.toUpperCase() : s.stateProvince).toUpperCase(),
-      country,
-    }));
-    setAddrQuery(display);
-    setAddrResults([]);
-  }
-
   function onChangeStartDate(next: Partial<Pick<ContractorProfile, "tradeStartYear" | "tradeStartMonth">>) {
     setForm((s) => ({ ...s, ...next, tradeStartConfirmed: false }));
   }
 
   const addressOk =
-    form.addressMode === "SEARCH"
-      ? Boolean(form.addressSearchDisplayName.trim())
-      : Boolean(
-          form.address1.trim() &&
-            form.city.trim() &&
-            form.postalCode.trim() &&
-            form.stateProvince.trim().length >= 2 &&
-            form.country
-        );
+    Boolean(form.address1.trim()) &&
+    Boolean(form.city.trim()) &&
+    Boolean(form.postalCode.trim()) &&
+    Boolean(form.stateProvince.trim());
 
   const requiredOk =
     Boolean(form.firstName.trim()) &&
@@ -266,15 +210,16 @@ export default function ContractorProfilePage() {
         lastName: form.lastName.trim(),
         businessName,
         businessNumber: form.businessNumber.trim() || null,
-        addressMode: form.addressMode,
-        addressSearchDisplayName: form.addressSearchDisplayName.trim() || null,
         address1: form.address1.trim() || null,
         address2: form.address2.trim() || null,
         apt: form.apt.trim() || null,
-        city: form.city.trim() || null,
-        postalCode: form.postalCode.trim() || null,
+        city: form.city.trim(),
+        postalCode: form.postalCode.trim(),
         stateProvince: form.stateProvince.trim().toUpperCase(),
         country: form.country,
+        mapDisplayName: mapDisplayName.trim(),
+        lat: mapLat,
+        lng: mapLng,
         tradeCategory: form.tradeCategory,
         tradeStartYear: Number(form.tradeStartYear),
         tradeStartMonth: Number(form.tradeStartMonth),
@@ -287,7 +232,11 @@ export default function ContractorProfilePage() {
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) {
-        const msg = String(json?.error ?? "Failed to save profile");
+        const code = String(json?.code ?? json?.error?.code ?? "");
+        const msg = String(json?.error?.message ?? json?.error ?? "Failed to save profile");
+        if (code === "MAP_LOCATION_REQUIRED") {
+          throw new Error("Please select a location from the map search field to enable routing.");
+        }
         if (String(json?.status ?? "") === "DENIED_INSUFFICIENT_EXPERIENCE") {
           setDenial(msg);
           setForm((s) => ({ ...s, status: "DENIED_INSUFFICIENT_EXPERIENCE", wizardCompleted: false }));
@@ -318,10 +267,13 @@ export default function ContractorProfilePage() {
   const title = form.wizardCompleted ? "Profile" : "Complete your contractor profile";
 
   return (
-    <>
+    <div>
       {status?.steps ? (
         <div className="mb-6">
-          <OnboardingProgressBar title="Contractor onboarding" steps={status.steps} />
+          <div className="text-sm font-semibold text-gray-900">Contractor onboarding</div>
+          <div className="mt-2">
+            <ProgressSteps steps={[{ label: "TOS" }, { label: "Profile" }, { label: "Verified" }]} currentIdx={currentIdx} />
+          </div>
         </div>
       ) : null}
       <h2 className="text-lg font-bold text-gray-900">{title}</h2>
@@ -335,7 +287,7 @@ export default function ContractorProfilePage() {
       ) : null}
       {notice ? <div className="mt-4 text-sm text-8fold-green font-semibold">{notice}</div> : null}
 
-      <div className="mt-6">
+      <div className="mt-6 border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-900">Identity</div>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="First Name" value={form.firstName} onChange={(v) => setForm((s) => ({ ...s, firstName: v }))} required />
@@ -353,67 +305,28 @@ export default function ContractorProfilePage() {
         </div>
       </div>
 
-      <div className="mt-10">
+      <div className="mt-6 border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-900">Address</div>
-        <div className="mt-2 text-sm text-gray-600">Choose OpenStreetMap search or enter it manually. Either option works.</div>
+        <div className="mt-2 text-sm text-gray-600">Enter your address (US/Canada). We verify it on save.</div>
 
-        <div className="mt-4 flex items-center gap-4 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input type="radio" checked={form.addressMode === "SEARCH"} onChange={() => setForm((s) => ({ ...s, addressMode: "SEARCH" }))} />
-            <span className="font-semibold text-gray-900">Search (OpenStreetMap)</span>
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input type="radio" checked={form.addressMode === "MANUAL"} onChange={() => setForm((s) => ({ ...s, addressMode: "MANUAL" }))} />
-            <span className="font-semibold text-gray-900">Manual entry</span>
-          </label>
-        </div>
-
-        {form.addressMode === "SEARCH" ? (
-          <div className="mt-4">
-            <Field
-              label="Address search"
-              value={addrQuery}
-              onChange={(v) => setAddrQuery(v)}
-              placeholder="Start typing an address…"
-              helperText={addrLoading ? "Searching…" : undefined}
-            />
-            {addrResults.length ? (
-              <div className="mt-2 border border-gray-200 rounded-xl overflow-hidden">
-                {addrResults.map((r) => (
-                  <button
-                    type="button"
-                    key={String(r.place_id ?? r.display_name)}
-                    onClick={() => pickAddress(r)}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                  >
-                    <div className="text-sm text-gray-900 font-medium">{r.display_name}</div>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Field label="City" value={form.city} onChange={(v) => setForm((s) => ({ ...s, city: v }))} />
-              <Field label="State / Province" value={form.stateProvince} onChange={(v) => setForm((s) => ({ ...s, stateProvince: v }))} placeholder="BC" required />
-              <Select
-                label="Country"
-                value={form.country}
-                onChange={(v) => setForm((s) => ({ ...s, country: v as any }))}
-                options={[
-                  { value: "CA", label: "Canada" },
-                  { value: "US", label: "United States" },
-                ]}
-              />
-            </div>
-            <Field label="Selected address" value={form.addressSearchDisplayName} onChange={() => {}} disabled helperText="This is stored as provided by OpenStreetMap (no verification)." />
-          </div>
-        ) : (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Address1" value={form.address1} onChange={(v) => setForm((s) => ({ ...s, address1: v }))} required />
-            <Field label="Address2 (optional)" value={form.address2} onChange={(v) => setForm((s) => ({ ...s, address2: v }))} />
-            <Field label="Apt (optional)" value={form.apt} onChange={(v) => setForm((s) => ({ ...s, apt: v }))} />
+        <div className="mt-4">
+          <Field
+            label="Street address"
+            value={form.address1}
+            onChange={(v) => setForm((s) => ({ ...s, address1: v }))}
+            placeholder="8345 209 Street"
+            required
+          />
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <Field label="City" value={form.city} onChange={(v) => setForm((s) => ({ ...s, city: v }))} required />
-            <Field label="Postal / ZIP" value={form.postalCode} onChange={(v) => setForm((s) => ({ ...s, postalCode: v }))} required />
-            <Field label="State / Province" value={form.stateProvince} onChange={(v) => setForm((s) => ({ ...s, stateProvince: v }))} placeholder="BC" required />
+            <Field
+              label="State / Province"
+              value={form.stateProvince}
+              onChange={(v) => setForm((s) => ({ ...s, stateProvince: v }))}
+              placeholder="BC"
+              required
+              helperText="Required. Always editable."
+            />
             <Select
               label="Country"
               value={form.country}
@@ -424,10 +337,48 @@ export default function ContractorProfilePage() {
               ]}
             />
           </div>
-        )}
+          <Field
+            label="Postal / ZIP"
+            value={form.postalCode}
+            onChange={(v) => setForm((s) => ({ ...s, postalCode: v }))}
+            placeholder="V2Y 0R2"
+            required
+          />
+        </div>
       </div>
 
-      <div className="mt-10">
+      <div className="mt-6 border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-900">
+          Map location <span className="text-red-600" aria-hidden>*</span>
+        </div>
+        <div className="mt-2 text-sm text-gray-600">
+          Required. Used to calculate distance between Job Posters and Contractors.
+        </div>
+        <div className="mt-4">
+          <GeoAutocomplete
+            label="Search approximate location (required for routing distance)"
+            required
+            value={mapDisplayName}
+            onChange={(v) => {
+              setMapDisplayName(v);
+              setMapLat(0);
+              setMapLng(0);
+            }}
+            onPick={(r: GeoAutocompleteResult) => {
+              setMapDisplayName(r.display_name);
+              setMapLat(r.lat);
+              setMapLng(r.lon);
+            }}
+            errorText={
+              !Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0
+                ? "Please select a location from the map search field to enable routing."
+                : ""
+            }
+          />
+        </div>
+      </div>
+
+      <div className="mt-6 border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-900">Trade</div>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
           <Select
@@ -478,10 +429,20 @@ export default function ContractorProfilePage() {
 
       <div className="mt-8">
         <button
-          disabled={loading || saving || !requiredOk}
+          disabled={
+            loading ||
+            saving ||
+            !requiredOk ||
+            !Number.isFinite(mapLat) ||
+            !Number.isFinite(mapLng) ||
+            mapLat === 0 ||
+            mapLng === 0
+          }
           onClick={() => void save()}
           className={`font-semibold px-5 py-2.5 rounded-lg ${
-            loading || saving || !requiredOk ? "bg-gray-200 text-gray-600" : "bg-8fold-green text-white hover:bg-8fold-green-dark"
+            loading || saving || !requiredOk || mapLat === 0 || mapLng === 0
+              ? "bg-gray-200 text-gray-600"
+              : "bg-8fold-green text-white hover:bg-8fold-green-dark"
           }`}
         >
           {saving ? "Saving…" : "Save"}
@@ -503,7 +464,7 @@ export default function ContractorProfilePage() {
           }}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 

@@ -1,6 +1,5 @@
-import { headers } from "next/headers";
-import { ADMIN_SESSION_COOKIE_NAME } from "./adminSession";
 import { getValidatedApiOrigin } from "./env";
+import { ADMIN_SESSION_COOKIE_NAME, getAdminSessionTokenFromCookies } from "./adminSession";
 
 type ApiOk<T> = { ok: true; data: T };
 type ApiErr = { ok: false; error?: string; message?: string };
@@ -12,19 +11,15 @@ export async function adminApiFetch<T>(
   const apiOrigin = getValidatedApiOrigin();
   const url = `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
 
-  // Presence guard only: RBAC/identity remains centralized in apps/api.
-  // Forward incoming cookies so apps/api can validate admin_session.
-  const cookieHeader = (await headers()).get("cookie") ?? "";
-  const hasAdminCookie = cookieHeader.includes(`${ADMIN_SESSION_COOKIE_NAME}=`);
-  if (!hasAdminCookie) {
-    throw Object.assign(new Error("Unauthorized"), { status: 401 });
-  }
+  const token = await getAdminSessionTokenFromCookies();
+  if (!token) throw Object.assign(new Error("Unauthorized"), { status: 401 });
 
   const resp = await fetch(url, {
     ...init,
     headers: {
       ...(init?.headers ?? {}),
-      cookie: cookieHeader,
+      // Cross-origin server fetch won't include browser cookies automatically; forward explicitly.
+      cookie: `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
       "content-type": (init?.headers as any)?.["content-type"] ?? "application/json",
     },
     cache: "no-store",

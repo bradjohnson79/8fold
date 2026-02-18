@@ -155,11 +155,16 @@ export async function POST(req: Request) {
         String(cookieValue(cookieHeader, "router_ref") ?? "").trim();
       const routerRef = refRaw && isUuid(refRaw) ? refRaw : "";
 
-      await db.transaction(async (tx) => {
-        if (desiredRole) {
-          await tx.update(users).set({ role: desiredRole }).where(eq(users.id, userId));
+      if (desiredRole) {
+        // Lifetime role immutability: never mutate user.role here.
+        const r = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+        const currentRole = String(r[0]?.role ?? "").toUpperCase();
+        if (currentRole && currentRole !== desiredRole) {
+          return errJson("Role selection is permanent and cannot be changed.", 409, "ROLE_IMMUTABLE", { requestId });
         }
+      }
 
+      await db.transaction(async (tx) => {
         if (!routerRef) return;
         if (routerRef === userId) return;
 
@@ -172,7 +177,7 @@ export async function POST(req: Request) {
         if (!u) return;
         if (u.referredByRouterId) return;
 
-        const roleNow = String(desiredRole ?? u.role ?? "").toUpperCase();
+        const roleNow = String(u.role ?? "").toUpperCase();
         if (roleNow === "ROUTER" || roleNow === "ADMIN") return; // routers/admins cannot be referred
 
         // Attach referral only if this user has not participated in any jobs yet (signup-only).
@@ -192,11 +197,11 @@ export async function POST(req: Request) {
         if (!rUser || String(rUser.role ?? "").toUpperCase() !== "ROUTER") return;
 
         const routerRows = await tx
-          .select({ id: routers.id, status: routers.status })
+          .select({ userId: routers.userId, status: routers.status })
           .from(routers)
           .where(and(eq(routers.userId, routerRef), eq(routers.status, "ACTIVE" as any)))
           .limit(1);
-        if (!routerRows[0]?.id) return;
+        if (!routerRows[0]?.userId) return;
 
         await tx.update(users).set({ referredByRouterId: routerRef }).where(eq(users.id, userId));
 

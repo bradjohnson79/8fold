@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 type DbCol = {
   column_name: string;
@@ -15,7 +16,8 @@ function mdEscape(s: string): string {
 
 async function main() {
   const dotenv = await import("dotenv");
-  dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: path.join(scriptDir, "..", ".env.local") });
   const DATABASE_URL = process.env.DATABASE_URL;
   if (!DATABASE_URL) throw new Error("DATABASE_URL missing (apps/api/.env.local)");
 

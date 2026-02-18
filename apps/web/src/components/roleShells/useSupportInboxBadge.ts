@@ -22,21 +22,21 @@ function setLastSeen(role: Role, ms: number) {
 }
 
 async function fetchLatestUpdatedAt(role: Role): Promise<number> {
-  const url =
-    role === "router"
-      ? "/api/app/router/support/inbox?take=1"
-      : "/api/app/support/tickets?take=1";
+  // Canonical support namespace (role determined by auth, not URL).
+  const url = "/api/app/support/tickets?take=1";
 
   const resp = await fetch(url, { cache: "no-store" });
   const json = (await resp.json().catch(() => null)) as any;
   if (!resp.ok) return 0;
-  const row = Array.isArray(json?.tickets) ? json.tickets[0] : null;
+  const list = Array.isArray(json?.data?.tickets) ? json.data.tickets : Array.isArray(json?.tickets) ? json.tickets : [];
+  const row = list[0] ?? null;
   const ts = row?.updatedAt ? Date.parse(String(row.updatedAt)) : NaN;
   return Number.isFinite(ts) ? ts : 0;
 }
 
-export function useSupportInboxBadge(role: Role) {
+export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
   const pathname = usePathname();
+  const enabled = opts?.enabled ?? true;
 
   const inboxHref = useMemo(() => {
     if (role === "router") return "/app/router/support/inbox";
@@ -53,13 +53,18 @@ export function useSupportInboxBadge(role: Role) {
   const [hasUnread, setHasUnread] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!onInbox) return;
     const now = Date.now();
     setLastSeen(role, now);
     setHasUnread(false);
-  }, [onInbox, role]);
+  }, [enabled, onInbox, role]);
 
   useEffect(() => {
+    if (!enabled) {
+      setHasUnread(false);
+      return;
+    }
     let cancelled = false;
 
     async function check() {
@@ -82,7 +87,7 @@ export function useSupportInboxBadge(role: Role) {
       cancelled = true;
       window.clearInterval(t);
     };
-  }, [onInbox, role]);
+  }, [enabled, onInbox, role]);
 
   return { inboxHref, hasUnread };
 }

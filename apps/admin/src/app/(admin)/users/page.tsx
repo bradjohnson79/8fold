@@ -3,6 +3,8 @@ import { adminApiFetch } from "@/server/adminApi";
 type UserRow = {
   id: string;
   name: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string | null;
   role: string;
   country: string | null;
@@ -31,7 +33,11 @@ function qs(sp: Record<string, string | undefined>): string {
   return out ? `?${out}` : "";
 }
 
-function pill(text: string, tone: "neutral" | "danger" | "warn" | "ok" = "neutral") {
+function pill(
+  text: string,
+  tone: "neutral" | "danger" | "warn" | "ok" = "neutral",
+  key?: string,
+) {
   const styles: Record<string, React.CSSProperties> = {
     neutral: { borderColor: "rgba(148,163,184,0.14)", background: "rgba(2,6,23,0.25)", color: "rgba(226,232,240,0.85)" },
     ok: { borderColor: "rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.10)", color: "rgba(134,239,172,0.95)" },
@@ -40,6 +46,7 @@ function pill(text: string, tone: "neutral" | "danger" | "warn" | "ok" = "neutra
   };
   return (
     <span
+      key={key}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -126,6 +133,18 @@ export default async function UsersPage({
   }
 
   const users = data?.users ?? [];
+
+  function displayName(u: UserRow): string {
+    const role = String(u.role ?? "").trim().toUpperCase();
+    if (role === "CONTRACTOR") {
+      const fn = String(u.firstName ?? "").trim();
+      const ln = String(u.lastName ?? "").trim();
+      if (fn && ln) return `${fn} ${ln}`;
+      // Defensive fallback: never show a blank identity row.
+      return u.email || "—";
+    }
+    return u.name || "—";
+  }
 
   return (
     <div>
@@ -223,16 +242,16 @@ export default async function UsersPage({
             ) : (
               users.map((u) => {
                 const flags: React.ReactNode[] = [];
-                if (u.status === "SUSPENDED" || u.suspendedUntil) flags.push(pill("SUSPENDED", "warn"));
-                if (u.status === "ARCHIVED" || u.archivedAt) flags.push(pill("ARCHIVED", "danger"));
-                if (u.status === "PENDING") flags.push(pill("PENDING", "neutral"));
-                if (flags.length === 0) flags.push(pill(u.status || "ACTIVE", "ok"));
+                if (u.status === "SUSPENDED" || u.suspendedUntil) flags.push(pill("SUSPENDED", "warn", "SUSPENDED"));
+                if (u.status === "ARCHIVED" || u.archivedAt) flags.push(pill("ARCHIVED", "danger", "ARCHIVED"));
+                if (u.status === "PENDING") flags.push(pill("PENDING", "neutral", "PENDING"));
+                if (flags.length === 0) flags.push(pill(u.status || "ACTIVE", "ok", "STATUS"));
 
                 return (
                   <tr key={u.id}>
                     <td style={tdStyle}>
                       <a href={`/users/${encodeURIComponent(u.id)}`} style={linkStyle}>
-                        {u.name || "—"}
+                        {displayName(u)}
                       </a>
                     </td>
                     <td style={tdStyle}>{u.email || "—"}</td>

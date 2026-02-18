@@ -60,7 +60,8 @@ export default function FileDisputePage() {
         const jobsResp = await fetch("/api/app/support/my-jobs", { cache: "no-store" });
         const jobsJson = await jobsResp.json().catch(() => null);
         if (!jobsResp.ok) throw new Error(jobsJson?.error ?? "Failed to load jobs");
-        setJobs(Array.isArray(jobsJson?.jobs) ? jobsJson.jobs : []);
+        const list = Array.isArray(jobsJson?.data?.jobs) ? jobsJson.data.jobs : Array.isArray(jobsJson?.jobs) ? jobsJson.jobs : [];
+        setJobs(list);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed to load");
@@ -85,7 +86,7 @@ export default function FileDisputePage() {
         const json = await resp.json().catch(() => null);
         if (!resp.ok) throw new Error(json?.error ?? "Failed to load participants");
         if (!alive) return;
-        setParticipants(json?.participants ?? null);
+        setParticipants(json?.data?.participants ?? json?.participants ?? null);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed to load participants");
@@ -137,7 +138,7 @@ export default function FileDisputePage() {
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(json?.error ?? "Failed to submit dispute");
 
-      const ticketId = json?.ticketId as string | undefined;
+      const ticketId = (json?.data?.ticketId ?? json?.ticketId) as string | undefined;
       if (!ticketId) throw new Error("Dispute submitted, but ticket id missing.");
       setCreatedTicketId(ticketId);
 
@@ -149,7 +150,7 @@ export default function FileDisputePage() {
         const up = await fetch(`/api/app/support/tickets/${ticketId}/attachments`, { method: "POST", body: fd });
         const upJson = await up.json().catch(() => null);
         if (!up.ok) throw new Error(upJson?.error ?? "Evidence upload failed");
-        const a = upJson?.attachment;
+        const a = upJson?.data?.attachment ?? upJson?.attachment;
         if (a?.id) {
           uploaded.push({ name: a.originalName ?? f.name, url: `/api/app/support/attachments/${a.id}` });
         }

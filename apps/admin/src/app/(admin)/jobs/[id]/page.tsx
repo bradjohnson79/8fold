@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
 import { adminApiFetch } from "@/server/adminApi";
+import { JobActionGuards } from "@/components/admin/JobActionGuards";
+import { AdminActionsLogClient } from "@/components/admin/AdminActionsLogClient";
 
 type JobDetail = any;
+type AuditLogRow = any;
 
 async function act(formData: FormData) {
   "use server";
   const jobId = String(formData.get("jobId") ?? "").trim();
   const kind = String(formData.get("kind") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
+  const archiveReason = String(formData.get("archiveReason") ?? "").trim();
   const againstRole = String(formData.get("againstRole") ?? "").trim();
   const disputeReason = String(formData.get("disputeReason") ?? "").trim();
   const desc = String(formData.get("description") ?? "").trim();
@@ -16,8 +20,12 @@ async function act(formData: FormData) {
 
   try {
     if (kind === "archive") {
-      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/archive`, { method: "PATCH" });
-      redirect(`/jobs/${encodeURIComponent(jobId)}?msg=cancelled`);
+      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/archive`, {
+        method: "PATCH",
+        body: JSON.stringify({ reason: archiveReason || reason || "Archived by admin" }),
+      });
+      // Redirect to Jobs list with an explicit archived filter so it doesn't "disappear".
+      redirect(`/jobs?archived=true&q=${encodeURIComponent(jobId)}&msg=archived`);
     }
     if (kind === "refund") {
       await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/refund`, { method: "POST" });
@@ -45,6 +53,10 @@ async function act(formData: FormData) {
         }),
       });
       redirect(`/jobs/${encodeURIComponent(jobId)}?msg=dispute_escalated`);
+    }
+    if (kind === "release") {
+      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/release`, { method: "POST" });
+      redirect(`/jobs/${encodeURIComponent(jobId)}?msg=release_attempted`);
     }
   } catch (e) {
     const m = e instanceof Error ? e.message : "action_failed";
@@ -144,6 +156,45 @@ export default async function JobDetailPage({
   }
 
   const j: any = job!;
+  let adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" = "ADMIN_OPERATOR";
+  try {
+    const me = await adminApiFetch<{ adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" }>(`/api/admin/me`);
+    adminTier = (me as any)?.adminTier ?? "ADMIN_OPERATOR";
+  } catch {
+    adminTier = "ADMIN_OPERATOR";
+  }
+  let auditLogs: AuditLogRow[] = [];
+  try {
+    const al = await adminApiFetch<{ auditLogs: AuditLogRow[] }>(
+      `/api/admin/audit-logs?entityType=Job&entityId=${encodeURIComponent(String(j.id))}&take=30`,
+    );
+    auditLogs = (al as any)?.auditLogs ?? [];
+  } catch {
+    auditLogs = [];
+  }
+
+  const actorLabel = (al: any) => al?.actor?.email ?? al?.actor?.name ?? al?.actorUserId ?? null;
+  const findLast = (match: (a: string) => boolean) => {
+    const hit = auditLogs.find((x: any) => match(String(x?.action ?? "")));
+    if (!hit) return null;
+    return { whenIso: hit.createdAt ? String(hit.createdAt) : null, actorLabel: actorLabel(hit) };
+  };
+  const lastActors = {
+    forceApprove: findLast((a) => a === "JOB_ADMIN_OVERRIDE_COMPLETE_APPROVED"),
+    refund: findLast((a) => a === "ADMIN_JOB_REFUND"),
+    manualRelease: findLast((a) => a.includes("RELEASE")),
+    archive: (() => {
+      const hit = auditLogs.find((x: any) => String(x?.action ?? "") === "ADMIN_JOB_ARCHIVE");
+      if (!hit) return null;
+      return {
+        whenIso: hit.createdAt ? String(hit.createdAt) : null,
+        actorLabel: actorLabel(hit),
+        reason: hit?.metadata?.reason ? String(hit.metadata.reason) : null,
+      };
+    })(),
+  } as any;
+
+  const archiveReasonFromLog = lastActors.archive?.reason ?? null;
 
   return (
     <div>
@@ -168,6 +219,8 @@ export default async function JobDetailPage({
         <Card title="Core">
           {kv("Title", j.title ?? "—")}
           {kv("Status", j.status ?? "—")}
+          {kv("Archived", j.archived ? "true" : "false")}
+          {j.archived ? kv("Archive reason", archiveReasonFromLog ?? "—") : null}
           {kv("Routing", j.routingStatus ?? "—")}
           {kv("Country", j.country ?? "—")}
           {kv("State/Province", j.regionCode ?? j.region ?? "—")}
@@ -186,91 +239,99 @@ export default async function JobDetailPage({
           {kv("Payout status", j.payoutStatus ?? "—")}
           {kv("Stripe PI", j.stripePaymentIntentId ?? "—")}
           {kv("Stripe charge", j.stripeChargeId ?? "—")}
+          {kv("Contractor transfer", j.contractorTransferId ?? "—")}
+          {kv("Router transfer", j.routerTransferId ?? "—")}
           {kv("Funded at", j.fundedAt ? String(j.fundedAt).slice(0, 19).replace("T", " ") : "—")}
           {kv("Released at", j.releasedAt ? String(j.releasedAt).slice(0, 19).replace("T", " ") : "—")}
           {kv("Refunded at", j.refundedAt ? String(j.refundedAt).slice(0, 19).replace("T", " ") : "—")}
+
+          <form action={act} style={{ marginTop: 10 }}>
+            <input type="hidden" name="jobId" value={j.id} />
+            <input type="hidden" name="kind" value="release" />
+            <button type="submit" style={buttonStyle}>
+              Retry release (idempotent)
+            </button>
+          </form>
         </Card>
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-        <Card title="Manual override: Re-route">
+        <Card title="Operational actions">
           <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>
-            Uses <code>/api/admin/router/jobs/:id/route</code>. Requires active admin router context and the job must be overdue and unrouted.
+            Actions that change routing/support state (non-financial). Tiered authority is enforced server-side.
           </div>
-          <form action={act} style={{ marginTop: 10 }}>
-            <input type="hidden" name="jobId" value={j.id} />
-            <input type="hidden" name="kind" value="reroute" />
-            <button type="submit" style={buttonStyle}>
-              Re-route (failsafe)
-            </button>
-          </form>
+          {adminTier === "ADMIN_VIEWER" ? (
+            <div style={{ marginTop: 10, color: "rgba(226,232,240,0.65)" }}>Viewer tier: mutations are hidden.</div>
+          ) : (
+            <form action={act} style={{ marginTop: 10 }}>
+              <input type="hidden" name="jobId" value={j.id} />
+              <input type="hidden" name="kind" value="reroute" />
+              <button type="submit" style={buttonStyle}>
+                Re-route (failsafe)
+              </button>
+            </form>
+          )}
         </Card>
 
-        <Card title="Manual override: Cancel">
-          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>Cancels job by archiving it (idempotent).</div>
-          <form action={act} style={{ marginTop: 10 }}>
-            <input type="hidden" name="jobId" value={j.id} />
-            <input type="hidden" name="kind" value="archive" />
-            <button type="submit" style={dangerButtonStyle}>
-              Cancel (Archive)
-            </button>
-          </form>
-        </Card>
-
-        <Card title="Manual override: Force approve">
-          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>
-            Forces completion approval via admin override (<code>override=true</code> + reason required).
+        <Card title="High Impact Actions">
+          <div style={{ color: "rgba(254,202,202,0.90)", fontSize: 13, lineHeight: "20px", fontWeight: 900 }}>
+            High impact actions (financial / override). Always preview (dry run) then confirm.
           </div>
-          <form action={act} style={{ marginTop: 10, display: "grid", gap: 8 }}>
-            <input type="hidden" name="jobId" value={j.id} />
-            <input type="hidden" name="kind" value="force_approve" />
-            <textarea name="reason" placeholder="Reason (required)" rows={3} style={inputStyle} />
-            <button type="submit" style={dangerButtonStyle}>
-              Force approve
-            </button>
-          </form>
+          <div style={{ marginTop: 10 }}>
+            <JobActionGuards
+              jobId={String(j.id)}
+              jobStatus={j.status ?? null}
+              payoutStatus={j.payoutStatus ?? null}
+              archived={Boolean(j.archived)}
+              adminTier={adminTier}
+              lastActors={lastActors}
+              act={act}
+            />
+          </div>
         </Card>
       </div>
 
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-        <Card title="Manual override: Force refund">
-          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>
-            Attempts Stripe refund via <code>/api/admin/jobs/:id/refund</code>. Will refuse if disputed or already released.
-          </div>
-          <form action={act} style={{ marginTop: 10 }}>
-            <input type="hidden" name="jobId" value={j.id} />
-            <input type="hidden" name="kind" value="refund" />
-            <button type="submit" style={dangerButtonStyle}>
-              Force refund
-            </button>
-          </form>
-        </Card>
-
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
         <Card title="Dispute escalation">
           <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>
             Creates a Support DISPUTE ticket + DisputeCase (72h deadline default).
           </div>
-          <form action={act} style={{ marginTop: 10, display: "grid", gap: 8 }}>
-            <input type="hidden" name="jobId" value={j.id} />
-            <input type="hidden" name="kind" value="escalate_dispute" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <select name="againstRole" defaultValue="CONTRACTOR" style={inputStyle} aria-label="Against role">
-                <option value="CONTRACTOR">Against Contractor</option>
-                <option value="JOB_POSTER">Against Job Poster</option>
-              </select>
-              <select name="disputeReason" defaultValue="OTHER" style={inputStyle} aria-label="Dispute reason">
-                <option value="PRICING">PRICING</option>
-                <option value="WORK_QUALITY">WORK_QUALITY</option>
-                <option value="NO_SHOW">NO_SHOW</option>
-                <option value="PAYMENT">PAYMENT</option>
-                <option value="OTHER">OTHER</option>
-              </select>
-            </div>
-            <textarea name="description" placeholder="Escalation description (required)" rows={3} style={inputStyle} />
-            <button type="submit" style={dangerButtonStyle}>
-              Escalate dispute
-            </button>
-          </form>
+          {adminTier === "ADMIN_VIEWER" ? (
+            <div style={{ marginTop: 10, color: "rgba(226,232,240,0.65)" }}>Viewer tier: mutations are hidden.</div>
+          ) : (
+            <form action={act} style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <input type="hidden" name="jobId" value={j.id} />
+              <input type="hidden" name="kind" value="escalate_dispute" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <select name="againstRole" defaultValue="CONTRACTOR" style={inputStyle} aria-label="Against role">
+                  <option value="CONTRACTOR">Against Contractor</option>
+                  <option value="JOB_POSTER">Against Job Poster</option>
+                </select>
+                <select name="disputeReason" defaultValue="OTHER" style={inputStyle} aria-label="Dispute reason">
+                  <option value="PRICING">PRICING</option>
+                  <option value="WORK_QUALITY">WORK_QUALITY</option>
+                  <option value="NO_SHOW">NO_SHOW</option>
+                  <option value="PAYMENT">PAYMENT</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </div>
+              <textarea name="description" placeholder="Escalation description (required)" rows={3} style={inputStyle} />
+              <button type="submit" style={dangerButtonStyle}>
+                Escalate dispute
+              </button>
+            </form>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <Card title="Admin Actions Log">
+          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12 }}>
+            Recent audit events for this job (server-side). This makes admin interventions reviewable.
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <AdminActionsLogClient rows={auditLogs as any} />
+          </div>
         </Card>
       </div>
     </div>

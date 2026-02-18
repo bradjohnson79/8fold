@@ -7,10 +7,17 @@ import { db } from "../../../../../db/drizzle";
 import { jobPayments } from "../../../../../db/schema/jobPayment";
 import { ledgerEntries } from "../../../../../db/schema/ledgerEntry";
 import { payoutRequests } from "../../../../../db/schema/payoutRequest";
+import { transferRecords } from "../../../../../db/schema/transferRecord";
+import { stripe } from "@/src/stripe/stripe";
 
 const QuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(365).optional(),
 });
+
+function requireStripe() {
+  if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
+  return stripe;
+}
 
 export async function GET(req: Request) {
   const auth = await requireAdmin(req);
@@ -89,6 +96,38 @@ export async function GET(req: Request) {
         .where(gte(payoutRequests.createdAt, since)),
     ]);
 
+    const [transferLifetime, transferWindow] = await Promise.all([
+      db
+        .select({
+          totalCount: sql<number>`count(*)::int`,
+          sentCount: sql<number>`sum(case when ${transferRecords.status} = 'SENT' then 1 else 0 end)::int`,
+          failedCount: sql<number>`sum(case when ${transferRecords.status} in ('FAILED','REVERSED') then 1 else 0 end)::int`,
+          stripeSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'STRIPE' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          paypalSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'PAYPAL' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          platformRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'PLATFORM' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+        })
+        .from(transferRecords),
+      db
+        .select({
+          totalCount: sql<number>`count(*)::int`,
+          sentCount: sql<number>`sum(case when ${transferRecords.status} = 'SENT' then 1 else 0 end)::int`,
+          failedCount: sql<number>`sum(case when ${transferRecords.status} in ('FAILED','REVERSED') then 1 else 0 end)::int`,
+          stripeSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'STRIPE' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          paypalSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'PAYPAL' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          platformRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'PLATFORM' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+        })
+        .from(transferRecords)
+        .where(gte(transferRecords.createdAt, since)),
+    ]);
+
+    // Stripe balance snapshot (platform account).
+    let stripeBalance: any | null = null;
+    try {
+      stripeBalance = await requireStripe().balance.retrieve();
+    } catch {
+      stripeBalance = null;
+    }
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -104,6 +143,13 @@ export async function GET(req: Request) {
         payoutRequests: {
           lifetime: payoutReqLifetime?.[0] ?? null,
           window: payoutReqWindow?.[0] ?? null,
+        },
+        transfers: {
+          lifetime: transferLifetime?.[0] ?? null,
+          window: transferWindow?.[0] ?? null,
+        },
+        stripe: {
+          balance: stripeBalance,
         },
       },
     });

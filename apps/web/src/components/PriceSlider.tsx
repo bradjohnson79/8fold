@@ -30,13 +30,28 @@ export function PriceSlider({
   breakdown: PayoutBreakdown;
   currency: CurrencyCode;
 }) {
-  const step = 10 * 100; // $10 increments
-  const floor = 75 * 100;
-  const isFloor = aiSuggestedTotalCents === floor;
-  const derivedMin = isFloor ? floor : aiSuggestedTotalCents - 50 * 100;
-  const derivedMax = aiSuggestedTotalCents + 50 * 100;
-  const min = Number.isFinite(minCents as any) ? Math.max(floor, Number(minCents)) : derivedMin;
-  const max = Number.isFinite(maxCents as any) ? Math.max(min + step, Number(maxCents)) : derivedMax;
+  // Locked UX requirement (Job Poster payment step):
+  // - fixed range 125..200 (dollars)
+  // - fixed increment $5
+  const step = 5 * 100; // $5 increments
+  const min = Number.isFinite(minCents as any) ? Number(minCents) : 125 * 100;
+  const max = Number.isFinite(maxCents as any) ? Number(maxCents) : 200 * 100;
+
+  function normalizeCents(v: number): number {
+    const n = Number.isFinite(v) ? Math.round(v) : min;
+    const rounded = Math.round(n / step) * step;
+    return Math.min(max, Math.max(min, rounded));
+  }
+
+  const normalizedSelected = normalizeCents(selectedPriceCents);
+  React.useEffect(() => {
+    if (normalizedSelected !== selectedPriceCents) {
+      onChangeSelectedPriceCents(normalizedSelected);
+    }
+    // Intentionally omit `onChangeSelectedPriceCents` to avoid unstable deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedSelected, selectedPriceCents]);
+
   const isLowest = selectedPriceCents === min;
   const isSuggested = selectedPriceCents === aiSuggestedTotalCents;
 
@@ -108,20 +123,20 @@ export function PriceSlider({
     <div className="border border-gray-200 rounded-xl p-4">
       <div className="text-lg font-bold text-gray-900">Recommended Price for Your Job</div>
       <div className="text-sm text-gray-600 mt-1">
-        This price is based on typical jobs like yours in your area. You may adjust in $10 increments.
+        This price is based on typical jobs like yours in your area. You may adjust in $5 increments.
       </div>
 
       <div className="mt-4">
         <div className="text-sm font-semibold text-gray-900">
-          Fine-tune your price (optional): <span className="font-mono">{formatMoney(selectedPriceCents, currency)}</span>
+          Fine-tune your price (optional): <span className="font-mono">{formatMoney(normalizedSelected, currency)}</span>
         </div>
         <input
           type="range"
           min={min}
           max={max}
           step={step}
-          value={selectedPriceCents}
-          onChange={(e) => onChangeSelectedPriceCents(Number(e.target.value))}
+          value={normalizedSelected}
+          onChange={(e) => onChangeSelectedPriceCents(normalizeCents(Number(e.target.value)))}
           className="mt-2 w-full"
         />
         <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -134,9 +149,7 @@ export function PriceSlider({
           </span>
           <span>{formatMoney(max, currency)}</span>
         </div>
-        {isFloor ? (
-          <div className="mt-2 text-sm text-gray-700 italic">$75 is the minimum allowable price for this job type.</div>
-        ) : isLowest ? (
+        {isLowest ? (
           <div className="mt-2 text-sm text-gray-700 italic">This is the lowest price we recommend for professional-quality work.</div>
         ) : null}
 

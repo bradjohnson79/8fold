@@ -1,34 +1,35 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/server/auth/requireSession";
+import { apiFetch } from "@/server/api/apiClient";
+import { requireApiToken } from "@/server/auth/requireSession";
 
-// Web-owned "who am I" endpoint.
+// Web-owned "who am I" endpoint (proxy to apps/api `/api/me`).
 // Deliberately does NOT expose any other identities.
 export async function GET(req: Request) {
+  let token = "";
   try {
-    const session = await requireSession(req);
-    const role = String(session.role ?? "").trim();
-    const superuser = role.toUpperCase() === "ADMIN";
-    return NextResponse.json(
-      {
-        ok: true,
-        authenticated: true,
-        role,
-        superuser,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    const status = typeof (error as any)?.status === "number" ? (error as any).status : 500;
-    return NextResponse.json(
-      {
-        ok: false,
-        authenticated: false,
-        role: null,
-        superuser: false,
-        error: error instanceof Error ? error.message : "Failed",
-      },
-      { status }
-    );
+    token = await requireApiToken();
+  } catch (err) {
+    const status = typeof (err as any)?.status === "number" ? (err as any).status : 401;
+    const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "AUTH_MISSING_TOKEN";
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.log("[WEB AUTH] /api/app/me token failure", { status, code });
+    }
+    return NextResponse.json({ ok: false, error: { code, message: "Unauthorized" } }, { status });
   }
+
+  // Upstream status/body pass-through.
+  const resp = await apiFetch({ path: "/api/me", method: "GET", sessionToken: token, request: req });
+  const upstreamText = await resp.text().catch(() => "");
+  const contentType = resp.headers.get("content-type") ?? "application/json";
+  const upstreamRequestId = resp.headers.get("x-request-id") ?? "";
+
+  return new NextResponse(upstreamText, {
+    status: resp.status,
+    headers: {
+      "content-type": contentType,
+      "x-request-id": upstreamRequestId,
+    },
+  });
 }
 

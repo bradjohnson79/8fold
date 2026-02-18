@@ -104,7 +104,9 @@ export async function POST(req: Request) {
     // JobPhoto.kind is a Postgres enum ("JobPhotoKind") in the baseline schema.
     // Use canonical enum values and tag draft-photos via metadata.label instead of inventing a new kind.
     const DRAFT_PHOTO_KIND = "CUSTOMER_SCOPE";
-    const DRAFT_PHOTO_ACTOR = "JOB_POSTER";
+    // Postgres enum `JobPhotoActor` is { CUSTOMER, CONTRACTOR } in current DB snapshots.
+    // Job poster uploads are customer-provided scope photos.
+    const DRAFT_PHOTO_ACTOR = "CUSTOMER";
     const DRAFT_PHOTO_LABEL = "JOB_POSTING_DRAFT";
 
     const result = await db.transaction(async (tx) => {
@@ -201,6 +203,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, job: { id: result.jobId } }, { status: 200 });
   } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.error("[api job-poster drafts/save]", err);
+    }
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to save draft" }, { status: 500 });
   }
 }

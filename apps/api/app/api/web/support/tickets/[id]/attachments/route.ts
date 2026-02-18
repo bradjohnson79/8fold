@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { requireUser, requireAdmin, requireSeniorRouter } from "../../../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../../../src/http/errors";
 import crypto from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../../../../../../../db/drizzle";
@@ -40,6 +39,13 @@ async function requireAdminOrSeniorRouter(req: Request) {
   }
 }
 
+function ok<T>(data: T, init?: { status?: number }) {
+  return NextResponse.json({ ok: true, data }, { status: init?.status ?? 200 });
+}
+function fail(status: number, message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
 export async function GET(req: Request) {
   try {
     const authed = await requireUser(req);
@@ -57,7 +63,7 @@ export async function GET(req: Request) {
       .where(eq(supportTickets.id, ticketId))
       .limit(1);
     const ticket = rows[0] ?? null;
-    if (!ticket) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!ticket) return fail(404, "Not found");
 
     const role = String(authed.role);
     const isStaff = role === "ADMIN" || role === "ROUTER";
@@ -71,7 +77,7 @@ export async function GET(req: Request) {
     } else {
       const isCreator = ticket.createdById === authed.userId;
       const isAgainstParty = ticket.type === "DISPUTE" && ticket.againstUserId === authed.userId;
-      if (!isCreator && !isAgainstParty) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      if (!isCreator && !isAgainstParty) return fail(403, "Forbidden");
     }
 
     const attachments = await db
@@ -87,16 +93,17 @@ export async function GET(req: Request) {
       .orderBy(asc(supportAttachments.createdAt))
       .limit(200);
 
-    return NextResponse.json({
-      attachments: attachments.map((a) => ({
+    return ok({
+      attachments: attachments.map((a: any) => ({
         ...a,
         createdAt: a.createdAt.toISOString(),
         downloadUrl: `/api/web/support/attachments/${a.id}`
-      }))
+      })),
     });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 
@@ -105,7 +112,7 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
     const role = String(user.role);
     if (!isSupportRequesterRole(role) || role === "ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return fail(403, "Forbidden");
     }
 
     const ticketId = getTicketIdFromUrl(req);
@@ -121,26 +128,26 @@ export async function POST(req: Request) {
       .where(eq(supportTickets.id, ticketId))
       .limit(1);
     const ticket = rows[0] ?? null;
-    if (!ticket) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!ticket) return fail(404, "Ticket not found");
     const isCreator = ticket.createdById === user.userId;
     const isAgainstParty = ticket.type === "DISPUTE" && ticket.againstUserId === user.userId;
-    if (!isCreator && !isAgainstParty) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!isCreator && !isAgainstParty) return fail(403, "Forbidden");
 
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "file is required" }, { status: 400 });
+      return fail(400, "Invalid input");
     }
 
     const maxBytes = 12 * 1024 * 1024;
     if (file.size > maxBytes) {
-      return NextResponse.json({ error: "File too large (max 12MB)" }, { status: 400 });
+      return fail(400, "File too large (max 12MB)");
     }
 
     const mimeType = file.type || "application/octet-stream";
     const ext = ALLOWED[mimeType] ?? null;
     if (!ext) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
+      return fail(400, "Unsupported file type");
     }
 
     const storageKey = `${ticketId}/${randomUUID()}.${ext}`;
@@ -190,19 +197,20 @@ export async function POST(req: Request) {
       return att;
     });
 
-    return NextResponse.json(
+    return ok(
       {
         attachment: {
           ...created,
           createdAt: created.createdAt.toISOString(),
-          downloadUrl: `/api/web/support/attachments/${created.id}`
-        }
+          downloadUrl: `/api/web/support/attachments/${created.id}`,
+        },
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 

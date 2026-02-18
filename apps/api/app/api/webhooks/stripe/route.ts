@@ -7,25 +7,50 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { stripeWebhookEvents } from "@/db/schema/stripeWebhookEvent";
 import { contractors } from "@/db/schema/contractor";
-import { routerProfiles } from "@/db/schema/routerProfile";
+import { payoutMethods } from "@/db/schema/payoutMethod";
 import { partsMaterialRequests } from "@/db/schema/partsMaterialRequest";
+import { auditLogs } from "@/db/schema/auditLog";
+import { jobPayments } from "@/db/schema/jobPayment";
+import { transferRecords } from "@/db/schema/transferRecord";
+import {
+  isAllowedTransferRecordStatusTransition,
+  nextStatusForTransferLifecycleEvent,
+  type TransferRecordStatus,
+} from "@/src/payouts/transferStatusTransitions";
+import { randomUUID } from "crypto";
 
-function requireStripe() {
-  if (!stripe) {
-    throw Object.assign(new Error("Stripe not configured"), { status: 500 });
-  }
-  return stripe;
-}
+/**
+ * LOCAL DEV:
+ * Run:
+ *   stripe listen --forward-to localhost:3003/api/webhooks/stripe
+ *
+ * Then copy the printed `whsec_...` value into:
+ *   apps/api/.env.local
+ *
+ * STRIPE_WEBHOOK_SECRET=whsec_...
+ */
 
-function requireWebhookSecret(): string {
-  const s = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!s) throw Object.assign(new Error("STRIPE_WEBHOOK_SECRET not configured"), { status: 500 });
-  return s;
-}
+// Pages-router only, but harmless here; keeps the intent explicit.
+export const config = {
+  api: { bodyParser: false },
+};
 
 export async function POST(req: Request) {
-  const s = requireStripe();
-  const secretPrimary = requireWebhookSecret();
+  if (!stripe) {
+    return NextResponse.json(
+      { ok: false, error: { code: "AUTH_STRIPE_CONFIG_MISSING", message: "STRIPE_SECRET_KEY not configured" } },
+      { status: 500 },
+    );
+  }
+  const s = stripe;
+
+  const secretPrimary = String(process.env.STRIPE_WEBHOOK_SECRET ?? "").trim();
+  if (!secretPrimary) {
+    return NextResponse.json(
+      { ok: false, error: { code: "AUTH_STRIPE_CONFIG_MISSING", message: "STRIPE_WEBHOOK_SECRET not configured" } },
+      { status: 500 },
+    );
+  }
   const secretConnect = String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET ?? "").trim() || null;
 
   const sig = req.headers.get("stripe-signature");
@@ -75,7 +100,8 @@ export async function POST(req: Request) {
 
       if (event.type === "payment_intent.succeeded") {
         const pi = event.data.object as Stripe.PaymentIntent;
-        const t = String((pi.metadata as any)?.type ?? "");
+        const meta = (pi.metadata as any) ?? {};
+        const t = String(meta?.type ?? "");
         if (t === "pm_escrow") {
           const pmId = String((pi.metadata as any)?.pmId ?? "");
           const jobId = String((pi.metadata as any)?.jobId ?? "");
@@ -115,10 +141,10 @@ export async function POST(req: Request) {
           return;
         }
 
-        if (t !== "job_escrow") return;
-
-        const jobId = String((pi.metadata as any)?.jobId ?? "");
-        const posterId = String((pi.metadata as any)?.posterId ?? "");
+        const jobId = String(meta?.jobId ?? "");
+        const posterId = String(meta?.posterId ?? meta?.jobPosterUserId ?? "");
+        const isJobEscrow = t === "job_escrow" || (t === "" && Boolean(jobId));
+        if (!isJobEscrow) return;
         if (!jobId || !posterId) return;
 
         const jobRows = await tx
@@ -127,6 +153,8 @@ export async function POST(req: Request) {
             jobPosterUserId: jobs.jobPosterUserId,
             paymentStatus: jobs.paymentStatus,
             amountCents: jobs.amountCents,
+            laborTotalCents: jobs.laborTotalCents,
+            materialsTotalCents: jobs.materialsTotalCents,
           })
           .from(jobs)
           .where(eq(jobs.id, jobId))
@@ -146,6 +174,16 @@ export async function POST(req: Request) {
           return;
         }
 
+        // Keep jobPayments in sync for diagnostic endpoints and refunds.
+        await tx
+          .update(jobPayments)
+          .set({
+            stripePaymentIntentStatus: String(pi.status ?? ""),
+            status: "CAPTURED" as any,
+            updatedAt: now,
+          } as any)
+          .where(eq(jobPayments.jobId, jobId));
+
         await tx
           .update(jobs)
           .set({
@@ -162,9 +200,25 @@ export async function POST(req: Request) {
             paymentCapturedAt: now,
           } as any)
           .where(eq(jobs.id, jobId));
+
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: posterId,
+          action: "PAYMENT_COMPLETED",
+          entityType: "Job",
+          entityId: jobId,
+          metadata: {
+            stripeWebhookEventId: event.id,
+            stripePaymentIntentId: String(pi.id ?? ""),
+            amountCents: Number(pi.amount ?? 0),
+            laborTotalCents: Number(job.laborTotalCents ?? 0),
+            materialsTotalCents: Number(job.materialsTotalCents ?? 0),
+          } as any,
+        });
       } else if (event.type === "payment_intent.payment_failed" || event.type === "payment_intent.canceled") {
         const pi = event.data.object as Stripe.PaymentIntent;
-        const t = String((pi.metadata as any)?.type ?? "");
+        const meta = (pi.metadata as any) ?? {};
+        const t = String(meta?.type ?? "");
         if (t === "pm_escrow") {
           const pmId = String((pi.metadata as any)?.pmId ?? "");
           if (!pmId) return;
@@ -174,9 +228,19 @@ export async function POST(req: Request) {
             .where(eq(partsMaterialRequests.id, pmId as any));
           return;
         }
-        if (t !== "job_escrow") return;
-        const jobId = String((pi.metadata as any)?.jobId ?? "");
+        const jobId = String(meta?.jobId ?? "");
+        const isJobEscrow = t === "job_escrow" || (t === "" && Boolean(jobId));
+        if (!isJobEscrow) return;
         if (!jobId) return;
+
+        await tx
+          .update(jobPayments)
+          .set({
+            stripePaymentIntentStatus: String(pi.status ?? ""),
+            status: "FAILED" as any,
+            updatedAt: now,
+          } as any)
+          .where(eq(jobPayments.jobId, jobId));
 
         await tx
           .update(jobs)
@@ -201,8 +265,182 @@ export async function POST(req: Request) {
 
         await Promise.all([
           tx.update(contractors).set({ stripePayoutsEnabled: enabled } as any).where(eq(contractors.stripeAccountId, acctId)),
-          tx.update(routerProfiles).set({ stripePayoutsEnabled: enabled } as any).where(eq(routerProfiles.stripeAccountId, acctId)),
+          tx
+            .update(payoutMethods)
+            .set({
+              details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${enabled}), true)`,
+              updatedAt: now,
+            } as any)
+            .where(
+              and(
+                eq(payoutMethods.provider, "STRIPE" as any),
+                sql`${payoutMethods.details} ->> 'stripeAccountId' = ${acctId}`,
+              ),
+            ),
         ]);
+      } else if (
+        String(event.type) === "transfer.created" ||
+        String(event.type) === "transfer.failed" ||
+        String(event.type) === "transfer.updated" ||
+        String(event.type) === "transfer.reversed"
+      ) {
+        const eventType = String(event.type);
+        const tr = event.data.object as any;
+        const transferId = String(tr?.id ?? "").trim();
+        if (!transferId) {
+          logEvent({
+            level: "warn",
+            event: "stripe.transfer_webhook_missing_id",
+            route: "/api/webhooks/stripe",
+            method: "POST",
+            status: 200,
+            code: "STRIPE_TRANSFER_ID_MISSING",
+            context: { type: eventType, stripeEventId: event.id },
+          });
+          return;
+        }
+
+        const metaJobId = typeof tr?.metadata?.jobId === "string" ? String(tr.metadata.jobId) : null;
+        const createdIso =
+          typeof tr?.created === "number" && Number.isFinite(tr.created) ? new Date(Number(tr.created) * 1000).toISOString() : null;
+        const amountCents = typeof tr?.amount === "number" ? Number(tr.amount) : null;
+        const currency = typeof tr?.currency === "string" ? String(tr.currency) : null;
+        const destination =
+          typeof tr?.destination === "string" ? String(tr.destination) : typeof tr?.destination?.id === "string" ? String(tr.destination.id) : null;
+
+        const nextStatus =
+          eventType === "transfer.updated"
+            ? Boolean(tr?.reversed) || Number(tr?.amount_reversed ?? 0) > 0
+              ? "REVERSED"
+              : "SENT"
+            : nextStatusForTransferLifecycleEvent(eventType as any);
+        const reason =
+          nextStatus === "SENT"
+            ? null
+            : String(tr?.failure_message ?? tr?.failure_reason ?? tr?.failure_code ?? `stripe_${nextStatus.toLowerCase()}`).slice(0, 500);
+
+        // Never create new rows here (no payout logic). We only reconcile lifecycle state for existing legs.
+        const existing = await tx
+          .select({ id: transferRecords.id, jobId: transferRecords.jobId, status: transferRecords.status })
+          .from(transferRecords)
+          .where(and(eq(transferRecords.method, "STRIPE" as any), eq(transferRecords.stripeTransferId, transferId)))
+          .limit(2);
+
+        if (existing.length > 1) {
+          logEvent({
+            level: "error",
+            event: "stripe.transfer_webhook_non_unique",
+            route: "/api/webhooks/stripe",
+            method: "POST",
+            status: 200,
+            code: "TRANSFER_RECORD_NON_UNIQUE",
+            context: { type: eventType, stripeEventId: event.id, transferId, existingCount: existing.length },
+          });
+          return;
+        }
+
+        const row = existing[0] ?? null;
+        if (!row?.id) {
+          logEvent({
+            level: "warn",
+            event: "stripe.transfer_webhook_orphan",
+            route: "/api/webhooks/stripe",
+            method: "POST",
+            status: 200,
+            code: "TRANSFER_RECORD_NOT_FOUND",
+            context: { type: eventType, stripeEventId: event.id, transferId, metadataJobId: metaJobId, amountCents, currency, destination, createdAt: createdIso },
+          });
+          return;
+        }
+
+        const fromStatus = String(row.status ?? "").toUpperCase() as TransferRecordStatus;
+        const toStatus = nextStatus;
+
+        if (!isAllowedTransferRecordStatusTransition(fromStatus, toStatus)) {
+          logEvent({
+            level: "error",
+            event: "stripe.transfer_webhook_illegal_transition",
+            route: "/api/webhooks/stripe",
+            method: "POST",
+            status: 200,
+            code: "TRANSFER_STATUS_TRANSITION_ILLEGAL",
+            context: {
+              stripeEventId: event.id,
+              type: eventType,
+              jobId: String(row.jobId ?? ""),
+              transferId,
+              fromStatus,
+              toStatus,
+            },
+          });
+          return;
+        }
+
+        // Idempotent: already in desired state.
+        if (fromStatus === toStatus) return;
+
+        // If Stripe says REVERSED but we missed the SENT transition, do a safe two-step.
+        if (fromStatus === "PENDING" && toStatus === "REVERSED") {
+          const step1 = await tx
+            .update(transferRecords)
+            .set({ status: "SENT" as any, failureReason: null, releasedAt: sql`coalesce(${transferRecords.releasedAt}, ${now})` } as any)
+            .where(and(eq(transferRecords.id, row.id), eq(transferRecords.status, "PENDING" as any)))
+            .returning({ id: transferRecords.id });
+          if (!step1[0]?.id) {
+            logEvent({
+              level: "warn",
+              event: "stripe.transfer_webhook_race_no_update",
+              route: "/api/webhooks/stripe",
+              method: "POST",
+              status: 200,
+              code: "TRANSFER_RECORD_RACE",
+              context: { stripeEventId: event.id, type: eventType, jobId: String(row.jobId ?? ""), transferId, fromStatus, toStatus },
+            });
+            return;
+          }
+          const step2 = await tx
+            .update(transferRecords)
+            .set({ status: "REVERSED" as any, failureReason: reason } as any)
+            .where(and(eq(transferRecords.id, row.id), eq(transferRecords.status, "SENT" as any)))
+            .returning({ id: transferRecords.id });
+          if (!step2[0]?.id) {
+            logEvent({
+              level: "warn",
+              event: "stripe.transfer_webhook_race_no_update",
+              route: "/api/webhooks/stripe",
+              method: "POST",
+              status: 200,
+              code: "TRANSFER_RECORD_RACE",
+              context: { stripeEventId: event.id, type: eventType, jobId: String(row.jobId ?? ""), transferId, fromStatus: "SENT", toStatus },
+            });
+          }
+          return;
+        }
+
+        const updated =
+          toStatus === "SENT"
+            ? await tx
+                .update(transferRecords)
+                .set({ status: "SENT" as any, failureReason: null, releasedAt: sql`coalesce(${transferRecords.releasedAt}, ${now})` } as any)
+                .where(and(eq(transferRecords.id, row.id), eq(transferRecords.status, fromStatus as any)))
+                .returning({ id: transferRecords.id })
+            : await tx
+                .update(transferRecords)
+                .set({ status: toStatus as any, failureReason: reason } as any)
+                .where(and(eq(transferRecords.id, row.id), eq(transferRecords.status, fromStatus as any)))
+                .returning({ id: transferRecords.id });
+
+        if (!updated[0]?.id) {
+          logEvent({
+            level: "warn",
+            event: "stripe.transfer_webhook_race_no_update",
+            route: "/api/webhooks/stripe",
+            method: "POST",
+            status: 200,
+            code: "TRANSFER_RECORD_RACE",
+            context: { stripeEventId: event.id, type: eventType, jobId: String(row.jobId ?? ""), transferId, fromStatus, toStatus },
+          });
+        }
       }
     });
   } catch (err) {

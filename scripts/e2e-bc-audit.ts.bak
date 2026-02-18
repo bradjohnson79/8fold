@@ -10,10 +10,13 @@
  * Usage: pnpm tsx scripts/e2e-bc-audit.ts
  */
 
-import "dotenv/config";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import dotenv from "dotenv";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
 
 // User credentials
 const USERS = {

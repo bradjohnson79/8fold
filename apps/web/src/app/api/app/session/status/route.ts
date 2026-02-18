@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
 import { apiFetch } from "@/server/api/apiClient";
-import { getSidFromRequest, requireSession } from "@/server/auth/requireSession";
+import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 
 export async function GET(req: Request) {
   try {
     await requireSession(req);
-    const token = getSidFromRequest(req);
-    if (!token) return NextResponse.json({ ok: false, error: "Unauthorized", code: "UNAUTHENTICATED" }, { status: 401 });
+    const token = await requireApiToken();
 
     const resp = await apiFetch({
       path: "/api/session/status",
       method: "GET",
       sessionToken: token,
-      request: req,
     });
     const text = await resp.text();
     return new NextResponse(text, {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminIdentityBySessionToken, adminSessionTokenFromRequest } from "@/src/lib/auth/adminSession";
+import { tierFromEmail, tierLabel } from "../_lib/adminTier";
 
 export async function GET(req: Request) {
   const token = adminSessionTokenFromRequest(req);
@@ -8,6 +9,21 @@ export async function GET(req: Request) {
   const admin = await getAdminIdentityBySessionToken(token);
   if (!admin) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  return NextResponse.json({ ok: true, data: { admin } }, { status: 200 });
+  const tier = tierFromEmail(admin.email);
+  return NextResponse.json(
+    {
+      ok: true,
+      data: {
+        admin,
+        adminTier: tier,
+        adminTierLabel: tierLabel(tier),
+        capabilities: {
+          canMutate: tier !== "ADMIN_VIEWER",
+          canFinancialOverride: tier === "ADMIN_SUPER",
+        },
+      },
+    },
+    { status: 200 },
+  );
 }
 

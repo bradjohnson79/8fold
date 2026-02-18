@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { claimJob } from "../../../../../src/services/routerJobService";
 
@@ -12,9 +12,9 @@ function getIdFromUrl(req: Request): string {
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const user = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const user = authed;
     const id = getIdFromUrl(req);
 
     const result = await claimJob(user.userId, id);

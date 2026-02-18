@@ -1,4 +1,5 @@
-import "dotenv/config";
+import path from "node:path";
+import dotenv from "dotenv";
 import { spawnSync } from "node:child_process";
 
 /**
@@ -10,9 +11,12 @@ import { spawnSync } from "node:child_process";
  */
 
 function main() {
+  // Env isolation: load from the API app only (no repo-root .env fallback).
+  dotenv.config({ path: path.resolve(__dirname, "../apps/api/.env.local") });
+
   const testUrl = process.env.DATABASE_URL_TEST;
   if (!testUrl || testUrl.trim().length === 0) {
-    console.error("Missing DATABASE_URL_TEST in .env");
+    console.error("Missing DATABASE_URL_TEST in apps/api/.env.local");
     process.exit(1);
   }
 

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { requireRouterReady } from "../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { ok } from "../../../../../src/lib/api/respond";
 import { db } from "../../../../../db/drizzle";
@@ -18,9 +18,9 @@ const PROJECTED_STATUSES = [
 
 export async function GET(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
 
     const [projectedJobs, totalsRows, ledger] = await Promise.all([
       db

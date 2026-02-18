@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { requireRouterReady } from "../../../../../../src/auth/onboardingGuards";
+import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
+import { HOURS_24_MS } from "../../../../../../src/services/monitoringService";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { stateFromRegion } from "../../../../../../src/jobs/geo";
 import { z } from "zod";
@@ -25,9 +26,9 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ready = await requireRouterReady(req);
-    if (ready instanceof Response) return ready;
-    const router = ready;
+    const authed = await requireRouterReady(req);
+    if (authed instanceof Response) return authed;
+    const router = authed;
     const jobId = getJobIdFromUrl(req);
     let raw: unknown = {};
     try {
@@ -62,13 +63,13 @@ export async function POST(req: Request) {
       const profile =
         (
           await tx
-            .select({ state: routerProfiles.state })
+            .select({ stateProvince: (routerProfiles as any).stateProvince })
             .from(routerProfiles)
             .where(eq(routerProfiles.userId, router.userId))
             .limit(1)
         )[0] ?? null;
       const jobState = stateFromRegion(job.region);
-      const routerState = (profile?.state ?? "").trim().toUpperCase();
+      const routerState = String((profile as any)?.stateProvince ?? "").trim().toUpperCase();
       if (!routerState || routerState !== jobState) return { kind: "router_state_mismatch" as const };
 
       // v1 routing: allow up to 5 contractors per job (busy contractors allowed but deprioritized elsewhere).
@@ -92,9 +93,22 @@ export async function POST(req: Request) {
         )[0] ?? null;
       if (!contractor || contractor.status !== "APPROVED") return { kind: "contractor_not_eligible" as const };
 
+      // Concurrency guard: if the job was unclaimed/rerouted after our initial read, do not dispatch.
+      const claim =
+        (
+          await tx
+            .select({ routerId: jobs.claimedByUserId, status: jobs.status })
+            .from(jobs)
+            .where(eq(jobs.id, job.id))
+            .limit(1)
+        )[0] ?? null;
+      if (!claim || claim.status !== "PUBLISHED" || claim.routerId !== router.userId) {
+        return { kind: "job_not_available" as const };
+      }
+
       const rawToken = crypto.randomBytes(24).toString("hex");
       const tokenHash = sha256(rawToken);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const expiresAt = new Date(now.getTime() + HOURS_24_MS);
 
       const dispatchId = crypto.randomUUID();
       const dispatch =

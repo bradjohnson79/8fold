@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { and, desc, eq, or, sql, lt } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql, lt } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 
@@ -21,18 +21,23 @@ export async function GET(req: Request) {
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const archivedExcluded = eq(jobs.archived, false);
 
+    const activeStatusesWhere = or(
+      eq(jobs.status, "ASSIGNED" as any),
+      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
+    );
+
     const [activeJobs, awaitingRouter, unassignedOver24h, adminOwnedJobs, jobRows] = await Promise.all([
       count(
         db
           .select({ c: sql<number>`count(*)` })
           .from(jobs)
-          .where(and(archivedExcluded, eq(jobs.isMock, false), eq(jobs.status, "ASSIGNED")))
+          .where(and(archivedExcluded, activeStatusesWhere))
       ),
       count(
         db
           .select({ c: sql<number>`count(*)` })
           .from(jobs)
-          .where(and(archivedExcluded, eq(jobs.isMock, false), eq(jobs.status, "PUBLISHED")))
+          .where(and(archivedExcluded, eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)))
       ),
       count(
         db
@@ -41,10 +46,9 @@ export async function GET(req: Request) {
           .where(
             and(
               archivedExcluded,
-              eq(jobs.isMock, false),
-              eq(jobs.status, "PUBLISHED"),
-              or(eq(jobs.routingStatus, "ROUTED_BY_ROUTER"), eq(jobs.routingStatus, "ROUTED_BY_ADMIN")),
-              lt(jobs.routedAt ?? jobs.publishedAt, cutoff24h)
+              eq(jobs.status, "CUSTOMER_APPROVED" as any),
+              isNull(jobs.routerApprovedAt),
+              lt(jobs.createdAt, cutoff24h),
             )
           )
       ),
@@ -59,6 +63,7 @@ export async function GET(req: Request) {
           id: jobs.id,
           status: jobs.status,
           title: jobs.title,
+          jobSource: jobs.jobSource,
           region: jobs.region,
           regionName: jobs.regionName,
           addressFull: jobs.addressFull,
@@ -69,7 +74,7 @@ export async function GET(req: Request) {
           createdAt: jobs.createdAt,
         })
         .from(jobs)
-        .where(and(archivedExcluded, eq(jobs.isMock, false)))
+        .where(and(archivedExcluded, activeStatusesWhere))
         .orderBy(desc(jobs.publishedAt))
         .limit(limit),
     ]);
@@ -85,6 +90,7 @@ export async function GET(req: Request) {
         region,
         router: j.adminRoutedById ?? "",
         status: j.status ?? "",
+        jobSource: j.jobSource ?? "",
         createdAt: (j.createdAt as Date)?.toISOString?.() ?? String(j.createdAt ?? ""),
         title: j.title,
         publishedAt: (j.publishedAt as Date)?.toISOString?.() ?? String(j.publishedAt ?? ""),

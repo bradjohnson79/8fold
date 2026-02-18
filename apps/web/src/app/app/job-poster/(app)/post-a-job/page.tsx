@@ -89,28 +89,25 @@ type FieldKey =
 
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
-type NominatimResult = {
-  place_id: number | string | null;
-  display_name: string;
-  lat: string | null;
-  lon: string | null;
-  address: any | null;
-};
+function truncateWords(input: string, maxWords: number): string {
+  const s = String(input ?? "").trim();
+  if (!s) return "";
+  const words = s.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return s;
+  return `${words.slice(0, maxWords).join(" ")}…`;
+}
 
-function pickCityFromNominatimAddress(addr: any): string {
-  const a = addr ?? {};
+function FixedReadOnlyTextArea({ value, rows = 4 }: { value: string; rows?: number }) {
   return (
-    String(a.city ?? a.town ?? a.village ?? a.hamlet ?? a.municipality ?? a.county ?? "").trim()
+    <textarea
+      readOnly
+      rows={rows}
+      value={value}
+      className="mt-2 w-full text-sm text-gray-600 bg-transparent resize-none border border-gray-100 rounded-lg px-3 py-2 leading-5 overflow-y-auto"
+    />
   );
 }
 
-function pickStreetFromNominatimAddress(addr: any): string {
-  const a = addr ?? {};
-  const hn = String(a.house_number ?? "").trim();
-  const road = String(a.road ?? a.pedestrian ?? a.footway ?? "").trim();
-  const parts = [hn, road].filter(Boolean);
-  return parts.join(" ").trim();
-}
 
 export default function JobPosterPostAJobPage() {
   const router = useRouter();
@@ -146,8 +143,6 @@ export default function JobPosterPostAJobPage() {
     timeWindow: "",
     postalCode: "",
     addressChoice: "profile" as "profile" | "different",
-    addressQuery: "",
-    manualAddressMode: false,
     manualStreet: "",
     manualCity: "",
   });
@@ -178,9 +173,7 @@ export default function JobPosterPostAJobPage() {
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
   const [jobTypeExplicitlySelected, setJobTypeExplicitlySelected] = React.useState(false);
 
-  const [addrLoading, setAddrLoading] = React.useState(false);
-  const [addrResults, setAddrResults] = React.useState<NominatimResult[]>([]);
-  const [addrSelected, setAddrSelected] = React.useState<NominatimResult | null>(null);
+  // "Different address" mode is manual-entry only (structured geocoding happens server-side).
   const appraisalAbortRef = React.useRef<AbortController | null>(null);
 
   const repeatEnabled = Boolean(repeatEligible && "eligible" in repeatEligible && repeatEligible.eligible);
@@ -219,18 +212,10 @@ export default function JobPosterPostAJobPage() {
     const scope = details.scope.trim();
     if (scope.length < 20) errors.scope = "Please enter at least 20 characters";
 
-    // Address: resolved OR manual entry (different address flow).
+    // Address: profile OR manual entry (different address flow).
     if (details.addressChoice === "different") {
-      if (details.manualAddressMode) {
-        if (!details.manualStreet.trim() || !details.manualCity.trim()) {
-          errors.address = "Select an address or enter it manually";
-        }
-      } else {
-        const cityFromSelected = addrSelected ? pickCityFromNominatimAddress(addrSelected.address) : "";
-        const hasCoords = addrSelected && Number.isFinite(Number(addrSelected.lat)) && Number.isFinite(Number(addrSelected.lon));
-        if (!addrSelected || !cityFromSelected || !hasCoords) {
-          errors.address = "Select an address or enter it manually";
-        }
+      if (!details.manualStreet.trim() || !details.manualCity.trim()) {
+        errors.address = "Enter a street address and city";
       }
     } else {
       // profile address required by gating, but still validate for confidence.
@@ -352,8 +337,6 @@ export default function JobPosterPostAJobPage() {
           timeWindow: String(data?.timeWindow ?? s.timeWindow ?? ""),
           postalCode: String(addr?.postalCode ?? s.postalCode ?? ""),
           addressChoice: "profile",
-          addressQuery: "",
-          manualAddressMode: false,
           manualStreet: "",
           manualCity: "",
         }));
@@ -377,7 +360,7 @@ export default function JobPosterPostAJobPage() {
         setAiRangeLowCents(lowCents);
         setAiRangeHighCents(highCents);
         setAiConfidence((d?.aiConfidence ?? "medium") as any);
-        setAiReasoning(String(d?.aiReasoning ?? ""));
+        setAiReasoning(truncateWords(String(d?.aiReasoning ?? ""), 150));
         if (suggestedCents > 0) setSelectedPriceCents(suggestedCents);
 
         const wiz = String(d?.wizardStep ?? "").toUpperCase();
@@ -395,41 +378,6 @@ export default function JobPosterPostAJobPage() {
       alive = false;
     };
   }, [profile, resumeJobId, resumeMode]);
-
-  // Nominatim search (CA/US) when using a different address.
-  React.useEffect(() => {
-    let alive = true;
-    const q = details.addressQuery.trim();
-    if (details.addressChoice !== "different" || details.manualAddressMode) return;
-    if (!q || q.length < 3) {
-      setAddrResults([]);
-      setAddrSelected(null);
-      return;
-    }
-
-    setAddrLoading(true);
-    const t = setTimeout(() => {
-      void (async () => {
-        try {
-          const resp = await fetch(`/api/app/job-poster/address-search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
-          const json = (await resp.json().catch(() => null)) as any;
-          const list = Array.isArray(json?.results) ? (json.results as NominatimResult[]) : [];
-          if (!alive) return;
-          setAddrResults(list);
-        } catch {
-          if (!alive) return;
-          setAddrResults([]);
-        } finally {
-          if (alive) setAddrLoading(false);
-        }
-      })();
-    }, 380);
-
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [details.addressChoice, details.addressQuery, details.manualAddressMode]);
 
   async function saveProfile() {
     setLoading(true);
@@ -488,20 +436,9 @@ export default function JobPosterPostAJobPage() {
       lng = typeof profile.lng === "number" ? profile.lng : null;
       addressMode = "PROFILE";
     } else {
-      if (details.manualAddressMode) {
-        address = details.manualStreet.trim();
-        city = details.manualCity.trim();
-        addressMode = "MANUAL";
-      } else if (addrSelected) {
-        const a = addrSelected.address ?? null;
-        city = pickCityFromNominatimAddress(a);
-        address = pickStreetFromNominatimAddress(a) || addrSelected.display_name;
-        lat = Number.isFinite(Number(addrSelected.lat)) ? Number(addrSelected.lat) : null;
-        lng = Number.isFinite(Number(addrSelected.lon)) ? Number(addrSelected.lon) : null;
-        addressMode = "AUTO";
-        const pc = String(a?.postcode ?? "").trim();
-        if (!postalCode && pc) postalCode = pc;
-      }
+      address = details.manualStreet.trim();
+      city = details.manualCity.trim();
+      addressMode = "MANUAL";
     }
 
     const itemsFromRows = (junkItems ?? [])
@@ -642,7 +579,7 @@ export default function JobPosterPostAJobPage() {
       setAiRangeHighCents(highCents);
       setAiConfidence((j?.aiConfidence ?? "medium") as any);
       setSelectedPriceCents(suggestedCents);
-      setAiReasoning(String(j?.aiReasoning ?? ""));
+      setAiReasoning(truncateWords(String(j?.aiReasoning ?? ""), 150));
       setStep(2);
     } finally {
       appraisalAbortRef.current = null;
@@ -944,8 +881,7 @@ export default function JobPosterPostAJobPage() {
                   type="radio"
                   checked={details.addressChoice === "profile"}
                   onChange={() => {
-                    setAddrSelected(null);
-                    setDetails((s) => ({ ...s, addressChoice: "profile", manualAddressMode: false }));
+                    setDetails((s) => ({ ...s, addressChoice: "profile" }));
                     touch("address");
                     setFieldErrors(validateDetails().errors);
                   }}
@@ -969,7 +905,6 @@ export default function JobPosterPostAJobPage() {
                     setDetails((s) => ({
                       ...s,
                       addressChoice: "different",
-                      manualAddressMode: false,
                     }))
                   }
                   className="mt-1 h-4 w-4"
@@ -977,115 +912,35 @@ export default function JobPosterPostAJobPage() {
                 <div className="flex-1">
                   <div className="font-semibold text-gray-900">Use a different address</div>
                   <div className="text-sm text-gray-600">
-                    Search and select an address (US/Canada), or enter it manually. State/Province auto-applies from your profile.
+                    Enter a street address and city (US/Canada). We geocode it server-side.
                   </div>
 
                   {details.addressChoice === "different" ? (
                     <div className="mt-2">
-                      {!details.manualAddressMode ? (
-                        <>
-                          <input
-                            className={[
-                              "w-full border rounded-lg px-3 py-2",
-                              showStatus("address") && fieldErrors.address ? "border-red-400" : "border-gray-300",
-                            ].join(" ")}
-                            placeholder="Start typing an address…"
-                            value={details.addressQuery}
-                            onChange={(e) => {
-                              setAddrSelected(null);
-                              setDetails((s) => ({ ...s, addressQuery: e.target.value }));
-                            }}
-                            onBlur={() => {
-                              touch("address");
-                              setFieldErrors(validateDetails().errors);
-                            }}
-                          />
-                          {showStatus("address") && fieldErrors.address ? (
-                            <div className="mt-1 text-xs text-red-600">{fieldErrors.address}</div>
-                          ) : null}
-
-                          {addrLoading ? <div className="mt-2 text-xs text-gray-500">Searching…</div> : null}
-
-                          {!addrSelected && addrResults.length ? (
-                            <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden bg-white">
-                              {addrResults.map((r) => (
-                                <button
-                                  key={String(r.place_id ?? r.display_name)}
-                                  type="button"
-                                  onClick={() => {
-                                    setAddrSelected(r);
-                                    touch("address");
-                                    setFieldErrors(validateDetails().errors);
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                                >
-                                  {r.display_name}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-
-                          {addrSelected ? (
-                            <div className="mt-2 text-xs text-gray-500">
-                              Selected: <span className="font-semibold">{addrSelected.display_name}</span> · City:{" "}
-                              <span className="font-semibold">
-                                {pickCityFromNominatimAddress(addrSelected.address) || "—"}
-                              </span>{" "}
-                              · State/Province: <span className="font-semibold">{profile?.stateProvince ?? "—"}</span>
-                            </div>
-                          ) : null}
-
-                          <button
-                            type="button"
-                            className="mt-3 text-sm font-semibold text-8fold-green hover:underline"
-                            onClick={() => {
-                              setAddrResults([]);
-                              setAddrSelected(null);
-                              setDetails((s) => ({ ...s, manualAddressMode: true }));
-                              touch("address");
-                              setFieldErrors(validateDetails().errors);
-                            }}
-                          >
-                            Can’t find your address? Enter it manually
-                          </button>
-                        </>
-                      ) : (
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <Field
-                            label="Street address"
-                            value={details.manualStreet}
-                            onChange={(v) => setDetails((s) => ({ ...s, manualStreet: v }))}
-                            onBlur={() => {
-                              touch("address");
-                              setFieldErrors(validateDetails().errors);
-                            }}
-                            status={statusFor("address")}
-                            helperText={fieldErrors.address}
-                          />
-                          <Field
-                            label="City"
-                            value={details.manualCity}
-                            onChange={(v) => setDetails((s) => ({ ...s, manualCity: v }))}
-                            onBlur={() => {
-                              touch("address");
-                              setFieldErrors(validateDetails().errors);
-                            }}
-                            status={statusFor("address")}
-                            helperText={fieldErrors.address}
-                          />
-                          <div className="md:col-span-2">
-                            <button
-                              type="button"
-                              className="text-sm font-semibold text-gray-700 hover:underline"
-                              onClick={() => {
-                                setDetails((s) => ({ ...s, manualAddressMode: false }));
-                              }}
-                            >
-                              Back to address search
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Field
+                          label="Street address"
+                          value={details.manualStreet}
+                          onChange={(v) => setDetails((s) => ({ ...s, manualStreet: v }))}
+                          onBlur={() => {
+                            touch("address");
+                            setFieldErrors(validateDetails().errors);
+                          }}
+                          status={statusFor("address")}
+                          helperText={fieldErrors.address}
+                        />
+                        <Field
+                          label="City"
+                          value={details.manualCity}
+                          onChange={(v) => setDetails((s) => ({ ...s, manualCity: v }))}
+                          onBlur={() => {
+                            touch("address");
+                            setFieldErrors(validateDetails().errors);
+                          }}
+                          status={statusFor("address")}
+                          helperText={fieldErrors.address}
+                        />
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1193,7 +1048,7 @@ export default function JobPosterPostAJobPage() {
 
           <div className="border border-gray-200 rounded-xl p-4 mb-4">
             <div className="text-sm font-semibold text-gray-900">Pricing rationale</div>
-            <div className="text-sm text-gray-600 mt-1">{aiReasoning || "—"}</div>
+            <FixedReadOnlyTextArea value={truncateWords(aiReasoning || "", 150) || "—"} rows={4} />
           </div>
 
           {repeatChoice === "YES" ? (

@@ -243,6 +243,9 @@ export async function GET(req: Request) {
         },
         contractorAccount: {
           userId: contractorAccounts.userId,
+          firstName: contractorAccounts.firstName,
+          lastName: contractorAccounts.lastName,
+          businessName: contractorAccounts.businessName,
           tradeCategory: contractorAccounts.tradeCategory,
           serviceRadiusKm: contractorAccounts.serviceRadiusKm,
           country: contractorAccounts.country,
@@ -271,9 +274,17 @@ export async function GET(req: Request) {
         const state = r.router?.homeRegionCode ?? r.contractorAccount?.regionCode ?? null;
         const city = r.router?.homeCity ?? r.contractorAccount?.city ?? null;
         const email = u.email ?? null;
+        const contractorFirstName = r.contractorAccount?.firstName ? String(r.contractorAccount.firstName) : null;
+        const contractorLastName = r.contractorAccount?.lastName ? String(r.contractorAccount.lastName) : null;
+        const contractorFullName =
+          contractorFirstName && contractorLastName ? `${contractorFirstName} ${contractorLastName}` : null;
+        const name = u.role === "CONTRACTOR" ? contractorFullName ?? u.name : u.name;
+        const outCountry = u.role === "CONTRACTOR" ? (r.contractorAccount?.country ?? u.country) : u.country;
         return {
           id: u.id,
-          name: u.name,
+          name,
+          firstName: contractorFirstName,
+          lastName: contractorLastName,
           email,
           role: u.role,
           status: u.status,
@@ -281,7 +292,7 @@ export async function GET(req: Request) {
           suspensionReason: u.suspensionReason ?? null,
           archivedAt: (u.archivedAt as any)?.toISOString?.() ?? null,
           archivedReason: u.archivedReason ?? null,
-          country: u.country ?? null,
+          country: outCountry ?? null,
           state,
           city,
         createdAt: (u.createdAt as any)?.toISOString?.() ?? String(u.createdAt),

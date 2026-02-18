@@ -3,15 +3,22 @@
 import { z } from "zod";
 import React from "react";
 import { PayoutMethodSetup } from "@/components/PayoutMethodSetup";
+import { useClerk } from "@clerk/nextjs";
+import { GeoAutocomplete, type GeoAutocompleteResult } from "@/components/GeoAutocomplete";
 
 const JobPosterProfileSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().min(7).optional(),
-  address: z.string().optional(),
-  city: z.string().min(1),
-  stateProvince: z.string().min(2),
-  country: z.enum(["US", "CA"]).optional()
+  legalStreet: z.string().min(1),
+  legalCity: z.string().min(1),
+  legalProvince: z.string().min(2),
+  legalPostalCode: z.string().min(3),
+  legalCountry: z.enum(["US", "CA"]),
+
+  mapDisplayName: z.string().min(1),
+  lat: z.number(),
+  lng: z.number(),
 });
 type JobPosterProfile = z.infer<typeof JobPosterProfileSchema>;
 
@@ -25,14 +32,19 @@ function inferStateProvinceFromLocation(s: unknown): string {
 }
 
 export default function JobPosterProfilePage() {
+  const { signOut } = useClerk();
   const [form, setForm] = React.useState<JobPosterProfile>({
     name: "",
     email: "",
     phone: "",
-    address: "",
-    city: "",
-    stateProvince: "",
-    country: "US"
+    legalStreet: "",
+    legalCity: "",
+    legalProvince: "",
+    legalPostalCode: "",
+    legalCountry: "US",
+    mapDisplayName: "",
+    lat: 0,
+    lng: 0,
   });
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -69,10 +81,14 @@ export default function JobPosterProfilePage() {
             name: json.profile.name ?? "",
             email: json.profile.email ?? "",
             phone: json.profile.phone ?? "",
-            address: json.profile.address ?? "",
-            city: json.profile.city ?? "",
-            stateProvince: stateProvince || (Boolean(meJson?.superuser) ? "BC" : ""),
-            country: json.profile.country ?? "US"
+            legalStreet: json.profile.address ?? "",
+            legalCity: json.profile.city ?? "",
+            legalProvince: stateProvince || "",
+            legalPostalCode: String(json.profile.postalCode ?? ""),
+            legalCountry: json.profile.country ?? "US",
+            mapDisplayName: String((json.profile as any)?.mapDisplayName ?? (json.profile as any)?.formattedAddress ?? "").trim(),
+            lat: typeof json.profile.lat === "number" ? json.profile.lat : 0,
+            lng: typeof json.profile.lng === "number" ? json.profile.lng : 0,
           });
         }
       } catch (e) {
@@ -104,7 +120,12 @@ export default function JobPosterProfilePage() {
         body: JSON.stringify(parsed.data)
       });
       const json = await resp.json().catch(() => null);
-      if (!resp.ok) throw new Error(json?.error ?? "Failed to save profile");
+      if (!resp.ok) {
+        const code = json?.code ?? json?.error?.code ?? "";
+        const msg = json?.error?.message ?? json?.error ?? "Failed to save profile";
+        if (code === "MAP_LOCATION_REQUIRED") throw new Error("Please select a location from the map search field to enable routing.");
+        throw new Error(msg);
+      }
       setNotice("Saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
@@ -158,8 +179,8 @@ export default function JobPosterProfilePage() {
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(json?.error ?? "Failed to delete account");
 
-      // Force logout then redirect home.
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => null);
+      // Account deletion should end the Clerk session as well.
+      await signOut({ redirectUrl: "/" }).catch(() => null);
       window.location.href = "/";
     } catch (e) {
       setAccountActionError(e instanceof Error ? e.message : "Failed to delete account");
@@ -197,34 +218,110 @@ export default function JobPosterProfilePage() {
           value={form.phone ?? ""}
           onChange={(v) => setForm((s) => ({ ...s, phone: v }))}
         />
-        <Field
-          label="Address (optional)"
-          placeholder="123 Main St"
-          value={form.address ?? ""}
-          onChange={(v) => setForm((s) => ({ ...s, address: v }))}
-        />
-        <Field
-          label="City"
-          placeholder="Vancouver"
-          value={form.city}
-          onChange={(v) => setForm((s) => ({ ...s, city: v }))}
-        />
-        <Field
-          label="State / Province"
-          placeholder="BC"
-          value={form.stateProvince}
-          onChange={(v) => (isAdmin ? setForm((s) => ({ ...s, stateProvince: v })) : null)}
-          disabled={!isAdmin}
-          helperText={isAdmin ? undefined : "Set during onboarding. You can update this later."}
-        />
+      </div>
+
+      <div className="mt-6 border border-gray-200 rounded-2xl p-5">
+        <div className="font-bold text-gray-900">Legal address</div>
+        <div className="text-sm text-gray-600 mt-1">This is your legal service address.</div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field
+            label="Street address"
+            placeholder="8345 209 Street"
+            value={form.legalStreet}
+            onChange={(v) => setForm((s) => ({ ...s, legalStreet: v }))}
+          />
+          <Field
+            label="City"
+            placeholder="Langley"
+            value={form.legalCity}
+            onChange={(v) => setForm((s) => ({ ...s, legalCity: v }))}
+          />
+          <Field
+            label="State / Province"
+            placeholder="BC"
+            value={form.legalProvince}
+            onChange={(v) => setForm((s) => ({ ...s, legalProvince: v }))}
+            disabled={false}
+            helperText="Required. Always editable."
+          />
+          <Field
+            label="Postal / ZIP"
+            placeholder="V2Y 0R2"
+            value={form.legalPostalCode}
+            onChange={(v) => setForm((s) => ({ ...s, legalPostalCode: v }))}
+          />
+          <Select
+            label="Country"
+            value={form.legalCountry}
+            onChange={(v: string) => setForm((s) => ({ ...s, legalCountry: v as any }))}
+            options={[
+              { value: "CA", label: "Canada" },
+              { value: "US", label: "United States" },
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="mt-6 border border-gray-200 rounded-2xl p-5">
+        <div className="font-bold text-gray-900">Map location</div>
+        <div className="text-sm text-gray-600 mt-1">
+          Required. Used to calculate distance between Job Posters and Contractors.
+        </div>
+        <div className="mt-3">
+          <GeoAutocomplete
+            label="Search approximate location (required for routing distance)"
+            required
+            value={form.mapDisplayName}
+            onChange={(v) =>
+              setForm((s) => ({
+                ...s,
+                mapDisplayName: v,
+                // typing without selecting must not count
+                lat: 0,
+                lng: 0,
+              }))
+            }
+            onPick={(r: GeoAutocompleteResult) => {
+              setForm((s) => ({
+                ...s,
+                mapDisplayName: r.display_name,
+                lat: r.lat,
+                lng: r.lon,
+              }));
+            }}
+            errorText={
+              !Number.isFinite(form.lat) || !Number.isFinite(form.lng) || (form.lat === 0 && form.lng === 0)
+                ? "Please select a location from the map search field to enable routing."
+                : ""
+            }
+          />
+        </div>
       </div>
 
       <div className="mt-6">
         <button
-          disabled={loading || saving}
+          disabled={
+            loading ||
+            saving ||
+            !form.legalStreet.trim() ||
+            !form.legalCity.trim() ||
+            !form.legalProvince.trim() ||
+            !form.legalPostalCode.trim() ||
+            !Number.isFinite(form.lat) ||
+            !Number.isFinite(form.lng) ||
+            (form.lat === 0 && form.lng === 0)
+          }
           onClick={save}
           className={`font-semibold px-4 py-2 rounded-lg ${
-            loading || saving
+            loading ||
+            saving ||
+            !form.legalStreet.trim() ||
+            !form.legalCity.trim() ||
+            !form.legalProvince.trim() ||
+            !form.legalPostalCode.trim() ||
+            !Number.isFinite(form.lat) ||
+            !Number.isFinite(form.lng) ||
+            (form.lat === 0 && form.lng === 0)
               ? "bg-gray-200 text-gray-600"
               : "bg-8fold-green text-white hover:bg-8fold-green-dark"
           }`}
@@ -413,6 +510,30 @@ function Field({
         disabled={disabled}
       />
       {helperText ? <div className="mt-1 text-xs text-gray-500">{helperText}</div> : null}
+    </label>
+  );
+}
+
+function Select(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="block">
+      <div className="text-sm font-medium text-gray-700">{props.label}</div>
+      <select
+        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 bg-white"
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+      >
+        {props.options.map((o) => (
+          <option key={o.value || o.label} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

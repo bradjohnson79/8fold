@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "./requireSession";
+import { requireSession } from "./meSession";
 
 export async function requireJobPosterAccount(req: Request): Promise<
   | { userId: string; role: string }

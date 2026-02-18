@@ -11,8 +11,12 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"],
-      "@/server/*": ["./src/server/*"]
+      "@/*": [
+        "./*"
+      ],
+      "@/server/*": [
+        "./src/server/*"
+      ]
     },
     "module": "ESNext",
     "moduleResolution": "Bundler",

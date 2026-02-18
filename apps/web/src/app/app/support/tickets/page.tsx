@@ -45,9 +45,15 @@ export default function SupportTicketsPage() {
       const disputesJson = await disputesResp.json().catch(() => null);
       const eligibleJson = await eligibleResp.json().catch(() => null);
       if (!ticketsResp.ok) throw new Error(ticketsJson?.error ?? "Failed to load tickets");
-      setTickets(Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : []);
-      const hasDisputes = disputesResp.ok && Array.isArray(disputesJson?.disputes) && disputesJson.disputes.length > 0;
-      const eligible = eligibleResp.ok && Boolean(eligibleJson?.eligible);
+      const t = Array.isArray(ticketsJson?.data?.tickets) ? ticketsJson.data.tickets : Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : [];
+      setTickets(t);
+      const disputes = Array.isArray(disputesJson?.data?.disputes)
+        ? disputesJson.data.disputes
+        : Array.isArray(disputesJson?.disputes)
+          ? disputesJson.disputes
+          : [];
+      const hasDisputes = disputesResp.ok && disputes.length > 0;
+      const eligible = eligibleResp.ok && Boolean(eligibleJson?.data?.eligible ?? eligibleJson?.eligible);
       setShowDisputesTab(Boolean(hasDisputes || eligible));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");

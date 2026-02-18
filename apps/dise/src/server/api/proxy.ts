@@ -1,3 +1,9 @@
+/**
+ * DISE operational isolation helper (apps/dise).
+ *
+ * This module exists ONLY to proxy HTTP calls to `apps/api` (configured by `API_ORIGIN`).
+ * It must not import or depend on jobs lifecycle, ledger, Stripe/payments, or any DB client.
+ */
 function requireApiOrigin(): string {
   const v = process.env.API_ORIGIN;
   if (!v) throw new Error("API_ORIGIN is not defined");

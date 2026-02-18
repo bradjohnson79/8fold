@@ -3,10 +3,12 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { contractorAccounts } from "../../../../../db/schema/contractorAccount";
+import { contractors } from "../../../../../db/schema/contractor";
 import { tradeCategoryEnum } from "../../../../../db/schema/enums";
 import { users } from "../../../../../db/schema/user";
 import { requireUser } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
+import { sql } from "drizzle-orm";
 
 const TradeCategorySchema = z.enum(tradeCategoryEnum.enumValues as [string, ...string[]]);
 
@@ -16,21 +18,32 @@ const BodySchema = z.object({
   businessName: z.string().trim().max(160).optional().nullable(),
   businessNumber: z.string().trim().max(60).optional().nullable(),
 
-  addressMode: z.enum(["SEARCH", "MANUAL"]).default("SEARCH"),
-  addressSearchDisplayName: z.string().trim().max(240).optional().nullable(),
-
-  address1: z.string().trim().max(200).optional().nullable(),
+  // Legal address (manual)
+  address1: z.string().trim().min(1).max(200),
   address2: z.string().trim().max(200).optional().nullable(),
   apt: z.string().trim().max(60).optional().nullable(),
-  city: z.string().trim().max(120).optional().nullable(),
-  postalCode: z.string().trim().max(24).optional().nullable(),
-  stateProvince: z.string().trim().min(2).max(2),
+  city: z.string().trim().min(1).max(120),
+  postalCode: z.string().trim().min(3).max(24),
+  stateProvince: z.string().trim().min(2).max(10),
   country: z.enum(["US", "CA"]),
+
+  // Map location (required for routing coords)
+  mapDisplayName: z.string().trim().min(1).max(400),
+  lat: z.number(),
+  lng: z.number(),
 
   tradeCategory: TradeCategorySchema,
   tradeStartYear: z.number().int().min(1926).max(2026),
   tradeStartMonth: z.number().int().min(1).max(12),
 });
+
+function isValidGeo(lat: number, lng: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  if (lat < -90 || lat > 90) return false;
+  if (lng < -180 || lng > 180) return false;
+  return true;
+}
 
 function experienceYearsFromStart(y: number, m: number, now = new Date()): number {
   // m is 1-12
@@ -48,7 +61,11 @@ export async function GET(req: Request) {
     }
 
     const [userRows, acctRows] = await Promise.all([
-      db.select({ email: users.email }).from(users).where(eq(users.id, u.userId)).limit(1),
+      db
+        .select({ email: users.email, formattedAddress: users.formattedAddress, latitude: users.latitude, longitude: users.longitude })
+        .from(users)
+        .where(eq(users.id, u.userId))
+        .limit(1),
       db
         .select({
           status: contractorAccounts.status,
@@ -86,6 +103,9 @@ export async function GET(req: Request) {
         email: user?.email ?? null,
         ...acct,
         stateProvince: acct.regionCode,
+        mapDisplayName: user?.formattedAddress ?? "",
+        lat: user?.latitude ?? 0,
+        lng: user?.longitude ?? 0,
       },
     });
   } catch (err) {
@@ -113,6 +133,16 @@ export async function POST(req: Request) {
     }
 
     const b = parsed.data;
+    if (b.country !== "CA" && b.country !== "US") {
+      return NextResponse.json(
+        { ok: false, error: { code: "INVALID_COUNTRY", message: "Country must be US or Canada." } },
+        { status: 400 },
+      );
+    }
+    if (!isValidGeo(b.lat, b.lng)) {
+      return NextResponse.json({ ok: false, code: "MAP_LOCATION_REQUIRED" }, { status: 400 });
+    }
+
     const businessName =
       (b.businessName ?? "").trim() || `${b.firstName.trim()} ${b.lastName.trim()}`.trim();
 
@@ -120,41 +150,66 @@ export async function POST(req: Request) {
     const insufficient = !Number.isFinite(expYears) || expYears < 3;
 
     const updated = await db.transaction(async (tx) => {
-      // Wide-write hygiene: split wizard writes into step-scoped updates.
-      const base = await tx
-        .update(contractorAccounts)
-        .set({
-          firstName: b.firstName,
-          lastName: b.lastName,
-          businessName,
-          businessNumber: (b.businessNumber ?? null) as any,
-          addressMode: b.addressMode,
-          addressSearchDisplayName: (b.addressSearchDisplayName ?? null) as any,
-          address1: (b.address1 ?? null) as any,
-          address2: (b.address2 ?? null) as any,
-          apt: (b.apt ?? null) as any,
-          city: (b.city ?? null) as any,
-          postalCode: (b.postalCode ?? null) as any,
-          country: b.country as any,
-          regionCode: b.stateProvince.toUpperCase(),
-        })
-        .where(eq(contractorAccounts.userId, u.userId))
-        .returning({ userId: contractorAccounts.userId });
-
-      if (!base.length) return base;
+      const userRows = await tx.select({ email: users.email }).from(users).where(eq(users.id, u.userId)).limit(1);
+      const email = String(userRows[0]?.email ?? "").trim();
 
       await tx
-        .update(contractorAccounts)
+        .update(users)
         .set({
-          tradeCategory: b.tradeCategory as any,
-          tradeStartYear: b.tradeStartYear,
-          tradeStartMonth: b.tradeStartMonth,
-          status: insufficient ? ("DENIED_INSUFFICIENT_EXPERIENCE" as any) : ("ACTIVE" as any),
-          wizardCompleted: insufficient ? false : true,
-        })
-        .where(eq(contractorAccounts.userId, u.userId));
+          formattedAddress: b.mapDisplayName,
+          latitude: b.lat as any,
+          longitude: b.lng as any,
+          legalStreet: String(b.address1 ?? "").trim(),
+          legalCity: b.city,
+          legalProvince: b.stateProvince.toUpperCase(),
+          legalPostalCode: b.postalCode,
+          legalCountry: b.country as any,
+          country: b.country as any,
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(users.id, u.userId));
 
-      return base;
+      // Best-effort: keep `Contractor` coords in sync when a Contractor row exists for this email.
+      if (email) {
+        await tx
+          .update(contractors)
+          .set({
+            lat: b.lat as any,
+            lng: b.lng as any,
+            country: b.country as any,
+            regionCode: b.stateProvince.toUpperCase(),
+          } as any)
+          .where(sql`lower(${contractors.email}) = lower(${email})`);
+      }
+
+      // Upsert contractor profile strictly keyed by authenticated userId.
+      // This prevents phantom/duplicate rows and guarantees the admin join surface is populated.
+      const set = {
+        firstName: b.firstName,
+        lastName: b.lastName,
+        businessName,
+        businessNumber: (b.businessNumber ?? null) as any,
+        addressMode: "MANUAL" as any,
+        addressSearchDisplayName: b.mapDisplayName as any,
+        address1: (b.address1 ?? null) as any,
+        address2: (b.address2 ?? null) as any,
+        apt: (b.apt ?? null) as any,
+        city: b.city as any,
+        postalCode: b.postalCode as any,
+        country: b.country as any,
+        regionCode: b.stateProvince.toUpperCase(),
+        tradeCategory: b.tradeCategory as any,
+        tradeStartYear: b.tradeStartYear,
+        tradeStartMonth: b.tradeStartMonth,
+        status: insufficient ? ("DENIED_INSUFFICIENT_EXPERIENCE" as any) : ("ACTIVE" as any),
+        wizardCompleted: insufficient ? false : true,
+      } as const;
+
+      return await tx
+        .insert(contractorAccounts)
+        .values({ userId: u.userId, ...(set as any) } as any)
+        .onConflictDoUpdate({ target: contractorAccounts.userId, set: set as any })
+        .returning({ userId: contractorAccounts.userId });
     });
 
     if (!updated.length) {

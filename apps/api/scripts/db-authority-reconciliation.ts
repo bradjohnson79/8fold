@@ -8,9 +8,11 @@
  * - Outputs a structured mismatch report
  *
  * Run:
- *   DOTENV_CONFIG_PATH=.env.local pnpm -C apps/api tsx scripts/db-authority-reconciliation.ts
+ *   pnpm -C apps/api tsx scripts/db-authority-reconciliation.ts
  */
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { Client } from "pg";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { adminUsers } from "../db/schema/adminUser";
@@ -21,6 +23,10 @@ import { jobs } from "../db/schema/job";
 import { routers } from "../db/schema/router";
 import { users } from "../db/schema/user";
 import { DB_SCHEMA } from "../db/schema/_dbSchema";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(SCRIPT_DIR, "..", ".env.local") });
 
 type DbColumn = {
   schema: string;

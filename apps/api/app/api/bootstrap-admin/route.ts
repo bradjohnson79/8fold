@@ -76,10 +76,21 @@ export async function POST(req: Request) {
     const userId = String(result?.user?.id ?? "").trim();
     if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-    // Role is always server-side. Highest available role in UserRole enum is ADMIN.
-    await db.update(users).set({ role: "ADMIN", updatedAt: new Date() } as any).where(eq(users.id, userId));
+    // Role immutability: this route must not elevate roles. Admin must be provisioned by
+    // creating a separate Clerk account and setting the internal role at user creation time.
+    const rows = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+    const role = String(rows[0]?.role ?? "").toUpperCase();
+    if (role !== "ADMIN") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: { code: "ROLE_IMMUTABLE", message: "Role selection is permanent and cannot be changed." },
+        },
+        { status: 409 },
+      );
+    }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, data: { role: "ADMIN" } });
   } catch (err) {
     logEvent({
       level: "error",

@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser } from "../../../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../../../src/http/errors";
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
-import { db } from "../../../../../../../db/drizzle";
-import { auditLogs } from "../../../../../../../db/schema/auditLog";
-import { disputeCases } from "../../../../../../../db/schema/disputeCase";
-import { supportMessages } from "../../../../../../../db/schema/supportMessage";
-import { supportTickets } from "../../../../../../../db/schema/supportTicket";
+import { requireUser } from "@/src/auth/rbac";
+import { db } from "@/db/drizzle";
+import { auditLogs } from "@/db/schema/auditLog";
+import { disputeCases } from "@/db/schema/disputeCase";
+import { supportMessages } from "@/db/schema/supportMessage";
+import { supportTickets } from "@/db/schema/supportTicket";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -21,18 +20,26 @@ const BodySchema = z.object({
   message: z.string().trim().min(1).max(5000)
 });
 
+function ok<T>(data: T, init?: { status?: number }) {
+  return NextResponse.json({ ok: true, data }, { status: init?.status ?? 200 });
+}
+function fail(status: number, message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
     const id = getIdFromUrl(req);
+    if (!id) return fail(400, "Invalid request");
     let raw: unknown = {};
     try {
       raw = await req.json();
     } catch {
-      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+      return fail(400, "Invalid input");
     }
     const body = BodySchema.safeParse(raw);
-    if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    if (!body.success) return fail(400, "Invalid input");
 
     const rows = await db
       .select({
@@ -47,12 +54,14 @@ export async function POST(req: Request) {
       .where(eq(supportTickets.id, id))
       .limit(1);
     const ticket = rows[0] ?? null;
-    if (!ticket) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!ticket) return fail(404, "Ticket not found");
 
+    const role = String((user as any).role ?? "").toUpperCase();
+    const isAdmin = role === "ADMIN";
     const isCreator = ticket.createdById === user.userId;
     const isAgainstParty = ticket.type === "DISPUTE" && ticket.againstUserId === user.userId;
     // Help tickets remain 1:1 requester support threads; disputes are 2-party threads.
-    if (!isCreator && !isAgainstParty) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!isAdmin && !isCreator && !isAgainstParty) return fail(403, "Forbidden");
 
     const msg = await db.transaction(async (tx) => {
       const now = new Date();
@@ -86,10 +95,24 @@ export async function POST(req: Request) {
       return created;
     });
 
-    return NextResponse.json({ message: { ...msg, createdAt: msg.createdAt.toISOString() } }, { status: 201 });
+    return ok({ message: { ...msg, createdAt: msg.createdAt.toISOString() } }, { status: 201 });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 
+// Avoid Next.js automatic 405s on known routes.
+export async function GET() {
+  return fail(404, "Not found");
+}
+export async function PATCH() {
+  return fail(404, "Not found");
+}
+export async function PUT() {
+  return fail(404, "Not found");
+}
+export async function DELETE() {
+  return fail(404, "Not found");
+}

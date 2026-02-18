@@ -58,6 +58,7 @@ export const jobs = dbSchema.table(
   supersededByJobId: text("supersededByJobId"),
 
   isMock: boolean("isMock").notNull().default(false),
+  mockSeedBatch: text("mockSeedBatch"),
   publicStatus: publicJobStatusEnum("publicStatus").notNull().default("OPEN"),
   jobSource: jobSourceEnum("jobSource").notNull().default("REAL"),
 

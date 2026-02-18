@@ -1,14 +1,19 @@
-import "dotenv/config";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { assertNotProductionSeed } from "./_seedGuard";
+
+// Env isolation: load from apps/api/.env.local only (no repo-root fallback).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const API_ENV_PATH = path.join(SCRIPT_DIR, "..", ".env.local");
+dotenv.config({ path: API_ENV_PATH });
 
 function ensureDatabaseUrl() {
   if (process.env.DATABASE_URL) return;
-  const p = path.join(process.cwd(), ".env.local");
-  if (!fs.existsSync(p)) throw new Error("DATABASE_URL not set and apps/api/.env.local not found");
-  const txt = fs.readFileSync(p, "utf8");
+  if (!fs.existsSync(API_ENV_PATH)) throw new Error("DATABASE_URL not set and apps/api/.env.local not found");
+  const txt = fs.readFileSync(API_ENV_PATH, "utf8");
   const m = txt.match(/^DATABASE_URL\s*=\s*(.+)$/m);
   if (!m) throw new Error("DATABASE_URL missing in apps/api/.env.local");
   process.env.DATABASE_URL = m[1].trim();
@@ -39,24 +44,32 @@ async function main() {
   const routerEmail = "router.e2e@8fold.local";
   const now = new Date();
 
-  const userInserted = await db
-    .insert(users)
-    .values({
-      id: crypto.randomUUID(),
+  const existingUser = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(eq(users.email, routerEmail))
+    .limit(1);
+  let routerUserId = existingUser[0]?.id ?? null;
+  if (routerUserId) {
+    const currentRole = String(existingUser[0]?.role ?? "").toUpperCase();
+    if (currentRole !== "ROUTER") {
+      throw new Error(`ROLE_IMMUTABLE: existing role=${currentRole} attempted=ROUTER for ${routerEmail}`);
+    }
+    // Update non-role fields only.
+    await db.update(users).set({ status: "ACTIVE", country: "US", updatedAt: now } as any).where(eq(users.id, routerUserId));
+  } else {
+    routerUserId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: routerUserId,
+      clerkUserId: `seed:e2e:${routerEmail}`,
       email: routerEmail,
       role: "ROUTER",
       status: "ACTIVE",
       country: "US",
       createdAt: now,
       updatedAt: now,
-    } as any)
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { role: "ROUTER", status: "ACTIVE", country: "US", updatedAt: now } as any,
-    })
-    .returning({ id: users.id });
-
-  const routerUserId = userInserted[0]!.id;
+    } as any);
+  }
 
   await db
     .insert(routerProfiles)

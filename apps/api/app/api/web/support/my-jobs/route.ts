@@ -1,9 +1,15 @@
+import { NextResponse } from "next/server";
 import { requireSupportRequester } from "../../../../../src/auth/rbac";
-import { handleApiError } from "../../../../../src/lib/errorHandler";
-import { fail, ok } from "../../../../../src/lib/api/respond";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { jobs } from "../../../../../db/schema/job";
+
+function ok<T>(data: T) {
+  return NextResponse.json({ ok: true, data }, { status: 200 });
+}
+function fail(status: number, message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
 
 function isSupportRequesterRole(role: string): boolean {
   return role === "JOB_POSTER" || role === "ROUTER" || role === "CONTRACTOR";
@@ -14,7 +20,7 @@ export async function GET(req: Request) {
     const user = await requireSupportRequester(req);
     const role = String(user.role);
     if (!isSupportRequesterRole(role)) {
-      return fail(403, "forbidden");
+      return fail(403, "Forbidden");
     }
 
     const whereClause =
@@ -41,10 +47,12 @@ export async function GET(req: Request) {
       jobs: rows.map((j) => ({
         ...j,
         publishedAt: (j.publishedAt as any).toISOString()
-      }))
+      })),
     });
   } catch (err) {
-    return handleApiError(err, "GET /api/web/support/my-jobs");
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 

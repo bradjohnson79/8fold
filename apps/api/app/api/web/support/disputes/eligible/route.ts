@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { requireSupportRequester } from "../../../../../../src/auth/rbac";
-import { toHttpError } from "../../../../../../src/http/errors";
 import { db } from "../../../../../../db/drizzle";
 import { jobs } from "../../../../../../db/schema/job";
 
@@ -9,16 +8,23 @@ function isSupportRequesterRole(role: string): boolean {
   return role === "JOB_POSTER" || role === "ROUTER" || role === "CONTRACTOR";
 }
 
+function ok<T>(data: T) {
+  return NextResponse.json({ ok: true, data }, { status: 200 });
+}
+function fail(status: number, message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireSupportRequester(req);
     const role = String(user.role);
     if (!isSupportRequesterRole(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return fail(403, "Forbidden");
     }
 
     // v1: disputes are user-facing for Job Posters and Contractors only.
-    if (role === "ROUTER") return NextResponse.json({ eligible: false });
+    if (role === "ROUTER") return ok({ eligible: false });
 
     const whereClause =
       role === "CONTRACTOR" ? eq(jobs.contractorUserId, user.userId) : eq(jobs.jobPosterUserId, user.userId);
@@ -39,10 +45,11 @@ export async function GET(req: Request) {
       )
       .limit(1);
 
-    return NextResponse.json({ eligible: rows.length > 0 });
+    return ok({ eligible: rows.length > 0 });
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    const message = err instanceof Error ? err.message : "Failed";
+    return fail(status, message);
   }
 }
 

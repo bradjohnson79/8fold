@@ -1,5 +1,4 @@
 import { GPT_MODEL, JobPricingAppraisalOutputSchema, TradeCategoryLabel, formatStateProvince, type JobPricingAppraisalOutput } from "@8fold/shared";
-import { loadRootEnvOnce } from "../config/loadRootEnv";
 
 function roundToStep(n: number, step: number) {
   if (!Number.isFinite(n)) return 0;
@@ -157,7 +156,6 @@ export type JobPricingAppraisalInput = {
 export async function appraiseJobTotalWithAi(
   input: JobPricingAppraisalInput
 ): Promise<{ model: string; output: JobPricingAppraisalOutput; raw: unknown } | null> {
-  loadRootEnvOnce();
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
     throw Object.assign(new Error("OPENAI_API_KEY missing in API runtime"), { status: 409 });

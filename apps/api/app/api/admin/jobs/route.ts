@@ -14,18 +14,22 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
-    const status = url.searchParams.get("status") ?? "ASSIGNED";
+    const status = (url.searchParams.get("status") ?? "").trim() || null;
     const q = (url.searchParams.get("q") ?? "").trim();
     const jobSource = url.searchParams.get("jobSource") ?? "";
+    const archivedRaw = (url.searchParams.get("archived") ?? "").trim().toLowerCase();
     const country = url.searchParams.get("country") ?? "";
     const state = url.searchParams.get("state") ?? "";
     const city = url.searchParams.get("city") ?? "";
     const dateRange = url.searchParams.get("dateRange") ?? "ALL";
     const tradeCategory = url.searchParams.get("tradeCategory") ?? "";
 
-    // Admin Jobs filters are a *restricted* view over DB enums.
-    // Do NOT change DB enums here; only validate/translate.
-    const ALLOWED_ADMIN_STATUSES = new Set([
+    // Admin is oversight: allow full lifecycle visibility.
+    // Note: "CUSTOMER_APPROVED_AWAITING_ROUTER" and "FLAGGED_HOLD" are UI-level filters
+    // that map to DB enums + additional predicates.
+    const ADMIN_STATUSES = new Set([
+      "DRAFT",
+      "OPEN_FOR_ROUTING",
       "ASSIGNED",
       "IN_PROGRESS",
       "CONTRACTOR_COMPLETED",
@@ -33,7 +37,7 @@ export async function GET(req: Request) {
       "CUSTOMER_REJECTED",
       "FLAGGED_HOLD",
     ]);
-    if (!ALLOWED_ADMIN_STATUSES.has(status)) {
+    if (status && !ADMIN_STATUSES.has(status)) {
       return NextResponse.json({ ok: false, error: `Unsupported status: ${status}` }, { status: 400 });
     }
 
@@ -45,6 +49,10 @@ export async function GET(req: Request) {
     const ALLOWED_JOB_SOURCES = new Set(["MOCK", "REAL", "AI_REGENERATED"]);
     if (jobSource && !ALLOWED_JOB_SOURCES.has(jobSource)) {
       return NextResponse.json({ ok: false, error: `Invalid jobSource: ${jobSource}` }, { status: 400 });
+    }
+
+    if (archivedRaw && !["true", "false"].includes(archivedRaw)) {
+      return NextResponse.json({ ok: false, error: "Invalid archived" }, { status: 400 });
     }
 
     const ALLOWED_DATE_RANGES = new Set(["1D", "7D", "30D", "90D", "ALL"]);
@@ -86,11 +94,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid q" }, { status: 400 });
     }
 
-    // Always scope to active jobs for this admin view.
-    const conditions: any[] = [eq(jobs.archived, false)];
+    // Default: show ALL non-archived jobs. If explicitly filtered, allow admin to view archived=true as well.
+    const conditions: any[] = [eq(jobs.archived, archivedRaw ? archivedRaw === "true" : false)];
 
-    // Status mapping
-    if (status === "ASSIGNED") conditions.push(eq(jobs.status, "ASSIGNED" as any));
+    // Status mapping (only if explicitly requested)
+    if (status === "DRAFT") conditions.push(eq(jobs.status, "DRAFT" as any));
+    else if (status === "OPEN_FOR_ROUTING") conditions.push(eq(jobs.status, "OPEN_FOR_ROUTING" as any));
+    else if (status === "ASSIGNED") conditions.push(eq(jobs.status, "ASSIGNED" as any));
     else if (status === "IN_PROGRESS") conditions.push(eq(jobs.status, "IN_PROGRESS" as any));
     else if (status === "CONTRACTOR_COMPLETED") conditions.push(eq(jobs.status, "CONTRACTOR_COMPLETED" as any));
     else if (status === "CUSTOMER_REJECTED") conditions.push(eq(jobs.status, "CUSTOMER_REJECTED" as any));
@@ -100,9 +110,7 @@ export async function GET(req: Request) {
     } else if (status === "FLAGGED_HOLD") {
       // Active holds are already filtered in the leftJoin condition.
       // Avoid referencing jobHolds.status in WHERE to prevent SQL instability.
-      conditions.push(
-        eq(jobs.status, "COMPLETION_FLAGGED" as any)
-      );
+      conditions.push(eq(jobs.status, "COMPLETION_FLAGGED" as any));
     }
 
     if (country) conditions.push(eq(jobs.country, country as any));
