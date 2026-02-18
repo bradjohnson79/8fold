@@ -8,3 +8,20 @@ dist
 .env.*
 *.tsbuildinfo
 
+# Artifact/blob sweep (do not commit)
+*.log
+logs/
+coverage/
+test-results/
+playwright-report/
+*.zip
+*.tgz
+
+# Local backups + runtime uploads
+backup/
+apps/api/public/uploads/
+
+# Optional local-only marketing media (enable via env when shipped)
+apps/web/public/video/*.mp4
+apps/web/public/video/*.webm
+
