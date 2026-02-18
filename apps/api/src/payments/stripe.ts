@@ -1,28 +1,7 @@
-import Stripe from "stripe";
-import crypto from "crypto";
+import type Stripe from "stripe";
 import { assertStripeMinimumAmount, normalizeStripeCurrency } from "../stripe/validation";
-import { assertStripeKeysMatchMode, getStripeModeFromEnv, logStripeModeOnce } from "../stripe/mode";
-
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-if (!stripeSecretKey) {
-  console.warn("[stripe] STRIPE_SECRET_KEY not set. Stripe integration will fail.");
-}
-
-const stripeMode = getStripeModeFromEnv();
-logStripeModeOnce(stripeMode);
-assertStripeKeysMatchMode({
-  mode: stripeMode,
-  secretKey: stripeSecretKey ?? null,
-  publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null,
-});
-
-export const stripe = stripeSecretKey
-  ? new Stripe(stripeSecretKey, {
-      // Pin an API version (do not rely on Stripe dashboard "latest" in production).
-      // If you upgrade Stripe API version, do it intentionally and test webhooks.
-      apiVersion: "2025-02-24.acacia"
-    })
-  : null;
+import { stripe } from "../stripe/stripe";
+export { stripe };
 
 export type PaymentIntentResult = {
   clientSecret: string;

@@ -4,6 +4,10 @@ import { assertStripeKeysMatchMode, getStripeModeFromEnv, logStripeModeOnce } fr
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
 if (!stripeSecretKey) {
+  // Fail fast in production so we don't limp along with `stripe=null` and 500s at runtime.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("STRIPE_SECRET_KEY is required in production");
+  }
   // eslint-disable-next-line no-console
   console.warn("[stripe] STRIPE_SECRET_KEY not set. Stripe integration will fail.");
 }
