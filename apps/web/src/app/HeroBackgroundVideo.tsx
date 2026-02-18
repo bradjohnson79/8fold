@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const HERO_VIDEO_PATH = "/video/hero_header.mp4";
+const HERO_VIDEO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO === "1";
 
 function prefersReducedMotionNow(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -15,6 +16,7 @@ export function HeroBackgroundVideo() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
+    if (!HERO_VIDEO_ENABLED) return;
     const reduced = prefersReducedMotionNow();
     setReducedMotion(reduced);
     if (reduced) return;
@@ -48,6 +50,7 @@ export function HeroBackgroundVideo() {
   }
 
   // Guard: don't render video (or button) when reduced motion is requested.
+  if (!HERO_VIDEO_ENABLED) return null;
   if (reducedMotion) return null;
 
   return (
