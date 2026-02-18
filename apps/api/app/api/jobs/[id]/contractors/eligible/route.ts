@@ -155,16 +155,19 @@ export async function GET(req: Request) {
     const eligibleBase = candidates
       .map((c) => {
         const matchesCategory = (c.tradeCategories as any[]).includes(category);
-        const contractorStateMatches = c.regions.some((r) => stateFromRegion(r) === jobState);
+        const contractorStateMatches = c.regions.some((r: string) => stateFromRegion(r) === jobState);
         const hasCoords = typeof c.lat === "number" && typeof c.lng === "number";
         const km = hasCoords ? haversineKm({ lat: jobLat!, lng: jobLng! }, { lat: c.lat!, lng: c.lng! }) : null;
         const within = km !== null ? km <= limitKm : false;
         const completedCount = c.jobAssignments.length;
-        const lastCompletedAtMs = c.jobAssignments.reduce<number | null>((acc, a) => {
-          if (!a.completedAt) return acc;
-          const t = a.completedAt.getTime();
-          return acc == null ? t : Math.max(acc, t);
-        }, null);
+        const lastCompletedAtMs = c.jobAssignments.reduce(
+          (acc: number | null, a: { completedAt: Date | null }) => {
+            if (!a.completedAt) return acc;
+            const t = a.completedAt.getTime();
+            return acc == null ? t : Math.max(acc, t);
+          },
+          null,
+        );
         const reliability: "GOOD" | "WATCH" | "NEW" =
           completedCount >= 5 ? "GOOD" : completedCount === 0 ? "NEW" : "WATCH";
         return {

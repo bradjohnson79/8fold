@@ -1,4 +1,4 @@
-import { pgSchema } from "drizzle-orm/pg-core";
+import { pgSchema, pgTable } from "drizzle-orm/pg-core";
 
 // Prisma uses `?schema=...` in DATABASE_URL to set the Postgres schema.
 // Drizzle schemas should point at the same schema to mirror existing tables.
@@ -14,5 +14,12 @@ function getSchemaName(): string {
 }
 
 export const DB_SCHEMA = getSchemaName();
-export const dbSchema = pgSchema(DB_SCHEMA);
+// drizzle-orm forbids pgSchema("public") because Postgres uses public by default.
+// When we're on public, use pgTable() (default schema) under the same `.table()` callsite.
+//
+// TypeScript note: both `pgSchema(...).table` and `pgTable` are compatible at runtime,
+// but their generic types don't unify cleanly. We export a single `.table()` shape.
+export const dbSchema = (DB_SCHEMA === "public" ? { table: pgTable } : pgSchema(DB_SCHEMA)) as unknown as {
+  table: typeof pgTable;
+};
 
