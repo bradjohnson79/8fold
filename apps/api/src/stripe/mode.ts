@@ -50,6 +50,9 @@ let bootLogged = false;
 export function logStripeModeOnce(mode: StripeMode) {
   if (bootLogged) return;
   bootLogged = true;
+  // Keep production logs clean by default. Opt-in logging is still available in
+  // non-production environments where diagnosing Stripe env issues matters.
+  if (process.env.NODE_ENV === "production") return;
   // eslint-disable-next-line no-console
   console.log(`[FINANCE] Stripe mode: ${mode === "live" ? "LIVE" : "TEST"}`);
 }

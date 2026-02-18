@@ -56,15 +56,6 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
   const expectedIssuerRaw = String(process.env.CLERK_ISSUER ?? "").trim();
   const expectedIssuer = normalizeIssuer(expectedIssuerRaw);
 
-  if (process.env.NODE_ENV !== "production") {
-    const KEY = "__8FOLD_AUTH_CONFIG_LOGGED__";
-    if (!(globalThis as any)[KEY]) {
-      (globalThis as any)[KEY] = true;
-      // eslint-disable-next-line no-console
-      console.log("[AUTH CONFIG]", { CLERK_ISSUER: expectedIssuer || null });
-    }
-  }
-
   if (!jwtKey && !secretKey) {
     logAuthFailure(req, {
       level: "error",

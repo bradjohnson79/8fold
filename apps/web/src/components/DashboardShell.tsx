@@ -85,10 +85,6 @@ export function DashboardShell({
             resp.status === 401 && (code === "AUTH_TOKEN_PENDING" || code === "AUTH_TOKEN_TIMEOUT");
 
           if (isPendingAuth) {
-            if (process.env.NODE_ENV !== "production") {
-              // eslint-disable-next-line no-console
-              console.log("[WEB AUTH] dashboard bootstrap pending; retrying", { attempt: bootAttempt, code });
-            }
             setBoot({ loading: true });
             continue;
           }

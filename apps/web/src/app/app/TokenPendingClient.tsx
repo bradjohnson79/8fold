@@ -22,11 +22,6 @@ export function TokenPendingClient(props: { nextFallback?: string }) {
         await new Promise((r) => setTimeout(r, delaysMs[i]!));
         if (cancelled) return;
 
-        if (process.env.NODE_ENV !== "production") {
-          // eslint-disable-next-line no-console
-          console.log("[WEB AUTH] token pending -> router.refresh()", { attempt: i + 1 });
-        }
-
         router.refresh();
       }
 

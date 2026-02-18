@@ -23,10 +23,6 @@ export default async function JobPosterAppGroupLayout({ children }: { children: 
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] job-poster group token failure -> /app", { status, code });
-    }
     if (status === 401) redirect("/app");
     throw err;
   }

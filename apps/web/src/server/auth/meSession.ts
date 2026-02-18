@@ -8,6 +8,8 @@ export type Session = {
   walletBalanceCents: number;
 };
 
+const WEB_AUTH_DEBUG = process.env.NODE_ENV !== "production" && String(process.env.WEB_AUTH_DEBUG ?? "") === "1";
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -45,18 +47,6 @@ export async function requireApiToken(): Promise<string> {
   const maxWaitMs = maxWaitMsDefault;
   const deadline = Date.now() + maxWaitMs;
 
-  // Optional: force a delay to simulate Clerk token propagation races after login.
-  // This is intentionally dev-only (never in production).
-  const forcedDelayMs =
-    process.env.NODE_ENV !== "production" ? Number(process.env.WEB_FORCE_TOKEN_DELAY_MS ?? 0) : 0;
-  if (forcedDelayMs > 0) {
-    const remaining = deadline - Date.now();
-    const delay = clamp(forcedDelayMs, 0, Math.max(0, remaining));
-    // eslint-disable-next-line no-console
-    console.log("[WEB AUTH] forced token delay", { forcedDelayMs, appliedDelayMs: delay, maxWaitMs });
-    if (delay) await sleep(delay);
-  }
-
   // Clerk can briefly report `userId` while `getToken()` is still null right after login redirect.
   // A short, bounded retry avoids redirect loops / "blank until refresh" behavior.
   const retryDelaysMs = [0, 80, 180, 350, 700] as const; // total ~1.3s worst-case
@@ -72,9 +62,8 @@ export async function requireApiToken(): Promise<string> {
     const tok = await withTimeout(getToken(), remainingBeforeToken);
     token = tok.ok ? tok.value : null;
     if (token) break;
-
-    if (process.env.NODE_ENV !== "production") {
-      // Dev-only: token presence debugging (never log tokens/cookies).
+    if (WEB_AUTH_DEBUG) {
+      // Never log tokens/cookies. This is intentionally opt-in and non-production only.
       // eslint-disable-next-line no-console
       console.log("[WEB AUTH] getToken() missing; retrying", { attempt: i + 1, hasClerkUserId: !!userId });
     }
@@ -97,11 +86,13 @@ async function requireMeSession(req?: Request): Promise<Session> {
   const token = await requireApiToken();
   const remainingMs = deadline - Date.now();
   if (remainingMs <= 0) {
-    // eslint-disable-next-line no-console
-    console.warn("[WEB AUTH WARNING] session stabilization exceeded budget (token)", {
-      stabilizationBudgetMs,
-      elapsedMs: Date.now() - start,
-    });
+    if (WEB_AUTH_DEBUG) {
+      // eslint-disable-next-line no-console
+      console.warn("[WEB AUTH WARNING] session stabilization exceeded budget (token)", {
+        stabilizationBudgetMs,
+        elapsedMs: Date.now() - start,
+      });
+    }
     throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_SESSION_TIMEOUT" });
   }
 
@@ -123,11 +114,13 @@ async function requireMeSession(req?: Request): Promise<Session> {
       (e as any)?.code === "UND_ERR_ABORTED" ||
       msg.toLowerCase().includes("aborted");
     if (aborted) {
-      // eslint-disable-next-line no-console
-      console.warn("[WEB AUTH WARNING] session stabilization exceeded budget (/api/me)", {
-        stabilizationBudgetMs,
-        elapsedMs: Date.now() - start,
-      });
+      if (WEB_AUTH_DEBUG) {
+        // eslint-disable-next-line no-console
+        console.warn("[WEB AUTH WARNING] session stabilization exceeded budget (/api/me)", {
+          stabilizationBudgetMs,
+          elapsedMs: Date.now() - start,
+        });
+      }
       throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_SESSION_TIMEOUT" });
     }
     throw e;
@@ -164,7 +157,7 @@ async function loadServerMeSession(): Promise<Session | null> {
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
-    if (process.env.NODE_ENV !== "production") {
+    if (WEB_AUTH_DEBUG) {
       // eslint-disable-next-line no-console
       console.log("[WEB AUTH] requireServerSession failed", { status, code });
     }

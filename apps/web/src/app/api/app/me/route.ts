@@ -11,10 +11,6 @@ export async function GET(req: Request) {
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 401;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "AUTH_MISSING_TOKEN";
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] /api/app/me token failure", { status, code });
-    }
     return NextResponse.json({ ok: false, error: { code, message: "Unauthorized" } }, { status });
   }
 

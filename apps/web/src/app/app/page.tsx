@@ -10,10 +10,6 @@ export default async function AppIndex() {
 
   const session = await requireServerSession();
   if (!session) {
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] /app session missing; treating as token pending", { hasClerkUserId: true });
-    }
     return <TokenPendingClient nextFallback="/app" />;
   }
   if (session.role === "USER_ROLE_NOT_ASSIGNED") redirect("/onboarding/role");

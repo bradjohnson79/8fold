@@ -35,11 +35,6 @@ export default function AppErrorBoundary({
     const next = `${pathname}${qs}`;
     const { status, code } = readErrorMeta(error);
 
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] /app error boundary -> redirect", { status, code, next });
-    }
-
     router.replace(`/login?next=${encodeURIComponent(next)}`);
     router.refresh();
   }, [error, pathname, router, searchParams]);

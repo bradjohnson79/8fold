@@ -34,10 +34,6 @@ export default async function ContractorAppLayout({ children }: { children: Reac
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] contractor layout token failure -> /app", { status, code });
-    }
     if (status === 401) redirect("/app");
     throw err;
   }
@@ -45,10 +41,6 @@ export default async function ContractorAppLayout({ children }: { children: Reac
   const statusResp = await apiFetch({ path: "/api/web/onboarding/status", method: "GET", sessionToken: token });
   const statusJson = (await statusResp.json().catch(() => null)) as any;
   if (!statusResp.ok || !statusJson || (statusJson as any).ok !== true) {
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] contractor onboarding status failed", { status: statusResp.status });
-    }
     if (statusResp.status === 401) redirect("/app");
     redirect("/login?next=/app/contractor");
   }

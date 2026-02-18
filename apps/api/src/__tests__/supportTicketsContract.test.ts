@@ -107,6 +107,60 @@ describe("support tickets canonical contract", () => {
     expect(insertCount).toBeGreaterThanOrEqual(2);
   });
 
+  test("POST /api/web/support/tickets sets roleContext from role (router/contractor/job-poster)", async () => {
+    const cases: Array<{ role: string; expectedRoleContext: string }> = [
+      { role: "ROUTER", expectedRoleContext: "ROUTER" },
+      { role: "CONTRACTOR", expectedRoleContext: "CONTRACTOR" },
+      { role: "JOB_POSTER", expectedRoleContext: "JOB_POSTER" },
+    ];
+
+    for (const c of cases) {
+      const { db, ops } = makeDbMock();
+
+      vi.doMock("@/db/drizzle", () => ({ db }));
+      vi.doMock("@/src/auth/rbac", () => ({
+        requireUser: vi.fn(async () => ({ userId: "u1", role: c.role })),
+      }));
+
+      const mod = await import("../../app/api/web/support/tickets/route");
+      const req = new Request("http://localhost/api/web/support/tickets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category: "OTHER", subject: "Subject", message: "Hello support" }),
+      });
+
+      const resp: Response = await mod.POST(req);
+      expect(resp.status).toBe(201);
+
+      const ticketInsert = ops.find((o) => o.kind === "insert") as any;
+      expect(ticketInsert).toBeTruthy();
+      expect(String(ticketInsert.values?.roleContext ?? "")).toBe(c.expectedRoleContext);
+
+      vi.resetModules();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("POST /api/web/support (shim) behaves like /tickets", async () => {
+    const { db } = makeDbMock();
+    vi.doMock("@/db/drizzle", () => ({ db }));
+    vi.doMock("@/src/auth/rbac", () => ({
+      requireUser: vi.fn(async () => ({ userId: "u1", role: "ROUTER" })),
+    }));
+
+    const mod = await import("../../app/api/web/support/route");
+    const req = new Request("http://localhost/api/web/support", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ category: "OTHER", subject: "Subject", message: "Hello support" }),
+    });
+
+    const resp: Response = await mod.POST(req);
+    expect(resp.status).toBe(201);
+    const json = (await resp.json()) as any;
+    expect(json.ok).toBe(true);
+  });
+
   test("GET /api/web/support/tickets returns ok:true,data:{tickets}", async () => {
     const listRows = [
       {
