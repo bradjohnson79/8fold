@@ -62,11 +62,9 @@ export async function requestLoginCode(emailRaw: string): Promise<{
   if (!userId) throw Object.assign(new Error("User missing"), { status: 500 });
 
   // Dev auth: still returns debugCode, but must support concurrency/load.
-  // Use a fixed code only if explicitly requested (legacy dev behavior).
-  const fixedDev = authMode === "dev" && String(process.env.DEV_AUTH_FIXED_CODE ?? "") === "1";
-  const maxAttempts = fixedDev ? 1 : 6;
+  const maxAttempts = 6;
 
-  let code = fixedDev ? "123456" : randomDigits(6);
+  let code = randomDigits(6);
   let tokenHash = sha256(code);
   let inserted = false;
 
@@ -85,8 +83,7 @@ export async function requestLoginCode(emailRaw: string): Promise<{
       break;
     } catch (e) {
       // If the DB enforces tokenHash uniqueness, retry with a new code.
-      // Only applies to non-fixed dev/prod paths (fixed dev code should be single-tenant).
-      if (fixedDev) throw e;
+      void e;
     }
   }
   if (!inserted) throw Object.assign(new Error("Could not create auth token"), { status: 500 });

@@ -3,6 +3,8 @@
  * Prevents polluting production/staging with mock contractors, routers, or auto-assigned jobs.
  */
 export function isDevelopmentMocksEnabled(): boolean {
+  // Hard safety rail: never allow mock seeding in production, even if env is mis-set.
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.DEVELOPMENT_MOCKS === "true" || process.env.DEVELOPMENT_MOCKS === "1";
 }
 

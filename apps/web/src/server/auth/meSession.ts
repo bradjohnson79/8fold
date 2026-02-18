@@ -8,8 +8,6 @@ export type Session = {
   walletBalanceCents: number;
 };
 
-const WEB_AUTH_DEBUG = process.env.NODE_ENV !== "production" && String(process.env.WEB_AUTH_DEBUG ?? "") === "1";
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -62,11 +60,6 @@ export async function requireApiToken(): Promise<string> {
     const tok = await withTimeout(getToken(), remainingBeforeToken);
     token = tok.ok ? tok.value : null;
     if (token) break;
-    if (WEB_AUTH_DEBUG) {
-      // Never log tokens/cookies. This is intentionally opt-in and non-production only.
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] getToken() missing; retrying", { attempt: i + 1, hasClerkUserId: !!userId });
-    }
   }
 
   if (!token) {
@@ -86,13 +79,6 @@ async function requireMeSession(req?: Request): Promise<Session> {
   const token = await requireApiToken();
   const remainingMs = deadline - Date.now();
   if (remainingMs <= 0) {
-    if (WEB_AUTH_DEBUG) {
-      // eslint-disable-next-line no-console
-      console.warn("[WEB AUTH WARNING] session stabilization exceeded budget (token)", {
-        stabilizationBudgetMs,
-        elapsedMs: Date.now() - start,
-      });
-    }
     throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_SESSION_TIMEOUT" });
   }
 
@@ -114,13 +100,6 @@ async function requireMeSession(req?: Request): Promise<Session> {
       (e as any)?.code === "UND_ERR_ABORTED" ||
       msg.toLowerCase().includes("aborted");
     if (aborted) {
-      if (WEB_AUTH_DEBUG) {
-        // eslint-disable-next-line no-console
-        console.warn("[WEB AUTH WARNING] session stabilization exceeded budget (/api/me)", {
-          stabilizationBudgetMs,
-          elapsedMs: Date.now() - start,
-        });
-      }
       throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_SESSION_TIMEOUT" });
     }
     throw e;
@@ -157,10 +136,6 @@ async function loadServerMeSession(): Promise<Session | null> {
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
-    if (WEB_AUTH_DEBUG) {
-      // eslint-disable-next-line no-console
-      console.log("[WEB AUTH] requireServerSession failed", { status, code });
-    }
     if (status === 401) return null;
     if (code === "USER_ROLE_NOT_ASSIGNED") {
       return { userId: "", email: null, role: "USER_ROLE_NOT_ASSIGNED", walletBalanceCents: 0 };

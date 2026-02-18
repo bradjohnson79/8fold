@@ -141,11 +141,6 @@ export default async function JobsPage({
   }
 
   const jobs = data?.jobs ?? [];
-  if (process.env.NODE_ENV !== "production") {
-    // Temporary debugging (dev-only): confirm jobs list is data-driven.
-    // eslint-disable-next-line no-console
-    console.log("ADMIN JOBS:", jobs);
-  }
 
   const activePills: React.ReactNode[] = [];
   if (status) activePills.push(filterPill("status", status));

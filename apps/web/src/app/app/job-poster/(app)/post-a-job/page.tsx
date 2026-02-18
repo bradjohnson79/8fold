@@ -21,7 +21,7 @@ import {
   calculateRepeatContractorDiscountBreakdown,
 } from "@8fold/shared";
 
-// NOTE: Temporary type-compat shim for React/Stripe type mismatch during `next build`.
+// NOTE: Type-compat shim for React/Stripe types during `next build`.
 const ElementsProvider = Elements as unknown as React.ComponentType<any>;
 const PaymentElementProvider = PaymentElement as unknown as React.ComponentType<any>;
 

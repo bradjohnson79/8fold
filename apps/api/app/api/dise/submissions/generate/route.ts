@@ -86,13 +86,15 @@ export async function POST(req: Request) {
         : dir.country
           ? await db.select().from(countryContext).where(eq(countryContext.country, dir.country))
           : [null];
-      variants = MOCK_NATIONAL; // TODO: call GPT with countryCtx when integrated
+      // Provider integration is not wired yet; use deterministic mock variants.
+      variants = MOCK_NATIONAL;
     } else {
       const [regionalCtx] = await db
         .select()
         .from(regionalContext)
         .where(eq(regionalContext.region, region!));
-      variants = MOCK_REGIONAL; // TODO: call GPT with regionalCtx when integrated
+      // Provider integration is not wired yet; use deterministic mock variants.
+      variants = MOCK_REGIONAL;
     }
 
     const [row] = await db

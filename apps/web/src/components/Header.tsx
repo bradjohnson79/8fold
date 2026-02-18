@@ -11,7 +11,7 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileWorkersOpen, setMobileWorkersOpen] = useState(false)
   const [mobileSignupOpen, setMobileSignupOpen] = useState(false)
-  const [isAuthenticated] = useState(false) // TODO: Connect to auth
+  const isAuthenticated = false
 
   const signupRef = useRef<HTMLDivElement | null>(null)
   const workersRef = useRef<HTMLDivElement | null>(null)

@@ -33,8 +33,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "region required" }, { status: 400 });
     }
 
-    const hasKey = !!process.env.PERPLEXITY_API_KEY;
-    const ctx = hasKey ? MOCK_CONTEXT : MOCK_CONTEXT; // TODO: call Perplexity when integrated
+    // External provider integration is not wired yet; use deterministic mock context.
+    const ctx = MOCK_CONTEXT;
 
     const [existing] = await db
       .select()

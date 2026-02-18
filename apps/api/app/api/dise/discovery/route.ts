@@ -51,10 +51,8 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as DiscoveryInput;
     const { region, country, category } = body;
 
-    const hasKey = !!process.env.GPT_API_KEY;
-    const results = hasKey
-      ? MOCK_DISCOVERY // TODO: call GPT when integrated
-      : MOCK_DISCOVERY;
+    // Provider integration is not wired yet; use deterministic mock results.
+    const results = MOCK_DISCOVERY;
 
     const inserted = await db
       .insert(directories)

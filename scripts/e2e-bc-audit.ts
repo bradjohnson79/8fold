@@ -539,7 +539,7 @@ async function main() {
     if (!appraisalOk) throw new Error("Failed to start appraisal");
     console.log("  ✓ Pricing appraisal started");
 
-    // TODO: In a real E2E, we'd need to:
+    // Note: A full end-to-end flow would also need to:
     // - Complete payment step (Stripe test card)
     // - Confirm job status is PUBLISHED / Customer Approved
 

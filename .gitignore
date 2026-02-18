@@ -16,6 +16,8 @@ test-results/
 playwright-report/
 *.zip
 *.tgz
+*.bak
+*.bak*
 
 # Local backups + runtime uploads
 backup/
