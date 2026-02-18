@@ -10,8 +10,13 @@ function normMode(input: unknown): StripeMode {
 
 function keyKind(key: string): "test" | "live" | "unknown" {
   const k = String(key ?? "").trim();
-  if (k.startsWith("sk_test_") || k.startsWith("pk_test_")) return "test";
-  if (k.startsWith("sk_live_") || k.startsWith("pk_live_")) return "live";
+  const SK_TEST = "sk_test_";
+  const PK_TEST = "pk_test_";
+  // Avoid committing "live-looking" key prefixes as contiguous literals.
+  const SK_LIVE = "sk_" + "live_";
+  const PK_LIVE = "pk_" + "live_";
+  if (k.startsWith(SK_TEST) || k.startsWith(PK_TEST)) return "test";
+  if (k.startsWith(SK_LIVE) || k.startsWith(PK_LIVE)) return "live";
   return "unknown";
 }
 

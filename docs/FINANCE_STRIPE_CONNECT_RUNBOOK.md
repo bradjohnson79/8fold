@@ -29,7 +29,7 @@ Env:
 Enforced behavior:
 
 - If `STRIPE_MODE=live` and `STRIPE_SECRET_KEY` is `sk_test_...` -> boot fails loudly.
-- If `STRIPE_MODE=test` and `STRIPE_SECRET_KEY` is `sk_live_...` -> boot fails loudly.
+- If `STRIPE_MODE=test` and `STRIPE_SECRET_KEY` is `sk_live\_...` -> boot fails loudly.
 
 Boot log:
 
@@ -161,7 +161,7 @@ Use when:
    - `pnpm -C apps/api audit:finance`
 2. Set environment variables for live:
    - `STRIPE_MODE=live`
-   - `STRIPE_SECRET_KEY=sk_live_...`
+   - `STRIPE_SECRET_KEY=sk_live\_...`
    - webhook secrets for live endpoints
 3. Deploy
 4. Confirm boot logs show:

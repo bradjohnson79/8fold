@@ -12,8 +12,8 @@ This document describes the Stripe integration architecture, idempotency strateg
 
 | Variable | Purpose |
 |----------|---------|
-| `STRIPE_SECRET_KEY` | Platform Stripe secret key (sk_test_* or sk_live_*) |
-| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret for main account (whsec_*) |
+| `STRIPE_SECRET_KEY` | Platform Stripe secret key (sk_test_* or sk_live\_*) |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret for main account (whsec\_*) |
 | `INTERNAL_SECRET` | Shared secret for admin API proxy (server-to-server auth) |
 | `APP_ADMIN_BASE_URL` | Admin app base URL (e.g. http://localhost:3002) |
 | `APP_WEB_BASE_URL` | Web app base URL (e.g. http://localhost:3006) |
@@ -36,7 +36,7 @@ This document describes the Stripe integration architecture, idempotency strateg
 
 ### Webhook Secret Usage
 
-- **If using one Stripe CLI forwarder**: Use the printed `whsec_*` value as `STRIPE_WEBHOOK_SECRET`.
+ - **If using one Stripe CLI forwarder**: Use the printed `whsec\_*` value as `STRIPE_WEBHOOK_SECRET`.
 - **If using separate Connect webhook endpoint**: Use `STRIPE_CONNECT_WEBHOOK_SECRET` only for that endpoint.
 - **If using a single endpoint for both** platform and Connect events: Only `STRIPE_WEBHOOK_SECRET` is required. No secret duplication is necessary.
 

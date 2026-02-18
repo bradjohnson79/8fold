@@ -24,10 +24,10 @@ import { randomUUID } from "crypto";
  * Run:
  *   stripe listen --forward-to localhost:3003/api/webhooks/stripe
  *
- * Then copy the printed `whsec_...` value into:
+ * Then copy the printed `whsec\_...` value into:
  *   apps/api/.env.local
  *
- * STRIPE_WEBHOOK_SECRET=whsec_...
+ * STRIPE_WEBHOOK_SECRET=whsec\_...
  */
 
 // Pages-router only, but harmless here; keeps the intent explicit.

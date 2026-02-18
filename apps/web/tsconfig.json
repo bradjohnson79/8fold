@@ -27,7 +27,7 @@
     "**/*.ts",
     "**/*.tsx",
     "next-env.d.ts",
-    // Do not include `.next/types` in typecheck; it is build-artifact output and may not exist.
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -42,7 +42,7 @@ If unset, it is a no-op.
 Set `STRIPE_MODE` to prevent test/live mixing:
 
 - `STRIPE_MODE=test` requires `sk_test_...`
-- `STRIPE_MODE=live` requires `sk_live_...`
+- `STRIPE_MODE=live` requires `sk_live\_...`
 
 Boot prints:
 

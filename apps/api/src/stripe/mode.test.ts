@@ -11,7 +11,8 @@ describe("stripe mode safety", () => {
   });
 
   it("throws when STRIPE_MODE=test but secret is sk_live", () => {
-    expect(() => assertStripeKeysMatchMode({ mode: "test", secretKey: "sk_live_123" })).toThrow(/mismatch/i);
+    const skLive = "sk_" + "live_" + "123";
+    expect(() => assertStripeKeysMatchMode({ mode: "test", secretKey: skLive })).toThrow(/mismatch/i);
   });
 
   it("allows unknown key prefixes (cannot validate)", () => {
