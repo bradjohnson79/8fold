@@ -9,7 +9,7 @@
     "start": "next start -p 3003",
     "lint": "next lint",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest.mjs",
     "audit:finance": "DOTENV_CONFIG_PATH=.env.local pnpm exec tsx -r dotenv/config src/payouts/auditFinanceCi.ts",
     "db:verify": "tsx scripts/verifyDbSchema.ts",
     "remove-mock-actors": "tsx scripts/remove-mock-actors.ts",

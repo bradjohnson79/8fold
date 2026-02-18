@@ -38,7 +38,8 @@ suite("ledger immutability", () => {
     const userId = randomUUID();
     await (db as any)
       .insert(users!)
-      .values({ id: userId, clerkUserId: `test:user:${Date.now()}`, role: "JOB_POSTER" as any } as any);
+      // Must be globally unique across repeated local runs (User.clerkUserId is unique).
+      .values({ id: userId, clerkUserId: `test:user:${userId}`, role: "JOB_POSTER" as any } as any);
 
     const entryId = randomUUID();
     await (db as any).insert(ledgerEntries!).values({
