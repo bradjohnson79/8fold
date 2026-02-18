@@ -1,7 +1,7 @@
+import { getValidatedApiOrigin } from "../env";
+
 export function getApiOrigin(): string {
-  const v = String(process.env.API_ORIGIN ?? "").trim().replace(/\/+$/, "");
-  if (!v) throw new Error("API_ORIGIN is not set");
-  return v;
+  return getValidatedApiOrigin();
 }
 
 export function authHeadersFromSessionToken(sessionToken: string | null | undefined): Record<string, string> {

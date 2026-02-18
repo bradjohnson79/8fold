@@ -3,7 +3,7 @@ import { AdminLayout } from "@/components/layout/AdminLayout";
 import { validateAdminEnv } from "@/server/env";
 import { adminApiFetch } from "@/server/adminApi";
 
-// Phase 16: Fail-fast env validation. Admin must not boot with invalid API_ORIGIN.
+// Phase 16: Fail-fast env validation. Admin must not boot with invalid API origin.
 // Runs once per module load and does not depend on request context.
 validateAdminEnv();
 

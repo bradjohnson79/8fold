@@ -1,21 +1,22 @@
 export function getValidatedApiOrigin(): string {
   // Admin remains DB-free and proxies to apps/api only.
-  // API_ORIGIN must be explicit: no fallback origin is allowed.
-  const raw = process.env.API_ORIGIN;
+  // Prefer NEXT_PUBLIC_API_URL for Vercel compatibility; allow API_ORIGIN for local/dev.
+  // Admin never connects to DB directly; it proxies to apps/api only.
+  const raw = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_ORIGIN;
   const value = String(raw ?? "").trim();
   if (!value) {
-    throw new Error("API_ORIGIN is required for apps/admin");
+    throw new Error("NEXT_PUBLIC_API_URL (or API_ORIGIN) is required for apps/admin");
   }
 
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error(`API_ORIGIN must be a valid URL, received "${value}"`);
+    throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must be a valid URL, received "${value}"`);
   }
 
   if (!parsed.protocol || !parsed.host) {
-    throw new Error(`API_ORIGIN must include protocol and host, received "${value}"`);
+    throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must include protocol and host, received "${value}"`);
   }
 
   return parsed.origin.replace(/\/+$/, "");
@@ -28,7 +29,10 @@ function logAdminEnvOnce(): void {
   g.__8FOLD_ADMIN_ENV_LOGGED__ = true;
 
   // eslint-disable-next-line no-console
-  console.log("[ADMIN ENV]", { API_ORIGIN: String(process.env.API_ORIGIN ?? "").trim() });
+  console.log("[ADMIN ENV]", {
+    NEXT_PUBLIC_API_URL: String(process.env.NEXT_PUBLIC_API_URL ?? "").trim(),
+    API_ORIGIN: String(process.env.API_ORIGIN ?? "").trim(),
+  });
 
   // User asked to confirm DB sync; never log raw DATABASE_URL (it contains credentials).
   const rawDb = String(process.env.DATABASE_URL ?? "").trim();
