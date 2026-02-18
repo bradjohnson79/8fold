@@ -1,3 +1,5 @@
+import { getValidatedApiOrigin } from "./env";
+
 function env(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} is required (apps/admin)`);
@@ -13,8 +15,7 @@ export type AdminIdentity = {
 export function requireAdminIdentity(): AdminIdentity {
   const adminId = env("ADMIN_ID");
   const internalSecret = env("INTERNAL_SECRET");
-  const apiOrigin = String(process.env.API_ORIGIN ?? "").trim().replace(/\/+$/, "");
-  if (!apiOrigin) throw new Error("API_ORIGIN is required (apps/admin)");
+  const apiOrigin = getValidatedApiOrigin();
   return { adminId, internalSecret, apiOrigin };
 }
 
