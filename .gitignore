@@ -27,3 +27,12 @@ apps/api/public/uploads/
 apps/web/public/video/*.mp4
 apps/web/public/video/*.webm
 
+# Local AI/ops reports (do not commit)
+*_AGENT_REPORT.md
+*_REPORT.md
+ROUTER_DASHBOARD_*.md
+GIT_PREFLIGHT_REPORT.md
+
+# Local-only drizzle-kit config (apps/api uses repo-root config)
+apps/api/drizzle.config.*
+
