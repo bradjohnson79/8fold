@@ -10,7 +10,7 @@
     "dev:web": "pnpm -C apps/web dev",
     "dev:admin": "pnpm -C apps/admin dev -p 3002",
     "dev:api": "pnpm -C apps/api dev",
-    "dev:dise": "API_ORIGIN=http://localhost:3003 pnpm -C apps/dise dev",
+    "dev:dise": "pnpm -C apps/dise dev",
     "dev": "node scripts/dev.mjs",
     "predev:verify": "pnpm -C apps/api db:verify",
     "build": "pnpm -C apps/web build",

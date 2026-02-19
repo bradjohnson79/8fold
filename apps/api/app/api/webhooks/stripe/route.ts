@@ -22,7 +22,7 @@ import { randomUUID } from "crypto";
 /**
  * LOCAL DEV:
  * Run:
- *   stripe listen --forward-to localhost:3003/api/webhooks/stripe
+ *   stripe listen --forward-to <api-host>/api/webhooks/stripe
  *
  * Then copy the printed `whsec\_...` value into:
  *   apps/api/.env.local

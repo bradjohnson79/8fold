@@ -219,11 +219,11 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({ ...result, requestId });
 
-    // Cross-port localhost session cookie (dev) + production-safe settings.
-    // Cookies are scoped by host, not port, so `localhost` works for 3003 ↔ 3006.
+    // Cross-port dev session cookie + production-safe settings.
+    // Cookies are scoped by host (not port), so a single dev host works across local ports.
     const secure = process.env.NODE_ENV === "production";
     const expires = new Date(result.expiresAt);
-    // Do not set `domain` in dev; host-only cookie is correct for localhost.
+    // Do not set `domain` in dev; host-only cookie is correct for local testing.
     res.cookies.set("sid", result.sessionToken, {
       httpOnly: true,
       path: "/",

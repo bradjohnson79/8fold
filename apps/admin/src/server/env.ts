@@ -1,22 +1,21 @@
 export function getValidatedApiOrigin(): string {
   // Admin remains DB-free and proxies to apps/api only.
-  // Prefer NEXT_PUBLIC_API_URL for Vercel compatibility; allow API_ORIGIN for local/dev.
-  // Admin never connects to DB directly; it proxies to apps/api only.
-  const raw = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_ORIGIN;
+  // Origin configuration must come from environment (no localhost fallbacks in source).
+  const raw = process.env.NEXT_PUBLIC_API_ORIGIN;
   const value = String(raw ?? "").trim();
   if (!value) {
-    throw new Error("NEXT_PUBLIC_API_URL (or API_ORIGIN) is required for apps/admin");
+    throw new Error("NEXT_PUBLIC_API_ORIGIN is required for apps/admin");
   }
 
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must be a valid URL, received "${value}"`);
+    throw new Error(`NEXT_PUBLIC_API_ORIGIN must be a valid URL, received "${value}"`);
   }
 
   if (!parsed.protocol || !parsed.host) {
-    throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must include protocol and host, received "${value}"`);
+    throw new Error(`NEXT_PUBLIC_API_ORIGIN must include protocol and host, received "${value}"`);
   }
 
   return parsed.origin.replace(/\/+$/, "");
@@ -30,7 +29,7 @@ function logAdminEnvOnce(): void {
 
   // eslint-disable-next-line no-console
   console.log("[ADMIN ENV]", {
-    NEXT_PUBLIC_API_URL: String(process.env.NEXT_PUBLIC_API_URL ?? "").trim(),
+    NEXT_PUBLIC_API_ORIGIN: String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim(),
     API_ORIGIN: String(process.env.API_ORIGIN ?? "").trim(),
   });
 

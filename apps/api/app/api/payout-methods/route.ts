@@ -154,7 +154,10 @@ export async function POST(req: Request) {
           .where(and(eq(contractorAccounts.userId, user.userId), isNull(contractorAccounts.stripeAccountId)));
       });
 
-      const base = String(process.env.WEB_BASE_URL ?? "http://localhost:3006").replace(/\/+$/, "");
+      const base = String(process.env.WEB_ORIGIN ?? "").trim().replace(/\/+$/, "");
+      if (!base) {
+        throw new Error("WEB_ORIGIN is not set");
+      }
       const returnUrl = `${base}/app/payouts/stripe/return`;
       const refreshUrl = `${base}/app/payouts/stripe/refresh`;
       const link = await s.accountLinks.create({
