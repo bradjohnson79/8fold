@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./AdminSidebar.module.css";
 
 type NavItem = {
   label: string;
   href: string;
   match?: "exact" | "prefix";
+  badgeKey?: "financialIntegrity";
 };
 
 const NAV: Array<{ title: string; items: NavItem[] }> = [
@@ -24,6 +26,18 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Payouts", href: "/payouts", match: "prefix" },
       { label: "Disputes", href: "/disputes", match: "prefix" },
       { label: "Support", href: "/support", match: "prefix" },
+    ],
+  },
+  {
+    title: "Financial",
+    items: [
+      { label: "Overview", href: "/financial", match: "exact" },
+      { label: "Escrow", href: "/financial/escrow", match: "prefix" },
+      { label: "Ledger", href: "/financial/ledger", match: "prefix" },
+      { label: "Payout Engine", href: "/financial/payouts", match: "prefix" },
+      { label: "Stripe Reconciliation", href: "/financial/reconciliation", match: "prefix" },
+      { label: "Incentives", href: "/financial/incentives", match: "prefix" },
+      { label: "Integrity Monitor", href: "/financial/integrity", match: "prefix", badgeKey: "financialIntegrity" },
     ],
   },
   {
@@ -48,6 +62,39 @@ export function AdminSidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname() || "/";
+  const [integrityCount, setIntegrityCount] = useState<number | null>(null);
+
+  const badgeByKey = useMemo(() => {
+    return {
+      financialIntegrity: integrityCount,
+    } as const;
+  }, [integrityCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Sidebar is a client component; we fetch the count for a live badge.
+    // Endpoint is still server-authenticated (admin_session cookie), so this doesn't weaken security.
+    async function run() {
+      try {
+        const resp = await fetch("/api/admin/financial/integrity?take=500&includeViolations=0", { cache: "no-store" });
+        const json = (await resp.json().catch(() => null)) as any;
+        const count = Number(json?.data?.summary?.violationCount ?? 0);
+        if (cancelled) return;
+        setIntegrityCount(Number.isFinite(count) ? count : 0);
+      } catch {
+        if (cancelled) return;
+        setIntegrityCount(null);
+      }
+    }
+
+    void run();
+    const t = setInterval(run, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
 
   return (
     <div>
@@ -79,6 +126,19 @@ export function AdminSidebar({
                     aria-current={active ? "page" : undefined}
                   >
                     <span>{item.label}</span>
+                    {item.badgeKey ? (
+                      badgeByKey[item.badgeKey] != null ? (
+                        badgeByKey[item.badgeKey]! > 0 ? (
+                          <span className={`${styles.badge} ${styles.badgeDanger}`} title="Violations requiring review">
+                            {badgeByKey[item.badgeKey]! > 99 ? "99+" : String(badgeByKey[item.badgeKey])}
+                          </span>
+                        ) : (
+                          <span className={styles.badge} title="No violations detected">
+                            0
+                          </span>
+                        )
+                      ) : null
+                    ) : null}
                     {active ? <span className={styles.activeDot} aria-hidden="true" /> : null}
                   </Link>
                 );
