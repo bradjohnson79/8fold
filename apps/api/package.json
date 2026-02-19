@@ -26,6 +26,7 @@
   "dependencies": {
     "@8fold/shared": "workspace:*",
     "@clerk/nextjs": "^6.37.4",
+    "@vercel/blob": "^2.3.0",
     "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.45.1",
     "next": "^15.1.6",
