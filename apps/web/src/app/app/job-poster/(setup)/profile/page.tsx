@@ -4,7 +4,7 @@ import { z } from "zod";
 import React from "react";
 import { PayoutMethodSetup } from "@/components/PayoutMethodSetup";
 import { useClerk } from "@clerk/nextjs";
-import { GeoAutocomplete, type GeoAutocompleteResult } from "@/components/GeoAutocomplete";
+import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 
 const JobPosterProfileSchema = z.object({
   name: z.string().min(1),
@@ -268,25 +268,15 @@ export default function JobPosterProfilePage() {
           Required. Used to calculate distance between Job Posters and Contractors.
         </div>
         <div className="mt-3">
-          <GeoAutocomplete
-            label="Search approximate location (required for routing distance)"
+          <MapLocationSelector
             required
             value={form.mapDisplayName}
-            onChange={(v) =>
+            onChange={(data) => {
               setForm((s) => ({
                 ...s,
-                mapDisplayName: v,
-                // typing without selecting must not count
-                lat: 0,
-                lng: 0,
-              }))
-            }
-            onPick={(r: GeoAutocompleteResult) => {
-              setForm((s) => ({
-                ...s,
-                mapDisplayName: r.display_name,
-                lat: r.lat,
-                lng: r.lon,
+                mapDisplayName: data.mapDisplayName,
+                lat: data.lat,
+                lng: data.lng,
               }));
             }}
             errorText={

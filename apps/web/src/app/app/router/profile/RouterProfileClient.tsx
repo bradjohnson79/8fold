@@ -4,7 +4,7 @@ import React from "react";
 import { z } from "zod";
 import { useUser } from "@clerk/nextjs";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { GeoAutocomplete, type GeoAutocompleteResult } from "@/components/GeoAutocomplete";
+import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 
 const FormSchema = z.object({
   name: z.string().trim().min(1),
@@ -132,13 +132,10 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
       const sp = String(stateProvince ?? "").trim().toUpperCase();
       if (!sp) throw new Error("Please select a state / province.");
       if (!Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0) {
-        // Inline error is rendered under the map field; do not show a global error banner.
-        return;
+        throw new Error("Please select your location from the map suggestions.");
       }
 
       setSaving(true);
-      const mapDisplayNameToSend =
-        mapDisplayName.trim() || `Saved location (${mapLat.toFixed(6)}, ${mapLng.toFixed(6)})`;
       const resp = await fetch("/api/app/router/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -149,7 +146,7 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
           stateProvince: sp,
           postalCode: parsed.data.postalCode,
           country,
-          mapDisplayName: mapDisplayNameToSend,
+          mapDisplayName: mapDisplayName.trim(),
           lat: mapLat,
           lng: mapLng,
         }),
@@ -248,21 +245,15 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
         <div className="font-bold text-gray-900">Map location</div>
         <div className="text-sm text-gray-600 mt-1">Required. Used to calculate routing distance.</div>
         <div className="mt-3">
-          <GeoAutocomplete
-            label="Map location search *"
+          <MapLocationSelector
             required
             value={mapDisplayName}
-            onChange={(v) => {
-              setMapDisplayName(v);
-              setMapLat(0);
-              setMapLng(0);
+            onChange={(data) => {
+              setMapDisplayName(data.mapDisplayName);
+              setMapLat(data.lat);
+              setMapLng(data.lng);
             }}
-            onPick={(r: GeoAutocompleteResult) => {
-              setMapDisplayName(r.display_name);
-              setMapLat(r.lat);
-              setMapLng(r.lon);
-            }}
-            errorText={showMapError ? "Please select a result to capture coordinates (required)." : ""}
+            errorText={showMapError ? "Please select your location from the map suggestions." : ""}
           />
         </div>
 
