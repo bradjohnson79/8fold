@@ -41,7 +41,7 @@ export async function requireApiToken(): Promise<string> {
   const maxWaitMsDefault =
     process.env.NODE_ENV !== "production"
       ? clamp(Number(process.env.WEB_AUTH_TOKEN_MAX_WAIT_MS ?? 2500), 200, 5000)
-      : 1200;
+      : 2000;
   const maxWaitMs = maxWaitMsDefault;
   const deadline = Date.now() + maxWaitMs;
 
@@ -115,10 +115,12 @@ async function requireMeSession(req?: Request): Promise<Session> {
   }
 
   const u = json.data as any;
+  const rawRole = String(u.role ?? "").trim();
+  const roleAssigned = u?.roleAssigned !== false && rawRole.length > 0;
   return {
     userId: String(u.id ?? ""),
     email: u.email ?? null,
-    role: String(u.role ?? ""),
+    role: roleAssigned ? rawRole : "USER_ROLE_NOT_ASSIGNED",
     walletBalanceCents: Number(u.walletBalanceCents ?? 0),
   };
 }
@@ -136,7 +138,13 @@ async function loadServerMeSession(): Promise<Session | null> {
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
-    if (status === 401) return null;
+    if (status === 401) {
+      if (process.env.WEB_AUTH_DEBUG_LOG === "true") {
+        const msg = (err as Error)?.message ?? String(err);
+        console.warn("[auth.session_null]", { code, status, message: msg.slice(0, 200) });
+      }
+      return null;
+    }
     if (code === "USER_ROLE_NOT_ASSIGNED") {
       return { userId: "", email: null, role: "USER_ROLE_NOT_ASSIGNED", walletBalanceCents: 0 };
     }

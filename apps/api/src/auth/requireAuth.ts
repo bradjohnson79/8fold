@@ -36,6 +36,48 @@ function normalizeIssuer(v: string): string {
   return stripTrailingSlash(String(v ?? "").trim()).toLowerCase();
 }
 
+/**
+ * Decode JWT payload (claims only) without verification. Safe for diagnostic logging.
+ * Returns iss and aud only; never logs the token or any secrets.
+ */
+function decodeJwtClaimsUnsafe(token: string): { iss?: string; aud?: string | string[] } | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1];
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = Buffer.from(base64, "base64").toString("utf8");
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    return {
+      iss: typeof parsed.iss === "string" ? parsed.iss : undefined,
+      aud: parsed.aud as string | string[] | undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function logAuth401Diagnostic(opts: {
+  token: string;
+  expectedIssuer: string;
+  expectedAudience: string[];
+  requestId: string;
+  path: "verify_throw" | "issuer_mismatch";
+  verifiedIssuer?: string;
+}): void {
+  const claims = decodeJwtClaimsUnsafe(opts.token);
+  // eslint-disable-next-line no-console
+  console.warn("[AUTH_401_DIAGNOSTIC]", {
+    path: opts.path,
+    requestId: opts.requestId,
+    token_iss: claims?.iss ?? "(decode failed)",
+    token_aud: claims?.aud ?? "(decode failed)",
+    configured_CLERK_ISSUER: opts.expectedIssuer,
+    configured_CLERK_AUDIENCE: opts.expectedAudience.length ? opts.expectedAudience : "(empty)",
+    ...(opts.verifiedIssuer !== undefined && { verified_iss_after_normalize: opts.verifiedIssuer }),
+  });
+}
+
 export async function requireAuth(req: Request): Promise<RequireAuthOk | Response> {
   const requestId = getOrCreateRequestId(req);
   const token = getBearerToken(req);
@@ -97,6 +139,13 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
         : audience.length && (msgLower.includes("audience") || msgLower.includes(" aud ") || msgLower.includes("aud=") || msgLower.includes("aud:"))
           ? AuthErrorCodes.AUTH_INVALID_AUDIENCE
           : AuthErrorCodes.AUTH_INVALID_TOKEN;
+    logAuth401Diagnostic({
+      token,
+      expectedIssuer,
+      expectedAudience: audience,
+      requestId,
+      path: "verify_throw",
+    });
     logAuthFailure(req, {
       level: "warn",
       event: "auth.token_verification_failed",
@@ -145,6 +194,14 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
     });
   }
   if (issuer !== expectedIssuer) {
+    logAuth401Diagnostic({
+      token,
+      expectedIssuer,
+      expectedAudience: audience,
+      requestId,
+      path: "issuer_mismatch",
+      verifiedIssuer: issuer,
+    });
     logAuthFailure(req, {
       level: "warn",
       event: "auth.invalid_issuer",
