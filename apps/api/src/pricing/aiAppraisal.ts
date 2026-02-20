@@ -1,9 +1,9 @@
 import { getTradeDelta } from "./tradeDeltas";
-import { GPT_MODEL } from "@8fold/shared";
 import type { JobType, TradeCategory } from "../types/dbEnums";
 import crypto from "node:crypto";
+import { getOpenAiClient, OPENAI_APPRAISAL_MODEL } from "../lib/openai";
 
-const MODEL = GPT_MODEL;
+const MODEL = OPENAI_APPRAISAL_MODEL;
 const MAX_REASONABLE_THRESHOLD_CENTS = 5_000_000;
 
 export type PriceAppraisalInput = {
@@ -28,13 +28,13 @@ export type PriceAppraisalResult = {
 };
 
 export class AiAppraisalError extends Error {
-  code: "AI_CONFIG_MISSING" | "AI_RESPONSE_INVALID" | "AI_RUNTIME_ERROR";
+  code: "AI_CONFIG_MISSING" | "AI_INVALID_RESPONSE" | "AI_RUNTIME_ERROR";
   traceId: string;
   status: 500 | 502;
   rawResponse?: unknown;
   constructor(args: {
     message: string;
-    code: "AI_CONFIG_MISSING" | "AI_RESPONSE_INVALID" | "AI_RUNTIME_ERROR";
+    code: "AI_CONFIG_MISSING" | "AI_INVALID_RESPONSE" | "AI_RUNTIME_ERROR";
     traceId: string;
     status: 500 | 502;
     rawResponse?: unknown;
@@ -50,7 +50,7 @@ export class AiAppraisalError extends Error {
 
 function fail(args: {
   message: string;
-  code: "AI_CONFIG_MISSING" | "AI_RESPONSE_INVALID" | "AI_RUNTIME_ERROR";
+  code: "AI_CONFIG_MISSING" | "AI_INVALID_RESPONSE" | "AI_RUNTIME_ERROR";
   status: 500 | 502;
   rawResponse?: unknown;
 }): never {
@@ -100,7 +100,7 @@ Return ONLY valid JSON, no markdown, no code blocks. Example:
 export async function appraiseJobPrice(
   input: PriceAppraisalInput
 ): Promise<PriceAppraisalResult> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.OPEN_AI_API_KEY;
   if (!key) {
     fail({
       message: "AI appraisal system configuration error.",
@@ -112,76 +112,51 @@ export async function appraiseJobPrice(
   const prompt = buildAppraisalPrompt(input);
 
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          {
-            role: "system",
-            content: "You are a professional pricing appraiser. Return only valid JSON.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 200,
-      }),
-    });
-
-    if (!resp.ok) {
-      const rawResponse = await resp.json().catch(() => ({}));
-      fail({
-        message: String(rawResponse?.error?.message || "OpenAI request failed"),
-        code: "AI_RUNTIME_ERROR",
-        status: 502,
-        rawResponse,
-      });
-    }
-
-    const rawResponse = await resp.json();
-    const content = rawResponse?.choices?.[0]?.message?.content;
+    const openai = getOpenAiClient();
+    const rawResponse = (await openai.responses.create({
+      model: MODEL,
+      input: [
+        { role: "system", content: "You are a professional pricing appraiser. Return only valid JSON." },
+        { role: "user", content: prompt },
+      ],
+      reasoning: { effort: "low" },
+      max_output_tokens: 400,
+    })) as any;
+    const content = typeof rawResponse?.output_text === "string" ? rawResponse.output_text : "";
     if (!content) {
       fail({
         message: "AI appraisal returned empty content.",
-        code: "AI_RESPONSE_INVALID",
+        code: "AI_INVALID_RESPONSE",
         status: 502,
         rawResponse,
       });
     }
 
-    const cleaned = String(content).replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-
     let parsed: any = null;
     try {
-      parsed = JSON.parse(cleaned);
+      parsed = JSON.parse(String(content));
     } catch {
       fail({
         message: "AI appraisal returned non-JSON content.",
-        code: "AI_RESPONSE_INVALID",
+        code: "AI_INVALID_RESPONSE",
         status: 502,
         rawResponse: content,
       });
     }
 
     const priceMedianCents = Number(parsed?.price_median);
-    const reasoning = String(parsed?.reasoning ?? "").slice(0, 200);
+    const reasoning = String(parsed?.reasoning ?? "").trim();
 
     const invalid =
       !Number.isFinite(priceMedianCents) ||
       priceMedianCents <= 0 ||
-      priceMedianCents >= MAX_REASONABLE_THRESHOLD_CENTS;
+      priceMedianCents >= MAX_REASONABLE_THRESHOLD_CENTS ||
+      !reasoning;
 
     if (invalid) {
       fail({
         message: "AI appraisal returned an invalid result.",
-        code: "AI_RESPONSE_INVALID",
+        code: "AI_INVALID_RESPONSE",
         status: 502,
         rawResponse: parsed,
       });
@@ -190,7 +165,7 @@ export async function appraiseJobPrice(
     return {
       priceMedianCents: Math.round(priceMedianCents),
       allowedDeltaCents: getTradeDelta(input.tradeCategory),
-      reasoning: reasoning || "AI-generated pricing",
+      reasoning,
     };
   } catch (err) {
     if (err instanceof AiAppraisalError) throw err;

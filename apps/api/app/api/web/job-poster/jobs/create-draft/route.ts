@@ -161,7 +161,7 @@ export async function POST(req: Request) {
     } catch (err) {
       if (err instanceof AiAppraisalError) {
         // eslint-disable-next-line no-console
-        console.error(`❌ ${err.code === "AI_RESPONSE_INVALID" ? "AI INVALID RESPONSE" : "AI APPRAISAL FAILURE"}`, {
+        console.error(`❌ ${err.code}`, {
           traceId: err.traceId,
           code: err.code,
           error: err.message,
@@ -169,13 +169,9 @@ export async function POST(req: Request) {
         });
         return NextResponse.json(
           {
-            error:
-              err.code === "AI_CONFIG_MISSING"
-                ? "AI appraisal system configuration error."
-                : err.code === "AI_RESPONSE_INVALID"
-                  ? "AI appraisal returned an invalid result."
-                  : "AI appraisal service failure.",
+            error: "AI appraisal unavailable.",
             code: err.code,
+            requiresSupportTicket: true,
             traceId: err.traceId,
           },
           { status: err.status },

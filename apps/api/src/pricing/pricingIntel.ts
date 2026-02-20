@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { GPT_MODEL } from "@8fold/shared";
 import type { JobType, TradeCategory } from "../types/dbEnums";
+import { OPENAI_APPRAISAL_MODEL } from "../lib/openai";
 
 export const PricingIntelSchema = z.object({
   suggestedMin: z.number(),
@@ -39,10 +39,10 @@ export async function getPricingIntel(opts: {
   // Anchor the range to the already-computed median when available (keeps suggestions conservative).
   anchorMedianCents?: number | null;
 }): Promise<{ model: string; intel: PricingIntel } | null> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.OPEN_AI_API_KEY;
   if (!key) return null;
 
-  const model = GPT_MODEL;
+  const model = OPENAI_APPRAISAL_MODEL;
   const anchorDollars =
     typeof opts.anchorMedianCents === "number" && Number.isFinite(opts.anchorMedianCents)
       ? Math.max(0, Math.round(opts.anchorMedianCents / 100))

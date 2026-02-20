@@ -1,20 +1,17 @@
-import { GPT_MODEL } from "@8fold/shared";
+import { OPENAI_APPRAISAL_MODEL } from "../../lib/openai";
 
 export async function testNano() {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPEN_AI_API_KEY;
   const modelEnv = process.env.OPENAI_MODEL;
 
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY missing in API runtime");
+    throw new Error("OPEN_AI_API_KEY missing in API runtime");
   }
   if (modelEnv && modelEnv !== "gpt-5-nano") {
     throw new Error(`OPENAI_MODEL must be gpt-5-nano (got ${modelEnv})`);
   }
 
-  const model = GPT_MODEL;
-  if (model !== "gpt-5-nano") {
-    throw new Error(`GPT_MODEL must be gpt-5-nano (got ${model})`);
-  }
+  const model = OPENAI_APPRAISAL_MODEL;
 
   console.log("[ai:diagnostics] model:", model);
   console.log("[ai:diagnostics] env:", { hasKey: Boolean(apiKey), OPENAI_MODEL: modelEnv ?? null });

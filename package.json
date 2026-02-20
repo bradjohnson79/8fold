@@ -19,6 +19,7 @@
     "test": "pnpm -C apps/web test",
     "format": "prettier -w .",
     "guardrails": "node scripts/guardrails.mjs",
+    "ai:guard": "tsx scripts/ai-guard.ts",
     "test:role-scan": "node scripts/scan-legacy-roles.mjs",
     "ci:gate": "node scripts/ci-gate.mjs",
     "check:boundaries": "ts-node --esm scripts/check-boundaries.ts",

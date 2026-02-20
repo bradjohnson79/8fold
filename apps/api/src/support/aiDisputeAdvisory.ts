@@ -1,4 +1,4 @@
-import { GPT_MODEL } from "@8fold/shared";
+import { OPENAI_APPRAISAL_MODEL } from "../lib/openai";
 
 export type AiDisputeAdvisoryInput = {
   dispute: {
@@ -48,17 +48,17 @@ function extractJson(text: string): any {
 }
 
 export async function requestAiDisputeAdvisory(input: AiDisputeAdvisoryInput): Promise<AiDisputeAdvisoryResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPEN_AI_API_KEY;
   if (!apiKey) {
     return {
       decision: "SPLIT",
       confidencePct: 0,
       reasoning: "OpenAI API key not configured",
-      model: GPT_MODEL,
+      model: OPENAI_APPRAISAL_MODEL,
     };
   }
 
-  const model = GPT_MODEL;
+  const model = OPENAI_APPRAISAL_MODEL;
 
   const prompt = [
     "Return strict JSON only.",

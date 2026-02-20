@@ -5,7 +5,11 @@ import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingG
 import { db } from "../../../../../../../db/drizzle";
 import { jobs } from "../../../../../../../db/schema/job";
 import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../../src/http/jobPosterRouteErrors";
-import { appraiseJobTotalWithAi, type JobPricingAppraisalInput } from "../../../../../../../src/pricing/jobPricingAppraisal";
+import {
+  appraiseJobTotalWithAi,
+  JobPricingAppraisalError,
+  type JobPricingAppraisalInput,
+} from "../../../../../../../src/pricing/jobPricingAppraisal";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -14,13 +18,18 @@ function getIdFromUrl(req: Request): string {
   return idx >= 0 ? (parts[idx + 1] ?? "") : "";
 }
 
-const MAX_REASONABLE_THRESHOLD_DOLLARS = 50_000;
-
 export async function POST(req: Request) {
   const route = "POST /api/web/job-poster/drafts/:id/start-appraisal";
   let userId: string | null = null;
   let jobId: string | null = null;
   try {
+    // eslint-disable-next-line no-console
+    console.log("🔥 AI ROUTE HIT");
+    // eslint-disable-next-line no-console
+    console.log("🧠 AI Model: gpt-5-nano");
+    // eslint-disable-next-line no-console
+    console.log("🔑 OPEN_AI_API_KEY present:", !!process.env.OPEN_AI_API_KEY);
+
     const ready = await requireJobPosterReady(req);
     if (ready instanceof Response) return ready;
     const user = ready;
@@ -107,14 +116,15 @@ export async function POST(req: Request) {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPEN_AI_API_KEY) {
       const traceId = crypto.randomUUID();
       // eslint-disable-next-line no-console
       console.error("❌ AI APPRAISAL CONFIG MISSING", { traceId, route, jobId: full.id, userId });
       return NextResponse.json(
         {
-          error: "AI appraisal system configuration error.",
+          error: "AI appraisal unavailable.",
           code: "AI_CONFIG_MISSING",
+          requiresSupportTicket: true,
           traceId,
         },
         { status: 500 },
@@ -146,13 +156,37 @@ export async function POST(req: Request) {
       currentTotalDollars: 0,
     };
 
-    let ai: Awaited<ReturnType<typeof appraiseJobTotalWithAi>> | null = null;
+    const appraisalTraceId = crypto.randomUUID();
+    const appraisalModel = "gpt-5-nano" as const;
+
+    let aiResponse: Awaited<ReturnType<typeof appraiseJobTotalWithAi>> | null = null;
     try {
-      ai = await appraiseJobTotalWithAi(aiInput);
+      aiResponse = await appraiseJobTotalWithAi(aiInput);
     } catch (err) {
+      if (err instanceof JobPricingAppraisalError) {
+        // eslint-disable-next-line no-console
+        console.error(`❌ ${err.code}`, {
+          traceId: err.traceId,
+          route,
+          jobId: full.id,
+          userId,
+          error: err.message,
+          raw: err.raw,
+        });
+        return NextResponse.json(
+          {
+            error: "AI appraisal unavailable.",
+            code: err.code,
+            requiresSupportTicket: true,
+            traceId: err.traceId,
+          },
+          { status: err.status },
+        );
+      }
+
       const traceId = crypto.randomUUID();
       // eslint-disable-next-line no-console
-      console.error("❌ AI APPRAISAL FAILURE", {
+      console.error("❌ AI_RUNTIME_ERROR", {
         traceId,
         route,
         jobId: full.id,
@@ -161,35 +195,30 @@ export async function POST(req: Request) {
       });
       return NextResponse.json(
         {
-          error: "AI appraisal service failure.",
+          error: "AI appraisal unavailable.",
           code: "AI_RUNTIME_ERROR",
+          requiresSupportTicket: true,
           traceId,
         },
-        { status: 502 },
+        { status: 500 },
       );
     }
 
-    const out = ai?.output ?? null;
+    const out = aiResponse?.output ?? null;
     const suggestedTotal = Number(out?.suggestedTotal);
     const low = Number(out?.priceRange?.low);
     const high = Number(out?.priceRange?.high);
-    const confidence = out?.confidence;
+    const confidenceScore = Number(out?.confidence);
     const reasoning = String(out?.reasoning ?? "").trim();
 
     const invalid =
       !out ||
       !Number.isFinite(suggestedTotal) ||
-      suggestedTotal <= 0 ||
-      suggestedTotal >= MAX_REASONABLE_THRESHOLD_DOLLARS ||
       !Number.isFinite(low) ||
       !Number.isFinite(high) ||
-      low <= 0 ||
-      high <= 0 ||
-      low >= high ||
-      suggestedTotal < low ||
-      suggestedTotal > high ||
-      !reasoning ||
-      (confidence !== "low" && confidence !== "medium" && confidence !== "high");
+      !Number.isFinite(confidenceScore) ||
+      confidenceScore < 0 ||
+      confidenceScore > 1;
 
     if (invalid) {
       const traceId = crypto.randomUUID();
@@ -199,16 +228,23 @@ export async function POST(req: Request) {
         route,
         jobId: full.id,
         userId,
-        rawResponse: ai?.raw ?? null,
+        rawResponse: aiResponse?.raw ?? null,
       });
       return NextResponse.json(
         {
-          error: "AI appraisal returned an invalid result.",
-          code: "AI_RESPONSE_INVALID",
+          error: "AI appraisal unavailable.",
+          code: "AI_INVALID_RESPONSE",
+          requiresSupportTicket: true,
           traceId,
         },
-        { status: 502 },
+        { status: 500 },
       );
+    }
+
+    const confidence = confidenceScore >= 0.75 ? "high" : confidenceScore >= 0.4 ? "medium" : "low";
+    const validated = true;
+    if (!aiResponse || !validated) {
+      throw new Error("Refusing to persist pricing without validated AI result");
     }
 
     const now = new Date();
@@ -223,6 +259,13 @@ export async function POST(req: Request) {
         aiConfidence: confidence as any,
         aiReasoning: reasoning,
         priceMedianCents: Math.round(suggestedTotal) * 100,
+        pricingIntel: {
+          appraisalTraceId,
+          appraisalModel,
+          appraisedAt: now.toISOString(),
+        } as any,
+        pricingIntelGeneratedAt: now,
+        pricingIntelModel: appraisalModel,
       } as any)
       .where(and(eq(jobs.id, id), eq(jobs.archived, false), eq(jobs.jobPosterUserId, user.userId)));
 
@@ -235,6 +278,9 @@ export async function POST(req: Request) {
           aiPriceRange: { low, high },
           aiConfidence: confidence,
           aiReasoning: reasoning,
+          appraisalTraceId,
+          appraisalModel,
+          appraisedAt: now.toISOString(),
         },
       },
       { status: 200 }

@@ -46,6 +46,9 @@ type DraftResponse = {
     aiConfidence: "low" | "medium" | "high";
     aiReasoning: string;
     aiAppraisedAt: string;
+    appraisalTraceId?: string;
+    appraisalModel?: string;
+    appraisedAt?: string;
     breakdown: UiBreakdown;
   };
 };
@@ -53,6 +56,7 @@ type DraftResponse = {
 type PaymentIntentResponse = {
   ok: true;
   clientSecret: string;
+  returnUrl?: string;
 };
 
 type RepeatEligibleResponse =
@@ -73,6 +77,12 @@ type AppraisalFailureInfo = {
   traceId: string;
   timestamp: string;
 };
+type DraftSaveFailureInfo = {
+  code: string;
+  traceId: string;
+  timestamp: string;
+};
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 function hasFullProfileAddress(p: Profile | null): boolean {
   if (!p) return false;
@@ -162,9 +172,21 @@ export default function JobPosterPostAJobPage() {
   const [aiConfidence, setAiConfidence] = React.useState<"low" | "medium" | "high">("medium");
   const [selectedPriceCents, setSelectedPriceCents] = React.useState<number>(0);
   const [aiReasoning, setAiReasoning] = React.useState<string>("");
+  const [appraisalTraceId, setAppraisalTraceId] = React.useState<string>("");
+  const [appraisalModel, setAppraisalModel] = React.useState<string>("");
+  const [appraisedAt, setAppraisedAt] = React.useState<string>("");
   const [appraising, setAppraising] = React.useState(false);
   const [appraisalFailure, setAppraisalFailure] = React.useState<AppraisalFailureInfo | null>(null);
+  const [draftSaveFailure, setDraftSaveFailure] = React.useState<DraftSaveFailureInfo | null>(null);
   const [supportSubmitting, setSupportSubmitting] = React.useState(false);
+  const [saveStateByField, setSaveStateByField] = React.useState<Record<FieldKey, SaveStatus>>({
+    title: "idle",
+    tradeCategory: "idle",
+    jobType: "idle",
+    address: "idle",
+    scope: "idle",
+    junkHaulingItems: "idle",
+  });
   const [availability, setAvailability] = React.useState<Availability>({});
 
   const [repeatEligible, setRepeatEligible] = React.useState<RepeatEligibleResponse | null>(null);
@@ -173,6 +195,7 @@ export default function JobPosterPostAJobPage() {
 
   const [tosOk, setTosOk] = React.useState(false);
   const [clientSecret, setClientSecret] = React.useState<string | null>(null);
+  const [paymentReturnUrl, setPaymentReturnUrl] = React.useState<string>("");
   const [awaitingFunding, setAwaitingFunding] = React.useState(false);
 
   const [submitAttempted, setSubmitAttempted] = React.useState(false);
@@ -182,6 +205,8 @@ export default function JobPosterPostAJobPage() {
 
   // "Different address" mode is manual-entry only (structured geocoding happens server-side).
   const appraisalAbortRef = React.useRef<AbortController | null>(null);
+  const draftSaveAbortRef = React.useRef<AbortController | null>(null);
+  const draftSaveSeqRef = React.useRef(0);
 
   const repeatEnabled = Boolean(repeatEligible && "eligible" in repeatEligible && repeatEligible.eligible);
   const repeatAccepted = repeatStatus?.request?.status === "ACCEPTED";
@@ -207,6 +232,108 @@ export default function JobPosterPostAJobPage() {
     const b = calculatePayoutBreakdown(selectedPriceCents, materials);
     return { payout: b as UiBreakdown, discountCents: 0 };
   }, [repeatAccepted, selectedPriceCents]);
+
+  const hasValidatedAppraisal =
+    aiSuggestedTotalCents > 0 &&
+    Boolean(appraisalTraceId.trim()) &&
+    appraisalModel === "gpt-5-nano" &&
+    Boolean(appraisedAt.trim());
+
+  function resetAppraisalState() {
+    setAiSuggestedTotalCents(0);
+    setAiRangeLowCents(0);
+    setAiRangeHighCents(0);
+    setAiConfidence("medium");
+    setSelectedPriceCents(0);
+    setAiReasoning("");
+    setAppraisalTraceId("");
+    setAppraisalModel("");
+    setAppraisedAt("");
+  }
+
+  function applyAppraisalResult(apprJson: any) {
+    const j = (apprJson as DraftResponse).job ?? (apprJson?.job ?? null);
+    const suggestedCents = Math.round((Number(j?.aiSuggestedTotal ?? 0) || 0) * 100);
+    const lowCents = Math.round((Number(j?.aiPriceRange?.low ?? 0) || 0) * 100);
+    const highCents = Math.round((Number(j?.aiPriceRange?.high ?? 0) || 0) * 100);
+    const traceId = String(j?.appraisalTraceId ?? "").trim();
+    const model = String(j?.appraisalModel ?? "").trim();
+    const appraised = String(j?.appraisedAt ?? "").trim();
+
+    const valid =
+      suggestedCents > 0 && lowCents > 0 && highCents > 0 && Boolean(traceId) && model === "gpt-5-nano" && Boolean(appraised);
+
+    if (!valid) {
+      const supportTraceId = traceId || crypto.randomUUID();
+      setAppraisalFailure({
+        code: "AI_INVALID_RESPONSE",
+        traceId: supportTraceId,
+        timestamp: new Date().toISOString(),
+      });
+      setError(
+        "Pricing could not be generated. Please submit a support ticket so our team can resolve this immediately."
+      );
+      resetAppraisalState();
+      return false;
+    }
+
+    setAiSuggestedTotalCents(suggestedCents);
+    setAiRangeLowCents(lowCents);
+    setAiRangeHighCents(highCents);
+    setAiConfidence((j?.aiConfidence ?? "medium") as any);
+    setSelectedPriceCents(suggestedCents);
+    setAiReasoning(truncateWords(String(j?.aiReasoning ?? ""), 150));
+    setAppraisalTraceId(traceId);
+    setAppraisalModel(model);
+    setAppraisedAt(appraised);
+    return true;
+  }
+
+  async function startAppraisalForDraft(draftId: string): Promise<boolean> {
+    if (!draftId) return false;
+    // eslint-disable-next-line no-console
+    console.log("➡️ STARTING APPRAISAL", { draftId });
+    setAppraising(true);
+    const controller = new AbortController();
+    appraisalAbortRef.current = controller;
+    try {
+      const apprResp = await fetch(`/api/app/job-poster/drafts/${encodeURIComponent(draftId)}/start-appraisal`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: controller.signal,
+      });
+      const apprJson = (await apprResp.json().catch(() => null)) as any;
+      if (!apprResp.ok) {
+        const code = String(apprJson?.code ?? "AI_RUNTIME_ERROR");
+        const traceId = String(apprJson?.traceId ?? "").trim() || "unknown";
+        setAppraisalFailure({
+          code,
+          traceId,
+          timestamp: new Date().toISOString(),
+        });
+        setError(
+          "Pricing could not be generated. Please submit a support ticket so our team can resolve this immediately."
+        );
+        resetAppraisalState();
+        return false;
+      }
+      setAppraisalFailure(null);
+      return applyAppraisalResult(apprJson);
+    } catch {
+      const traceId = crypto.randomUUID();
+      setAppraisalFailure({
+        code: "AI_RUNTIME_ERROR",
+        traceId,
+        timestamp: new Date().toISOString(),
+      });
+      setError("Pricing could not be generated. Please submit a support ticket so our team can resolve this immediately.");
+      resetAppraisalState();
+      return false;
+    } finally {
+      appraisalAbortRef.current = null;
+      setAppraising(false);
+    }
+  }
 
   function validateDetails(): { ok: boolean; errors: FieldErrors; junkRowErrors: Array<{ category?: string; item?: string; quantity?: string }> } {
     const errors: FieldErrors = {};
@@ -261,13 +388,150 @@ export default function JobPosterPostAJobPage() {
   }
 
   function statusFor(key: FieldKey): "neutral" | "valid" | "invalid" {
+    const saveState = saveStateByField[key];
+    if (saveState === "saved") return "valid";
+    if (saveState === "error") return "invalid";
     if (!showStatus(key)) return "neutral";
     if (fieldErrors[key]) return "invalid";
-    return "valid";
+    return "neutral";
   }
 
   function touch(key: FieldKey) {
     setTouched((t) => ({ ...t, [key]: true }));
+  }
+
+  function setSaveState(fields: FieldKey[], status: SaveStatus) {
+    setSaveStateByField((prev) => {
+      const next = { ...prev };
+      for (const field of fields) next[field] = status;
+      return next;
+    });
+  }
+
+  function markFieldsDirty(fields: FieldKey[]) {
+    setSaveState(fields, "idle");
+  }
+
+  function buildDraftSavePayload() {
+    if (!profile) return null;
+    const stateProvince = profile.stateProvince;
+    const addrMode = details.addressChoice;
+
+    let city = "";
+    let address = "";
+    let postalCode = details.postalCode || "";
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    if (addrMode === "profile") {
+      city = String(profile.city ?? "").trim();
+      address = String(profile.address ?? "").trim();
+      lat = typeof profile.lat === "number" ? profile.lat : null;
+      lng = typeof profile.lng === "number" ? profile.lng : null;
+    } else {
+      address = details.manualStreet.trim();
+      city = details.manualCity.trim();
+    }
+
+    const itemsFromRows = (junkItems ?? [])
+      .map((it: any) => ({
+        category: String(it?.category ?? "").trim(),
+        description: String(it?.item ?? "").trim(),
+        quantity: Number(it?.quantity),
+        ...(String(it?.notes ?? "").trim() ? { notes: String(it?.notes ?? "").trim() } : {}),
+      }))
+      .filter((it: any) => it.category && it.description && Number.isInteger(it.quantity) && it.quantity >= 1);
+
+    const items =
+      details.tradeCategory === "JUNK_REMOVAL" || details.tradeCategory === "FURNITURE_ASSEMBLY"
+        ? itemsFromRows
+        : [
+            {
+              category: "General",
+              description: details.scope.trim(),
+              quantity: 1,
+            },
+          ];
+
+    return {
+      readyForAppraisal: true,
+      jobId: jobId ?? undefined,
+      jobTitle: details.title.trim(),
+      scope: details.scope.trim(),
+      tradeCategory: details.tradeCategory,
+      jobType: details.jobType,
+      ...(details.timeWindow.trim() ? { timeWindow: details.timeWindow.trim() } : {}),
+      address: {
+        street: address.trim(),
+        city: city.trim(),
+        provinceOrState: stateProvince.trim(),
+        country: (profile.country ?? "US") as any,
+        ...(String(postalCode || "").trim() ? { postalCode: String(postalCode || "").trim() } : {}),
+      },
+      ...(typeof lat === "number" && Number.isFinite(lat) && typeof lng === "number" && Number.isFinite(lng)
+        ? { geo: { lat, lng } }
+        : {}),
+      items,
+      ...(photoUrls.length ? { photoUrls: photoUrls.slice(0, 5) } : {}),
+    };
+  }
+
+  async function persistDraftForFields(fields: FieldKey[]): Promise<string | null> {
+    if (!profile || step !== 1) return null;
+    const v = validateDetails();
+    setFieldErrors(v.errors);
+    if (!v.ok) {
+      setSaveState(fields, "error");
+      return null;
+    }
+
+    const payload = buildDraftSavePayload();
+    if (!payload) return null;
+
+    try {
+      draftSaveAbortRef.current?.abort();
+    } catch {}
+    const controller = new AbortController();
+    draftSaveAbortRef.current = controller;
+    const seq = ++draftSaveSeqRef.current;
+
+    setSaveState(fields, "saving");
+    setDraftSaveFailure(null);
+
+    try {
+      const saveResp = await fetch("/api/app/job-poster/drafts/save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const saveJson = (await saveResp.json().catch(() => null)) as any;
+
+      if (seq !== draftSaveSeqRef.current) return null;
+
+      if (!saveResp.ok || saveJson?.success !== true) {
+        const code = String(saveJson?.code ?? "DRAFT_SAVE_FAILED");
+        const traceId = String(saveJson?.traceId ?? "").trim() || "unknown";
+        setDraftSaveFailure({ code, traceId, timestamp: new Date().toISOString() });
+        setSaveState(fields, "error");
+        return null;
+      }
+
+      const savedId = String(saveJson?.draftId ?? "").trim();
+      if (savedId) setJobId(savedId);
+      setSaveState(fields, "saved");
+      return savedId || null;
+    } catch {
+      if (seq !== draftSaveSeqRef.current) return null;
+      const traceId = crypto.randomUUID();
+      setDraftSaveFailure({
+        code: "DRAFT_SAVE_FAILED",
+        traceId,
+        timestamp: new Date().toISOString(),
+      });
+      setSaveState(fields, "error");
+      return null;
+    }
   }
 
   async function loadProfileAndGate() {
@@ -360,20 +624,20 @@ export default function JobPosterPostAJobPage() {
         const photoUrlsNext = Array.isArray(d.photoUrls) ? d.photoUrls : [];
         setPhotoUrls(photoUrlsNext);
 
-        const suggestedCents = Math.round((Number(d?.aiSuggestedTotal ?? 0) || 0) * 100);
-        const lowCents = Math.round((Number(d?.aiPriceRange?.low ?? 0) || 0) * 100);
-        const highCents = Math.round((Number(d?.aiPriceRange?.high ?? 0) || 0) * 100);
-        setAiSuggestedTotalCents(suggestedCents);
-        setAiRangeLowCents(lowCents);
-        setAiRangeHighCents(highCents);
-        setAiConfidence((d?.aiConfidence ?? "medium") as any);
-        setAiReasoning(truncateWords(String(d?.aiReasoning ?? ""), 150));
-        if (suggestedCents > 0) setSelectedPriceCents(suggestedCents);
-
         const wiz = String(d?.wizardStep ?? "").toUpperCase();
-        if (wiz === "PAYMENT") setStep(3);
-        else if (wiz === "PRICING" && suggestedCents > 0) setStep(2);
-        else setStep(1);
+        if (wiz === "PRICING" || wiz === "PAYMENT") {
+          resetAppraisalState();
+          const appraisalOk = await startAppraisalForDraft(String(d.id));
+          if (!alive) return;
+          if (!appraisalOk) {
+            setStep(1);
+            return;
+          }
+          if (wiz === "PAYMENT") setStep(3);
+          else setStep(2);
+          return;
+        }
+        setStep(1);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed");
@@ -426,107 +690,19 @@ export default function JobPosterPostAJobPage() {
     setFieldErrors(v.errors);
     if (!v.ok) return;
 
-    const stateProvince = profile.stateProvince;
-    const addrMode = details.addressChoice;
-
-    let city = "";
-    let address = "";
-    let postalCode = details.postalCode || "";
-    let lat: number | null = null;
-    let lng: number | null = null;
-    let addressMode: "PROFILE" | "AUTO" | "MANUAL" = "PROFILE";
-
-    if (addrMode === "profile") {
-      city = String(profile.city ?? "").trim();
-      address = String(profile.address ?? "").trim();
-      lat = typeof profile.lat === "number" ? profile.lat : null;
-      lng = typeof profile.lng === "number" ? profile.lng : null;
-      addressMode = "PROFILE";
-    } else {
-      address = details.manualStreet.trim();
-      city = details.manualCity.trim();
-      addressMode = "MANUAL";
-    }
-
-    const itemsFromRows = (junkItems ?? [])
-      .map((it: any) => ({
-        category: String(it?.category ?? "").trim(),
-        description: String(it?.item ?? "").trim(),
-        quantity: Number(it?.quantity),
-        ...(String(it?.notes ?? "").trim() ? { notes: String(it?.notes ?? "").trim() } : {}),
-      }))
-      .filter((it: any) => it.category && it.description && Number.isInteger(it.quantity) && it.quantity >= 1);
-    const items =
-      details.tradeCategory === "JUNK_REMOVAL" || details.tradeCategory === "FURNITURE_ASSEMBLY"
-        ? (itemsFromRows.length
-            ? itemsFromRows
-            : [
-                {
-                  category: details.tradeCategory === "FURNITURE_ASSEMBLY" ? "Furniture" : "General",
-                  description: details.scope.trim(),
-                  quantity: 1,
-                },
-              ])
-        : [
-            {
-              category: "General",
-              description: details.scope.trim(),
-              quantity: 1,
-            },
-          ];
-
     setLoading(true);
     setError("");
     setAppraisalFailure(null);
+    resetAppraisalState();
     try {
-      // 1) Persist draft immediately (non-abortable).
-      const saveResp = await fetch("/api/app/job-poster/drafts/save", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          readyForAppraisal: true,
-          jobId: jobId ?? undefined,
-          jobTitle: details.title.trim(),
-          scope: details.scope.trim(),
-          tradeCategory: details.tradeCategory,
-          jobType: details.jobType,
-          ...(details.timeWindow.trim() ? { timeWindow: details.timeWindow.trim() } : {}),
-          address: {
-            street: address.trim(),
-            city: city.trim(),
-            provinceOrState: stateProvince.trim(),
-            country: (profile.country ?? "US") as any,
-            ...(String(postalCode || "").trim() ? { postalCode: String(postalCode || "").trim() } : {}),
-          },
-          ...(typeof lat === "number" && Number.isFinite(lat) && typeof lng === "number" && Number.isFinite(lng)
-            ? { geo: { lat, lng } }
-            : {}),
-          items,
-          ...(photoUrls.length ? { photoUrls: photoUrls.slice(0, 5) } : {}),
-        }),
-      });
-      const saveJson = (await saveResp.json().catch(() => null)) as any;
-      if (saveJson && saveJson.ok === false) {
-        setError(String(saveJson?.message ?? saveJson?.meta?.message ?? "Failed to save draft"));
+      const allFields: FieldKey[] = ["title", "tradeCategory", "jobType", "address", "scope"];
+      if (details.tradeCategory === "JUNK_REMOVAL") allFields.push("junkHaulingItems");
+      const savedId = await persistDraftForFields(allFields);
+      if (!savedId) {
+        setError("Draft save failed. Please submit a support ticket so we can investigate immediately.");
         return;
       }
-      if (!saveResp.ok) {
-        setError(String(saveJson?.error ?? "Failed to save draft"));
-        const fe = saveJson?.fieldErrors ?? null;
-        if (fe && typeof fe === "object") {
-          const next: FieldErrors = {};
-          if (typeof fe.jobTitle === "string") next.title = fe.jobTitle;
-          if (typeof fe.tradeCategory === "string") next.tradeCategory = fe.tradeCategory;
-          if (typeof fe.jobType === "string") next.jobType = fe.jobType;
-          if (typeof fe.items === "string") next.scope = fe.items;
-          if (typeof fe.address === "string") next.address = fe.address;
-          setFieldErrors((prev) => ({ ...prev, ...next }));
-          return;
-        }
-        return;
-      }
-      const savedId = String(saveJson?.job?.id ?? "").trim();
-      if (savedId) setJobId(savedId);
+      setJobId(savedId);
 
       // Repeat contractor selection lives on Job Details; if chosen and eligible, persist it with this draft.
       void (async () => {
@@ -556,66 +732,36 @@ export default function JobPosterPostAJobPage() {
         }
       })();
 
-      // 2) Start appraisal (abortable).
+      // 2) Appraisal is a hard gate before pricing UI can render.
       if (!savedId) return;
-      setAppraising(true);
-      const controller = new AbortController();
-      appraisalAbortRef.current = controller;
-      const apprResp = await fetch(`/api/app/job-poster/drafts/${encodeURIComponent(savedId)}/start-appraisal`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        signal: controller.signal,
-      });
-      const apprJson = (await apprResp.json().catch(() => null)) as any;
-      if (!apprResp.ok) {
-        if (apprResp.status >= 500) {
-          const code = String(apprJson?.code ?? "AI_RUNTIME_ERROR");
-          const traceId = String(apprJson?.traceId ?? "").trim() || "unknown";
-          setAppraisalFailure({
-            code,
-            traceId,
-            timestamp: new Date().toISOString(),
-          });
-          setError(
-            "We were unable to generate an AI-based price estimate. Please submit a support ticket so we can investigate immediately."
-          );
-          return;
-        }
-        throw new Error(String(apprJson?.error ?? "Appraisal failed"));
-      }
-      setAppraisalFailure(null);
-
-      const j = (apprJson as DraftResponse).job ?? (apprJson?.job ?? null);
-      const suggestedCents = Math.round((Number(j?.aiSuggestedTotal ?? 0) || 0) * 100);
-      const lowCents = Math.round((Number(j?.aiPriceRange?.low ?? 0) || 0) * 100);
-      const highCents = Math.round((Number(j?.aiPriceRange?.high ?? 0) || 0) * 100);
-      setAiSuggestedTotalCents(suggestedCents);
-      setAiRangeLowCents(lowCents);
-      setAiRangeHighCents(highCents);
-      setAiConfidence((j?.aiConfidence ?? "medium") as any);
-      setSelectedPriceCents(suggestedCents);
-      setAiReasoning(truncateWords(String(j?.aiReasoning ?? ""), 150));
       setStep(2);
+      const appraisalOk = await startAppraisalForDraft(savedId);
+      if (!appraisalOk) return;
     } finally {
-      appraisalAbortRef.current = null;
-      setAppraising(false);
       setLoading(false);
     }
   }
 
-  async function submitAiFailureSupportTicket() {
-    if (!appraisalFailure) return;
+  async function submitFailureSupportTicket() {
+    const failure =
+      appraisalFailure ??
+      draftSaveFailure ?? {
+        code: "AI_RUNTIME_ERROR",
+        traceId: appraisalTraceId || "unknown",
+        timestamp: new Date().toISOString(),
+      };
     setSupportSubmitting(true);
     setError("");
     try {
       const meResp = await fetch("/api/app/me", { cache: "no-store" });
       const meJson = await meResp.json().catch(() => null);
       const userId = String(meJson?.data?.id ?? "unknown");
+      const isAppraisalFailure = Boolean(appraisalFailure);
 
       const payload = {
-        category: "AI Appraisal Failure",
-        errorCode: appraisalFailure.code,
-        traceId: appraisalFailure.traceId,
+        category: isAppraisalFailure ? "AI Appraisal Failure" : "Draft Save Failure",
+        errorCode: failure.code,
+        traceId: failure.traceId,
         jobContext: {
           jobId: jobId ?? null,
           jobType: details.jobType,
@@ -623,15 +769,15 @@ export default function JobPosterPostAJobPage() {
           title: details.title.trim() || null,
         },
         userId,
-        timestamp: appraisalFailure.timestamp,
+        timestamp: failure.timestamp,
       };
 
       const resp = await fetch("/api/app/support/tickets", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          category: "AI_APPRAISAL_FAILURE",
-          subject: `AI Appraisal Failure (${appraisalFailure.code})`,
+          category: isAppraisalFailure ? "AI_APPRAISAL_FAILURE" : "OTHER",
+          subject: `${isAppraisalFailure ? "AI Appraisal Failure" : "Draft Save Failure"} (${failure.code})`,
           message: JSON.stringify(payload, null, 2),
         }),
       });
@@ -725,6 +871,7 @@ export default function JobPosterPostAJobPage() {
       if (!resp.ok) throw new Error((json as any)?.error ?? "Failed to create payment intent");
 
       setClientSecret((json as PaymentIntentResponse).clientSecret);
+      setPaymentReturnUrl((json as PaymentIntentResponse).returnUrl ?? `${window.location.origin}/app/job-poster/payment/return`);
     } finally {
       setLoading(false);
     }
@@ -841,8 +988,8 @@ export default function JobPosterPostAJobPage() {
             <div className="md:col-span-2 border border-red-300 bg-red-50 text-red-900 rounded-xl p-4">
               <div className="font-bold">AI appraisal failed</div>
               <div className="mt-1 text-sm">
-                We were unable to generate an AI-based price estimate. Please submit a support ticket so we can
-                investigate immediately.
+                Pricing could not be generated. Please submit a support ticket so our team can resolve this
+                immediately.
               </div>
               <div className="mt-2 text-xs font-mono">
                 Error code: {appraisalFailure.code} | Trace ID: {appraisalFailure.traceId}
@@ -850,7 +997,28 @@ export default function JobPosterPostAJobPage() {
               <div className="mt-3">
                 <button
                   type="button"
-                  onClick={() => void submitAiFailureSupportTicket()}
+                  onClick={() => void submitFailureSupportTicket()}
+                  disabled={supportSubmitting}
+                  className="bg-red-700 text-white hover:bg-red-800 disabled:bg-red-300 font-semibold px-4 py-2 rounded-lg"
+                >
+                  {supportSubmitting ? "Submitting..." : "Submit Support Ticket"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {draftSaveFailure ? (
+            <div className="md:col-span-2 border border-red-300 bg-red-50 text-red-900 rounded-xl p-4">
+              <div className="font-bold">Draft save failed</div>
+              <div className="mt-1 text-sm">
+                We were unable to save your draft. Please submit a support ticket so we can investigate immediately.
+              </div>
+              <div className="mt-2 text-xs font-mono">
+                Error code: {draftSaveFailure.code} | Trace ID: {draftSaveFailure.traceId}
+              </div>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => void submitFailureSupportTicket()}
                   disabled={supportSubmitting}
                   className="bg-red-700 text-white hover:bg-red-800 disabled:bg-red-300 font-semibold px-4 py-2 rounded-lg"
                 >
@@ -868,10 +1036,14 @@ export default function JobPosterPostAJobPage() {
           <Field
             label="Job Title"
             value={details.title}
-            onChange={(v) => setDetails((s) => ({ ...s, title: v }))}
+            onChange={(v) => {
+              markFieldsDirty(["title"]);
+              setDetails((s) => ({ ...s, title: v }));
+            }}
             onBlur={() => {
               touch("title");
               setFieldErrors(validateDetails().errors);
+              void persistDraftForFields(["title"]);
             }}
             status={statusFor("title")}
             helperText={fieldErrors.title}
@@ -879,10 +1051,14 @@ export default function JobPosterPostAJobPage() {
           <Select
             label="Trade Category"
             value={details.tradeCategory}
-            onChange={(v) => setDetails((s) => ({ ...s, tradeCategory: v }))}
+            onChange={(v) => {
+              markFieldsDirty(["tradeCategory", "junkHaulingItems"]);
+              setDetails((s) => ({ ...s, tradeCategory: v }));
+            }}
             onBlur={() => {
               touch("tradeCategory");
               setFieldErrors(validateDetails().errors);
+              void persistDraftForFields(["tradeCategory"]);
             }}
             status={statusFor("tradeCategory")}
             helperText={fieldErrors.tradeCategory}
@@ -895,10 +1071,13 @@ export default function JobPosterPostAJobPage() {
             onChange={(v) => {
               setJobTypeExplicitlySelected(true);
               touch("jobType");
+              markFieldsDirty(["jobType"]);
               setDetails((s) => ({ ...s, jobType: v }));
+              void persistDraftForFields(["jobType"]);
             }}
             onBlur={() => {
               setFieldErrors(validateDetails().errors);
+              void persistDraftForFields(["jobType"]);
             }}
             status={statusFor("jobType")}
             showCheckmark={jobTypeExplicitlySelected}
@@ -949,11 +1128,11 @@ export default function JobPosterPostAJobPage() {
             <div className="text-sm font-semibold text-gray-900 flex items-center justify-between">
               <span>Address</span>
               {showStatus("address") ? (
-                fieldErrors.address ? (
+                statusFor("address") === "invalid" ? (
                   <span className="text-red-600 font-bold">✕</span>
-                ) : (
+                ) : statusFor("address") === "valid" ? (
                   <span className="text-green-600 font-bold">✓</span>
-                )
+                ) : null
               ) : null}
             </div>
             <div className="text-sm text-gray-600 mt-1">
@@ -966,9 +1145,11 @@ export default function JobPosterPostAJobPage() {
                   type="radio"
                   checked={details.addressChoice === "profile"}
                   onChange={() => {
+                    markFieldsDirty(["address"]);
                     setDetails((s) => ({ ...s, addressChoice: "profile" }));
                     touch("address");
                     setFieldErrors(validateDetails().errors);
+                    void persistDraftForFields(["address"]);
                   }}
                   className="mt-1 h-4 w-4"
                 />
@@ -986,12 +1167,16 @@ export default function JobPosterPostAJobPage() {
                 <input
                   type="radio"
                   checked={details.addressChoice === "different"}
-                  onChange={() =>
+                  onChange={() => {
+                    markFieldsDirty(["address"]);
                     setDetails((s) => ({
                       ...s,
                       addressChoice: "different",
-                    }))
-                  }
+                    }));
+                    touch("address");
+                    setFieldErrors(validateDetails().errors);
+                    void persistDraftForFields(["address"]);
+                  }}
                   className="mt-1 h-4 w-4"
                 />
                 <div className="flex-1">
@@ -1006,10 +1191,14 @@ export default function JobPosterPostAJobPage() {
                         <Field
                           label="Street address"
                           value={details.manualStreet}
-                          onChange={(v) => setDetails((s) => ({ ...s, manualStreet: v }))}
+                          onChange={(v) => {
+                            markFieldsDirty(["address"]);
+                            setDetails((s) => ({ ...s, manualStreet: v }));
+                          }}
                           onBlur={() => {
                             touch("address");
                             setFieldErrors(validateDetails().errors);
+                            void persistDraftForFields(["address"]);
                           }}
                           status={statusFor("address")}
                           helperText={fieldErrors.address}
@@ -1017,10 +1206,14 @@ export default function JobPosterPostAJobPage() {
                         <Field
                           label="City"
                           value={details.manualCity}
-                          onChange={(v) => setDetails((s) => ({ ...s, manualCity: v }))}
+                          onChange={(v) => {
+                            markFieldsDirty(["address"]);
+                            setDetails((s) => ({ ...s, manualCity: v }));
+                          }}
                           onBlur={() => {
                             touch("address");
                             setFieldErrors(validateDetails().errors);
+                            void persistDraftForFields(["address"]);
                           }}
                           status={statusFor("address")}
                           helperText={fieldErrors.address}
@@ -1036,10 +1229,14 @@ export default function JobPosterPostAJobPage() {
           <TextArea
             label="Scope / Details"
             value={details.scope}
-            onChange={(v) => setDetails((s) => ({ ...s, scope: v }))}
+            onChange={(v) => {
+              markFieldsDirty(["scope", "junkHaulingItems"]);
+              setDetails((s) => ({ ...s, scope: v }));
+            }}
             onBlur={() => {
               touch("scope");
               setFieldErrors(validateDetails().errors);
+              void persistDraftForFields(["scope"]);
             }}
             status={statusFor("scope")}
             helperText={fieldErrors.scope}
@@ -1060,6 +1257,7 @@ export default function JobPosterPostAJobPage() {
                       items={junkItems as any}
                       onChange={(next) => {
                         touch("junkHaulingItems");
+                        markFieldsDirty(["junkHaulingItems"]);
                         setJunkItems(next as any);
                         if (submitAttempted || touched.junkHaulingItems) {
                           setFieldErrors(validateDetails().errors);
@@ -1109,8 +1307,41 @@ export default function JobPosterPostAJobPage() {
           <h3 className="text-lg font-bold text-gray-900">Pricing & Availability</h3>
           <p className="text-gray-600 mt-1">Confirm pricing, then optionally add availability to guide scheduling.</p>
 
+          {!hasValidatedAppraisal ? (
+            <div className="mt-4 border border-red-300 bg-red-50 text-red-900 rounded-xl p-4">
+              {appraising ? (
+                <div className="text-sm">Starting AI appraisal…</div>
+              ) : (
+                <>
+                  <div className="font-bold">AI appraisal failed</div>
+                  <div className="mt-1 text-sm">
+                    Pricing could not be generated. Please submit a support ticket so our team can resolve this
+                    immediately.
+                  </div>
+                  <div className="mt-2 text-xs font-mono">
+                    Error code: {appraisalFailure?.code ?? "AI_RUNTIME_ERROR"} | Trace ID:{" "}
+                    {appraisalFailure?.traceId ?? (appraisalTraceId || "unknown")}
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => void submitFailureSupportTicket()}
+                      disabled={supportSubmitting}
+                      className="bg-red-700 text-white hover:bg-red-800 disabled:bg-red-300 font-semibold px-4 py-2 rounded-lg"
+                    >
+                      {supportSubmitting ? "Submitting..." : "Submit Support Ticket"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {hasValidatedAppraisal ? (
+            <>
+
           <div className="border border-gray-200 rounded-xl p-4 mb-4 bg-gray-50">
-            <div className="text-sm font-semibold text-gray-900">AI Suggested Total (locked baseline)</div>
+            <div className="text-sm font-semibold text-gray-900">AI Suggested Total</div>
             <div className="mt-1 text-2xl font-extrabold text-gray-900">
               {formatMoney(aiSuggestedTotalCents, ((profile?.country ?? "US") === "CA" ? "CAD" : "USD") as any)}
             </div>
@@ -1202,6 +1433,8 @@ export default function JobPosterPostAJobPage() {
               Continue to payment
             </button>
           </div>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -1270,6 +1503,7 @@ export default function JobPosterPostAJobPage() {
                 <ElementsProvider stripe={stripePromise} options={{ clientSecret }}>
                   <StripePaymentForm
                     jobId={jobId}
+                    returnUrl={paymentReturnUrl}
                     onProcessingStart={() => setAwaitingFunding(true)}
                     onProcessingEnd={() => setAwaitingFunding(false)}
                     onFunded={async () => {
@@ -1458,7 +1692,7 @@ function JobTypeSelect({
         <div className="text-sm font-semibold text-gray-900">Job Type</div>
         <JobTypeHelp />
         <div style={{ marginLeft: "auto" }}>
-          {showCheckmark && status !== "invalid" ? <span className="text-green-600 font-bold">✓</span> : null}
+          {showCheckmark && status === "valid" ? <span className="text-green-600 font-bold">✓</span> : null}
           {status === "invalid" ? <span className="text-red-600 font-bold">✕</span> : null}
         </div>
       </div>
@@ -1556,12 +1790,14 @@ function JobTypeHelp() {
 
 function StripePaymentForm({
   jobId,
+  returnUrl,
   onFunded,
   onProcessingStart,
   onProcessingEnd,
   onError,
 }: {
   jobId: string;
+  returnUrl: string;
   onFunded: () => Promise<void>;
   onProcessingStart: () => void;
   onProcessingEnd: () => void;
@@ -1576,7 +1812,13 @@ function StripePaymentForm({
     setSubmitting(true);
     onError("");
     try {
-      const result = await stripe.confirmPayment({ elements, redirect: "if_required" });
+      const result = await stripe.confirmPayment({
+        elements,
+        redirect: "if_required",
+        confirmParams: {
+          return_url: returnUrl || `${window.location.origin}/app/job-poster/payment/return`,
+        },
+      });
       if (result.error) throw new Error(result.error.message || "Payment failed");
       onProcessingStart();
       await onFunded();

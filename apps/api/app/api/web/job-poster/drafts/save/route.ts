@@ -198,16 +198,37 @@ export async function POST(req: Request) {
     });
 
     if (!result.jobId) {
-      return NextResponse.json({ error: "Failed to save draft" }, { status: 500 });
+      const traceId = randomUUID();
+      // eslint-disable-next-line no-console
+      console.error("❌ DRAFT SAVE FAILED", { traceId, reason: "empty_job_id_result", userId: user.userId });
+      return NextResponse.json(
+        {
+          error: "Draft save failed.",
+          code: "DRAFT_SAVE_FAILED",
+          requiresSupportTicket: true,
+          traceId,
+        },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ ok: true, job: { id: result.jobId } }, { status: 200 });
+    return NextResponse.json({ success: true, draftId: result.jobId }, { status: 200 });
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.error("[api job-poster drafts/save]", err);
-    }
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to save draft" }, { status: 500 });
+    const traceId = randomUUID();
+    // eslint-disable-next-line no-console
+    console.error("❌ DRAFT SAVE FAILED", {
+      traceId,
+      error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    });
+    return NextResponse.json(
+      {
+        error: "Draft save failed.",
+        code: "DRAFT_SAVE_FAILED",
+        requiresSupportTicket: true,
+        traceId,
+      },
+      { status: 500 },
+    );
   }
 }
 
