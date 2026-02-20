@@ -17,11 +17,6 @@ function inferCountryFromRegionCode(regionCode: string): "US" | "CA" {
   return ca.has(regionCode) ? "CA" : "US";
 }
 
-function titleCaseCity(slugOrCity: string): string {
-  const cleaned = slugOrCity.trim().replace(/[-_]+/g, " ");
-  return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -29,14 +24,14 @@ export async function GET(req: Request) {
     const regionCode = normalizeRegionCode(url.searchParams.get("regionCode")) || state;
     const country = normalizeCountry(url.searchParams.get("country")) ?? (regionCode ? inferCountryFromRegionCode(regionCode) : null);
     if (!country || !regionCode || regionCode.length !== 2) {
-      return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Invalid query" }, { status: 400 });
     }
 
-    const out = await listCitiesByRegion(country, regionCode);
-    return NextResponse.json(out);
+    const cities = await listCitiesByRegion(country, regionCode);
+    return NextResponse.json({ ok: true, cities }, { status: 200 });
   } catch (err) {
     const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
 
