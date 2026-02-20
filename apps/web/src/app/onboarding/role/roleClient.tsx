@@ -17,21 +17,27 @@ export default function RoleOnboardingClient() {
   const [ack, setAck] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   // If the user already has a role assigned, go to the correct root.
   useEffect(() => {
     void (async () => {
-      const resp = await fetch("/api/app/me", { method: "GET" });
-      const json = (await resp.json().catch(() => null)) as any;
-      if (resp.status === 401) {
-        router.replace("/login?next=/onboarding/role");
-        return;
-      }
-      if (resp.ok && json?.ok === true && typeof json?.role === "string") {
-        const r = String(json.role).toUpperCase();
-        if (r === "ROUTER") router.replace("/app/router");
-        if (r === "CONTRACTOR") router.replace("/app/contractor");
-        if (r === "JOB_POSTER") router.replace("/app/job-poster");
+      try {
+        const resp = await fetch("/api/app/me", { method: "GET" });
+        const json = (await resp.json().catch(() => null)) as any;
+        if (resp.status === 401) {
+          router.replace("/login?next=/onboarding/role");
+          return;
+        }
+        if (resp.ok && json?.ok === true && typeof json?.role === "string") {
+          const r = String(json.role).toUpperCase();
+          if (r === "ROUTER") router.replace("/app/router");
+          if (r === "CONTRACTOR") router.replace("/app/contractor");
+          if (r === "JOB_POSTER") router.replace("/app/job-poster");
+        }
+      } catch {
+        // Non-blocking: allow users to continue role selection when pre-check fails.
+        setInfo("We could not verify your existing role right now. You can still continue.");
       }
     })();
   }, [router]);
@@ -74,6 +80,9 @@ export default function RoleOnboardingClient() {
 
       {error ? (
         <div className="mt-6 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">{error}</div>
+      ) : null}
+      {info ? (
+        <div className="mt-3 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-lg text-sm">{info}</div>
       ) : null}
 
       <div className="mt-6 space-y-3">
