@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const HERO_VIDEO_PATH = process.env.NEXT_PUBLIC_HERO_VIDEO_PATH || "/video/hero_video.mp4";
+const HERO_VIDEO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO === "1";
+
 function prefersReducedMotionNow(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -27,7 +30,7 @@ export function HeroBackgroundVideo(props: {
   const [isPlaying, setIsPlaying] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [videoUnavailable, setVideoUnavailable] = useState(false);
-  const canTryVideo = props.videoEnabled && !reducedMotion && !videoUnavailable;
+  const canTryVideo = HERO_VIDEO_ENABLED && !reducedMotion && !videoUnavailable;
 
   useEffect(() => {
     const reduced = prefersReducedMotionNow();
@@ -42,12 +45,6 @@ export function HeroBackgroundVideo(props: {
       setIsPlaying(false);
     }
   }, [canTryVideo]);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "production" && !props.videoEnabled) {
-      console.info(`Hero video disabled: ${props.disabledReason ?? "missing asset or env not enabled"}`);
-    }
-  }, [props.videoEnabled, props.disabledReason]);
 
   async function toggleVideo() {
     const el = videoRef.current;
@@ -84,9 +81,14 @@ export function HeroBackgroundVideo(props: {
             loop
             playsInline
             preload="metadata"
-            onError={() => setVideoUnavailable(true)}
+            onError={() => {
+              if (process.env.NODE_ENV !== "production") {
+                console.warn("Hero video failed to load", HERO_VIDEO_PATH);
+              }
+              setVideoUnavailable(true);
+            }}
           >
-            <source src={props.videoPath} type="video/mp4" />
+            <source src={HERO_VIDEO_PATH} type="video/mp4" />
           </video>
 
           {/* Preserve readability over video. */}
