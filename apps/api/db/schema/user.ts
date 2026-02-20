@@ -45,6 +45,8 @@ export const users = dbSchema.table("User", {
   updatedByAdminId: text("updatedByAdminId"),
 
   country: countryCodeEnum("country").notNull().default("US"),
+  countryCode: countryCodeEnum("countryCode").notNull().default("US"),
+  stateCode: text("stateCode").notNull().default(""),
 
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
