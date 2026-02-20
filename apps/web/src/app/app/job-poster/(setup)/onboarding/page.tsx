@@ -12,6 +12,11 @@ import { OnboardingProgressBar } from "@/components/onboarding/OnboardingProgres
 
 type Step = "terms" | "profile";
 
+async function geocodeAddress(_fullAddress: string): Promise<{ lat: number; lng: number } | null> {
+  // TODO: Replace with real geocoding integration and remove fallback coordinates.
+  return { lat: 49.2827, lng: -123.1207 };
+}
+
 export default function JobPosterOnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("terms");
@@ -24,6 +29,7 @@ export default function JobPosterOnboardingPage() {
   const [country, setCountry] = useState<"US" | "CA">("US");
   const [stateProvince, setStateProvince] = useState("");
   const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -75,6 +81,7 @@ export default function JobPosterOnboardingPage() {
     const a = address.trim();
     const sp = stateProvince.trim().toUpperCase();
     const c = city.trim();
+    const pc = postalCode.trim();
     if (n.length < 2) {
       setError("Name must be at least 2 characters.");
       return;
@@ -95,22 +102,44 @@ export default function JobPosterOnboardingPage() {
       setError("Country, state/province, and city are required.");
       return;
     }
+    if (pc.length < 3) {
+      setError("Postal / ZIP code is required.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
+      const legalStreet = a;
+      const legalCity = c;
+      const legalProvince = sp;
+      const legalPostalCode = pc;
+      const legalCountry = country;
+      const mapDisplayName = `${legalStreet}, ${legalCity}, ${legalProvince}, ${legalCountry}`;
+      const coords = await geocodeAddress(mapDisplayName);
+      if (!coords) {
+        setError("We could not locate that address. Please verify and try again.");
+        return;
+      }
+      const { lat, lng } = coords;
+      const payload = {
+        name: n,
+        email: e,
+        phone: p || undefined,
+        legalStreet,
+        legalCity,
+        legalProvince,
+        legalPostalCode,
+        legalCountry,
+        mapDisplayName,
+        lat,
+        lng,
+      };
+
       const profileResp = await fetch("/api/app/job-poster/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          name: n,
-          email: e,
-          phone: p,
-          address: a,
-          country,
-          stateProvince: sp,
-          city: c,
-        }),
+        body: JSON.stringify(payload),
       });
       const profileJson = await profileResp.json().catch(() => ({}));
       if (!profileResp.ok) throw new Error(profileJson?.error || "Could not save profile");
@@ -296,6 +325,17 @@ export default function JobPosterOnboardingPage() {
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Postal / ZIP</label>
+            <input
+              type="text"
+              value={postalCode}
+              onChange={(e) => setPostalCode(e.target.value)}
+              placeholder="V2Y 0R2"
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
         </div>
 
         {error ? (
@@ -312,6 +352,7 @@ export default function JobPosterOnboardingPage() {
             !stateProvince ||
             stateProvince.length < 2 ||
             !city.trim() ||
+            postalCode.trim().length < 3 ||
             loading
           }
           className="mt-6 bg-8fold-green hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 text-white font-semibold px-5 py-2.5 rounded-lg"
