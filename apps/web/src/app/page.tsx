@@ -17,8 +17,9 @@ export default async function HomePage() {
   const isRouter = String(session?.role ?? "").trim().toUpperCase() === "ROUTER";
   const heroVideoPath = String(process.env.NEXT_PUBLIC_HERO_VIDEO_PATH ?? "/hero-video.mp4").trim() || "/hero-video.mp4";
   const heroVideoEnabledByEnv = String(process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO ?? "").trim() === "1";
+  const heroVideoIsExternal = /^https?:\/\//i.test(heroVideoPath);
   const heroVideoAssetPath = path.join(process.cwd(), "public", heroVideoPath.replace(/^\/+/, ""));
-  const heroVideoAssetExists = existsSync(heroVideoAssetPath);
+  const heroVideoAssetExists = heroVideoIsExternal ? true : existsSync(heroVideoAssetPath);
   const heroVideoEnabled = heroVideoEnabledByEnv && heroVideoAssetExists;
   const heroVideoDisableReason = heroVideoEnabled
     ? null
