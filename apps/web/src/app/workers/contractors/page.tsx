@@ -20,8 +20,8 @@ export default function ContractorsWorkerPage() {
       paidSummary="Contractors receive 75% of labor and keep 100% of tips. The platform shows the split upfront so you know what the job pays before you commit."
       payoutTiming={[
         "Stripe (Direct Bank Deposit) payouts are typically processed immediately or next business day once a job is completed.",
-        "PayPal payouts may have a clearing period of 3 or more business days after job completion before funds are transferred.",
-        "Payouts are issued in full minus any transaction or transfer fees charged by the selected payout provider (e.g., Stripe or PayPal). 8Fold does not add additional payout fees.",
+        "8Fold uses Stripe for secure escrow and payouts.",
+        "Payouts are issued in full minus transaction or transfer fees charged by Stripe. 8Fold does not add additional payout fees.",
       ]}
       perks={[
         "No bidding wars and no lead marketplaces — jobs are routed with clear expectations.",

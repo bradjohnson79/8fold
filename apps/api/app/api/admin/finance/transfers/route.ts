@@ -11,7 +11,7 @@ import { jobs } from "@/db/schema/job";
 const QuerySchema = z.object({
   take: z.coerce.number().int().min(1).max(200).optional(),
   role: z.enum(["CONTRACTOR", "ROUTER", "PLATFORM"]).optional(),
-  method: z.enum(["STRIPE", "PAYPAL"]).optional(),
+  method: z.enum(["STRIPE"]).optional(),
   status: z.enum(["PENDING", "SENT", "FAILED", "REVERSED"]).optional(),
   userId: z.string().min(1).optional(),
   from: z.string().datetime().optional(),

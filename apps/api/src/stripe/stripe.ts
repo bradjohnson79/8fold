@@ -1,5 +1,8 @@
 import Stripe from "stripe";
+import { desc, isNotNull } from "drizzle-orm";
 import { assertStripeKeysMatchMode, getStripeModeFromEnv, logStripeModeOnce } from "./mode";
+import { db } from "../../db/drizzle";
+import { stripeWebhookEvents } from "../../db/schema/stripeWebhookEvent";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
@@ -26,4 +29,39 @@ export const stripe = stripeSecretKey
       apiVersion: "2025-02-24.acacia",
     })
   : null;
+
+async function verifyWebhookEndpointInDev(): Promise<void> {
+  if (process.env.NODE_ENV === "production") return;
+
+  const webhookSecretPresent = Boolean(String(process.env.STRIPE_WEBHOOK_SECRET ?? "").trim());
+  let lastWebhookEventReceivedAt: string | null = null;
+
+  try {
+    const latest = await db
+      .select({ processedAt: stripeWebhookEvents.processedAt })
+      .from(stripeWebhookEvents)
+      .where(isNotNull(stripeWebhookEvents.processedAt))
+      .orderBy(desc(stripeWebhookEvents.processedAt))
+      .limit(1);
+    const processedAt = latest[0]?.processedAt ?? null;
+    lastWebhookEventReceivedAt = processedAt ? processedAt.toISOString() : null;
+  } catch {
+    lastWebhookEventReceivedAt = null;
+  }
+
+  // Diagnostic-only readiness signal in non-production environments.
+  // Do not hard-require dashboard endpoint registration in local/dev workflows.
+  // eslint-disable-next-line no-console
+  console.log(
+    JSON.stringify({
+      source: "stripe.startup",
+      check: "webhook_readiness",
+      webhookSecretPresent: webhookSecretPresent ? "yes" : "no",
+      stripeMode: stripeMode === "live" ? "live" : "test",
+      lastWebhookEventReceivedAt,
+    }),
+  );
+}
+
+void verifyWebhookEndpointInDev();
 

@@ -20,8 +20,8 @@ export default function RoutersWorkerPage() {
       paidSummary="Routers earn 15% of labor on completed jobs. The split is shown upfront on every job so you know exactly what you’re earning before you act."
       payoutTiming={[
         "Stripe (Direct Bank Deposit) payouts are typically processed immediately or next business day once a job is completed.",
-        "PayPal payouts may have a clearing period of 3 or more business days after job completion before funds are transferred.",
-        "Payout timing depends on the selected provider and may be subject to third‑party processing delays.",
+        "8Fold uses Stripe for secure escrow and payouts.",
+        "Payout timing may be subject to Stripe processing windows.",
       ]}
       perks={[
         "Earnings visibility upfront (no guessing).",

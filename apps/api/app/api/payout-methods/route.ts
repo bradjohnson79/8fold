@@ -11,7 +11,7 @@ import { auditLogs, contractorAccounts, jobPosterProfiles, payoutMethods, users 
 import { logApiError } from "@/src/lib/errors/errorLogger";
 
 const CurrencySchema = z.enum(["CAD", "USD"]);
-const ProviderSchema = z.enum(["STRIPE", "PAYPAL", "WISE"]);
+const ProviderSchema = z.enum(["STRIPE"]);
 
 const CreateSchema = z.object({
   currency: CurrencySchema,
@@ -102,22 +102,6 @@ export async function POST(req: Request) {
     // Provider-specific side effects
     let onboardingUrl: string | null = null;
     let stripeAccountId: string | null = null;
-
-    if (body.data.provider === "PAYPAL") {
-      const paypalEmail = String((body.data.details as any)?.paypalEmail ?? "").trim();
-      if (!paypalEmail) return NextResponse.json({ error: "PayPal email is required." }, { status: 400 });
-
-      await db.transaction(async (tx) => {
-        await tx
-          .update(jobPosterProfiles)
-          .set({ payoutMethod: "PAYPAL" as any, payoutStatus: "ACTIVE" as any, paypalEmail })
-          .where(eq(jobPosterProfiles.userId, user.userId));
-        await tx
-          .update(contractorAccounts)
-          .set({ payoutMethod: "PAYPAL", payoutStatus: "ACTIVE", paypalEmail })
-          .where(eq(contractorAccounts.userId, user.userId));
-      });
-    }
 
     if (body.data.provider === "STRIPE") {
       const s = requireStripe();

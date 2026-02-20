@@ -140,7 +140,7 @@ export const partsMaterialStatusEnum = pgEnum("PartsMaterialStatus", [
 
 export const routerStatusEnum = pgEnum("RouterStatus", ["ACTIVE", "SUSPENDED"]);
 
-export const payoutProviderEnum = pgEnum("PayoutProvider", ["STRIPE", "PAYPAL", "WISE"]);
+export const payoutProviderEnum = pgEnum("PayoutProvider", ["STRIPE", "WISE"]);
 export const payoutRequestStatusEnum = pgEnum("PayoutRequestStatus", [
   "REQUESTED",
   "REJECTED",
@@ -281,7 +281,7 @@ export const materialsRequestStatusEnum = pgEnum("MaterialsRequestStatus", [
   "REIMBURSED",
 ]);
 
-export const rolePayoutMethodEnum = pgEnum("RolePayoutMethod", ["STRIPE", "PAYPAL"]);
+export const rolePayoutMethodEnum = pgEnum("RolePayoutMethod", ["STRIPE"]);
 export const rolePayoutStatusEnum = pgEnum("RolePayoutStatus", ["UNSET", "PENDING", "ACTIVE"]);
 
 // AI email (send queue / counters)

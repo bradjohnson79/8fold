@@ -10,21 +10,17 @@ export function PayoutDisclosures(props: { includeRefundNote?: boolean }) {
             Stripe (Direct Bank Deposit) payouts are typically processed immediately or next business day once a
             job is completed.
           </li>
-          <li>
-            PayPal payouts may have a clearing period of 3 or more business days after job completion before
-            funds are transferred.
-          </li>
         </ul>
         <div className="text-sm text-gray-700">
-          Payout timing depends on the selected provider and may be subject to third-party processing delays.
+          8Fold uses Stripe for secure escrow and payouts.
         </div>
       </div>
 
       <div className="mt-4 border-t border-gray-100 pt-4">
         <div className="text-sm font-semibold text-gray-500">Fee Notice</div>
         <div className="mt-2 text-sm text-gray-800">
-          Payouts are issued in full minus any transaction or transfer fees charged by the selected payout provider
-          (e.g., Stripe or PayPal). 8Fold does not add additional payout fees.
+          Payouts are issued in full minus transaction or transfer fees charged by Stripe. 8Fold does not add
+          additional payout fees.
         </div>
       </div>
 
