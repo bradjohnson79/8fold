@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
@@ -22,35 +22,45 @@ function setLastSeen(role: Role, ms: number) {
   window.localStorage.setItem(storageKey(role), String(ms));
 }
 
-async function safeFetchTickets(userId: string | null | undefined): Promise<any | null> {
-  if (!userId) return null;
+async function safeFetchTickets(userId: string | null | undefined): Promise<{ json: any | null; unauthorized: boolean }> {
+  if (!userId) return { json: null, unauthorized: false };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5000);
   try {
     const res = await fetch("/api/app/support/tickets?take=1", {
       cache: "no-store",
       credentials: "include",
+      signal: ctrl.signal,
     });
-    if (!res.ok) return null;
-    return await res.json();
+    if (res.status === 401) return { json: null, unauthorized: true };
+    if (!res.ok) return { json: null, unauthorized: false };
+    return { json: await res.json(), unauthorized: false };
   } catch {
-    console.warn("Support tickets fetch failed");
-    return null;
+    return { json: null, unauthorized: false };
+  } finally {
+    clearTimeout(t);
   }
 }
 
-async function fetchLatestUpdatedAt(userId: string | null | undefined): Promise<number> {
+async function fetchLatestUpdatedAt(
+  userId: string | null | undefined,
+): Promise<{ latest: number; unauthorized: boolean }> {
   // Canonical support namespace (role determined by auth, not URL).
-  const json = (await safeFetchTickets(userId)) as any;
-  if (!json) return 0;
+  const { json, unauthorized } = await safeFetchTickets(userId);
+  if (unauthorized) return { latest: 0, unauthorized: true };
+  if (!json) return { latest: 0, unauthorized: false };
   const list = Array.isArray(json?.data?.tickets) ? json.data.tickets : Array.isArray(json?.tickets) ? json.tickets : [];
   const row = list[0] ?? null;
   const ts = row?.updatedAt ? Date.parse(String(row.updatedAt)) : NaN;
-  return Number.isFinite(ts) ? ts : 0;
+  return { latest: Number.isFinite(ts) ? ts : 0, unauthorized: false };
 }
 
 export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
   const pathname = usePathname();
   const { userId } = useAuth();
   const enabled = opts?.enabled ?? true;
+  const inAppShell = pathname === "/app" || pathname.startsWith("/app/");
+  const stoppedOnUnauthorized = useRef(false);
 
   const inboxHref = useMemo(() => {
     if (role === "router") return "/app/router/support/inbox";
@@ -67,6 +77,10 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
   const [hasUnread, setHasUnread] = useState(false);
 
   useEffect(() => {
+    stoppedOnUnauthorized.current = false;
+  }, [userId]);
+
+  useEffect(() => {
     if (!enabled) return;
     if (!onInbox) return;
     const now = Date.now();
@@ -79,7 +93,15 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
       setHasUnread(false);
       return;
     }
+    if (!inAppShell) {
+      setHasUnread(false);
+      return;
+    }
     if (!userId) {
+      setHasUnread(false);
+      return;
+    }
+    if (stoppedOnUnauthorized.current) {
       setHasUnread(false);
       return;
     }
@@ -87,23 +109,28 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
 
     async function check() {
       if (onInbox) return;
-      const latest = await fetchLatestUpdatedAt(userId);
+      const result = await fetchLatestUpdatedAt(userId);
       const lastSeen = getLastSeen(role);
       if (cancelled) return;
+      if (result.unauthorized) {
+        stoppedOnUnauthorized.current = true;
+        setHasUnread(false);
+        return;
+      }
       if (!lastSeen) {
         // Initialize baseline so the next update can be detected.
         setLastSeen(role, Date.now());
         setHasUnread(false);
         return;
       }
-      setHasUnread(latest > lastSeen);
+      setHasUnread(result.latest > lastSeen);
     }
 
     void check();
     return () => {
       cancelled = true;
     };
-  }, [enabled, onInbox, role, userId]);
+  }, [enabled, inAppShell, onInbox, role, userId]);
 
   return { inboxHref, hasUnread };
 }

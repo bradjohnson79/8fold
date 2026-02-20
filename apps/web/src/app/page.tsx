@@ -3,6 +3,8 @@ import { LocationSelector } from "../components/LocationSelector";
 import { HomeJobFeedClient } from "./HomeJobFeedClient";
 import { requireServerSession } from "@/server/auth/meSession";
 import { HeroBackgroundVideo } from "./HeroBackgroundVideo";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 export default async function HomePage() {
   let session: Awaited<ReturnType<typeof requireServerSession>> | null = null;
@@ -13,12 +15,27 @@ export default async function HomePage() {
   }
 
   const isRouter = String(session?.role ?? "").trim().toUpperCase() === "ROUTER";
+  const heroVideoPath = String(process.env.NEXT_PUBLIC_HERO_VIDEO_PATH ?? "/hero-video.mp4").trim() || "/hero-video.mp4";
+  const heroVideoEnabledByEnv = String(process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO ?? "").trim() === "1";
+  const heroVideoIsExternal = /^https?:\/\//i.test(heroVideoPath);
+  const heroVideoAssetPath = path.join(process.cwd(), "public", heroVideoPath.replace(/^\/+/, ""));
+  const heroVideoAssetExists = heroVideoIsExternal ? true : existsSync(heroVideoAssetPath);
+  const heroVideoEnabled = heroVideoEnabledByEnv && heroVideoAssetExists;
+  const heroVideoDisableReason = heroVideoEnabled
+    ? null
+    : !heroVideoEnabledByEnv
+      ? "env not enabled"
+      : "missing asset";
 
   return (
     <div>
       {/* ───────────────────────────── 1. HERO ───────────────────────────── */}
       <section className="relative overflow-hidden bg-8fold-navy">
-        <HeroBackgroundVideo />
+        <HeroBackgroundVideo
+          videoEnabled={heroVideoEnabled}
+          videoPath={heroVideoPath}
+          disabledReason={heroVideoDisableReason}
+        />
 
         <div className="absolute inset-0 z-10 opacity-10 pointer-events-none">
           <div className="absolute top-10 left-10 w-72 h-72 bg-8fold-green rounded-full blur-3xl" />
