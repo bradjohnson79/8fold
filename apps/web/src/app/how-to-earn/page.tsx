@@ -269,22 +269,22 @@ export default function HowToEarnPage() {
           <h2 className="text-3xl font-bold">Ready to start routing jobs in your area?</h2>
           <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/signup?role=router"
+              href="/sign-up"
               className="bg-8fold-green text-white hover:bg-8fold-green-dark font-bold px-8 py-4 rounded-lg text-lg transition-colors"
             >
-              Sign Up as a Router
+              Sign Up
             </Link>
             <Link
-              href="/signup?role=contractor"
+              href="/sign-up"
               className="bg-white text-8fold-green hover:bg-gray-50 border border-white/40 font-bold px-8 py-4 rounded-lg text-lg transition-colors"
             >
-              Sign Up as a Contractor
+              Sign Up
             </Link>
             <Link
-              href="/signup?role=job-poster"
+              href="/sign-up"
               className="bg-white text-8fold-green hover:bg-gray-50 border border-white/40 font-bold px-8 py-4 rounded-lg text-lg transition-colors"
             >
-              Post a Job
+              Sign Up
             </Link>
           </div>
         </section>

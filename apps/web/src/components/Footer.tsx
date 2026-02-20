@@ -14,7 +14,7 @@ export function Footer() {
               </div>
             </div>
             <Link
-              href="/signup"
+              href="/sign-up"
               className="bg-white text-8fold-green px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
             >
               Get Started
@@ -66,18 +66,8 @@ export function Footer() {
             <div className="font-semibold text-gray-900 mb-4">Sign Up</div>
             <ul className="space-y-2">
               <li>
-                <Link href="/signup?role=job-poster" className="text-gray-600 hover:text-gray-900 text-sm">
-                  Job Poster
-                </Link>
-              </li>
-              <li>
-                <Link href="/signup?role=router" className="text-gray-600 hover:text-gray-900 text-sm">
-                  Router
-                </Link>
-              </li>
-              <li>
-                <Link href="/signup?role=contractor" className="text-gray-600 hover:text-gray-900 text-sm">
-                  Contractor
+                <Link href="/sign-up" className="text-gray-600 hover:text-gray-900 text-sm">
+                  Sign Up
                 </Link>
               </li>
             </ul>

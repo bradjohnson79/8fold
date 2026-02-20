@@ -41,18 +41,24 @@ export default async function HomePage() {
                 routers, and contractors through a transparent platform where
                 everyone earns fairly.
               </p>
-              <div className="mt-10 flex flex-wrap gap-4">
+              <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
                 <Link
-                  href="/signup?role=job-poster"
-                  className="inline-flex items-center px-8 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
+                  href="/sign-up"
+                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
                 >
-                  Post a Job
+                  Sign Up Now
                 </Link>
                 <Link
-                  href="/signup?role=contractor"
-                  className="inline-flex items-center px-8 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
+                  href="/workers/router"
+                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
                 >
-                  Become a Worker
+                  Be a Router
+                </Link>
+                <Link
+                  href="/workers/contractor"
+                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
+                >
+                  Be a Contractor
                 </Link>
               </div>
             </div>
@@ -510,18 +516,24 @@ export default async function HomePage() {
             Join the routing platform built for fairness, accountability, and
             local growth.
           </p>
-          <div className="mt-10 flex flex-wrap justify-center gap-4">
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto">
             <Link
-              href="/signup?role=job-poster"
-              className="inline-flex items-center px-8 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
+              href="/sign-up"
+              className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
             >
-              Post a Job
+              Sign Up Now
             </Link>
             <Link
-              href="/signup?role=contractor"
-              className="inline-flex items-center px-8 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
+              href="/workers/router"
+              className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
             >
-              Sign Up as Worker
+              Be a Router
+            </Link>
+            <Link
+              href="/workers/contractor"
+              className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
+            >
+              Be a Contractor
             </Link>
           </div>
         </div>

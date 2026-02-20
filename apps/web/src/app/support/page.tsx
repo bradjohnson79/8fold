@@ -28,17 +28,11 @@ export default function SupportLandingPage() {
           <div className="border border-gray-200 rounded-2xl p-6 shadow-sm">
             <div className="font-bold text-gray-900">New here?</div>
             <p className="text-gray-600 mt-2">
-              Sign up with the role that matches what you’re trying to do on 8Fold.
+              Create your account to get started. Role selection happens inside onboarding.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link href="/signup?role=job-poster" className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold text-gray-900">
-                Job Poster
-              </Link>
-              <Link href="/signup?role=router" className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold text-gray-900">
-                Router
-              </Link>
-              <Link href="/signup?role=contractor" className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold text-gray-900">
-                Contractor
+              <Link href="/sign-up" className="border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold text-gray-900">
+                Sign Up
               </Link>
             </div>
           </div>
