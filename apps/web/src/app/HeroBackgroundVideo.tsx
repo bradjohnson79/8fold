@@ -2,53 +2,52 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const HERO_VIDEO_PATH = process.env.NEXT_PUBLIC_HERO_VIDEO_PATH || "/hero-video.mp4";
-const HERO_VIDEO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO === "1";
-
 function prefersReducedMotionNow(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function HeroBackgroundVideo() {
+function HeroGradientFallback() {
+  return (
+    <div className="absolute inset-0 z-0 pointer-events-none">
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0c1c2f] via-[#112844] to-[#0f2035]" />
+      <div className="absolute -top-24 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-400/12 blur-3xl animate-[pulse_8s_ease-in-out_infinite]" />
+      <div className="absolute -bottom-24 -right-24 w-[26rem] h-[26rem] rounded-full bg-cyan-300/10 blur-3xl animate-[pulse_10s_ease-in-out_infinite]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-8fold-navy/60 via-8fold-navy/40 to-8fold-navy/80" />
+    </div>
+  );
+}
+
+export function HeroBackgroundVideo(props: {
+  videoEnabled: boolean;
+  videoPath: string;
+  disabledReason: string | null;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [videoReady, setVideoReady] = useState(false);
   const [videoUnavailable, setVideoUnavailable] = useState(false);
+  const canTryVideo = props.videoEnabled && !reducedMotion && !videoUnavailable;
 
   useEffect(() => {
-    if (!HERO_VIDEO_ENABLED) return;
     const reduced = prefersReducedMotionNow();
     setReducedMotion(reduced);
-    if (reduced) return;
+  }, []);
 
-    let cancelled = false;
-    // Detect missing asset early so we can render a stable fallback instead of a broken video element.
-    void (async () => {
-      try {
-        const resp = await fetch(HERO_VIDEO_PATH, { method: "HEAD", cache: "no-store" });
-        if (cancelled) return;
-        if (!resp.ok) {
-          setVideoUnavailable(true);
-          return;
-        }
-        setVideoReady(true);
-      } catch {
-        if (!cancelled) setVideoUnavailable(true);
-      }
-    })();
-
-    // Optional enhancement: persist pause choice for this visit.
+  useEffect(() => {
+    if (!canTryVideo) return;
     const saved = sessionStorage.getItem("heroVideoPaused");
     if (saved === "true") {
       videoRef.current?.pause();
       setIsPlaying(false);
     }
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [canTryVideo]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && !props.videoEnabled) {
+      console.info(`Hero video disabled: ${props.disabledReason ?? "missing asset or env not enabled"}`);
+    }
+  }, [props.videoEnabled, props.disabledReason]);
 
   async function toggleVideo() {
     const el = videoRef.current;
@@ -70,20 +69,10 @@ export function HeroBackgroundVideo() {
     }
   }
 
-  // Guard: don't render video (or button) when reduced motion is requested.
-  if (!HERO_VIDEO_ENABLED) return null;
-  if (reducedMotion) return null;
-
   return (
     <>
-      {videoUnavailable || !videoReady ? (
-        // Fallback stabilization: animated gradient layer when video asset is unavailable.
-        <div className="absolute inset-0 z-0 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#0c1c2f] via-[#112844] to-[#0f2035]" />
-          <div className="absolute -top-24 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-400/12 blur-3xl animate-[pulse_8s_ease-in-out_infinite]" />
-          <div className="absolute -bottom-24 -right-24 w-[26rem] h-[26rem] rounded-full bg-cyan-300/10 blur-3xl animate-[pulse_10s_ease-in-out_infinite]" />
-          <div className="absolute inset-0 bg-gradient-to-b from-8fold-navy/60 via-8fold-navy/40 to-8fold-navy/80" />
-        </div>
+      {!canTryVideo ? (
+        <HeroGradientFallback />
       ) : (
         /* Background video layer (does not affect layout; no CLS) */
         <div className="absolute inset-0 z-0 pointer-events-none">
@@ -97,7 +86,7 @@ export function HeroBackgroundVideo() {
             preload="metadata"
             onError={() => setVideoUnavailable(true)}
           >
-            <source src={HERO_VIDEO_PATH} type="video/mp4" />
+            <source src={props.videoPath} type="video/mp4" />
           </video>
 
           {/* Preserve readability over video. */}
@@ -106,7 +95,7 @@ export function HeroBackgroundVideo() {
       )}
 
       {/* Play/Pause control */}
-      {videoReady && !videoUnavailable ? (
+      {canTryVideo ? (
         <div className="absolute bottom-6 right-6 z-20">
           <button
             onClick={toggleVideo}
