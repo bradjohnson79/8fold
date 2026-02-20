@@ -3,7 +3,7 @@ import { requireAdminOrRouter } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { assertJobTransition } from "../../../../../../src/jobs/jobTransitions";
 import { generateActionToken, hashActionToken } from "../../../../../../src/jobs/actionTokens";
-import { haversineKm, stateFromRegion } from "../../../../../../src/jobs/geo";
+import { haversineKm } from "../../../../../../src/jobs/geo";
 import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/geocode";
 import { z } from "zod";
 import crypto from "node:crypto";
@@ -14,6 +14,7 @@ import { contractors } from "../../../../../../db/schema/contractor";
 import { jobAssignments } from "../../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../../db/schema/job";
 import { users } from "../../../../../../db/schema/user";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../../../../../../src/jurisdiction";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -45,7 +46,11 @@ export async function POST(req: Request) {
           id: jobs.id,
           archived: jobs.archived,
           status: jobs.status,
+          country: jobs.country,
+          countryCode: jobs.countryCode,
           region: jobs.region,
+          regionCode: jobs.regionCode,
+          stateCode: jobs.stateCode,
           jobType: jobs.jobType,
           lat: jobs.lat,
           lng: jobs.lng,
@@ -67,6 +72,8 @@ export async function POST(req: Request) {
           id: contractors.id,
           status: contractors.status,
           regions: contractors.regions,
+          countryCode: users.countryCode,
+          stateCode: users.stateCode,
           lat: contractors.lat,
           lng: contractors.lng,
         })
@@ -80,11 +87,12 @@ export async function POST(req: Request) {
         return { kind: "contractor_not_approved" as const };
       }
 
-      const jobState = stateFromRegion(job.region);
-      const contractorStates = (contractor.regions ?? []).map(stateFromRegion);
-      const sameState = jobState && contractorStates.includes(jobState);
-      if (!sameState) {
-        return { kind: "state_mismatch" as const };
+      const jobCountryCode = normalizeCountryCode(String((job as any).countryCode ?? job.country ?? ""));
+      const jobStateCode = normalizeStateCode(String((job as any).stateCode ?? (job as any).regionCode ?? ""));
+      const contractorCountryCode = normalizeCountryCode(String((contractor as any).countryCode ?? ""));
+      const contractorStateCode = normalizeStateCode(String((contractor as any).stateCode ?? ""));
+      if (!isSameJurisdiction(jobCountryCode, jobStateCode, contractorCountryCode, contractorStateCode)) {
+        return { kind: "cross_jurisdiction_blocked" as const };
       }
 
       const overrideDistance = Boolean(body.data.overrideDistance);
@@ -219,8 +227,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Archived jobs cannot be assigned" }, { status: 409 });
     if (result.kind === "contractor_not_found") return NextResponse.json({ ok: false, error: "Contractor not found" }, { status: 404 });
     if (result.kind === "contractor_not_approved") return NextResponse.json({ ok: false, error: "Contractor is not approved" }, { status: 409 });
-    if (result.kind === "state_mismatch")
-      return NextResponse.json({ ok: false, error: "Contractor must be in the same state/province for this job." }, { status: 409 });
+    if (result.kind === "cross_jurisdiction_blocked")
+      return NextResponse.json(
+        { ok: false, error: "8Fold restricts work to within your registered state/province.", code: "CROSS_JURISDICTION_BLOCKED" },
+        { status: 409 },
+      );
     if (result.kind === "missing_coordinates")
       return NextResponse.json({ ok: false, error: "Missing coordinates. Cannot validate service distance for this job." }, { status: 409 });
     if (result.kind === "unable_to_resolve_coords")

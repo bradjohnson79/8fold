@@ -6,6 +6,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { jobs } from "../../../../../../db/schema/job";
 import { jobPhotos } from "../../../../../../db/schema/jobPhoto";
+import { jobPosterProfiles } from "../../../../../../db/schema/jobPosterProfile";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../../../../../../src/jurisdiction";
 
 const BodySchema = z.object({
   jobId: z.string().trim().min(10).optional(),
@@ -63,9 +65,36 @@ export async function POST(req: Request) {
     }
 
     const b = parsed.data;
+    const profileRows = await db
+      .select({ country: jobPosterProfiles.country, stateProvince: jobPosterProfiles.stateProvince })
+      .from(jobPosterProfiles)
+      .where(eq(jobPosterProfiles.userId, user.userId))
+      .limit(1);
+    const profile = profileRows[0] ?? null;
+    if (!profile) {
+      return NextResponse.json({ error: "Profile required" }, { status: 400 });
+    }
+
     const city = (b.address?.city ?? "").trim();
     const regionCode = (b.address?.provinceOrState ?? "").trim().toUpperCase();
     const region = city && regionCode ? `${slugCity(city)}-${regionCode.toLowerCase()}` : undefined;
+    const country = (b.address?.country ?? profile.country ?? "US") as "US" | "CA";
+    const sameJurisdiction = isSameJurisdiction(
+      normalizeCountryCode(country),
+      normalizeStateCode(String(profile.stateProvince ?? "")),
+      normalizeCountryCode(country),
+      normalizeStateCode(regionCode || String(profile.stateProvince ?? "")),
+    );
+    if (!sameJurisdiction) {
+      return NextResponse.json(
+        {
+          error: "JOB_STATE_MISMATCH",
+          code: "JOB_STATE_MISMATCH",
+          requiresSupportTicket: true,
+        },
+        { status: 400 },
+      );
+    }
     const currency = currencyForCountry(b.address?.country);
 
     const items =
@@ -91,9 +120,11 @@ export async function POST(req: Request) {
       ...(b.jobType != null ? { jobType: b.jobType as any } : {}),
       ...(b.timeWindow != null ? { timeWindow: b.timeWindow || null } : {}),
       ...(b.address?.country ? { country: b.address.country as any } : {}),
+      countryCode: country as any,
       ...(currency ? { currency } : {}),
       ...(city ? { city } : {}),
       ...(regionCode ? { regionCode } : {}),
+      ...(regionCode ? { stateCode: regionCode } : {}),
       ...(b.address?.postalCode ? { postalCode: b.address.postalCode } : {}),
       ...(region ? { region } : {}),
       ...(b.geo ? { lat: b.geo.lat, lng: b.geo.lng } : {}),
@@ -148,6 +179,8 @@ export async function POST(req: Request) {
             tradeCategory: data.tradeCategory,
             jobPosterUserId: user.userId,
             country: data.country ?? "US",
+            countryCode: data.countryCode ?? "US",
+            stateCode: data.stateCode ?? String(profile.stateProvince ?? "").toUpperCase(),
             currency: data.currency ?? currencyForCountry(data.country),
           })
           .returning({ id: jobs.id });

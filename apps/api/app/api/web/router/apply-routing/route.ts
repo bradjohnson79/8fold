@@ -12,9 +12,10 @@ import { jobDispatches } from "../../../../../db/schema/jobDispatch";
 import { jobs } from "../../../../../db/schema/job";
 import { routers } from "../../../../../db/schema/router";
 import { users } from "../../../../../db/schema/user";
-import { haversineKm, stateFromRegion } from "../../../../../src/jobs/geo";
+import { haversineKm } from "../../../../../src/jobs/geo";
 import { serviceTypeToTradeCategory } from "../../../../../src/contractors/tradeMap";
 import { ensureActiveAccount } from "../../../../../src/server/accountGuard";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../../../../../src/jurisdiction";
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
@@ -47,14 +48,19 @@ export async function POST(req: Request) {
         .select({
           homeCountry: routers.homeCountry,
           homeRegionCode: routers.homeRegionCode,
+          countryCode: users.countryCode,
+          stateCode: users.stateCode,
           status: routers.status,
         })
         .from(routers)
+        .innerJoin(users, eq(users.id, routers.userId))
         .where(eq(routers.userId, router.userId))
         .limit(1);
       const routerRow = routerRows[0] ?? null;
       if (!routerRow) return { kind: "forbidden" as const };
-      if (!String(routerRow.homeRegionCode ?? "").trim()) return { kind: "forbidden" as const };
+      const routerCountryCode = normalizeCountryCode(String((routerRow as any).countryCode ?? routerRow.homeCountry ?? ""));
+      const routerStateCode = normalizeStateCode(String((routerRow as any).stateCode ?? routerRow.homeRegionCode ?? ""));
+      if (!routerCountryCode || !routerStateCode) return { kind: "forbidden" as const };
 
       const jobRows = await tx
         .select({
@@ -65,8 +71,10 @@ export async function POST(req: Request) {
           status: jobs.status,
           routingStatus: jobs.routingStatus,
           country: jobs.country,
+          countryCode: jobs.countryCode,
           region: jobs.region,
           regionCode: jobs.regionCode,
+          stateCode: jobs.stateCode,
           serviceType: jobs.serviceType,
           tradeCategory: jobs.tradeCategory,
           jobType: jobs.jobType,
@@ -88,10 +96,10 @@ export async function POST(req: Request) {
       if (job.claimedByUserId) return { kind: "job_not_available" as const };
       if (!job.contractorPayoutCents || Number(job.contractorPayoutCents as any) <= 0) return { kind: "pricing_unlocked" as const };
 
-      const jobState = stateFromRegion(job.region);
-      const jobRegionCode = String((job as any).regionCode ?? jobState).trim().toUpperCase();
-      if (routerRow.homeCountry !== job.country || routerRow.homeRegionCode !== jobRegionCode) {
-        return { kind: "forbidden" as const };
+      const jobCountryCode = normalizeCountryCode(String((job as any).countryCode ?? job.country ?? ""));
+      const jobStateCode = normalizeStateCode(String((job as any).stateCode ?? (job as any).regionCode ?? ""));
+      if (!isSameJurisdiction(routerCountryCode, routerStateCode, jobCountryCode, jobStateCode)) {
+        return { kind: "cross_jurisdiction_blocked" as const };
       }
 
       if (typeof job.lat !== "number" || typeof job.lng !== "number") return { kind: "missing_job_coords" as const };
@@ -117,6 +125,8 @@ export async function POST(req: Request) {
           tradeCategories: contractors.tradeCategories,
           automotiveEnabled: contractors.automotiveEnabled,
           regions: contractors.regions,
+          countryCode: users.countryCode,
+          stateCode: users.stateCode,
           lat: contractors.lat,
           lng: contractors.lng,
         })
@@ -136,13 +146,13 @@ export async function POST(req: Request) {
         if (!c || c.status !== "APPROVED") return { kind: "contractor_not_eligible" as const };
 
         const tradeCategories = (c.tradeCategories ?? []) as any[];
-        const regions = (c.regions ?? []) as string[];
-
         if (!tradeCategories.includes(category)) return { kind: "contractor_not_eligible" as const };
         if (String(category) === "AUTOMOTIVE" && !c.automotiveEnabled) return { kind: "contractor_not_eligible" as const };
-
-        const contractorStateMatches = regions.some((r) => stateFromRegion(r) === jobState);
-        if (!contractorStateMatches) return { kind: "contractor_not_eligible" as const };
+        const contractorCountryCode = normalizeCountryCode(String((c as any).countryCode ?? ""));
+        const contractorStateCode = normalizeStateCode(String((c as any).stateCode ?? ""));
+        if (!isSameJurisdiction(contractorCountryCode, contractorStateCode, jobCountryCode, jobStateCode)) {
+          return { kind: "cross_jurisdiction_blocked" as const };
+        }
 
         if (typeof c.lat !== "number" || typeof c.lng !== "number") return { kind: "contractor_missing_coords" as const };
         const km = haversineKm({ lat: job.lat, lng: job.lng }, { lat: c.lat, lng: c.lng });
@@ -210,6 +220,11 @@ export async function POST(req: Request) {
 
     if (result.kind === "not_found") return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (result.kind === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (result.kind === "cross_jurisdiction_blocked")
+      return NextResponse.json(
+        { error: "8Fold restricts work to within your registered state/province.", code: "CROSS_JURISDICTION_BLOCKED" },
+        { status: 403 },
+      );
     if (result.kind === "job_archived") return NextResponse.json({ error: "Archived jobs cannot be routed" }, { status: 409 });
     if (result.kind === "job_not_available") return NextResponse.json({ error: "Job not available" }, { status: 409 });
     if (result.kind === "pricing_unlocked") return NextResponse.json({ error: "Job pricing is not locked" }, { status: 409 });

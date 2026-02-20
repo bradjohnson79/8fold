@@ -9,9 +9,10 @@ import { routers } from "../../../../../../db/schema/router";
 import { users } from "../../../../../../db/schema/user";
 import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../src/http/errors";
-import { haversineKm, stateFromRegion } from "../../../../../../src/jobs/geo";
+import { haversineKm } from "../../../../../../src/jobs/geo";
 import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/geocode";
 import { serviceTypeToTradeCategory } from "../../../../../../src/contractors/tradeMap";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../../../../../../src/jurisdiction";
 
 function getJobIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -35,14 +36,19 @@ export async function GET(req: Request) {
       .select({
         homeCountry: routers.homeCountry,
         homeRegionCode: routers.homeRegionCode,
+        countryCode: users.countryCode,
+        stateCode: users.stateCode,
         status: routers.status,
       })
       .from(routers)
+      .innerJoin(users, eq(users.id, routers.userId))
       .where(eq(routers.userId, router.userId))
       .limit(1);
     const routerRow = routerRows[0] ?? null;
     if (!routerRow) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (!String(routerRow.homeRegionCode ?? "").trim()) {
+    const routerCountryCode = normalizeCountryCode(String((routerRow as any).countryCode ?? routerRow.homeCountry ?? ""));
+    const routerStateCode = normalizeStateCode(String((routerRow as any).stateCode ?? routerRow.homeRegionCode ?? ""));
+    if (!routerCountryCode || !routerStateCode) {
       // Should be unreachable: profile completeness is required by requireRouterActive().
       return NextResponse.json({ error: "Router home region required" }, { status: 409 });
     }
@@ -54,6 +60,8 @@ export async function GET(req: Request) {
         region: jobs.region,
         regionCode: jobs.regionCode,
         country: jobs.country,
+        countryCode: jobs.countryCode,
+        stateCode: jobs.stateCode,
         routingStatus: jobs.routingStatus,
         serviceType: jobs.serviceType,
         tradeCategory: jobs.tradeCategory,
@@ -75,10 +83,13 @@ export async function GET(req: Request) {
     if (!job.contractorPayoutCents || job.contractorPayoutCents <= 0)
       return NextResponse.json({ error: "Job pricing is not locked" }, { status: 409 });
 
-    const jobState = stateFromRegion(job.region);
-    const jobRegionCode = String((job as any)?.regionCode ?? jobState).trim().toUpperCase();
-    if (routerRow.homeCountry !== (job as any).country || routerRow.homeRegionCode !== jobRegionCode) {
-      return NextResponse.json({ error: "Router region mismatch" }, { status: 403 });
+    const jobCountryCode = normalizeCountryCode(String((job as any).countryCode ?? (job as any).country ?? ""));
+    const jobStateCode = normalizeStateCode(String((job as any).stateCode ?? (job as any).regionCode ?? ""));
+    if (!isSameJurisdiction(routerCountryCode, routerStateCode, jobCountryCode, jobStateCode)) {
+      return NextResponse.json(
+        { error: "8Fold restricts work to within your registered state/province.", code: "CROSS_JURISDICTION_BLOCKED" },
+        { status: 403 },
+      );
     }
 
     // Ensure job coords exist (centroid fallback)
@@ -103,6 +114,8 @@ export async function GET(req: Request) {
         yearsExperience: contractors.yearsExperience,
         tradeCategories: contractors.tradeCategories,
         regions: contractors.regions,
+        countryCode: users.countryCode,
+        stateCode: users.stateCode,
         lat: contractors.lat,
         lng: contractors.lng,
       })
@@ -155,9 +168,16 @@ export async function GET(req: Request) {
     const eligibleBase = candidates
       .map((c) => {
         const matchesCategory = (c.tradeCategories as any[]).includes(category);
-        const contractorStateMatches = c.regions.some((r: string) => stateFromRegion(r) === jobState);
+        const contractorCountryCode = normalizeCountryCode(String((c as any).countryCode ?? ""));
+        const contractorStateCode = normalizeStateCode(String((c as any).stateCode ?? ""));
+        const contractorJurisdictionMatches = isSameJurisdiction(
+          contractorCountryCode,
+          contractorStateCode,
+          jobCountryCode,
+          jobStateCode,
+        );
         const hasCoords = typeof c.lat === "number" && typeof c.lng === "number";
-        const km = hasCoords ? haversineKm({ lat: jobLat!, lng: jobLng! }, { lat: c.lat!, lng: c.lng! }) : null;
+        const km = contractorJurisdictionMatches && hasCoords ? haversineKm({ lat: jobLat!, lng: jobLng! }, { lat: c.lat!, lng: c.lng! }) : null;
         const within = km !== null ? km <= limitKm : false;
         const completedCount = c.jobAssignments.length;
         const lastCompletedAtMs = c.jobAssignments.reduce(
@@ -180,7 +200,7 @@ export async function GET(req: Request) {
           reliability,
           jobsCompletedCount: completedCount,
           fixedPayoutCents: job.contractorPayoutCents,
-          _eligible: matchesCategory && contractorStateMatches && within,
+          _eligible: matchesCategory && contractorJurisdictionMatches && within,
           _lastCompletedAtMs: lastCompletedAtMs
         };
       })

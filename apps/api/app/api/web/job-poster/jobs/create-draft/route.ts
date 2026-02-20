@@ -18,6 +18,7 @@ import { rateLimit } from "../../../../../../src/middleware/rateLimit";
 import { getRegionDatasets, getRegionName } from "../../../../../../src/locations/datasets";
 import { validateAndNormalizePostalCode } from "../../../../../../src/locations/postal";
 import { ensureActiveAccount } from "../../../../../../src/server/accountGuard";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../../../../../../src/jurisdiction";
 
 export async function POST(req: Request) {
   try {
@@ -111,6 +112,22 @@ export async function POST(req: Request) {
 
     const stateProvince = canonicalRegionCode(country2, stateProvinceRaw);
     const profileProvince = canonicalRegionCode(country2, String(profile.stateProvince ?? ""));
+    const sameJurisdiction = isSameJurisdiction(
+      normalizeCountryCode(country2),
+      normalizeStateCode(profileProvince),
+      normalizeCountryCode(country2),
+      normalizeStateCode(stateProvince),
+    );
+    if (!sameJurisdiction) {
+      return NextResponse.json(
+        {
+          error: "JOB_STATE_MISMATCH",
+          code: "JOB_STATE_MISMATCH",
+          requiresSupportTicket: true,
+        },
+        { status: 400 },
+      );
+    }
 
     // Validate location matches profile (canonicalized to 2-letter code when possible).
     const locationCheck = validateJobLocationMatchesProfile(stateProvince, profileProvince);
@@ -171,6 +188,8 @@ export async function POST(req: Request) {
         scope,
         region,
         country: profile.country,
+        countryCode: country2 as any,
+        stateCode: stateProvince.toUpperCase(),
         tradeCategory: tradeCategory as any,
         jobType: jobType as any,
         jobPosterUserId: user.userId,
@@ -181,6 +200,8 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           regionCode: stateProvince.toUpperCase(),
+          stateCode: stateProvince.toUpperCase(),
+          countryCode: country2 as any,
           regionName: getRegionName(country2, stateProvince.toUpperCase()) ?? null,
           city,
           postalCode: normalizedPostal,

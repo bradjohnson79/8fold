@@ -37,6 +37,8 @@ export const jobs = dbSchema.table(
   region: text("region").notNull(),
 
   country: countryCodeEnum("country").notNull().default("US"),
+  countryCode: countryCodeEnum("countryCode").notNull().default("US"),
+  stateCode: text("stateCode").notNull().default(""),
   currency: currencyCodeEnum("currency").notNull().default("USD"),
   regionCode: text("regionCode"),
   regionName: text("regionName"),

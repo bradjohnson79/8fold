@@ -19,6 +19,7 @@
     "test": "pnpm -C apps/web test",
     "format": "prettier -w .",
     "guardrails": "node scripts/guardrails.mjs",
+    "test:jurisdiction-containment": "tsx scripts/jurisdiction-containment-test.ts",
     "test:role-scan": "node scripts/scan-legacy-roles.mjs",
     "ci:gate": "node scripts/ci-gate.mjs",
     "check:boundaries": "ts-node --esm scripts/check-boundaries.ts",

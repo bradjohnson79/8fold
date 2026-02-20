@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
 
@@ -27,13 +28,41 @@ export async function POST(req: Request) {
         body: text.slice(0, 800),
       });
     }
-    return new NextResponse(text, {
-      status: resp.status,
-      headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
-    });
+    if (resp.ok) {
+      return new NextResponse(text, {
+        status: resp.status,
+        headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
+      });
+    }
+
+    const parsed = (() => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    })() as any;
+    const code = String(parsed?.code ?? "").trim();
+    const traceId = String(parsed?.traceId ?? "").trim() || randomUUID();
+    return NextResponse.json(
+      {
+        error: String(parsed?.error ?? "Draft save failed."),
+        code: code === "JOB_STATE_MISMATCH" ? "JOB_STATE_MISMATCH" : "DRAFT_SAVE_FAILED",
+        requiresSupportTicket: true,
+        traceId,
+      },
+      { status: resp.status >= 400 ? resp.status : 500 },
+    );
   } catch (err) {
-    const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Failed" }, { status });
+    return NextResponse.json(
+      {
+        error: "Draft save failed.",
+        code: "DRAFT_SAVE_FAILED",
+        requiresSupportTicket: true,
+        traceId: randomUUID(),
+      },
+      { status: 500 },
+    );
   }
 }
 
