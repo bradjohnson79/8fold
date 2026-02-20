@@ -4,7 +4,7 @@ import React from "react";
 import { PayoutMethodSetup } from "../../../../../components/PayoutMethodSetup";
 import { TradeCategoryLabel, TradeCategorySchema } from "@8fold/shared";
 import { ProgressSteps } from "@/components/ProgressSteps";
-import { GeoAutocomplete, type GeoAutocompleteResult } from "@/components/GeoAutocomplete";
+import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 
 type ContractorProfile = {
   // identity
@@ -355,19 +355,13 @@ export default function ContractorProfilePage() {
           Required. Used to calculate distance between Job Posters and Contractors.
         </div>
         <div className="mt-4">
-          <GeoAutocomplete
-            label="Search approximate location (required for routing distance)"
+          <MapLocationSelector
             required
             value={mapDisplayName}
-            onChange={(v) => {
-              setMapDisplayName(v);
-              setMapLat(0);
-              setMapLng(0);
-            }}
-            onPick={(r: GeoAutocompleteResult) => {
-              setMapDisplayName(r.display_name);
-              setMapLat(r.lat);
-              setMapLng(r.lon);
+            onChange={(data) => {
+              setMapDisplayName(data.mapDisplayName);
+              setMapLat(data.lat);
+              setMapLng(data.lng);
             }}
             errorText={
               !Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0

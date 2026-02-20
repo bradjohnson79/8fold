@@ -9,13 +9,23 @@ import {
 } from "@/lib/jobPosterTosV1";
 import { REGION_OPTIONS } from "@/lib/regions";
 import { OnboardingProgressBar } from "@/components/onboarding/OnboardingProgressBar";
+import { z } from "zod";
+import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 
 type Step = "terms" | "profile";
-
-async function geocodeAddress(_fullAddress: string): Promise<{ lat: number; lng: number } | null> {
-  // TODO: Replace with real geocoding integration and remove fallback coordinates.
-  return { lat: 49.2827, lng: -123.1207 };
-}
+const JobPosterOnboardingPayloadSchema = z.object({
+  name: z.string().trim().min(1),
+  email: z.string().trim().email(),
+  phone: z.string().trim().min(7).optional(),
+  legalStreet: z.string().trim().min(1),
+  legalCity: z.string().trim().min(1),
+  legalProvince: z.string().trim().min(2),
+  legalPostalCode: z.string().trim().min(3),
+  legalCountry: z.enum(["CA", "US"]),
+  mapDisplayName: z.string().trim().min(1),
+  lat: z.number(),
+  lng: z.number(),
+});
 
 export default function JobPosterOnboardingPage() {
   const router = useRouter();
@@ -30,6 +40,9 @@ export default function JobPosterOnboardingPage() {
   const [stateProvince, setStateProvince] = useState("");
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [mapDisplayName, setMapDisplayName] = useState("");
+  const [mapLat, setMapLat] = useState<number>(0);
+  const [mapLng, setMapLng] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -106,6 +119,11 @@ export default function JobPosterOnboardingPage() {
       setError("Postal / ZIP code is required.");
       return;
     }
+    const geoSelected = Number.isFinite(mapLat) && Number.isFinite(mapLng) && mapLat !== 0 && mapLng !== 0;
+    if (!mapDisplayName.trim() || !geoSelected) {
+      setError("Please select your location from the map suggestions.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -114,13 +132,6 @@ export default function JobPosterOnboardingPage() {
       const legalProvince = sp;
       const legalPostalCode = pc;
       const legalCountry = country;
-      const mapDisplayName = `${legalStreet}, ${legalCity}, ${legalProvince}, ${legalCountry}`;
-      const coords = await geocodeAddress(mapDisplayName);
-      if (!coords) {
-        setError("We could not locate that address. Please verify and try again.");
-        return;
-      }
-      const { lat, lng } = coords;
       const payload = {
         name: n,
         email: e,
@@ -130,16 +141,18 @@ export default function JobPosterOnboardingPage() {
         legalProvince,
         legalPostalCode,
         legalCountry,
-        mapDisplayName,
-        lat,
-        lng,
+        mapDisplayName: mapDisplayName.trim(),
+        lat: mapLat,
+        lng: mapLng,
       };
+      const parsedPayload = JobPosterOnboardingPayloadSchema.safeParse(payload);
+      if (!parsedPayload.success) throw new Error("Please complete all required fields, including map location.");
 
       const profileResp = await fetch("/api/app/job-poster/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(parsedPayload.data),
       });
       const profileJson = await profileResp.json().catch(() => ({}));
       if (!profileResp.ok) throw new Error(profileJson?.error || "Could not save profile");
@@ -336,6 +349,23 @@ export default function JobPosterOnboardingPage() {
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
             />
           </div>
+
+          <div>
+            <MapLocationSelector
+              required
+              value={mapDisplayName}
+              onChange={(data) => {
+                setMapDisplayName(data.mapDisplayName);
+                setMapLat(data.lat);
+                setMapLng(data.lng);
+              }}
+              errorText={
+                !Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0
+                  ? "Please select your location from the map suggestions."
+                  : ""
+              }
+            />
+          </div>
         </div>
 
         {error ? (
@@ -353,6 +383,11 @@ export default function JobPosterOnboardingPage() {
             stateProvince.length < 2 ||
             !city.trim() ||
             postalCode.trim().length < 3 ||
+            !mapDisplayName.trim() ||
+            !Number.isFinite(mapLat) ||
+            !Number.isFinite(mapLng) ||
+            mapLat === 0 ||
+            mapLng === 0 ||
             loading
           }
           className="mt-6 bg-8fold-green hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 text-white font-semibold px-5 py-2.5 rounded-lg"
