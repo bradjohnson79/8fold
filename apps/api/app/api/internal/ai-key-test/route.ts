@@ -3,24 +3,34 @@
  *
  * Temporary diagnostic route. Delete after confirming appraisal works.
  * Hit: GET /api/internal/ai-key-test
+ * Header: x-internal-secret: <INTERNAL_DEBUG_SECRET>
  *
  * Verifies:
  * - OPEN_AI_API_KEY is accessible in deployed runtime
  * - Key is valid and can call OpenAI
  * - Model gpt-5-nano is callable
+ * - Same code path as appraisal (verifyOpenAiConnection → getOpenAiClient)
  */
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { getOpenAiClient, OPENAI_APPRAISAL_MODEL } from "../../../../src/lib/openai";
-
-const MODEL = OPENAI_APPRAISAL_MODEL;
+import { OPENAI_APPRAISAL_MODEL, verifyOpenAiConnection } from "../../../../src/lib/openai";
 
 function traceId(): string {
   return crypto.randomUUID();
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const tid = traceId();
+
+  // Guard: require secret header to prevent /api/internal/* scanning
+  const secret = process.env.INTERNAL_DEBUG_SECRET;
+  const provided = req.headers.get("x-internal-secret");
+  if (!secret || provided !== secret) {
+    return NextResponse.json(
+      { ok: false, error: "NOT_ALLOWED" },
+      { status: 403 }
+    );
+  }
 
   // 1. Log key presence
   const keyPresent = !!process.env.OPEN_AI_API_KEY;
@@ -38,61 +48,12 @@ export async function GET() {
   }
 
   try {
-    const openai = getOpenAiClient();
-    const rawResponse = (await openai.responses.create({
-      model: MODEL,
-      input: [
-        { role: "system", content: "Return only valid JSON. No other text." },
-        { role: "user", content: 'Return JSON: {"ping":"pong"}' },
-      ],
-      reasoning: { effort: "low" },
-      max_output_tokens: 100,
-    })) as { output_text?: string; output?: unknown };
-
-    const content = typeof rawResponse?.output_text === "string" ? rawResponse.output_text : "";
-    if (!content) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "AI_RUNTIME_ERROR",
-          message: "OpenAI returned empty content",
-          traceId: tid,
-        },
-        { status: 502 }
-      );
-    }
-
-    let parsed: { ping?: string } | null = null;
-    try {
-      parsed = JSON.parse(String(content));
-    } catch {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "AI_RUNTIME_ERROR",
-          message: "AI returned non-JSON content",
-          traceId: tid,
-          rawContent: content.slice(0, 200),
-        },
-        { status: 502 }
-      );
-    }
-
-    if (parsed?.ping !== "pong") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "AI_RUNTIME_ERROR",
-          message: `Unexpected response: ${JSON.stringify(parsed)}`,
-          traceId: tid,
-        },
-        { status: 502 }
-      );
-    }
+    // Use same code path as appraisal: verifyOpenAiConnection → getOpenAiClient → responses.create
+    await verifyOpenAiConnection();
 
     return NextResponse.json({
       ok: true,
-      model: MODEL,
+      model: OPENAI_APPRAISAL_MODEL,
       responseValid: true,
     });
   } catch (err: unknown) {
