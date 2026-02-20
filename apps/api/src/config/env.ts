@@ -9,7 +9,7 @@ const requiredVars = {
 } as const;
 
 const optionalVars = {
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  OPEN_AI_API_KEY: process.env.OPEN_AI_API_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   NOMINATIM_USER_AGENT: process.env.NOMINATIM_USER_AGENT,
 } as const;
@@ -30,7 +30,7 @@ export const env = {
     webhookSecret: optionalVars.STRIPE_WEBHOOK_SECRET,
   },
   openai: {
-    apiKey: optionalVars.OPENAI_API_KEY,
+    apiKey: optionalVars.OPEN_AI_API_KEY,
   },
   nominatim: {
     userAgent: optionalVars.NOMINATIM_USER_AGENT || "8FoldLocal/1.0 (contact@yourdomain.com)",

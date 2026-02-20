@@ -26,7 +26,19 @@ export async function GET(req: Request) {
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
     const jobRows = await db
-      .select({ id: jobs.id, status: jobs.status, jobPosterUserId: jobs.jobPosterUserId })
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        jobPosterUserId: jobs.jobPosterUserId,
+        aiSuggestedTotal: jobs.aiSuggestedTotal,
+        aiPriceRangeLow: jobs.aiPriceRangeLow,
+        aiPriceRangeHigh: jobs.aiPriceRangeHigh,
+        aiConfidence: jobs.aiConfidence,
+        aiReasoning: jobs.aiReasoning,
+        aiAppraisedAt: jobs.aiAppraisedAt,
+        pricingIntel: jobs.pricingIntel,
+        pricingIntelModel: jobs.pricingIntelModel,
+      })
       .from(jobs)
       .where(and(eq(jobs.id, id), eq(jobs.archived, false)))
       .limit(1);
@@ -55,6 +67,19 @@ export async function GET(req: Request) {
         status: job.status,
         data: null,
         photoUrls: draftPhotos,
+        aiSuggestedTotal: job.aiSuggestedTotal,
+        aiPriceRange: {
+          low: job.aiPriceRangeLow,
+          high: job.aiPriceRangeHigh,
+        },
+        aiConfidence: job.aiConfidence,
+        aiReasoning: job.aiReasoning,
+        appraisalTraceId: String((job.pricingIntel as any)?.appraisalTraceId ?? "").trim() || null,
+        appraisalModel: String(job.pricingIntelModel ?? (job.pricingIntel as any)?.appraisalModel ?? "").trim() || null,
+        appraisedAt:
+          job.aiAppraisedAt instanceof Date
+            ? job.aiAppraisedAt.toISOString()
+            : String((job.pricingIntel as any)?.appraisedAt ?? "").trim() || null,
       },
     });
   } catch (err) {

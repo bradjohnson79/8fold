@@ -12,7 +12,7 @@ import { payoutMethods } from "@/db/schema/payoutMethod";
 import { auditLogs } from "@/db/schema/auditLog";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { escrows } from "@/db/schema/escrow";
-import { calculatePayoutBreakdown } from "@8fold/shared";
+import { finalizeJobFundingFromPaymentIntent } from "@/src/payments/finalizeJobFundingFromPaymentIntent";
 
 /**
  * LOCAL DEV:
@@ -162,148 +162,29 @@ export async function POST(req: Request) {
           }
 
           testLog({ eventType: event.type, jobId: meta.jobId });
-
-          const jobRows = await tx
-            .select({
-              id: jobs.id,
-              status: jobs.status,
-              jobPosterUserId: jobs.jobPosterUserId,
-              paymentStatus: jobs.paymentStatus,
-              amountCents: jobs.amountCents,
-              laborTotalCents: jobs.laborTotalCents,
-              materialsTotalCents: jobs.materialsTotalCents,
-              paymentCurrency: jobs.paymentCurrency,
-            })
-            .from(jobs)
-            .where(eq(jobs.id, meta.jobId))
-            .limit(1);
-          const job = jobRows[0] ?? null;
-          if (!job || String(job.jobPosterUserId ?? "") !== meta.jobPosterUserId) return;
-
-          const capturedRows = await tx
-            .select({ id: jobPayments.id })
-            .from(jobPayments)
-            .where(and(eq(jobPayments.jobId, meta.jobId), eq(jobPayments.status, "CAPTURED" as any)))
-            .limit(1);
-          if (String(job.paymentStatus ?? "") === "FUNDED" || Boolean(capturedRows[0]?.id)) return;
-
-          const expectedBreakdown = calculatePayoutBreakdown(
-            Number(job.laborTotalCents ?? 0),
-            Number(job.materialsTotalCents ?? 0),
-          );
-          const expectedAmountCents = Number(expectedBreakdown.totalJobPosterPaysCents ?? 0);
-          const incomingAmountCents = Number(pi.amount ?? 0);
-          if (!Number.isInteger(expectedAmountCents) || expectedAmountCents <= 0 || expectedAmountCents !== incomingAmountCents) {
+          const finalized = await finalizeJobFundingFromPaymentIntent(pi, {
+            route: "/api/webhooks/stripe",
+            source: "webhook",
+            webhookEventId: event.id,
+            tx,
+          });
+          if (!finalized.ok) {
             logEvent({
               level: "error",
-              event: "stripe.webhook_payment_amount_mismatch",
+              event: "stripe.webhook_payment_finalize_failed",
               route: "/api/webhooks/stripe",
               method: "POST",
               status: 200,
-              code: "STRIPE_PAYMENT_AMOUNT_MISMATCH",
+              code: finalized.code,
               context: {
                 eventId: event.id,
-                jobId: meta.jobId,
                 paymentIntentId: pi.id,
-                expectedAmountCents,
-                incomingAmountCents,
+                jobId: finalized.jobId,
+                traceId: finalized.traceId,
+                reason: finalized.reason,
               },
             });
-            return;
           }
-
-          const paymentRows = await tx
-            .select({ id: jobPayments.id })
-            .from(jobPayments)
-            .where(eq(jobPayments.jobId, meta.jobId))
-            .limit(1);
-          const payment = paymentRows[0] ?? null;
-
-          if (!payment?.id) {
-            await tx.insert(jobPayments).values({
-              id: randomUUID(),
-              jobId: meta.jobId,
-              stripePaymentIntentId: String(pi.id ?? ""),
-              stripePaymentIntentStatus: String(pi.status ?? ""),
-              amountCents: Number(pi.amount ?? 0),
-              status: "CAPTURED",
-              escrowLockedAt: now,
-              paymentCapturedAt: now,
-              updatedAt: now,
-            } as any);
-          } else {
-            await tx
-              .update(jobPayments)
-              .set({
-                stripePaymentIntentId: String(pi.id ?? ""),
-                stripePaymentIntentStatus: String(pi.status ?? ""),
-                status: "CAPTURED" as any,
-                escrowLockedAt: now,
-                paymentCapturedAt: now,
-                updatedAt: now,
-              } as any)
-              .where(eq(jobPayments.jobId, meta.jobId));
-          }
-
-          await tx
-            .update(jobs)
-            .set({
-              paymentStatus: "FUNDED" as any,
-              fundedAt: now,
-              stripePaymentIntentId: String(pi.id ?? "") || null,
-              stripeChargeId:
-                typeof (pi as any)?.latest_charge === "string"
-                  ? String((pi as any).latest_charge)
-                  : (pi as any)?.latest_charge?.id ?? null,
-              status: "OPEN_FOR_ROUTING" as any,
-              escrowLockedAt: now,
-              paymentCapturedAt: now,
-            } as any)
-            .where(eq(jobs.id, meta.jobId));
-
-          const escrowRows = await tx
-            .select({ id: escrows.id, status: escrows.status })
-            .from(escrows)
-            .where(and(eq(escrows.jobId, meta.jobId), eq(escrows.kind, "JOB_ESCROW" as any)))
-            .limit(1);
-          const escrow = escrowRows[0] ?? null;
-          if (!escrow?.id) {
-            await tx.insert(escrows).values({
-              jobId: meta.jobId,
-              kind: "JOB_ESCROW" as any,
-              amountCents: expectedAmountCents,
-              currency: String(job.paymentCurrency ?? "cad").toUpperCase() as any,
-              status: "FUNDED" as any,
-              stripePaymentIntentId: String(pi.id ?? ""),
-              webhookProcessedAt: now,
-              updatedAt: now,
-            } as any);
-          } else if (String(escrow.status ?? "") === "PENDING") {
-            await tx
-              .update(escrows)
-              .set({
-                status: "FUNDED" as any,
-                stripePaymentIntentId: String(pi.id ?? ""),
-                webhookProcessedAt: now,
-                updatedAt: now,
-              } as any)
-              .where(eq(escrows.id, escrow.id));
-          }
-
-          await tx.insert(auditLogs).values({
-            id: randomUUID(),
-            actorUserId: meta.jobPosterUserId,
-            action: "PAYMENT_COMPLETED",
-            entityType: "Job",
-            entityId: meta.jobId,
-            metadata: {
-              stripeWebhookEventId: event.id,
-              stripePaymentIntentId: String(pi.id ?? ""),
-              amountCents: Number(pi.amount ?? 0),
-              laborTotalCents: Number(job.laborTotalCents ?? 0),
-              materialsTotalCents: Number(job.materialsTotalCents ?? 0),
-            } as any,
-          });
           return;
         }
         case "payment_intent.payment_failed": {

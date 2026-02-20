@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireJobPosterReady } from "../../../../../../src/auth/onboardingGuards";
+import { validateGeoCoords } from "../../../../../../src/jobs/geoValidation";
 import { randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
@@ -84,6 +85,14 @@ export async function POST(req: Request) {
 
     // Create/update a Job row (draft) because the client flow expects a jobId.
     // Money fields are initialized to 0 for draft safety; later steps can overwrite.
+    if (b.geo) {
+      try {
+        validateGeoCoords(b.geo.lat, b.geo.lng);
+      } catch {
+        return NextResponse.json({ error: "Invalid job location coordinates.", code: "INVALID_GEO_COORDINATES" }, { status: 400 });
+      }
+    }
+
     const data: any = {
       ...(b.jobTitle != null ? { title: b.jobTitle } : {}),
       ...(b.scope != null ? { scope: b.scope } : {}),
@@ -198,16 +207,37 @@ export async function POST(req: Request) {
     });
 
     if (!result.jobId) {
-      return NextResponse.json({ error: "Failed to save draft" }, { status: 500 });
+      const traceId = randomUUID();
+      // eslint-disable-next-line no-console
+      console.error("❌ DRAFT SAVE FAILED", { traceId, reason: "empty_job_id_result", userId: user.userId });
+      return NextResponse.json(
+        {
+          error: "Draft save failed.",
+          code: "DRAFT_SAVE_FAILED",
+          requiresSupportTicket: true,
+          traceId,
+        },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ ok: true, job: { id: result.jobId } }, { status: 200 });
+    return NextResponse.json({ success: true, draftId: result.jobId }, { status: 200 });
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.error("[api job-poster drafts/save]", err);
-    }
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to save draft" }, { status: 500 });
+    const traceId = randomUUID();
+    // eslint-disable-next-line no-console
+    console.error("❌ DRAFT SAVE FAILED", {
+      traceId,
+      error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    });
+    return NextResponse.json(
+      {
+        error: "Draft save failed.",
+        code: "DRAFT_SAVE_FAILED",
+        requiresSupportTicket: true,
+        traceId,
+      },
+      { status: 500 },
+    );
   }
 }
 

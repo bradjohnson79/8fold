@@ -8,6 +8,7 @@ import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingG
 import { createPaymentIntent } from "../../../../../../../src/payments/stripe";
 import { rateLimit } from "../../../../../../../src/middleware/rateLimit";
 import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../../src/http/jobPosterRouteErrors";
+import { getBaseUrl } from "../../../../../../../src/lib/getBaseUrl";
 import { db } from "../../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
 import { jobs } from "../../../../../../../db/schema/job";
@@ -297,6 +298,8 @@ export async function POST(req: Request) {
           type: "job_escrow",
           jobId: job.id,
           jobPosterUserId: user.userId,
+          userId: user.userId,
+          environment: String(process.env.NODE_ENV ?? "development"),
         },
       });
     } catch (err) {
@@ -352,6 +355,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       clientSecret: pi.clientSecret,
+      returnUrl: `${getBaseUrl()}/app/job-poster/payment/return`,
     });
   } catch (err) {
     const ref = `payment_intent_route_${randomUUID()}`;

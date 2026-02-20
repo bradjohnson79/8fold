@@ -87,7 +87,10 @@ function PaymentConfirmCard(props: {
             try {
               const res = await stripe!.confirmPayment({
                 elements: elements!,
-                redirect: "if_required"
+                redirect: "if_required",
+                confirmParams: {
+                  return_url: `${window.location.origin}/app/job-poster/payment/return`,
+                },
               });
               if (res.error) throw new Error(res.error.message || "Payment failed");
 

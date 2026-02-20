@@ -9,9 +9,10 @@ import { eq } from "drizzle-orm";
 import { requireJobPosterReady } from "../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { JobPostingInputSchema } from "@8fold/shared";
-import { appraiseJobPrice } from "../../../../../../src/pricing/aiAppraisal";
+import { AiAppraisalError, appraiseJobPrice } from "../../../../../../src/pricing/aiAppraisal";
 import { validateJobLocationMatchesProfile } from "../../../../../../src/jobs/location";
 import { geocodeAddress } from "../../../../../../src/jobs/location";
+import { validateGeoCoords } from "../../../../../../src/jobs/geoValidation";
 import { calculatePayoutBreakdown } from "@8fold/shared";
 import { PRICING_VERSION } from "../../../../../../src/pricing/constants";
 import { rateLimit } from "../../../../../../src/middleware/rateLimit";
@@ -146,16 +147,48 @@ export async function POST(req: Request) {
       );
     }
 
+    try {
+      validateGeoCoords(geo.lat, geo.lng);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid job location coordinates." },
+        { status: 400 }
+      );
+    }
+
     // Perform AI appraisal (sync for v1; UI can show a loading state)
-    const appraisal = await appraiseJobPrice({
-      tradeCategory: tradeCategory as any,
-      jobType: jobType as any,
-      city,
-      province: stateProvince,
-      scope,
-      title: jobTitle,
-      junkHaulingItems: junkHaulingItems,
-    });
+    let appraisal: Awaited<ReturnType<typeof appraiseJobPrice>>;
+    try {
+      appraisal = await appraiseJobPrice({
+        tradeCategory: tradeCategory as any,
+        jobType: jobType as any,
+        city,
+        province: stateProvince,
+        scope,
+        title: jobTitle,
+        junkHaulingItems: junkHaulingItems,
+      });
+    } catch (err) {
+      if (err instanceof AiAppraisalError) {
+        // eslint-disable-next-line no-console
+        console.error(`❌ ${err.code}`, {
+          traceId: err.traceId,
+          code: err.code,
+          error: err.message,
+          rawResponse: err.rawResponse,
+        });
+        return NextResponse.json(
+          {
+            error: "AI appraisal unavailable.",
+            code: err.code,
+            requiresSupportTicket: true,
+            traceId: err.traceId,
+          },
+          { status: err.status },
+        );
+      }
+      throw err;
+    }
 
     const breakdown = calculatePayoutBreakdown(appraisal.priceMedianCents, 0);
 

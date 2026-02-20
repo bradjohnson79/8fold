@@ -23,9 +23,10 @@ export const users = dbSchema.table("User", {
   referredByRouterId: text("referredByRouterId"),
 
   // Canonical geocoded location (required by address autocomplete flows).
+  // Nullable; no default. Application rejects (0,0) on save.
   formattedAddress: text("formattedAddress").notNull().default(""),
-  latitude: doublePrecision("latitude").notNull().default(0),
-  longitude: doublePrecision("longitude").notNull().default(0),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
 
   // Legal address (manual; not validated against OSM).
   legalStreet: text("legalStreet").notNull().default(""),
@@ -44,6 +45,8 @@ export const users = dbSchema.table("User", {
   updatedByAdminId: text("updatedByAdminId"),
 
   country: countryCodeEnum("country").notNull().default("US"),
+  countryCode: countryCodeEnum("countryCode").notNull().default("US"),
+  stateCode: text("stateCode").notNull().default(""),
 
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),

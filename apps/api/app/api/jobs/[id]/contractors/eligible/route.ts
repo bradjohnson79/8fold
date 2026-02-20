@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../db/schema/auditLog";
+import { contractorAccounts } from "../../../../../../db/schema/contractorAccount";
 import { contractors } from "../../../../../../db/schema/contractor";
 import { jobAssignments } from "../../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../../db/schema/job";
@@ -10,7 +11,6 @@ import { users } from "../../../../../../db/schema/user";
 import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { haversineKm, stateFromRegion } from "../../../../../../src/jobs/geo";
-import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/geocode";
 import { serviceTypeToTradeCategory } from "../../../../../../src/contractors/tradeMap";
 
 function getJobIdFromUrl(req: Request): string {
@@ -81,17 +81,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Router region mismatch" }, { status: 403 });
     }
 
-    // Ensure job coords exist (centroid fallback)
-    let jobLat = typeof job.lat === "number" ? job.lat : null;
-    let jobLng = typeof job.lng === "number" ? job.lng : null;
+    // Hard guard: job must have valid coordinates. No centroid fallback.
+    const jobLat = typeof job.lat === "number" && Number.isFinite(job.lat) ? job.lat : null;
+    const jobLng = typeof job.lng === "number" && Number.isFinite(job.lng) ? job.lng : null;
     if (jobLat === null || jobLng === null) {
-      const cs = regionToCityState(job.region);
-      if (!cs) return NextResponse.json({ error: "Unable to resolve job location coordinates." }, { status: 409 });
-      const resolved = await geocodeCityCentroid({ city: cs.city, state: cs.state });
-      if (!resolved) return NextResponse.json({ error: "Unable to resolve job location coordinates." }, { status: 409 });
-      await db.update(jobs).set({ lat: resolved.lat, lng: resolved.lng }).where(eq(jobs.id, job.id));
-      jobLat = resolved.lat;
-      jobLng = resolved.lng;
+      return NextResponse.json(
+        { error: "JOB_GEO_MISSING", requiresGeoResolution: true },
+        { status: 409 }
+      );
     }
 
     const category = (job.tradeCategory ?? serviceTypeToTradeCategory(job.serviceType)) as any;
@@ -105,9 +102,11 @@ export async function GET(req: Request) {
         regions: contractors.regions,
         lat: contractors.lat,
         lng: contractors.lng,
+        serviceRadiusKm: contractorAccounts.serviceRadiusKm,
       })
       .from(contractors)
       .innerJoin(users, sql`lower(${users.email}) = lower(${contractors.email})`)
+      .leftJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
       .where(
         and(
           eq(users.status, "ACTIVE"),
@@ -150,15 +149,18 @@ export async function GET(req: Request) {
 
     const isUS = String((job as any).country ?? "").toUpperCase() === "US";
     const milesToKm = (mi: number) => mi * 1.60934;
-    const limitKm = job.jobType === "urban" ? (isUS ? milesToKm(30) : 50) : isUS ? milesToKm(60) : 100;
+    const jobTypeLimitKm = job.jobType === "urban" ? (isUS ? milesToKm(30) : 50) : isUS ? milesToKm(60) : 100;
 
     const eligibleBase = candidates
       .map((c) => {
         const matchesCategory = (c.tradeCategories as any[]).includes(category);
         const contractorStateMatches = c.regions.some((r: string) => stateFromRegion(r) === jobState);
-        const hasCoords = typeof c.lat === "number" && typeof c.lng === "number";
-        const km = hasCoords ? haversineKm({ lat: jobLat!, lng: jobLng! }, { lat: c.lat!, lng: c.lng! }) : null;
-        const within = km !== null ? km <= limitKm : false;
+        const hasCoords = typeof c.lat === "number" && typeof c.lng === "number" && Number.isFinite(c.lat) && Number.isFinite(c.lng);
+        // Exclude contractors with null/invalid coords; never compute distance with null
+        const km = hasCoords ? haversineKm({ lat: jobLat, lng: jobLng }, { lat: c.lat!, lng: c.lng! }) : null;
+        const serviceRadiusKm = typeof c.serviceRadiusKm === "number" && c.serviceRadiusKm > 0 ? c.serviceRadiusKm : null;
+        const effectiveRadiusKm = serviceRadiusKm !== null ? Math.min(jobTypeLimitKm, serviceRadiusKm) : jobTypeLimitKm;
+        const within = km !== null ? km <= effectiveRadiusKm : false;
         const completedCount = c.jobAssignments.length;
         const lastCompletedAtMs = c.jobAssignments.reduce(
           (acc: number | null, a: { completedAt: Date | null }) => {
@@ -253,7 +255,7 @@ export async function GET(req: Request) {
       })
       .map(({ _lastCompletedAtMs, ...rest }) => rest);
 
-    return NextResponse.json({ contractors: eligible, limitKm });
+    return NextResponse.json({ contractors: eligible, limitKm: jobTypeLimitKm });
   } catch (err) {
     const { status, message } = toHttpError(err);
     return NextResponse.json({ error: message }, { status });

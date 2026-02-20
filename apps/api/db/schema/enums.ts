@@ -207,6 +207,7 @@ export const supportTicketCategoryEnum = pgEnum("SupportTicketCategory", [
   "ROUTING",
   "CONTRACTOR",
   "PAYOUTS",
+  "AI_APPRAISAL_FAILURE",
   "OTHER",
 ]);
 export const supportTicketPriorityEnum = pgEnum("SupportTicketPriority", ["LOW", "NORMAL", "HIGH"]);

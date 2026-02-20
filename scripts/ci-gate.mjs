@@ -16,6 +16,7 @@ if (!isCi) {
 const baseUrl = String(process.env.BASE_URL ?? "").trim() || "http://localhost:3006";
 
 run("pnpm -C apps/api db:verify");
+run("pnpm ai:guard");
 run("pnpm -C apps/api test:lifecycle", { BASE_URL: baseUrl });
 run("pnpm -C apps/api test:lifecycle:financial", { BASE_URL: baseUrl });
 

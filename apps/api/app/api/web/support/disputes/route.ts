@@ -24,7 +24,15 @@ import { sanitizeText } from "../../../../../src/utils/sanitizeText";
 const DisputeAgainstRoleSchema = z.enum(["JOB_POSTER", "CONTRACTOR"]);
 const DisputeReasonSchema = z.enum(["PRICING", "WORK_QUALITY", "NO_SHOW", "PAYMENT", "OTHER"]);
 const SupportRoleContextSchema = z.enum(["JOB_POSTER", "ROUTER", "CONTRACTOR"]);
-const SupportTicketCategorySchema = z.enum(["PRICING", "JOB_POSTING", "ROUTING", "CONTRACTOR", "PAYOUTS", "OTHER"]);
+const SupportTicketCategorySchema = z.enum([
+  "PRICING",
+  "JOB_POSTING",
+  "ROUTING",
+  "CONTRACTOR",
+  "PAYOUTS",
+  "AI_APPRAISAL_FAILURE",
+  "OTHER",
+]);
 const SupportTicketPrioritySchema = z.enum(["LOW", "NORMAL", "HIGH"]);
 
 type SupportRoleContext = z.infer<typeof SupportRoleContextSchema>;

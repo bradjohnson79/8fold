@@ -15,7 +15,7 @@ type DiscoveryInput = {
   category?: string;
 };
 
-// Stub: returns mock data when GPT_API_KEY is missing
+// Stub: returns mock data when OPEN_AI_API_KEY is missing
 // Classification: province/state in name or region → REGIONAL; country-wide → NATIONAL
 const MOCK_DISCOVERY = [
   {

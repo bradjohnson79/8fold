@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { requireRouter } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
 import { ensureRouterProvisioned } from "../../../../../src/auth/routerProvisioning";
+import { validateGeoCoords } from "../../../../../src/jobs/geoValidation";
 import { db } from "../../../../../db/drizzle";
 import { routers } from "../../../../../db/schema/router";
 import { routerProfiles } from "../../../../../db/schema/routerProfile";
@@ -22,14 +23,6 @@ const ProfileSchema = z.object({
   lat: z.number(),
   lng: z.number(),
 });
-
-function isValidGeo(lat: number, lng: number): boolean {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  if (lat === 0 && lng === 0) return false;
-  if (lat < -90 || lat > 90) return false;
-  if (lng < -180 || lng > 180) return false;
-  return true;
-}
 
 export async function GET(req: Request) {
   try {
@@ -109,8 +102,10 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
 
     const body = parsed.data;
-    if (!isValidGeo(body.lat, body.lng)) {
-      return NextResponse.json({ ok: false, error: "INVALID_GEO" }, { status: 400 });
+    try {
+      validateGeoCoords(body.lat, body.lng);
+    } catch {
+      return NextResponse.json({ ok: false, error: "INVALID_GEO_COORDINATES" }, { status: 400 });
     }
 
     try {

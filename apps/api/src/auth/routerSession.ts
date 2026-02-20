@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { routers } from "@/db/schema/router";
 import { routerProfiles } from "@/db/schema/routerProfile";
+import { isValidGeo } from "../jobs/geoValidation";
 import { ensureRouterProvisioned } from "./routerProvisioning";
 
 export type RouterSessionState = "TERMS_REQUIRED" | "PROFILE_REQUIRED" | "READY";
@@ -12,16 +13,6 @@ export type RouterSessionData = {
   missingFields: string[];
   state: RouterSessionState;
 };
-
-function isValidGeo(lat: number | null | undefined, lng: number | null | undefined): boolean {
-  const la = typeof lat === "number" ? lat : NaN;
-  const ln = typeof lng === "number" ? lng : NaN;
-  if (!Number.isFinite(la) || !Number.isFinite(ln)) return false;
-  if (la === 0 && ln === 0) return false;
-  if (la < -90 || la > 90) return false;
-  if (ln < -180 || ln > 180) return false;
-  return true;
-}
 
 /**
  * Single-source readiness snapshot for the Router dashboard.
@@ -68,7 +59,7 @@ export async function getRouterSessionData(userId: string, opts?: { tx?: any }):
   if (!String((p as any)?.stateProvince ?? "").trim()) missingFields.push("stateProvince");
   if (!String((p as any)?.postalCode ?? "").trim()) missingFields.push("postalCode");
   if (!String((p as any)?.country ?? "").trim()) missingFields.push("country");
-  if (!isValidGeo(p?.lat ?? null, p?.lng ?? null)) missingFields.push("mapLocation");
+  if (!isValidGeo(Number(p?.lat ?? NaN), Number(p?.lng ?? NaN))) missingFields.push("mapLocation");
 
   const profileComplete = missingFields.length === 0;
 

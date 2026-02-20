@@ -7,6 +7,7 @@ import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
+import { contractorAccounts } from "../../../../../db/schema/contractorAccount";
 import { contractors } from "../../../../../db/schema/contractor";
 import { jobDispatches } from "../../../../../db/schema/jobDispatch";
 import { jobs } from "../../../../../db/schema/job";
@@ -98,7 +99,7 @@ export async function POST(req: Request) {
 
       const isUS = String(job.country ?? "").toUpperCase() === "US";
       const milesToKm = (mi: number) => mi * 1.60934;
-      const limitKm = job.jobType === "urban" ? (isUS ? milesToKm(30) : 50) : isUS ? milesToKm(60) : 100;
+      const jobTypeLimitKm = job.jobType === "urban" ? (isUS ? milesToKm(30) : 50) : isUS ? milesToKm(60) : 100;
 
       const existingPending = await tx
         .select({ contractorId: jobDispatches.contractorId })
@@ -119,9 +120,11 @@ export async function POST(req: Request) {
           regions: contractors.regions,
           lat: contractors.lat,
           lng: contractors.lng,
+          serviceRadiusKm: contractorAccounts.serviceRadiusKm,
         })
         .from(contractors)
         .innerJoin(users, sql`lower(${users.email}) = lower(${contractors.email})`)
+        .leftJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
         .where(and(eq(users.status, "ACTIVE"), inArray(contractors.id, desired as any)));
       const byId = new Map(contractorRows.map((c) => [c.id, c]));
 
@@ -146,7 +149,9 @@ export async function POST(req: Request) {
 
         if (typeof c.lat !== "number" || typeof c.lng !== "number") return { kind: "contractor_missing_coords" as const };
         const km = haversineKm({ lat: job.lat, lng: job.lng }, { lat: c.lat, lng: c.lng });
-        if (km > limitKm) return { kind: "contractor_not_eligible" as const };
+        const serviceRadiusKm = typeof c.serviceRadiusKm === "number" && c.serviceRadiusKm > 0 ? c.serviceRadiusKm : null;
+        const effectiveRadiusKm = serviceRadiusKm !== null ? Math.min(jobTypeLimitKm, serviceRadiusKm) : jobTypeLimitKm;
+        if (km > effectiveRadiusKm) return { kind: "contractor_not_eligible" as const };
 
         const rawToken = crypto.randomBytes(24).toString("hex");
         const tokenHash = sha256(rawToken);

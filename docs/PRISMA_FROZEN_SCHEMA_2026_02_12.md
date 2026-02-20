@@ -1744,7 +1744,7 @@ model EmailDraft {
   emailLabel EmailLabel @default(JOB_POSTER_OUTREACH)
 
   generatedBy   String  @default("gpt-5.1-mini")
-  // Hardening: when OPENAI_API_KEY is missing we generate a placeholder.
+  // Hardening: when OPEN_AI_API_KEY is missing we generate a placeholder.
   // Approval requires explicit admin confirmation.
   isPlaceholder Boolean @default(false)
 

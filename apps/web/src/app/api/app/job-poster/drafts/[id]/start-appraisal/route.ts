@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
 
@@ -25,13 +26,46 @@ export async function POST(req: Request) {
       request: req,
     });
     const text = await resp.text();
-    return new NextResponse(text, {
-      status: resp.status,
-      headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
-    });
+    if (resp.ok) {
+      return new NextResponse(text, {
+        status: resp.status,
+        headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
+      });
+    }
+
+    const parsed = (() => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    })() as any;
+    const codeRaw = String(parsed?.code ?? "").trim();
+    const code =
+      codeRaw === "AI_CONFIG_MISSING" || codeRaw === "AI_RUNTIME_ERROR" || codeRaw === "AI_INVALID_RESPONSE"
+        ? codeRaw
+        : "AI_RUNTIME_ERROR";
+    const traceId = String(parsed?.traceId ?? "").trim() || randomUUID();
+    return NextResponse.json(
+      {
+        error: String(parsed?.error ?? "Pricing could not be generated."),
+        code,
+        requiresSupportTicket: true,
+        traceId,
+      },
+      { status: resp.status >= 400 ? resp.status : 500 },
+    );
   } catch (err) {
-    const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Failed" }, { status });
+    const traceId = randomUUID();
+    return NextResponse.json(
+      {
+        error: "Pricing could not be generated.",
+        code: "AI_RUNTIME_ERROR",
+        requiresSupportTicket: true,
+        traceId,
+      },
+      { status: 500 },
+    );
   }
 }
 

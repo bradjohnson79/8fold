@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { PayoutMethodSetup } from "../../../../../components/PayoutMethodSetup";
 import { TradeCategoryLabel, TradeCategorySchema } from "@8fold/shared";
 import { ProgressSteps } from "@/components/ProgressSteps";
 import { MapLocationSelector } from "@/components/location/MapLocationSelector";
+import { StripeExpressPayoutSetup } from "@/components/StripeExpressPayoutSetup";
 
 type ContractorProfile = {
   // identity
@@ -305,6 +305,8 @@ export default function ContractorProfilePage() {
         </div>
       </div>
 
+      <StripeExpressPayoutSetup />
+
       <div className="mt-6 border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-900">Address</div>
         <div className="mt-2 text-sm text-gray-600">Enter your address (US/Canada). We verify it on save.</div>
@@ -443,8 +445,6 @@ export default function ContractorProfilePage() {
         </button>
         {!requiredOk ? <div className="mt-2 text-xs text-gray-500">Fill required fields and confirm your trade start date to enable saving.</div> : null}
       </div>
-
-      <PayoutMethodSetup title="Payout setup" subtitle="Choose how you’d like to receive contractor payouts." />
 
       {confirmOpen ? (
         <ConfirmModal

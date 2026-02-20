@@ -14,7 +14,7 @@ export function RouterDashboardLayoutClient(props: { children: React.ReactNode }
     { href: "/app/router/rewards", label: "Referral Rewards" },
     { href: "/app/router/support", label: "Support" },
     { href: "/app/router/support/inbox", label: "Support Inbox" },
-    { href: "/app/router/profile", label: "Profile" },
+    { href: "/app/router/profile", label: "Profile & Payout" },
   ];
 
   return (
