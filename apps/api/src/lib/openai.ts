@@ -19,3 +19,25 @@ export function getOpenAiClient(): OpenAI {
 }
 
 export const OPENAI_APPRAISAL_MODEL = "gpt-5-nano" as const;
+
+/**
+ * Minimal connectivity test using same client/config as appraisal.
+ * Used by internal ai-key-test harness to validate runtime.
+ */
+export async function verifyOpenAiConnection(): Promise<{ ping: string }> {
+  const client = getOpenAiClient();
+  const raw = (await client.responses.create({
+    model: OPENAI_APPRAISAL_MODEL,
+    input: [
+      { role: "system", content: "Return only valid JSON. No other text." },
+      { role: "user", content: 'Return JSON: {"ping":"pong"}' },
+    ],
+    reasoning: { effort: "low" },
+    max_output_tokens: 100,
+  })) as { output_text?: string };
+  const content = typeof raw?.output_text === "string" ? raw.output_text : "";
+  if (!content) throw new Error("OpenAI returned empty content");
+  const parsed = JSON.parse(content) as { ping?: string };
+  if (parsed?.ping !== "pong") throw new Error(`Unexpected response: ${JSON.stringify(parsed)}`);
+  return { ping: parsed.ping };
+}
