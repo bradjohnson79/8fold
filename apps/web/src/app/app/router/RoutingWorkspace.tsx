@@ -52,11 +52,10 @@ type EarningsPayload = {
   }>;
 };
 
-type PayoutMethodProvider = "STRIPE" | "PAYPAL" | string;
+type PayoutMethodProvider = "STRIPE";
 
 function payoutMethodLabel(provider: PayoutMethodProvider | null): string {
   if (provider === "STRIPE") return "Stripe (Direct Bank Deposit)";
-  if (provider === "PAYPAL") return "PayPal";
   return "Pending";
 }
 
@@ -71,15 +70,11 @@ function payoutStatusForRouter(opts: {
   if (hasPaid) return "Sent — Payout initiated with provider";
   if (!hasPending) return "Pending";
 
-  if (opts.provider === "PAYPAL") return "Scheduled — Awaiting PayPal payout run (clearing window)";
   if (opts.provider === "STRIPE") return "Processing — Stripe direct deposit initiated";
   return "Pending";
 }
 
 function payoutStatusSuffix(provider: PayoutMethodProvider | null, statusLine: string): string {
-  if (provider === "PAYPAL" && statusLine.startsWith("Scheduled")) {
-    return " (Clearing period up to 3+ business days)";
-  }
   if (provider === "STRIPE" && statusLine.startsWith("Processing")) {
     return " (Direct deposit)";
   }
@@ -515,16 +510,8 @@ export function RoutingWorkspace() {
                             <div className="mt-1">
                               Payout Status:{" "}
                               <span className="font-semibold text-gray-900">
-                                {payoutMethod === "PAYPAL"
-                                  ? "Scheduled — Awaiting PayPal payout run (clearing window)"
-                                  : payoutMethod === "STRIPE"
-                                    ? "Processing — Stripe direct deposit initiated"
-                                    : "Pending"}
-                                {payoutMethod === "PAYPAL"
-                                  ? " (Clearing period up to 3+ business days)"
-                                  : payoutMethod === "STRIPE"
-                                    ? " (Direct deposit)"
-                                    : ""}
+                                {payoutMethod === "STRIPE" ? "Processing — Stripe direct deposit initiated" : "Pending"}
+                                {payoutMethod === "STRIPE" ? " (Direct deposit)" : ""}
                               </span>
                             </div>
                           </div>

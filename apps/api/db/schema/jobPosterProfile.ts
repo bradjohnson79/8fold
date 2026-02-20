@@ -25,6 +25,5 @@ export const jobPosterProfiles = dbSchema.table("JobPosterProfile", {
   payoutMethod: rolePayoutMethodEnum("payoutMethod"),
   payoutStatus: rolePayoutStatusEnum("payoutStatus").notNull().default("UNSET"),
   stripeAccountId: text("stripeAccountId"),
-  paypalEmail: text("paypalEmail"),
 });
 

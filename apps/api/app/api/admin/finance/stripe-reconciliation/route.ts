@@ -103,7 +103,6 @@ export async function GET(req: Request) {
           sentCount: sql<number>`sum(case when ${transferRecords.status} = 'SENT' then 1 else 0 end)::int`,
           failedCount: sql<number>`sum(case when ${transferRecords.status} in ('FAILED','REVERSED') then 1 else 0 end)::int`,
           stripeSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'STRIPE' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
-          paypalSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'PAYPAL' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
           platformRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'PLATFORM' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
         })
         .from(transferRecords),
@@ -113,7 +112,6 @@ export async function GET(req: Request) {
           sentCount: sql<number>`sum(case when ${transferRecords.status} = 'SENT' then 1 else 0 end)::int`,
           failedCount: sql<number>`sum(case when ${transferRecords.status} in ('FAILED','REVERSED') then 1 else 0 end)::int`,
           stripeSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'STRIPE' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
-          paypalSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'PAYPAL' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
           platformRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'PLATFORM' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
         })
         .from(transferRecords)

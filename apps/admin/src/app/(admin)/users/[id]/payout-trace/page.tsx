@@ -115,10 +115,6 @@ export default async function PayoutTracePage({ params }: { params: Promise<{ id
               <div>Stripe sent</div>
               <div style={{ fontWeight: 950 }}>{fmtMoney(totals?.stripeSentCents ?? 0)}</div>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div>PayPal credits</div>
-              <div style={{ fontWeight: 950 }}>{fmtMoney(totals?.paypalSentCents ?? 0)}</div>
-            </div>
           </div>
         </div>
 

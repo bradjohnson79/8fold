@@ -193,7 +193,7 @@ export async function POST(req: Request) {
       );
     }
     if (result.kind === "conflict") return NextResponse.json({ error: "Job routing changed; retry." }, { status: 409 });
-    // Release funds (Connect transfers / PayPal credit). Best-effort: completion approval is authoritative even if payout fails.
+    // Release funds (Stripe Connect transfers). Best-effort: completion approval is authoritative even if payout fails.
     try {
       await releaseJobFunds({ jobId: id, triggeredByUserId: user.userId });
     } catch {

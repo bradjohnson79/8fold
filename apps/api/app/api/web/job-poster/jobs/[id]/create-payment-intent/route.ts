@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
-import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingGuards";
 import { calculatePayoutBreakdown, PriceAdjustmentSchema } from "@8fold/shared";
-import { cancelPaymentIntent, createPaymentIntent } from "../../../../../../../src/payments/stripe";
+import { z } from "zod";
+import { logEvent } from "@/src/server/observability/log";
+import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingGuards";
+import { createPaymentIntent } from "../../../../../../../src/payments/stripe";
 import { rateLimit } from "../../../../../../../src/middleware/rateLimit";
 import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../../src/http/jobPosterRouteErrors";
 import { db } from "../../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
 import { jobs } from "../../../../../../../db/schema/job";
 import { jobPayments } from "../../../../../../../db/schema/jobPayment";
-import { z } from "zod";
 
 function idempotencyKeyForJobPayment(jobId: string, amountCents: number) {
   return `job_${jobId}_amount_${amountCents}`;
@@ -54,6 +55,21 @@ export async function POST(req: Request) {
     userId = user.userId;
     const id = getIdFromUrl(req);
     jobId = id || null;
+    const stripeMode = String(process.env.STRIPE_MODE ?? "test").trim().toLowerCase();
+    const stripeWebhookSecret = String(process.env.STRIPE_WEBHOOK_SECRET ?? "").trim();
+
+    if (!stripeWebhookSecret || stripeMode !== "test") {
+      return jobPosterRouteErrorResponse({
+        route,
+        errorType: "VALIDATION_ERROR",
+        status: 400,
+        err: new Error("Stripe webhook not configured"),
+        userId,
+        jobId,
+        extraJson: { code: "STRIPE_WEBHOOK_NOT_CONFIGURED" },
+      });
+    }
+
     const rl = rateLimit({
       key: `job_posting:create_payment_intent:${user.userId}`,
       limit: 5,
@@ -75,13 +91,11 @@ export async function POST(req: Request) {
       .select({
         id: jobs.id,
         status: jobs.status,
+        paymentStatus: jobs.paymentStatus,
         jobPosterUserId: jobs.jobPosterUserId,
         escrowLockedAt: jobs.escrowLockedAt,
         laborTotalCents: jobs.laborTotalCents,
         materialsTotalCents: jobs.materialsTotalCents,
-        transactionFeeCents: jobs.transactionFeeCents,
-        tradeCategory: jobs.tradeCategory,
-        priceMedianCents: jobs.priceMedianCents,
         country: jobs.country,
       })
       .from(jobs)
@@ -111,26 +125,62 @@ export async function POST(req: Request) {
       });
     }
 
-    // Escrow lock: money fields immutable after capture.
-    if (job.escrowLockedAt) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "VALIDATION_ERROR",
-        status: 409,
-        err: new Error("Payment already captured"),
-        userId,
-        jobId: job.id,
-      });
-    }
-
-    if (String(job.status) !== "DRAFT") {
+    if (job.escrowLockedAt || String(job.paymentStatus) === "FUNDED") {
       return jobPosterRouteErrorResponse({
         route,
         errorType: "VALIDATION_ERROR",
         status: 400,
-        err: new Error("Job must be DRAFT before creating payment intent"),
+        err: new Error("Job already funded"),
         userId,
         jobId: job.id,
+        extraJson: { code: "JOB_ALREADY_FUNDED" },
+      });
+    }
+
+    const allowedStatuses = new Set(["DRAFT", "READY_FOR_PAYMENT"]);
+    if (!allowedStatuses.has(String(job.status))) {
+      return jobPosterRouteErrorResponse({
+        route,
+        errorType: "VALIDATION_ERROR",
+        status: 400,
+        err: new Error("Job must be DRAFT or READY_FOR_PAYMENT before creating payment intent"),
+        userId,
+        jobId: job.id,
+        extraJson: { code: "INVALID_JOB_STATUS" },
+      });
+    }
+
+    const existingPayments = await db
+      .select({
+        id: jobPayments.id,
+        stripePaymentIntentId: jobPayments.stripePaymentIntentId,
+        status: jobPayments.status,
+      })
+      .from(jobPayments)
+      .where(eq(jobPayments.jobId, job.id))
+      .limit(1);
+    const existing = existingPayments[0] ?? null;
+
+    if (existing && String(existing.status) === "CAPTURED") {
+      return jobPosterRouteErrorResponse({
+        route,
+        errorType: "VALIDATION_ERROR",
+        status: 400,
+        err: new Error("Payment already captured for this job"),
+        userId,
+        jobId: job.id,
+        extraJson: { code: "JOB_PAYMENT_ALREADY_CAPTURED" },
+      });
+    }
+    if (existing && String(existing.status) === "PENDING") {
+      return jobPosterRouteErrorResponse({
+        route,
+        errorType: "VALIDATION_ERROR",
+        status: 400,
+        err: new Error("Payment intent already exists for this job"),
+        userId,
+        jobId: job.id,
+        extraJson: { code: "JOB_PAYMENT_ALREADY_PENDING" },
       });
     }
 
@@ -148,7 +198,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const { selectedPriceCents } = parsed.data;
     const availabilityRaw = (body as any)?.availability;
     const availabilityParsed =
       availabilityRaw == null ? { ok: true as const, value: null as any } : AvailabilitySchema.safeParse(availabilityRaw);
@@ -179,25 +228,21 @@ export async function POST(req: Request) {
             }
             return Object.keys(out).length ? out : null;
           })();
-    const stepCents = 5 * 100;
-    if (selectedPriceCents % stepCents !== 0) {
+    const laborCents = Number(job.laborTotalCents ?? 0);
+    if (!Number.isInteger(laborCents) || laborCents <= 0) {
       return jobPosterRouteErrorResponse({
         route,
         errorType: "VALIDATION_ERROR",
         status: 400,
-        err: new Error("Price step invalid"),
+        err: new Error("Invalid labor amount configured for job"),
         userId,
         jobId: job.id,
-        extraJson: { code: "INVALID_PRICE_INCREMENT" },
+        extraJson: { code: "INVALID_SERVER_LABOR_AMOUNT" },
       });
     }
 
-    // Pricing/appraisal fields are not present in the current Prisma schema.
-    // Keep payment intent creation non-blocking; validate only basic invariants.
-    const suggested = Math.max(0, Math.round((job.priceMedianCents ?? job.laborTotalCents ?? 0) / 100));
-
-    // Update job totals BEFORE creating PaymentIntent (Stripe mirrors our canonical intent).
-    const breakdown = calculatePayoutBreakdown(selectedPriceCents, job.materialsTotalCents);
+    // Deterministic amounting: server-side only.
+    const breakdown = calculatePayoutBreakdown(laborCents, job.materialsTotalCents);
     const amountCents = breakdown.totalJobPosterPaysCents;
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
       return jobPosterRouteErrorResponse({
@@ -213,8 +258,6 @@ export async function POST(req: Request) {
     await db
       .update(jobs)
       .set({
-        laborTotalCents: selectedPriceCents,
-        priceAdjustmentCents: selectedPriceCents - suggested * 100,
         transactionFeeCents: breakdown.transactionFeeCents,
         contractorPayoutCents: breakdown.contractorPayoutCents,
         routerEarningsCents: breakdown.routerEarningsCents,
@@ -226,69 +269,74 @@ export async function POST(req: Request) {
       })
       .where(eq(jobs.id, job.id));
 
-    // Create or reuse a Stripe PaymentIntent for a job (idempotent by (jobId, amountCents)).
-    // Preserves existing behavior:
-    // - cancel prior pending intent if amount changes
-    // - upsert JobPayment row with PENDING state
-    const existingPayments = await db
-      .select({
-        id: jobPayments.id,
-        stripePaymentIntentId: jobPayments.stripePaymentIntentId,
-        status: jobPayments.status,
-        amountCents: jobPayments.amountCents,
-      })
-      .from(jobPayments)
-      .where(eq(jobPayments.jobId, job.id))
-      .limit(1);
-    const existing = existingPayments[0] ?? null;
+    const idempotencyKey = idempotencyKeyForJobPayment(job.id, amountCents);
+    const stripeCurrency = (job as any)?.country === "CA" ? "cad" : "usd";
 
-    if (existing && String(existing.status) === "PENDING" && Number(existing.amountCents ?? 0) !== amountCents) {
-      try {
-        await cancelPaymentIntent(String(existing.stripePaymentIntentId ?? ""));
-      } catch {
-        // best effort (keep behavior identical)
-      }
-      await db.delete(jobPayments).where(eq(jobPayments.jobId, job.id));
+    if (stripeMode === "test") {
+      // eslint-disable-next-line no-console
+      console.log(
+        JSON.stringify({
+          source: "payments.create_payment_intent",
+          jobId: job.id,
+          totalAmount: amountCents,
+          breakdown,
+          currency: stripeCurrency,
+        }),
+      );
     }
 
-    const idempotencyKey = idempotencyKeyForJobPayment(job.id, amountCents);
-    // Stripe currency is per-country; keep it consistent with the job.
-    const stripeCurrency = (job as any)?.country === "CA" ? "cad" : "usd";
-    const pi = await createPaymentIntent(amountCents, {
-      currency: stripeCurrency,
-      idempotencyKey,
-      metadata: {
-        type: "job_escrow",
+    let pi: Awaited<ReturnType<typeof createPaymentIntent>>;
+    try {
+      pi = await createPaymentIntent(amountCents, {
+        currency: stripeCurrency,
+        idempotencyKey,
+        captureMethod: "automatic",
+        confirmationMethod: "automatic",
+        description: `8Fold Job Escrow – ${job.id}`,
+        metadata: {
+          type: "job_escrow",
+          jobId: job.id,
+          jobPosterUserId: user.userId,
+        },
+      });
+    } catch (err) {
+      const ref = `stripe_pi_${randomUUID()}`;
+      logEvent({
+        level: "error",
+        event: "stripe.payment_intent_create_failed",
+        route,
+        method: "POST",
+        status: 500,
+        code: "STRIPE_PAYMENT_INTENT_CREATE_FAILED",
+        context: {
+          ref,
+          jobId: job.id,
+          userId: user.userId,
+          amountCents,
+          currency: stripeCurrency,
+          message: err instanceof Error ? err.message : "unknown",
+        },
+      });
+      return jobPosterRouteErrorResponse({
+        route,
+        errorType: "INTERNAL_ERROR",
+        status: 500,
+        err: new Error(`Stripe payment creation failed (ref: ${ref})`),
+        userId,
         jobId: job.id,
-        posterId: user.userId,
-        jobPosterUserId: user.userId,
-      },
+      });
+    }
+
+    await db.insert(jobPayments).values({
+      id: randomUUID(),
+      jobId: job.id,
+      stripePaymentIntentId: pi.paymentIntentId,
+      stripePaymentIntentStatus: pi.status,
+      amountCents,
+      status: "PENDING",
+      updatedAt: new Date(),
     });
 
-    if (existingPayments.length === 0) {
-      await db.insert(jobPayments).values({
-        id: randomUUID(),
-        jobId: job.id,
-        stripePaymentIntentId: pi.paymentIntentId,
-        stripePaymentIntentStatus: pi.status,
-        amountCents,
-        status: "PENDING",
-        updatedAt: new Date(),
-      });
-    } else {
-      await db
-        .update(jobPayments)
-        .set({
-          stripePaymentIntentId: pi.paymentIntentId,
-          stripePaymentIntentStatus: pi.status,
-          amountCents,
-          status: "PENDING",
-          updatedAt: new Date(),
-        })
-        .where(eq(jobPayments.jobId, job.id));
-    }
-
-    // Audit logging (PAYMENT_INTENT_CREATED)
     await db.insert(auditLogs).values({
       id: randomUUID(),
       actorUserId: user.userId,
@@ -297,18 +345,30 @@ export async function POST(req: Request) {
       entityId: job.id,
       metadata: {
         stripePaymentIntentId: pi.paymentIntentId,
-        selectedPriceCents,
-        priceAdjustmentCents: selectedPriceCents - suggested * 100,
+        selectedPriceCents: laborCents,
         totalCents: amountCents,
       },
     });
 
     return NextResponse.json({
       clientSecret: pi.clientSecret,
-      paymentIntentId: pi.paymentIntentId,
-      totalCents: amountCents,
     });
   } catch (err) {
-    return jobPosterRouteErrorFromUnknown({ route, err, userId, jobId });
+    const ref = `payment_intent_route_${randomUUID()}`;
+    logEvent({
+      level: "error",
+      event: "job_poster.create_payment_intent.failed",
+      route,
+      method: "POST",
+      status: 500,
+      code: "CREATE_PAYMENT_INTENT_FAILED",
+      context: {
+        ref,
+        userId,
+        jobId,
+        message: err instanceof Error ? err.message : "unknown",
+      },
+    });
+    return jobPosterRouteErrorFromUnknown({ route, err: Object.assign(err as object, { ref }), userId, jobId });
   }
 }

@@ -104,10 +104,9 @@ function findEscrowForJob(escrows: EscrowRow[], jobId: string) {
 
 function expectedLegLedgerSignature(leg: TransferRecordRow) {
   const role = normalizeUpper(leg.role);
-  const method = normalizeUpper(leg.method);
-  const bucket = role === "PLATFORM" ? "AVAILABLE" : method === "PAYPAL" ? "AVAILABLE" : "PAID";
+  const bucket = role === "PLATFORM" ? "AVAILABLE" : "PAID";
   const type = role === "PLATFORM" ? "BROKER_FEE" : "PAYOUT";
-  const stripeRef = role === "PLATFORM" ? null : method === "PAYPAL" ? leg.externalRef : leg.stripeTransferId;
+  const stripeRef = role === "PLATFORM" ? null : leg.stripeTransferId;
   return { bucket, type, stripeRef };
 }
 
@@ -383,7 +382,7 @@ export function auditPayoutIntegrity(input: AuditInput): {
     // Ledger evidence: ensure each leg has a matching entry (release engine requirement).
     for (const leg of legs) {
       if (!hasLedgerEvidenceForLeg(ledger, leg)) {
-        const ref = normalizeUpper(leg.role) === "PLATFORM" ? null : normalizeUpper(leg.method) === "PAYPAL" ? leg.externalRef : leg.stripeTransferId;
+        const ref = normalizeUpper(leg.role) === "PLATFORM" ? null : leg.stripeTransferId;
         violations.push({
           type: "LEDGER_EVIDENCE_MISSING",
           severity: "HIGH",

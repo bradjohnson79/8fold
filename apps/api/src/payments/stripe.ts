@@ -18,6 +18,9 @@ export async function createPaymentIntent(
     currency: "usd" | "cad";
     metadata?: Record<string, string>;
     idempotencyKey: string;
+    description?: string;
+    captureMethod?: "automatic" | "manual";
+    confirmationMethod?: "automatic" | "manual";
   }
 ): Promise<PaymentIntentResult> {
   if (!stripe) {
@@ -35,6 +38,9 @@ export async function createPaymentIntent(
       amount: amountCents,
       currency,
       metadata: opts.metadata ?? {},
+      description: opts.description,
+      capture_method: opts.captureMethod ?? "automatic",
+      confirmation_method: opts.confirmationMethod ?? "automatic",
       // Escrow-style approach:
       // - We capture funds into the platform account
       // - We DO NOT split at charge time (transfers happen later, controlled by backend)

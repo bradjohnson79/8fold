@@ -104,11 +104,11 @@ export default function HowToEarnPage() {
                   <p>After the job is completed and approved:</p>
                   <ul className="list-disc ml-6 mt-3 space-y-1">
                     <li>Your routing fee is credited</li>
-                    <li>Choose Stripe (fastest) or PayPal</li>
+                    <li>Payouts are handled through Stripe direct deposit</li>
                     <li>Full visibility into payout status</li>
                   </ul>
                   <p className="mt-3 text-sm text-gray-600">
-                    Stripe is fastest. PayPal may take up to 3+ business days.
+                    8Fold uses Stripe for secure escrow and payouts.
                   </p>
                 </>
               }

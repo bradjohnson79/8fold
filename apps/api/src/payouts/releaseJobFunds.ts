@@ -18,7 +18,7 @@ import { getStripeModeFromEnv } from "@/src/stripe/mode";
 import { isRefundInitiatedOrCompleteJobPayment } from "./releaseSafetyGuards";
 
 type RoleLeg = "CONTRACTOR" | "ROUTER" | "PLATFORM";
-type Method = "STRIPE" | "PAYPAL";
+type Method = "STRIPE";
 type Status = "PENDING" | "SENT" | "FAILED" | "REVERSED";
 
 export type ReleaseLegResult =
@@ -100,7 +100,10 @@ async function payoutMethodForUserInTx(
       .orderBy(desc(payoutMethods.createdAt))
       .limit(1);
     const provider = String(rows[0]?.provider ?? "").toUpperCase();
-    return provider === "PAYPAL" ? "PAYPAL" : "STRIPE";
+    if (provider && provider !== "STRIPE") {
+      throw Object.assign(new Error("Router payout provider must be STRIPE"), { status: 409, code: "ROUTER_PROVIDER_NOT_STRIPE" });
+    }
+    return "STRIPE";
   }
 
   const rows = await tx
@@ -109,7 +112,10 @@ async function payoutMethodForUserInTx(
     .where(eq(contractorAccounts.userId, userId))
     .limit(1);
   const pm = String(rows[0]?.payoutMethod ?? "").toUpperCase();
-  return pm === "PAYPAL" ? "PAYPAL" : "STRIPE";
+  if (pm && pm !== "STRIPE") {
+    throw Object.assign(new Error("Contractor payout provider must be STRIPE"), { status: 409, code: "CONTRACTOR_PROVIDER_NOT_STRIPE" });
+  }
+  return "STRIPE";
 }
 
 async function stripeDestinationForLegInTx(
@@ -441,7 +447,7 @@ export async function releaseJobFunds(input: {
     if (existing && String(existing.status) === "SENT") {
       legResults.push({
         role: leg.role,
-        method: (String(existing.method ?? method).toUpperCase() === "PAYPAL" ? "PAYPAL" : "STRIPE") as any,
+        method: "STRIPE",
         status: "SENT",
         amountCents,
         currency,
@@ -460,18 +466,6 @@ export async function releaseJobFunds(input: {
         amountCents,
         currency,
         stripeTransferId: null,
-      });
-      continue;
-    }
-
-    if (method === "PAYPAL") {
-      legResults.push({
-        role: leg.role,
-        method,
-        status: "SENT",
-        amountCents,
-        currency,
-        externalRef: `paypal_credit:${jobId}:${leg.role}`,
       });
       continue;
     }
@@ -551,6 +545,10 @@ export async function releaseJobFunds(input: {
         } as any)
         .returning({ id: escrows.id, status: escrows.status, amountCents: escrows.amountCents, currency: escrows.currency });
       escrow = inserted[0] ?? null;
+      if (escrow && (process.env.STRIPE_MODE === "test" || String(process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_test_"))) {
+        // eslint-disable-next-line no-console
+        console.log("Escrow created for jobId=", jobId);
+      }
     } else {
       // If the job is funded, escrow must not be PENDING.
       const st = String(escrow.status ?? "");
@@ -591,6 +589,10 @@ export async function releaseJobFunds(input: {
           stripeRef: stripePaymentIntentId,
           memo: "Escrow funded (release engine backfill)",
         } as any);
+        if (process.env.STRIPE_MODE === "test" || String(process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_test_")) {
+          // eslint-disable-next-line no-console
+          console.log("Ledger entry created for jobId=", jobId, "(ESCROW_FUND)");
+        }
       }
     }
 
@@ -633,7 +635,7 @@ export async function releaseJobFunds(input: {
           } as any,
         });
 
-      // Ledger evidence: required for both Stripe and PayPal legs.
+      // Ledger evidence: Stripe-only payout rail.
       if (leg.role === "PLATFORM") {
         // Platform retained accounting entry (credit AVAILABLE).
         await ensureLedgerEvidenceInTx(tx, {
@@ -647,16 +649,14 @@ export async function releaseJobFunds(input: {
           type: "BROKER_FEE",
         });
       } else if (status === "SENT") {
-        const bucket = method === "PAYPAL" ? "AVAILABLE" : "PAID";
-        const ref = method === "PAYPAL" ? externalRef : stripeTransferId;
         await ensureLedgerEvidenceInTx(tx, {
           userId: leg.userId,
           jobId,
           amountCents: leg.amountCents,
           currency,
-          bucket,
-          stripeRef: ref,
-          memo: method === "PAYPAL" ? "PayPal internal credit (release)" : "Stripe transfer payout (release)",
+          bucket: "PAID",
+          stripeRef: stripeTransferId,
+          memo: "Stripe transfer payout (release)",
         });
       }
     }

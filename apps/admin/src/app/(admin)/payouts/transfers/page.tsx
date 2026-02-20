@@ -112,7 +112,7 @@ export default async function TransfersPage({
     <div>
       <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950, letterSpacing: 0.2 }}>Transfers</h1>
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)", maxWidth: 980 }}>
-        Filterable view of transfer legs created by `releaseJobFunds()` (Stripe transfers + PayPal internal credits).
+        Filterable view of transfer legs created by `releaseJobFunds()` (Stripe transfers).
       </p>
 
       <form method="GET" style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -125,7 +125,6 @@ export default async function TransfersPage({
         <select name="method" defaultValue={method} style={selectStyle} aria-label="Method">
           <option value="">All methods</option>
           <option value="STRIPE">STRIPE</option>
-          <option value="PAYPAL">PAYPAL</option>
         </select>
         <select name="status" defaultValue={status} style={selectStyle} aria-label="Status">
           <option value="">All statuses</option>

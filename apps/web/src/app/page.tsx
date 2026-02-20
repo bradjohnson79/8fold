@@ -295,7 +295,7 @@ export default async function HomePage() {
                   Weekly Payouts
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  Direct deposit and PayPal available for seamless withdrawals.
+                  Stripe-powered direct deposit for seamless withdrawals.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0">

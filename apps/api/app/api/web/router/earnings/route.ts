@@ -86,7 +86,7 @@ export async function GET(req: Request) {
       totals,
       paymentSchedule: {
         cadence: "WEEKLY",
-        note: "Stripe (Direct Bank Deposit) payouts are typically processed immediately or next business day once a job is completed. PayPal payouts may have a clearing period of 3 or more business days after job completion before funds are transferred."
+        note: "8Fold uses Stripe for secure escrow and payouts. Direct deposit payouts are typically processed immediately or next business day once a job is completed."
       },
       history
     });

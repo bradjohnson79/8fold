@@ -15,7 +15,7 @@ export const transferRecords = dbSchema.table("TransferRecord", {
     .references(() => users.id),
   amountCents: integer("amountCents").notNull(),
   currency: text("currency").notNull(), // "USD" | "CAD"
-  method: text("method").notNull(), // "STRIPE" | "PAYPAL"
+  method: text("method").notNull(), // "STRIPE"
   stripeTransferId: text("stripeTransferId"),
   externalRef: text("externalRef"),
   status: text("status").notNull(), // "PENDING" | "SENT" | "FAILED" | "REVERSED"

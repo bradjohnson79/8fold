@@ -43,7 +43,6 @@ export const contractorAccounts = dbSchema.table("contractor_accounts", {
   payoutMethod: text("payoutMethod"),
   payoutStatus: text("payoutStatus"),
   stripeAccountId: text("stripeAccountId"),
-  paypalEmail: text("paypalEmail"),
 
   isApproved: boolean("isApproved").default(false),
   jobsCompleted: integer("jobsCompleted").default(0),

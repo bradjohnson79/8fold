@@ -89,7 +89,6 @@ async function main() {
     "notifyViaSms",
 
     // Payout legacy (moved to PayoutMethod table details JSON)
-    "paypalEmail",
     "payoutMethod",
     "payoutStatus",
     "stripeAccountId",

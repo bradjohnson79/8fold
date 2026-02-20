@@ -85,7 +85,6 @@ export async function GET(req: Request) {
       pendingCents: sumBy((r) => r.status === "PENDING"),
       failedCents: sumBy((r) => r.status === "FAILED"),
       stripeSentCents: sumBy((r) => r.status === "SENT" && r.method === "STRIPE"),
-      paypalSentCents: sumBy((r) => r.status === "SENT" && r.method === "PAYPAL"),
     };
 
     const walletRows = await db
@@ -106,7 +105,7 @@ export async function GET(req: Request) {
     }
 
     // Sanity: transfers marked SENT should have a matching PAYOUT credit ledger row.
-    const sentLegs = items.filter((r) => r.status === "SENT" && (r.method === "STRIPE" || r.method === "PAYPAL"));
+    const sentLegs = items.filter((r) => r.status === "SENT" && r.method === "STRIPE");
     let missingLedgerEvidence = 0;
     for (const t of sentLegs.slice(0, 250)) {
       const ref = t.method === "STRIPE" ? t.stripeTransferId : t.externalRef;
