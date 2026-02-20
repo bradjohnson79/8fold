@@ -1,8 +1,10 @@
 import { getTradeDelta } from "./tradeDeltas";
 import { GPT_MODEL } from "@8fold/shared";
 import type { JobType, TradeCategory } from "../types/dbEnums";
+import crypto from "node:crypto";
 
 const MODEL = GPT_MODEL;
+const MAX_REASONABLE_THRESHOLD_CENTS = 5_000_000;
 
 export type PriceAppraisalInput = {
   tradeCategory: TradeCategory;
@@ -25,29 +27,47 @@ export type PriceAppraisalResult = {
   reasoning: string;
 };
 
-/**
- * Fallback pricing when AI fails (trade-based defaults)
- */
-const FALLBACK_PRICES: Partial<Record<TradeCategory, number>> = {
-  JUNK_REMOVAL: 330_00,
-  PLUMBING: 250_00,
-  DRYWALL: 450_00,
-  JANITORIAL_CLEANING: 180_00,
-  PAINTING: 420_00,
-  ELECTRICAL: 275_00,
-  LANDSCAPING: 350_00,
-  APPLIANCE: 225_00,
-};
+export class AiAppraisalError extends Error {
+  code: "AI_CONFIG_MISSING" | "AI_RESPONSE_INVALID" | "AI_RUNTIME_ERROR";
+  traceId: string;
+  status: 500 | 502;
+  rawResponse?: unknown;
+  constructor(args: {
+    message: string;
+    code: "AI_CONFIG_MISSING" | "AI_RESPONSE_INVALID" | "AI_RUNTIME_ERROR";
+    traceId: string;
+    status: 500 | 502;
+    rawResponse?: unknown;
+  }) {
+    super(args.message);
+    this.name = "AiAppraisalError";
+    this.code = args.code;
+    this.traceId = args.traceId;
+    this.status = args.status;
+    this.rawResponse = args.rawResponse;
+  }
+}
 
-function getFallbackPrice(tradeCategory: TradeCategory): number {
-  return FALLBACK_PRICES[tradeCategory] ?? 300_00; // Default $300
+function fail(args: {
+  message: string;
+  code: "AI_CONFIG_MISSING" | "AI_RESPONSE_INVALID" | "AI_RUNTIME_ERROR";
+  status: 500 | 502;
+  rawResponse?: unknown;
+}): never {
+  throw new AiAppraisalError({
+    message: args.message,
+    code: args.code,
+    status: args.status,
+    traceId: crypto.randomUUID(),
+    rawResponse: args.rawResponse,
+  });
 }
 
 function buildAppraisalPrompt(input: PriceAppraisalInput): string {
   const junkItemsText = input.junkHaulingItems && input.junkHaulingItems.length > 0
-    ? `\nJunk hauling items:\n${input.junkHaulingItems.map(item => 
-        `- ${item.category}: ${item.item} (qty ${item.quantity})${item.notes ? ` — ${item.notes}` : ""}`
-      ).join("\n")}`
+    ? `\nJunk hauling items:\n${input.junkHaulingItems.map(item =>
+      `- ${item.category}: ${item.item} (qty ${item.quantity})${item.notes ? ` — ${item.notes}` : ""}`
+    ).join("\n")}`
     : "";
 
   return `You are a professional pricing appraiser for 8Fold Local, a marketplace for local service jobs.
@@ -74,21 +94,19 @@ Return ONLY valid JSON, no markdown, no code blocks. Example:
 }
 
 /**
- * Appraise job price using GPT-5 nano
+ * Appraise job price using GPT-5 nano.
+ * Hard-fails on config/runtime/invalid-model-output conditions.
  */
 export async function appraiseJobPrice(
   input: PriceAppraisalInput
 ): Promise<PriceAppraisalResult> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
-    // Fallback if API key missing
-    const fallbackPrice = getFallbackPrice(input.tradeCategory);
-    const delta = getTradeDelta(input.tradeCategory);
-    return {
-      priceMedianCents: fallbackPrice,
-      allowedDeltaCents: delta,
-      reasoning: "Fallback pricing (OpenAI API key not configured)",
-    };
+    fail({
+      message: "AI appraisal system configuration error.",
+      code: "AI_CONFIG_MISSING",
+      status: 500,
+    });
   }
 
   const prompt = buildAppraisalPrompt(input);
@@ -97,7 +115,7 @@ export async function appraiseJobPrice(
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${key}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -112,49 +130,75 @@ export async function appraiseJobPrice(
             content: prompt,
           },
         ],
-        temperature: 0.3, // Lower temperature for more consistent pricing
+        temperature: 0.3,
         max_tokens: 200,
       }),
     });
 
     if (!resp.ok) {
-      const json = await resp.json().catch(() => ({}));
-      throw new Error(json?.error?.message || "OpenAI request failed");
+      const rawResponse = await resp.json().catch(() => ({}));
+      fail({
+        message: String(rawResponse?.error?.message || "OpenAI request failed"),
+        code: "AI_RUNTIME_ERROR",
+        status: 502,
+        rawResponse,
+      });
     }
 
-    const json = await resp.json();
-    const content = json?.choices?.[0]?.message?.content;
+    const rawResponse = await resp.json();
+    const content = rawResponse?.choices?.[0]?.message?.content;
     if (!content) {
-      throw new Error("No content in OpenAI response");
+      fail({
+        message: "AI appraisal returned empty content.",
+        code: "AI_RESPONSE_INVALID",
+        status: 502,
+        rawResponse,
+      });
     }
 
-    // Parse JSON response (may be wrapped in markdown code blocks)
-    const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    const parsed = JSON.parse(cleaned);
+    const cleaned = String(content).replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
-    const priceMedianCents = Math.round(Number(parsed.price_median));
-    const reasoning = String(parsed.reasoning || "").slice(0, 200); // Cap at 200 chars
-
-    if (!Number.isFinite(priceMedianCents) || priceMedianCents <= 0) {
-      throw new Error("Invalid price_median in response");
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      fail({
+        message: "AI appraisal returned non-JSON content.",
+        code: "AI_RESPONSE_INVALID",
+        status: 502,
+        rawResponse: content,
+      });
     }
 
-    const allowedDeltaCents = getTradeDelta(input.tradeCategory);
+    const priceMedianCents = Number(parsed?.price_median);
+    const reasoning = String(parsed?.reasoning ?? "").slice(0, 200);
+
+    const invalid =
+      !Number.isFinite(priceMedianCents) ||
+      priceMedianCents <= 0 ||
+      priceMedianCents >= MAX_REASONABLE_THRESHOLD_CENTS;
+
+    if (invalid) {
+      fail({
+        message: "AI appraisal returned an invalid result.",
+        code: "AI_RESPONSE_INVALID",
+        status: 502,
+        rawResponse: parsed,
+      });
+    }
 
     return {
-      priceMedianCents,
-      allowedDeltaCents,
+      priceMedianCents: Math.round(priceMedianCents),
+      allowedDeltaCents: getTradeDelta(input.tradeCategory),
       reasoning: reasoning || "AI-generated pricing",
     };
   } catch (err) {
-    // Fallback on any error
-    const fallbackPrice = getFallbackPrice(input.tradeCategory);
-    const delta = getTradeDelta(input.tradeCategory);
-    console.error("[aiAppraisal] Error, using fallback:", err);
-    return {
-      priceMedianCents: fallbackPrice,
-      allowedDeltaCents: delta,
-      reasoning: `Fallback pricing (error: ${err instanceof Error ? err.message : "unknown"})`,
-    };
+    if (err instanceof AiAppraisalError) throw err;
+    fail({
+      message: "AI appraisal service failure.",
+      code: "AI_RUNTIME_ERROR",
+      status: 502,
+      rawResponse: err,
+    });
   }
 }

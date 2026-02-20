@@ -9,7 +9,15 @@ import { supportTickets } from "@/db/schema/supportTicket";
 
 const SupportTicketStatusSchema = z.enum(["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]);
 const SupportTicketTypeSchema = z.enum(["HELP", "DISPUTE"]);
-const SupportTicketCategorySchema = z.enum(["PRICING", "JOB_POSTING", "ROUTING", "CONTRACTOR", "PAYOUTS", "OTHER"]);
+const SupportTicketCategorySchema = z.enum([
+  "PRICING",
+  "JOB_POSTING",
+  "ROUTING",
+  "CONTRACTOR",
+  "PAYOUTS",
+  "AI_APPRAISAL_FAILURE",
+  "OTHER",
+]);
 const SupportTicketPrioritySchema = z.enum(["LOW", "NORMAL", "HIGH"]);
 
 const QuerySchema = z.object({

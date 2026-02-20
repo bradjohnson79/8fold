@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import crypto from "node:crypto";
 import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingGuards";
 import { db } from "../../../../../../../db/drizzle";
 import { jobs } from "../../../../../../../db/schema/job";
 import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../../src/http/jobPosterRouteErrors";
-import { appraiseJobTotalWithAi } from "../../../../../../../src/pricing/jobPricingAppraisal";
+import { appraiseJobTotalWithAi, type JobPricingAppraisalInput } from "../../../../../../../src/pricing/jobPricingAppraisal";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -13,20 +14,7 @@ function getIdFromUrl(req: Request): string {
   return idx >= 0 ? (parts[idx + 1] ?? "") : "";
 }
 
-function baselineTotalDollarsForTrade(tradeCategory: string): number {
-  const t = String(tradeCategory || "").toUpperCase();
-  if (t.includes("JUNK")) return 350;
-  if (t.includes("PLUMB")) return 275;
-  if (t.includes("DRYWALL")) return 450;
-  if (t.includes("JANITOR") || t.includes("CLEAN")) return 200;
-  if (t.includes("PAINT")) return 425;
-  if (t.includes("ELECT")) return 300;
-  if (t.includes("LAND")) return 375;
-  if (t.includes("ROOF")) return 650;
-  if (t.includes("MOV")) return 500;
-  if (t.includes("FURNITURE")) return 250;
-  return 300;
-}
+const MAX_REASONABLE_THRESHOLD_DOLLARS = 50_000;
 
 export async function POST(req: Request) {
   const route = "POST /api/web/job-poster/drafts/:id/start-appraisal";
@@ -119,50 +107,108 @@ export async function POST(req: Request) {
       });
     }
 
-    const baseline = baselineTotalDollarsForTrade(String(full.tradeCategory ?? ""));
+    if (!process.env.OPENAI_API_KEY) {
+      const traceId = crypto.randomUUID();
+      // eslint-disable-next-line no-console
+      console.error("❌ AI APPRAISAL CONFIG MISSING", { traceId, route, jobId: full.id, userId });
+      return NextResponse.json(
+        {
+          error: "AI appraisal system configuration error.",
+          code: "AI_CONFIG_MISSING",
+          traceId,
+        },
+        { status: 500 },
+      );
+    }
+
     const currency = full.country === "CA" ? "CAD" : "USD";
     const items = Array.isArray(full.junkHaulingItems) ? (full.junkHaulingItems as any[]) : [];
 
-    let suggestedTotal = baseline;
-    let low = Math.max(50, Math.round(baseline * 0.8));
-    let high = Math.max(low + 25, Math.round(baseline * 1.25));
-    let confidence: "low" | "medium" | "high" = "low";
-    let reasoning = "Baseline appraisal (AI unavailable).";
+    const aiInput: JobPricingAppraisalInput = {
+      title: String(full.title ?? "").trim(),
+      tradeCategory: String(full.tradeCategory ?? "").trim(),
+      city: String(full.city ?? "").trim() || "Unknown",
+      stateProvince,
+      country: full.country === "CA" ? "CA" : "US",
+      currency: full.country === "CA" ? "CAD" : "USD",
+      jobType: full.jobType === "regional" ? "regional" : "urban",
+      estimatedDurationHours: null,
+      description: String(full.scope ?? "").trim(),
+      items: items
+        .map((it) => ({
+          category: String(it?.category ?? "").trim(),
+          description: String(it?.description ?? it?.item ?? "").trim(),
+          quantity: Number(it?.quantity),
+          ...(String(it?.notes ?? "").trim() ? { notes: String(it?.notes ?? "").trim() } : {}),
+        }))
+        .filter((it) => it.category && it.description && Number.isFinite(it.quantity) && it.quantity >= 1),
+      propertyType: "unknown" as const,
+      currentTotalDollars: 0,
+    };
 
+    let ai: Awaited<ReturnType<typeof appraiseJobTotalWithAi>> | null = null;
     try {
-      const ai = await appraiseJobTotalWithAi({
-        title: String(full.title ?? "").trim(),
-        tradeCategory: String(full.tradeCategory ?? "").trim(),
-        city: String(full.city ?? "").trim() || "Unknown",
-        stateProvince,
-        country: full.country === "CA" ? "CA" : "US",
-        currency,
-        jobType: full.jobType === "regional" ? "regional" : "urban",
-        estimatedDurationHours: null,
-        description: String(full.scope ?? "").trim(),
-        items: items
-          .map((it) => ({
-            category: String(it?.category ?? "").trim(),
-            description: String(it?.description ?? it?.item ?? "").trim(),
-            quantity: Number(it?.quantity),
-            ...(String(it?.notes ?? "").trim() ? { notes: String(it?.notes ?? "").trim() } : {}),
-          }))
-          .filter((it) => it.category && it.description && Number.isFinite(it.quantity) && it.quantity >= 1),
-        propertyType: "unknown",
-        currentTotalDollars: baseline,
+      ai = await appraiseJobTotalWithAi(aiInput);
+    } catch (err) {
+      const traceId = crypto.randomUUID();
+      // eslint-disable-next-line no-console
+      console.error("❌ AI APPRAISAL FAILURE", {
+        traceId,
+        route,
+        jobId: full.id,
+        userId,
+        error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
+      return NextResponse.json(
+        {
+          error: "AI appraisal service failure.",
+          code: "AI_RUNTIME_ERROR",
+          traceId,
+        },
+        { status: 502 },
+      );
+    }
 
-      const out = ai?.output ?? null;
-      if (out) {
-        suggestedTotal = Math.max(0, Math.round(out.suggestedTotal));
-        low = Math.max(0, Math.round(out.priceRange.low));
-        high = Math.max(low + 1, Math.round(out.priceRange.high));
-        confidence = (out.confidence as any) === "high" ? "high" : (out.confidence as any) === "medium" ? "medium" : "low";
-        reasoning = String(out.reasoning ?? "").trim() || reasoning;
-      }
-    } catch (e) {
-      // Fall back to baseline (do not block posting flow).
-      reasoning = "Baseline appraisal (AI unavailable).";
+    const out = ai?.output ?? null;
+    const suggestedTotal = Number(out?.suggestedTotal);
+    const low = Number(out?.priceRange?.low);
+    const high = Number(out?.priceRange?.high);
+    const confidence = out?.confidence;
+    const reasoning = String(out?.reasoning ?? "").trim();
+
+    const invalid =
+      !out ||
+      !Number.isFinite(suggestedTotal) ||
+      suggestedTotal <= 0 ||
+      suggestedTotal >= MAX_REASONABLE_THRESHOLD_DOLLARS ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(high) ||
+      low <= 0 ||
+      high <= 0 ||
+      low >= high ||
+      suggestedTotal < low ||
+      suggestedTotal > high ||
+      !reasoning ||
+      (confidence !== "low" && confidence !== "medium" && confidence !== "high");
+
+    if (invalid) {
+      const traceId = crypto.randomUUID();
+      // eslint-disable-next-line no-console
+      console.error("❌ AI INVALID RESPONSE", {
+        traceId,
+        route,
+        jobId: full.id,
+        userId,
+        rawResponse: ai?.raw ?? null,
+      });
+      return NextResponse.json(
+        {
+          error: "AI appraisal returned an invalid result.",
+          code: "AI_RESPONSE_INVALID",
+          traceId,
+        },
+        { status: 502 },
+      );
     }
 
     const now = new Date();
@@ -171,12 +217,12 @@ export async function POST(req: Request) {
       .set({
         aiAppraisalStatus: "COMPLETED",
         aiAppraisedAt: now,
-        aiSuggestedTotal: suggestedTotal,
-        aiPriceRangeLow: low,
-        aiPriceRangeHigh: high,
-        aiConfidence: confidence,
+        aiSuggestedTotal: Math.round(suggestedTotal),
+        aiPriceRangeLow: Math.round(low),
+        aiPriceRangeHigh: Math.round(high),
+        aiConfidence: confidence as any,
         aiReasoning: reasoning,
-        priceMedianCents: suggestedTotal * 100,
+        priceMedianCents: Math.round(suggestedTotal) * 100,
       } as any)
       .where(and(eq(jobs.id, id), eq(jobs.archived, false), eq(jobs.jobPosterUserId, user.userId)));
 

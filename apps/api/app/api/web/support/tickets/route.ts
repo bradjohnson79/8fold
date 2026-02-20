@@ -9,7 +9,15 @@ import { disputeCases } from "@/db/schema/disputeCase";
 import { supportMessages } from "@/db/schema/supportMessage";
 import { supportTickets } from "@/db/schema/supportTicket";
 
-const SupportTicketCategorySchema = z.enum(["PRICING", "JOB_POSTING", "ROUTING", "CONTRACTOR", "PAYOUTS", "OTHER"]);
+const SupportTicketCategorySchema = z.enum([
+  "PRICING",
+  "JOB_POSTING",
+  "ROUTING",
+  "CONTRACTOR",
+  "PAYOUTS",
+  "AI_APPRAISAL_FAILURE",
+  "OTHER",
+]);
 
 function ok<T>(data: T, init?: { status?: number }) {
   return NextResponse.json({ ok: true, data }, { status: init?.status ?? 200 });

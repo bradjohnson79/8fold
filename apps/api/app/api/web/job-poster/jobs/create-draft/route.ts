@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { requireJobPosterReady } from "../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { JobPostingInputSchema } from "@8fold/shared";
-import { appraiseJobPrice } from "../../../../../../src/pricing/aiAppraisal";
+import { AiAppraisalError, appraiseJobPrice } from "../../../../../../src/pricing/aiAppraisal";
 import { validateJobLocationMatchesProfile } from "../../../../../../src/jobs/location";
 import { geocodeAddress } from "../../../../../../src/jobs/location";
 import { calculatePayoutBreakdown } from "@8fold/shared";
@@ -147,15 +147,42 @@ export async function POST(req: Request) {
     }
 
     // Perform AI appraisal (sync for v1; UI can show a loading state)
-    const appraisal = await appraiseJobPrice({
-      tradeCategory: tradeCategory as any,
-      jobType: jobType as any,
-      city,
-      province: stateProvince,
-      scope,
-      title: jobTitle,
-      junkHaulingItems: junkHaulingItems,
-    });
+    let appraisal: Awaited<ReturnType<typeof appraiseJobPrice>>;
+    try {
+      appraisal = await appraiseJobPrice({
+        tradeCategory: tradeCategory as any,
+        jobType: jobType as any,
+        city,
+        province: stateProvince,
+        scope,
+        title: jobTitle,
+        junkHaulingItems: junkHaulingItems,
+      });
+    } catch (err) {
+      if (err instanceof AiAppraisalError) {
+        // eslint-disable-next-line no-console
+        console.error(`❌ ${err.code === "AI_RESPONSE_INVALID" ? "AI INVALID RESPONSE" : "AI APPRAISAL FAILURE"}`, {
+          traceId: err.traceId,
+          code: err.code,
+          error: err.message,
+          rawResponse: err.rawResponse,
+        });
+        return NextResponse.json(
+          {
+            error:
+              err.code === "AI_CONFIG_MISSING"
+                ? "AI appraisal system configuration error."
+                : err.code === "AI_RESPONSE_INVALID"
+                  ? "AI appraisal returned an invalid result."
+                  : "AI appraisal service failure.",
+            code: err.code,
+            traceId: err.traceId,
+          },
+          { status: err.status },
+        );
+      }
+      throw err;
+    }
 
     const breakdown = calculatePayoutBreakdown(appraisal.priceMedianCents, 0);
 

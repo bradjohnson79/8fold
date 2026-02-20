@@ -1,15 +1,5 @@
 import { GPT_MODEL, JobPricingAppraisalOutputSchema, TradeCategoryLabel, formatStateProvince, type JobPricingAppraisalOutput } from "@8fold/shared";
 
-function roundToStep(n: number, step: number) {
-  if (!Number.isFinite(n)) return 0;
-  if (step <= 0) return Math.round(n);
-  return Math.round(n / step) * step;
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
 function stripCodeFences(s: string) {
   return s.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 }
@@ -327,25 +317,13 @@ export async function appraiseJobTotalWithAi(
 
   if (!data || !parsed) return null;
 
-  // Safety post-processing: conservative rounding + clamping.
-  // LOCKED: Job Poster pricing slider uses fixed $50 increments.
-  const step = 25;
-  const floor = 75;
-  let low = clamp(roundToStep(data.priceRange.low, step), floor, 50_000);
-  let high = clamp(roundToStep(data.priceRange.high, step), low + step, 60_000);
-  let suggested = clamp(roundToStep(data.suggestedTotal, step), low, high);
-
-  // Minimum price safeguard: enforce $75 floor after reasoning, before saving.
-  if (suggested < floor) suggested = floor;
-  if (low < floor) low = floor;
-  if (high < suggested) high = suggested;
-  if (low > suggested) low = suggested;
-  if (high <= low) high = low + step;
-
   const output: JobPricingAppraisalOutput = {
     ...data,
-    suggestedTotal: suggested,
-    priceRange: { low, high },
+    suggestedTotal: Number(data.suggestedTotal),
+    priceRange: {
+      low: Number(data.priceRange.low),
+      high: Number(data.priceRange.high),
+    },
     reasoning: String(data.reasoning ?? "").slice(0, 240),
   };
 

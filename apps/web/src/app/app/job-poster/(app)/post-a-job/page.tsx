@@ -68,6 +68,11 @@ type RepeatEligibleResponse =
 type RepeatStatusResponse = { request: any | null; repeatContractorDiscountCents: number };
 
 type WizardStep = 0 | 1 | 2 | 3 | 4;
+type AppraisalFailureInfo = {
+  code: string;
+  traceId: string;
+  timestamp: string;
+};
 
 function hasFullProfileAddress(p: Profile | null): boolean {
   if (!p) return false;
@@ -158,6 +163,8 @@ export default function JobPosterPostAJobPage() {
   const [selectedPriceCents, setSelectedPriceCents] = React.useState<number>(0);
   const [aiReasoning, setAiReasoning] = React.useState<string>("");
   const [appraising, setAppraising] = React.useState(false);
+  const [appraisalFailure, setAppraisalFailure] = React.useState<AppraisalFailureInfo | null>(null);
+  const [supportSubmitting, setSupportSubmitting] = React.useState(false);
   const [availability, setAvailability] = React.useState<Availability>({});
 
   const [repeatEligible, setRepeatEligible] = React.useState<RepeatEligibleResponse | null>(null);
@@ -470,6 +477,7 @@ export default function JobPosterPostAJobPage() {
 
     setLoading(true);
     setError("");
+    setAppraisalFailure(null);
     try {
       // 1) Persist draft immediately (non-abortable).
       const saveResp = await fetch("/api/app/job-poster/drafts/save", {
@@ -560,15 +568,22 @@ export default function JobPosterPostAJobPage() {
       });
       const apprJson = (await apprResp.json().catch(() => null)) as any;
       if (!apprResp.ok) {
-        if (apprResp.status === 202) {
+        if (apprResp.status >= 500) {
+          const code = String(apprJson?.code ?? "AI_RUNTIME_ERROR");
+          const traceId = String(apprJson?.traceId ?? "").trim() || "unknown";
+          setAppraisalFailure({
+            code,
+            traceId,
+            timestamp: new Date().toISOString(),
+          });
           setError(
-            "Sorry, our automated appraisal system is temporarily unavailable.\nWe’ve sent your job to our Admin team for a quick manual appraisal.\nYou’ll receive a message shortly with a secure link to continue."
+            "We were unable to generate an AI-based price estimate. Please submit a support ticket so we can investigate immediately."
           );
-          setTimeout(() => router.push("/app/job-poster"), 900);
           return;
         }
         throw new Error(String(apprJson?.error ?? "Appraisal failed"));
       }
+      setAppraisalFailure(null);
 
       const j = (apprJson as DraftResponse).job ?? (apprJson?.job ?? null);
       const suggestedCents = Math.round((Number(j?.aiSuggestedTotal ?? 0) || 0) * 100);
@@ -585,6 +600,54 @@ export default function JobPosterPostAJobPage() {
       appraisalAbortRef.current = null;
       setAppraising(false);
       setLoading(false);
+    }
+  }
+
+  async function submitAiFailureSupportTicket() {
+    if (!appraisalFailure) return;
+    setSupportSubmitting(true);
+    setError("");
+    try {
+      const meResp = await fetch("/api/app/me", { cache: "no-store" });
+      const meJson = await meResp.json().catch(() => null);
+      const userId = String(meJson?.data?.id ?? "unknown");
+
+      const payload = {
+        category: "AI Appraisal Failure",
+        errorCode: appraisalFailure.code,
+        traceId: appraisalFailure.traceId,
+        jobContext: {
+          jobId: jobId ?? null,
+          jobType: details.jobType,
+          tradeCategory: details.tradeCategory,
+          title: details.title.trim() || null,
+        },
+        userId,
+        timestamp: appraisalFailure.timestamp,
+      };
+
+      const resp = await fetch("/api/app/support/tickets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          category: "AI_APPRAISAL_FAILURE",
+          subject: `AI Appraisal Failure (${appraisalFailure.code})`,
+          message: JSON.stringify(payload, null, 2),
+        }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(String(json?.error ?? "Failed to submit support ticket"));
+
+      const ticketId = String(json?.data?.ticket?.id ?? json?.ticket?.id ?? "").trim();
+      if (ticketId) {
+        router.push(`/app/job-poster/support/tickets/${encodeURIComponent(ticketId)}`);
+        return;
+      }
+      router.push("/app/job-poster/support/help");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to submit support ticket");
+    } finally {
+      setSupportSubmitting(false);
     }
   }
 
@@ -772,6 +835,28 @@ export default function JobPosterPostAJobPage() {
           {submitAttempted && Object.keys(fieldErrors).length ? (
             <div className="md:col-span-2 border border-red-200 bg-red-50 text-red-800 rounded-xl p-4 text-sm font-semibold">
               Please fix the highlighted fields below to continue.
+            </div>
+          ) : null}
+          {appraisalFailure ? (
+            <div className="md:col-span-2 border border-red-300 bg-red-50 text-red-900 rounded-xl p-4">
+              <div className="font-bold">AI appraisal failed</div>
+              <div className="mt-1 text-sm">
+                We were unable to generate an AI-based price estimate. Please submit a support ticket so we can
+                investigate immediately.
+              </div>
+              <div className="mt-2 text-xs font-mono">
+                Error code: {appraisalFailure.code} | Trace ID: {appraisalFailure.traceId}
+              </div>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => void submitAiFailureSupportTicket()}
+                  disabled={supportSubmitting}
+                  className="bg-red-700 text-white hover:bg-red-800 disabled:bg-red-300 font-semibold px-4 py-2 rounded-lg"
+                >
+                  {supportSubmitting ? "Submitting..." : "Submit Support Ticket"}
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -1010,7 +1095,7 @@ export default function JobPosterPostAJobPage() {
           <div className="md:col-span-2">
             <button
               onClick={() => void createDraftFromDetails().catch((e) => setError(e instanceof Error ? e.message : "Failed"))}
-              disabled={loading || appraising || photoUploading || !validateDetails().ok}
+              disabled={loading || appraising || photoUploading || !validateDetails().ok || Boolean(appraisalFailure)}
               className="bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-5 py-2.5 rounded-lg"
             >
               {photoUploading ? "Uploading photos…" : appraising ? "Analyzing your job…" : "Start Pricing Appraisal for Your Job"}
