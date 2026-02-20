@@ -131,7 +131,6 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
       cancelled = true;
     };
   }, [enabled, inAppShell, onInbox, role, userId]);
-  }, [enabled, inAppShell, onInbox, role, userId]);
 
   return { inboxHref, hasUnread };
 }
