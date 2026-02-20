@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 
 type Role = "router" | "job-poster" | "contractor";
 
@@ -21,13 +22,25 @@ function setLastSeen(role: Role, ms: number) {
   window.localStorage.setItem(storageKey(role), String(ms));
 }
 
-async function fetchLatestUpdatedAt(role: Role): Promise<number> {
-  // Canonical support namespace (role determined by auth, not URL).
-  const url = "/api/app/support/tickets?take=1";
+async function safeFetchTickets(userId: string | null | undefined): Promise<any | null> {
+  if (!userId) return null;
+  try {
+    const res = await fetch("/api/app/support/tickets?take=1", {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    console.warn("Support tickets fetch failed");
+    return null;
+  }
+}
 
-  const resp = await fetch(url, { cache: "no-store" });
-  const json = (await resp.json().catch(() => null)) as any;
-  if (!resp.ok) return 0;
+async function fetchLatestUpdatedAt(userId: string | null | undefined): Promise<number> {
+  // Canonical support namespace (role determined by auth, not URL).
+  const json = (await safeFetchTickets(userId)) as any;
+  if (!json) return 0;
   const list = Array.isArray(json?.data?.tickets) ? json.data.tickets : Array.isArray(json?.tickets) ? json.tickets : [];
   const row = list[0] ?? null;
   const ts = row?.updatedAt ? Date.parse(String(row.updatedAt)) : NaN;
@@ -36,6 +49,7 @@ async function fetchLatestUpdatedAt(role: Role): Promise<number> {
 
 export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
   const pathname = usePathname();
+  const { userId } = useAuth();
   const enabled = opts?.enabled ?? true;
 
   const inboxHref = useMemo(() => {
@@ -65,11 +79,15 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
       setHasUnread(false);
       return;
     }
+    if (!userId) {
+      setHasUnread(false);
+      return;
+    }
     let cancelled = false;
 
     async function check() {
       if (onInbox) return;
-      const latest = await fetchLatestUpdatedAt(role);
+      const latest = await fetchLatestUpdatedAt(userId);
       const lastSeen = getLastSeen(role);
       if (cancelled) return;
       if (!lastSeen) {
@@ -82,12 +100,10 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
     }
 
     void check();
-    const t = window.setInterval(() => void check(), 30_000);
     return () => {
       cancelled = true;
-      window.clearInterval(t);
     };
-  }, [enabled, onInbox, role]);
+  }, [enabled, onInbox, role, userId]);
 
   return { inboxHref, hasUnread };
 }
