@@ -26,6 +26,8 @@ apps/api/public/uploads/
 # Optional local-only marketing media (enable via env when shipped)
 apps/web/public/video/*.mp4
 apps/web/public/video/*.webm
+# Hero video is shipped to production
+!apps/web/public/video/hero_video.mp4
 
 # Local AI/ops reports (do not commit)
 *_AGENT_REPORT.md
