@@ -53,7 +53,7 @@ export function TokenPendingClient(props: { nextFallback?: string }) {
         <div className="mt-5 flex items-center justify-center gap-3">
           <button
             type="button"
-            onClick={() => router.refresh()}
+            onClick={() => window.location.reload()}
             className="inline-flex bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-5 py-2.5 rounded-lg"
           >
             Refresh

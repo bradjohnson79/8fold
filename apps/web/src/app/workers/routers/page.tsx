@@ -35,8 +35,8 @@ export default function RoutersWorkerPage() {
         "Transparent split: contractor 75%, router 15%, platform 10%.",
         "Accountability: one router per job, tracked progress, and oversight when needed.",
       ]}
-      ctaLabel="Sign Up as a Router"
-      ctaHref="/signup?role=router"
+      ctaLabel="Sign Up"
+      ctaHref="/sign-up"
     />
   );
 }

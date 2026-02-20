@@ -35,8 +35,8 @@ export default function ContractorsWorkerPage() {
         "Protected payment flow: confirmations determine payout timing.",
         "No platform undercutting or shifting percentages after the job.",
       ]}
-      ctaLabel="Sign Up as a Contractor"
-      ctaHref="/signup?role=contractor"
+      ctaLabel="Sign Up"
+      ctaHref="/sign-up"
     />
   );
 }

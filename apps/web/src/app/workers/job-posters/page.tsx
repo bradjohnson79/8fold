@@ -35,8 +35,8 @@ export default function JobPostersWorkerPage() {
         "Structured roles: routing and labor are handled by the right people.",
         "Accountability built into the workflow, not left to chance.",
       ]}
-      ctaLabel="Sign Up as a Job Poster"
-      ctaHref="/signup?role=job-poster"
+      ctaLabel="Sign Up"
+      ctaHref="/sign-up"
     />
   );
 }

@@ -33,9 +33,9 @@ export function StateJobsClient(props: { country: string; regionCode: string }) 
       try {
         const qs = new URLSearchParams({ country, regionCode });
         const resp = await fetch(`/api/public/locations/cities-with-jobs?${qs.toString()}`, { cache: "no-store" });
-        const data = await resp.json();
+        const data = (await resp.json().catch(() => null)) as any;
         if (!resp.ok) throw new Error(data?.error ?? "Failed to load cities");
-        const list = Array.isArray(data) ? (data as CityWithJobs[]) : [];
+        const list = Array.isArray(data) ? (data as CityWithJobs[]) : Array.isArray(data?.cities) ? (data.cities as CityWithJobs[]) : [];
         list.sort((a, b) => a.city.localeCompare(b.city, undefined, { sensitivity: "base" }));
         if (cancelled) return;
         setCities(list);

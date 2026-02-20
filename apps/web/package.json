@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "audit:e2e:install": "playwright install --with-deps",
+    "audit:e2e:local": "AUDIT_BASE_URL=http://localhost:3006 AUDIT_ENV=local playwright test --config=playwright.config.ts --project=default --workers=1",
+    "audit:e2e:prod": "AUDIT_BASE_URL=https://8fold.app AUDIT_ENV=production playwright test --config=playwright.config.ts --project=default --workers=1 --retries=0",
+    "test:prod:manual-otp": "AUDIT_ENV=production playwright test --config=playwright.config.ts --project=production-manual-otp --workers=1 --retries=0",
+    "test:prod": "AUDIT_ENV=production playwright test --project=production-test-mode"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
@@ -20,6 +25,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^22.13.1",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
