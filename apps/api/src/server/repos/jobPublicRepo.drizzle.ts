@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
 import { PUBLIC_VISIBLE_STATUSES } from "../../lib/publicJobEligibility";
@@ -7,10 +7,17 @@ import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 function publicEligibility() {
   // Public discovery + location selector eligibility:
   // - archived=false
-  // - status is either:
-  //   - ASSIGNED
-  //   - CUSTOMER_APPROVED with routerApprovedAt IS NULL (aka "CUSTOMER_APPROVED_AWAITING_ROUTER")
+  // - status is in PUBLIC_VISIBLE_STATUSES
+  // - CUSTOMER_APPROVED requires routerApprovedAt IS NULL
   // - In production, exclude mock jobs. In local dev, allow mocks when DEVELOPMENT_MOCKS=true.
+  const statusText = sql<string>`(${jobs.status})::text`;
+  const publicStatuses = PUBLIC_VISIBLE_STATUSES.filter((s) => s !== "CUSTOMER_APPROVED");
+  const statusPredicates = publicStatuses.map((status) => sql<boolean>`${statusText} = ${status}`);
+  const customerApprovedAwaitingRouter = and(
+    sql<boolean>`${statusText} = ${"CUSTOMER_APPROVED"}`,
+    isNull(jobs.routerApprovedAt),
+  );
+
   return and(
     eq(jobs.archived, false),
     process.env.NODE_ENV === "production"
@@ -18,10 +25,7 @@ function publicEligibility() {
       : String(process.env.DEVELOPMENT_MOCKS ?? "").trim() === "true"
         ? undefined
         : and(eq(jobs.isMock, false), eq(jobs.jobSource, "REAL")),
-    or(
-      eq(jobs.status, "ASSIGNED" as any),
-      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
-    ),
+    or(customerApprovedAwaitingRouter, ...statusPredicates),
   );
 }
 
@@ -190,6 +194,15 @@ export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[
   }
 
   return result;
+}
+
+export async function countEligiblePublicJobs(): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(jobs)
+    .where(publicEligibility())
+    .limit(1);
+  return Number(rows[0]?.count ?? 0);
 }
 
 export async function listJobsByLocation(opts: {

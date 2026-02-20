@@ -8,7 +8,9 @@
  *   enum first via an additive migration, then include it here.
  */
 export const PUBLIC_VISIBLE_STATUSES = [
-  // Public selector + homepage should only show jobs actively in routing.
+  // Public selector + homepage should include browseable jobs for beta preview.
+  "PUBLISHED",
+  "OPEN_FOR_ROUTING",
   "ASSIGNED",
   // Used with additional predicate: routerApprovedAt IS NULL to represent
   // "CUSTOMER_APPROVED_AWAITING_ROUTER" (UI-level filter, not a DB enum).

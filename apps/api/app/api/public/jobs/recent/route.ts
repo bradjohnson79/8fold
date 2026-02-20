@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { badRequest, ok } from "../../../../../src/lib/api/respond";
-import { listNewestJobs } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
+import { countEligiblePublicJobs, listNewestJobs } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 import { db } from "@/server/db/drizzle";
 import { asc, inArray } from "drizzle-orm";
 import { jobPhotos } from "../../../../../db/schema/jobPhoto";
@@ -28,6 +28,11 @@ export async function GET(req: Request) {
     const { limit } = parsed.data;
 
     const jobRows = await listNewestJobs(limit);
+    if (process.env.NODE_ENV === "production") {
+      const eligibleCount = await countEligiblePublicJobs();
+      // eslint-disable-next-line no-console
+      console.info(`[public/jobs/recent] eligible=${eligibleCount} returned=${jobRows.length} limit=${limit}`);
+    }
     const ids = jobRows.map((j) => j.id).filter(Boolean) as string[];
 
     const photosByJobId = new Map<string, Array<{ id: string; kind: string; url: string | null }>>();
