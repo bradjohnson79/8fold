@@ -4,12 +4,12 @@ import { handleApiError } from "@/src/lib/errorHandler";
 import { assertJobTransition } from "../../../../../../src/jobs/jobTransitions";
 import { generateActionToken, hashActionToken } from "../../../../../../src/jobs/actionTokens";
 import { haversineKm, stateFromRegion } from "../../../../../../src/jobs/geo";
-import { geocodeCityCentroid, regionToCityState } from "../../../../../../src/jobs/geocode";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../db/schema/auditLog";
+import { contractorAccounts } from "../../../../../../db/schema/contractorAccount";
 import { contractors } from "../../../../../../db/schema/contractor";
 import { jobAssignments } from "../../../../../../db/schema/jobAssignment";
 import { jobs } from "../../../../../../db/schema/job";
@@ -69,9 +69,11 @@ export async function POST(req: Request) {
           regions: contractors.regions,
           lat: contractors.lat,
           lng: contractors.lng,
+          serviceRadiusKm: contractorAccounts.serviceRadiusKm,
         })
         .from(contractors)
         .innerJoin(users, sql`lower(${users.email}) = lower(${contractors.email})`)
+        .leftJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
         .where(and(eq(contractors.id, body.data.contractorId), eq(users.status, "ACTIVE")))
         .limit(1);
       const contractor = contractorRows[0] ?? null;
@@ -99,51 +101,25 @@ export async function POST(req: Request) {
         return { kind: "missing_coordinates" as const };
       }
 
-      let jobLat = typeof job.lat === "number" ? job.lat : null;
-      let jobLng = typeof job.lng === "number" ? job.lng : null;
-
+      const jobLat = typeof job.lat === "number" && Number.isFinite(job.lat) ? job.lat : null;
+      const jobLng = typeof job.lng === "number" && Number.isFinite(job.lng) ? job.lng : null;
       if (jobLat === null || jobLng === null) {
-        const cs = regionToCityState(job.region);
-        if (!cs) return { kind: "unable_to_resolve_coords" as const };
-        const routerCountryRows = job.routerUserId
-          ? await tx
-              .select({ country: users.country })
-              .from(users)
-              .where(eq(users.id, job.routerUserId))
-              .limit(1)
-          : [];
-        const routerCountry = routerCountryRows[0]?.country ?? null;
-        const country = routerCountry === "CA" ? "Canada" : routerCountry === "US" ? "United States" : undefined;
-        const resolved = await geocodeCityCentroid({ city: cs.city, state: cs.state, country });
-        if (!resolved) return { kind: "unable_to_resolve_coords" as const };
-        await tx
-          .update(jobs)
-          .set({ lat: resolved.lat, lng: resolved.lng } as any)
-          .where(eq(jobs.id, job.id));
-        jobLat = resolved.lat;
-        jobLng = resolved.lng;
+        return { kind: "job_geo_missing" as const };
       }
 
       const km = haversineKm({ lat: jobLat, lng: jobLng }, { lat: contractor.lat, lng: contractor.lng });
-      const routerCountryRows2 = job.routerUserId
-        ? await tx
-            .select({ country: users.country })
-            .from(users)
-            .where(eq(users.id, job.routerUserId))
-            .limit(1)
-        : [];
-      const routerCountry = routerCountryRows2[0]?.country ?? null;
-      const isCA = routerCountry === "CA";
-      const maxKm =
+      const isCA = String(job.country ?? "").toUpperCase() === "CA";
+      const milesToKm = (mi: number) => mi * 1.60934;
+      const jobTypeLimitKm =
         job.jobType === "urban"
-          ? isCA
-            ? 50
-            : 30 * 1.609344
-          : isCA
-            ? 100
-            : 60 * 1.609344;
+          ? isCA ? 50 : milesToKm(30)
+          : isCA ? 100 : milesToKm(60);
+      const serviceRadiusKm = typeof contractor.serviceRadiusKm === "number" && contractor.serviceRadiusKm > 0
+        ? contractor.serviceRadiusKm
+        : null;
+      const effectiveRadiusKm = serviceRadiusKm !== null ? Math.min(jobTypeLimitKm, serviceRadiusKm) : jobTypeLimitKm;
 
-      if (km > maxKm && !overrideDistance) {
+      if (km > effectiveRadiusKm && !overrideDistance) {
         return { kind: "distance_exceeded" as const };
       }
 
@@ -205,7 +181,7 @@ export async function POST(req: Request) {
           assignmentId: (assignment as any).id,
           jobType: job.jobType,
           distanceKm: km,
-          maxDistanceKm: maxKm,
+          maxDistanceKm: effectiveRadiusKm,
           overrideDistance,
           overrideReason: overrideDistance ? body.data.overrideReason : undefined,
         } as any,
@@ -223,8 +199,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Contractor must be in the same state/province for this job." }, { status: 409 });
     if (result.kind === "missing_coordinates")
       return NextResponse.json({ ok: false, error: "Missing coordinates. Cannot validate service distance for this job." }, { status: 409 });
-    if (result.kind === "unable_to_resolve_coords")
-      return NextResponse.json({ ok: false, error: "Unable to resolve job location coordinates." }, { status: 409 });
+    if (result.kind === "job_geo_missing")
+      return NextResponse.json({ ok: false, error: "JOB_GEO_MISSING", requiresGeoResolution: true }, { status: 409 });
     if (result.kind === "override_reason_required")
       return NextResponse.json({ ok: false, error: "Override reason required." }, { status: 400 });
     if (result.kind === "distance_exceeded")

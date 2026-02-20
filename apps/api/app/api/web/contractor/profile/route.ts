@@ -8,6 +8,7 @@ import { tradeCategoryEnum } from "../../../../../db/schema/enums";
 import { users } from "../../../../../db/schema/user";
 import { requireUser } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
+import { validateGeoCoords } from "../../../../../src/jobs/geoValidation";
 import { sql } from "drizzle-orm";
 
 const TradeCategorySchema = z.enum(tradeCategoryEnum.enumValues as [string, ...string[]]);
@@ -36,14 +37,6 @@ const BodySchema = z.object({
   tradeStartYear: z.number().int().min(1926).max(2026),
   tradeStartMonth: z.number().int().min(1).max(12),
 });
-
-function isValidGeo(lat: number, lng: number): boolean {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  if (lat === 0 && lng === 0) return false;
-  if (lat < -90 || lat > 90) return false;
-  if (lng < -180 || lng > 180) return false;
-  return true;
-}
 
 function experienceYearsFromStart(y: number, m: number, now = new Date()): number {
   // m is 1-12
@@ -104,8 +97,8 @@ export async function GET(req: Request) {
         ...acct,
         stateProvince: acct.regionCode,
         mapDisplayName: user?.formattedAddress ?? "",
-        lat: user?.latitude ?? 0,
-        lng: user?.longitude ?? 0,
+        lat: user?.latitude ?? null,
+        lng: user?.longitude ?? null,
       },
     });
   } catch (err) {
@@ -139,8 +132,10 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (!isValidGeo(b.lat, b.lng)) {
-      return NextResponse.json({ ok: false, code: "MAP_LOCATION_REQUIRED" }, { status: 400 });
+    try {
+      validateGeoCoords(b.lat, b.lng);
+    } catch {
+      return NextResponse.json({ ok: false, code: "INVALID_GEO_COORDINATES" }, { status: 400 });
     }
 
     const businessName =

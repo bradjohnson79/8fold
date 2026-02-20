@@ -12,6 +12,7 @@ import { JobPostingInputSchema } from "@8fold/shared";
 import { AiAppraisalError, appraiseJobPrice } from "../../../../../../src/pricing/aiAppraisal";
 import { validateJobLocationMatchesProfile } from "../../../../../../src/jobs/location";
 import { geocodeAddress } from "../../../../../../src/jobs/location";
+import { validateGeoCoords } from "../../../../../../src/jobs/geoValidation";
 import { calculatePayoutBreakdown } from "@8fold/shared";
 import { PRICING_VERSION } from "../../../../../../src/pricing/constants";
 import { rateLimit } from "../../../../../../src/middleware/rateLimit";
@@ -142,6 +143,15 @@ export async function POST(req: Request) {
     if (!geo) {
       return NextResponse.json(
         { error: "Unable to geocode job location. Please check address and try again." },
+        { status: 400 }
+      );
+    }
+
+    try {
+      validateGeoCoords(geo.lat, geo.lng);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid job location coordinates." },
         { status: 400 }
       );
     }

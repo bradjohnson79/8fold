@@ -5,6 +5,7 @@ import { z } from "zod";
 import { useUser } from "@clerk/nextjs";
 import { REGION_OPTIONS } from "@/lib/regions";
 import { MapLocationSelector } from "@/components/location/MapLocationSelector";
+import { StripeExpressPayoutSetup } from "@/components/StripeExpressPayoutSetup";
 
 const FormSchema = z.object({
   name: z.string().trim().min(1),
@@ -279,6 +280,8 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
           </div>
         ) : null}
       </div>
+
+      <StripeExpressPayoutSetup />
 
       <div className="mt-6">
         <button

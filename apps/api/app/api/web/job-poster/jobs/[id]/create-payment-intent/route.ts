@@ -298,6 +298,8 @@ export async function POST(req: Request) {
           type: "job_escrow",
           jobId: job.id,
           jobPosterUserId: user.userId,
+          userId: user.userId,
+          environment: String(process.env.NODE_ENV ?? "development"),
         },
       });
     } catch (err) {

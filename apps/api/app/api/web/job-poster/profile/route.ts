@@ -6,6 +6,7 @@ import { jobPosterProfiles } from "../../../../../db/schema/jobPosterProfile";
 import { users } from "../../../../../db/schema/user";
 import { requireJobPoster } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
+import { validateGeoCoords } from "../../../../../src/jobs/geoValidation";
 import { z } from "zod";
 
 const ProfileSchema = z.object({
@@ -24,14 +25,6 @@ const ProfileSchema = z.object({
   lat: z.number(),
   lng: z.number(),
 });
-
-function isValidGeo(lat: number, lng: number): boolean {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  if (lat === 0 && lng === 0) return false;
-  if (lat < -90 || lat > 90) return false;
-  if (lng < -180 || lng > 180) return false;
-  return true;
-}
 
 export async function GET(req: Request) {
   try {
@@ -56,8 +49,8 @@ export async function GET(req: Request) {
       profile: {
         ...profile,
         mapDisplayName: geo?.formattedAddress ?? "",
-        lat: typeof profile.lat === "number" ? profile.lat : (geo?.latitude ?? 0),
-        lng: typeof profile.lng === "number" ? profile.lng : (geo?.longitude ?? 0),
+        lat: typeof profile.lat === "number" ? profile.lat : (geo?.latitude ?? null),
+        lng: typeof profile.lng === "number" ? profile.lng : (geo?.longitude ?? null),
       },
     });
   } catch (err) {
@@ -82,8 +75,10 @@ export async function POST(req: Request) {
     const { legalStreet, legalCity, legalProvince, legalPostalCode, legalCountry, mapDisplayName, lat, lng, ...rest } =
       parsed.data;
 
-    if (!isValidGeo(lat, lng)) {
-      return NextResponse.json({ ok: false, code: "MAP_LOCATION_REQUIRED" }, { status: 400 });
+    try {
+      validateGeoCoords(lat, lng);
+    } catch {
+      return NextResponse.json({ ok: false, code: "INVALID_GEO_COORDINATES" }, { status: 400 });
     }
 
     const defaultJobLocation = `${legalStreet}, ${legalCity}, ${legalProvince}`;
