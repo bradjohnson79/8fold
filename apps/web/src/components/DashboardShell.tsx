@@ -89,15 +89,17 @@ export function DashboardShell({
             continue;
           }
 
-          if (!resp.ok) {
+          // Only 401 = unauthenticated. 500/network/other = keep user in app (Clerk let them through).
+          if (resp.status === 401) {
             setBoot({ loading: false, ok: false, code });
             return;
           }
-          if (json?.ok === false) {
-            setBoot({ loading: false, ok: false, code });
+          if (resp.ok && json?.ok === true) {
+            setBoot({ loading: false, ok: true, superuser: Boolean(json?.superuser) });
             return;
           }
-          setBoot({ loading: false, ok: true, superuser: Boolean(json?.superuser) });
+          // Non-401 error (500, timeout, etc.): treat as authenticated, show app with sync banner.
+          setBoot({ loading: false, ok: true, superuser: false });
           return;
         }
 
@@ -194,16 +196,12 @@ export function DashboardShell({
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      await signOut({ redirectUrl: "/login" });
-    } finally {
-      // Clear client auth state (best-effort) and redirect to UI route.
+      await signOut();
       setBoot({ loading: false, ok: false, code: "UNAUTHENTICATED" });
-      router.push("/login");
+      router.push("/");
       router.refresh();
-      setTimeout(() => {
-        // Hard fallback: ensure we never "land" on an API JSON response.
-        window.location.href = "/login";
-      }, 250);
+    } finally {
+      setLoggingOut(false);
     }
   }
 

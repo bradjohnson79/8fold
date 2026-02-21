@@ -12,7 +12,7 @@ export default async function AppIndex() {
   if (!session) {
     return <TokenPendingClient nextFallback="/app" />;
   }
-  if (session.role === "USER_ROLE_NOT_ASSIGNED") redirect("/onboarding/role");
+  if (session.role === "USER_ROLE_NOT_ASSIGNED" && session.dbEnrichmentSucceeded === true) redirect("/onboarding/role");
   redirect(roleRootPath(session.role));
 }
 

@@ -1,5 +1,11 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
+/**
+ * AUTHORITY RULE:
+ * Clerk is the sole source of authentication state.
+ * No DB, cookie, or internal API logic may determine login state.
+ */
+
 const isPublicRoute = createRouteMatcher([
   "/",
   "/login(.*)",

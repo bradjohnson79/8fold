@@ -10,6 +10,8 @@ export type Session = {
   lastName: string | null;
   superuser: boolean;
   walletBalanceCents: number;
+  /** True only when DB enrichment succeeded. Used to avoid onboarding redirect on DB failure. */
+  dbEnrichmentSucceeded: boolean;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -97,6 +99,7 @@ async function requireMeSession(_req?: Request): Promise<Session> {
   let role = identity.role;
   let email = identity.email;
   let walletBalanceCents = 0;
+  let dbEnrichmentSucceeded = false;
 
   // Best-effort DB role enrichment. Auth remains Clerk-authoritative if this fails.
   try {
@@ -114,11 +117,17 @@ async function requireMeSession(_req?: Request): Promise<Session> {
       if (dbRole) role = dbRole;
       if (!email && typeof data.email === "string") email = data.email;
       walletBalanceCents = Number(data.walletBalanceCents ?? 0) || 0;
+      dbEnrichmentSucceeded = true;
     }
   } catch (error) {
     authDebugLog("api_role_enrichment_failed", {
       message: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
     });
+  }
+
+  if (!dbEnrichmentSucceeded) {
+    // eslint-disable-next-line no-console
+    console.warn("DB enrichment failed; preserving Clerk session");
   }
 
   authDebugLog("session_ok", { branch: "clerk_only_identity" });
@@ -130,6 +139,7 @@ async function requireMeSession(_req?: Request): Promise<Session> {
     lastName: identity.lastName,
     superuser: identity.superuser,
     walletBalanceCents,
+    dbEnrichmentSucceeded,
   };
 }
 

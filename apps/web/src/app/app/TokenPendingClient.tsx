@@ -17,9 +17,13 @@ export function TokenPendingClient(props: { nextFallback?: string }) {
     if (signingOut) return;
     setSigningOut(true);
     try {
-      await signOut({ redirectUrl: "/login" });
+      await signOut();
+      router.push("/");
+      router.refresh();
     } catch {
-      window.location.href = "/login";
+      router.push("/login");
+    } finally {
+      setSigningOut(false);
     }
   }
 
