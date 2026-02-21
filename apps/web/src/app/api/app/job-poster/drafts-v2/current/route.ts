@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { requireSession, requireApiToken } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@/server/e2e/jobWizardV2TestMode";
 
 export async function GET(req: Request) {
+  const traceId = randomUUID();
   try {
     if (isE2ETestModeEnabled()) {
       const userId = getE2EUserIdFromHeader(req);
@@ -34,6 +36,15 @@ export async function GET(req: Request) {
       headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
     });
   } catch (err) {
-    return NextResponse.json({ success: false, code: "CURRENT_FAILED", message: "Failed to load draft." }, { status: 500 });
+    const status =
+      typeof (err as { status?: unknown })?.status === "number"
+        ? ((err as { status: number }).status || 500)
+        : typeof (err as { cause?: { status?: unknown } })?.cause?.status === "number"
+          ? ((err as { cause: { status: number } }).cause.status || 500)
+          : 500;
+    return NextResponse.json(
+      { success: false, code: "CURRENT_FAILED", traceId, message: "Failed to load draft." },
+      { status }
+    );
   }
 }

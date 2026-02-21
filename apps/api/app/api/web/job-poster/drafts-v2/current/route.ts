@@ -6,7 +6,7 @@ import { db } from "../../../../../../db/drizzle";
 import { jobDraftV2 } from "../../../../../../db/schema/jobDraftV2";
 import { jobDraftV2FieldState } from "../../../../../../db/schema/jobDraftV2FieldState";
 import { jobPosterProfiles } from "../../../../../../db/schema/jobPosterProfile";
-import { jobPosterRouteErrorFromUnknown } from "../../../../../../src/http/jobPosterRouteErrors";
+import { DB_SCHEMA } from "../../../../../../db/schema/_dbSchema";
 import { logEvent } from "../../../../../../src/server/observability/log";
 
 const route = "GET /api/web/job-poster/drafts-v2/current";
@@ -114,12 +114,21 @@ export async function GET(req: Request) {
       traceId,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    const stack = err instanceof Error ? err.stack : undefined;
     logEvent({
       level: "error",
       event: "job_draft_v2.current.failed",
       route,
-      context: { traceId, userId, message: err instanceof Error ? err.message : "unknown" },
+      context: {
+        traceId,
+        userId,
+        runtimeSchema: DB_SCHEMA,
+        message,
+        stack,
+        code: typeof (err as { code?: unknown })?.code === "string" ? (err as { code: string }).code : undefined,
+      },
     });
-    return jobPosterRouteErrorFromUnknown({ route, err, userId });
+    return NextResponse.json({ success: false, code: "CURRENT_FAILED", traceId }, { status: 500 });
   }
 }
