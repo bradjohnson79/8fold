@@ -1,1 +1,1 @@
-export const postAJobPath = "/app/job-poster/post-a-job-v2";
+export const postAJobPath = "/app/job-poster/post-a-job";

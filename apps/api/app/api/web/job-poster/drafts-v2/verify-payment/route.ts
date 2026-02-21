@@ -6,10 +6,23 @@ import { stripe } from "../../../../../../src/stripe/stripe";
 import { db } from "../../../../../../db/drizzle";
 import { jobDraftV2 } from "../../../../../../db/schema/jobDraftV2";
 import { finalizeJobFundingFromPaymentIntent } from "../../../../../../src/payments/finalizeJobFundingFromPaymentIntent";
-import { jobPosterRouteErrorFromUnknown } from "../../../../../../src/http/jobPosterRouteErrors";
+import { classifyJobPosterRouteError } from "../../../../../../src/http/jobPosterRouteErrors";
 import { logEvent } from "../../../../../../src/server/observability/log";
 
 const route = "POST /api/web/job-poster/drafts-v2/verify-payment";
+
+function errorJson(
+  status: number,
+  code: string,
+  message: string,
+  traceId: string,
+  extra: Record<string, unknown> = {},
+) {
+  return NextResponse.json(
+    { success: false, code, message, traceId, ...extra },
+    { status },
+  );
+}
 
 export async function POST(req: Request) {
   const traceId = randomUUID();
@@ -25,17 +38,13 @@ export async function POST(req: Request) {
     const paymentIntentId = String(body?.paymentIntentId ?? "").trim();
 
     if (!paymentIntentId) {
-      return NextResponse.json(
-        { success: false, code: "MISSING_PAYMENT_INTENT_ID", traceId },
-        { status: 400 }
-      );
+      return errorJson(400, "MISSING_PAYMENT_INTENT_ID", "Missing paymentIntentId.", traceId);
     }
 
     if (!stripe) {
-      return NextResponse.json(
-        { success: false, code: "STRIPE_NOT_CONFIGURED", requiresSupportTicket: true, traceId },
-        { status: 500 }
-      );
+      return errorJson(500, "STRIPE_NOT_CONFIGURED", "Stripe is not configured.", traceId, {
+        requiresSupportTicket: true,
+      });
     }
 
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
@@ -58,8 +67,9 @@ export async function POST(req: Request) {
         {
           success: false,
           code: finalized.code,
+          message: "Payment verification failed.",
           requiresSupportTicket: true,
-          traceId: finalized.traceId,
+          traceId,
         },
         { status: 400 }
       );
@@ -78,6 +88,7 @@ export async function POST(req: Request) {
         .set({
           currentStep: "CONFIRMED",
           updatedAt: new Date(),
+          version: draft.version + 1,
         })
         .where(eq(jobDraftV2.id, draft.id));
     }
@@ -103,12 +114,13 @@ export async function POST(req: Request) {
       route,
       context: { traceId, userId, jobId, message: err instanceof Error ? err.message : "unknown" },
     });
-    return jobPosterRouteErrorFromUnknown({
-      route,
-      err,
-      userId,
-      jobId,
-      extraJson: { success: false, requiresSupportTicket: true, traceId },
-    });
+    const { status } = classifyJobPosterRouteError(err);
+    return errorJson(
+      status >= 400 && status < 600 ? status : 500,
+      "VERIFY_PAYMENT_FAILED",
+      "Failed to verify payment.",
+      traceId,
+      { requiresSupportTicket: true },
+    );
   }
 }

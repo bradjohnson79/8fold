@@ -8,6 +8,7 @@ import { jobDraftV2FieldState } from "../../../../../../db/schema/jobDraftV2Fiel
 import {
   isTransitionAllowed,
   getNextAllowedStep,
+  stepOrder,
   type Step,
 } from "@8fold/shared";
 import {
@@ -16,7 +17,7 @@ import {
   pricingComplete,
   type JobDraftV2Data,
 } from "@8fold/shared";
-import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../src/http/jobPosterRouteErrors";
+import { classifyJobPosterRouteError } from "../../../../../../src/http/jobPosterRouteErrors";
 import { logEvent } from "../../../../../../src/server/observability/log";
 
 const route = "POST /api/web/job-poster/drafts-v2/advance";
@@ -37,6 +38,19 @@ function draftToResponse(draft: typeof jobDraftV2.$inferSelect, fieldStates: Arr
     fieldStates: fieldStatesMap,
     currentStep: draft.currentStep,
   };
+}
+
+function errorJson(
+  status: number,
+  code: string,
+  message: string,
+  traceId: string,
+  extra: Record<string, unknown> = {},
+) {
+  return NextResponse.json(
+    { success: false, code, message, traceId, ...extra },
+    { status },
+  );
 }
 
 function stepComplete(step: Step, data: JobDraftV2Data | undefined): boolean {
@@ -78,24 +92,11 @@ export async function POST(req: Request) {
 
     draftId = id || null;
 
-    if (!id) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "VALIDATION_ERROR",
-        status: 400,
-        err: new Error("Missing draftId"),
-        userId,
-        jobId: draftId,
-        extraJson: { success: false, code: "MISSING_DRAFT_ID", traceId },
-      });
-    }
+    if (!id) return errorJson(400, "MISSING_DRAFT_ID", "Missing draftId.", traceId);
 
-    const validSteps: Step[] = ["PROFILE", "DETAILS", "PRICING", "PAYMENT", "CONFIRMED"];
+    const validSteps: Step[] = [...stepOrder];
     if (!validSteps.includes(targetStepRaw)) {
-      return NextResponse.json(
-        { success: false, code: "STEP_INVALID", traceId },
-        { status: 409 }
-      );
+      return errorJson(409, "STEP_INVALID", "Target step is not valid.", traceId);
     }
 
     const draftRows = await db
@@ -106,15 +107,7 @@ export async function POST(req: Request) {
     const draft = draftRows[0] ?? null;
 
     if (!draft) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "INTERNAL_ERROR",
-        status: 404,
-        err: new Error("Draft not found"),
-        userId,
-        jobId: id,
-        extraJson: { success: false, code: "DRAFT_NOT_FOUND", traceId },
-      });
+      return errorJson(404, "DRAFT_NOT_FOUND", "Draft not found.", traceId);
     }
 
     const currentStep = draft.currentStep as Step;
@@ -128,6 +121,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "STEP_INVALID",
+          message: "Step transition is not allowed from current step.",
           draft: draftToResponse(draft, fieldStates),
           traceId,
         },
@@ -145,6 +139,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "STEP_INVALID",
+          message: "Current step invariants are not satisfied.",
           draft: draftToResponse(draft, fieldStates),
           traceId,
         },
@@ -152,7 +147,10 @@ export async function POST(req: Request) {
       );
     }
 
-    if (typeof expectedVersion !== "number" || expectedVersion !== draft.version) {
+    if (typeof expectedVersion !== "number") {
+      return errorJson(400, "MISSING_EXPECTED_VERSION", "Missing expectedVersion.", traceId);
+    }
+    if (expectedVersion !== draft.version) {
       const fieldStates = await db
         .select({ fieldKey: jobDraftV2FieldState.fieldKey, status: jobDraftV2FieldState.status, savedAt: jobDraftV2FieldState.savedAt })
         .from(jobDraftV2FieldState)
@@ -161,6 +159,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "VERSION_CONFLICT",
+          message: "Draft version conflict.",
           draft: draftToResponse(draft, fieldStates),
           traceId,
         },
@@ -193,6 +192,7 @@ export async function POST(req: Request) {
           {
             success: false,
             code: "VERSION_CONFLICT",
+            message: "Draft version conflict.",
             draft: draftToResponse(fresh, fieldStates),
             traceId,
           },
@@ -240,6 +240,12 @@ export async function POST(req: Request) {
       route,
       context: { traceId, userId, draftId, message: err instanceof Error ? err.message : "unknown" },
     });
-    return jobPosterRouteErrorFromUnknown({ route, err, userId, jobId: draftId });
+    const { status } = classifyJobPosterRouteError(err);
+    return errorJson(
+      status >= 400 && status < 600 ? status : 500,
+      "DRAFT_ADVANCE_FAILED",
+      "Failed to advance draft step.",
+      traceId,
+    );
   }
 }

@@ -7,12 +7,12 @@ import { db } from "../../../../../../db/drizzle";
 import { jobDraftV2 } from "../../../../../../db/schema/jobDraftV2";
 import { jobDraftV2FieldState } from "../../../../../../db/schema/jobDraftV2FieldState";
 import {
-  ALL_FIELD_KEYS,
   isValidFieldKey,
   validateFieldValue,
+  computeDraftValidation,
   type FieldKey,
 } from "@8fold/shared";
-import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../src/http/jobPosterRouteErrors";
+import { classifyJobPosterRouteError } from "../../../../../../src/http/jobPosterRouteErrors";
 import { logEvent } from "../../../../../../src/server/observability/log";
 
 const route = "POST /api/web/job-poster/drafts-v2/save-field";
@@ -50,6 +50,19 @@ function draftToResponse(draft: typeof jobDraftV2.$inferSelect, fieldStates: Arr
   };
 }
 
+function errorJson(
+  status: number,
+  code: string,
+  message: string,
+  traceId: string,
+  extra: Record<string, unknown> = {},
+) {
+  return NextResponse.json(
+    { success: false, code, message, traceId, ...extra },
+    { status },
+  );
+}
+
 export async function POST(req: Request) {
   const traceId = randomUUID();
   let userId: string | null = null;
@@ -74,23 +87,10 @@ export async function POST(req: Request) {
 
     draftId = id || null;
 
-    if (!id) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "VALIDATION_ERROR",
-        status: 400,
-        err: new Error("Missing draftId"),
-        userId,
-        jobId: draftId,
-        extraJson: { success: false, code: "MISSING_DRAFT_ID", traceId },
-      });
-    }
+    if (!id) return errorJson(400, "MISSING_DRAFT_ID", "Missing draftId.", traceId);
 
     if (!isValidFieldKey(fieldKeyRaw)) {
-      return NextResponse.json(
-        { success: false, code: "INVALID_FIELD_KEY", traceId },
-        { status: 400 }
-      );
+      return errorJson(400, "INVALID_FIELD_KEY", "Invalid field key.", traceId);
     }
 
     const fieldKey = fieldKeyRaw as FieldKey;
@@ -103,22 +103,18 @@ export async function POST(req: Request) {
     const draft = draftRows[0] ?? null;
 
     if (!draft) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "INTERNAL_ERROR",
-        status: 404,
-        err: new Error("Draft not found"),
-        userId,
-        jobId: id,
-        extraJson: { success: false, code: "DRAFT_NOT_FOUND", traceId },
-      });
+      return errorJson(404, "DRAFT_NOT_FOUND", "Draft not found.", traceId);
     }
 
-    if (typeof expectedVersion !== "number" || expectedVersion !== draft.version) {
+    if (typeof expectedVersion !== "number") {
+      return errorJson(400, "MISSING_EXPECTED_VERSION", "Missing expectedVersion.", traceId);
+    }
+    if (expectedVersion !== draft.version) {
       return NextResponse.json(
         {
           success: false,
           code: "VERSION_CONFLICT",
+          message: "Draft version conflict.",
           draft: draftToResponse(draft, []),
           traceId,
         },
@@ -150,15 +146,29 @@ export async function POST(req: Request) {
 
     const validation = validateFieldValue(fieldKey, value);
     if (!validation.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "VALIDATION_FAILED",
-          fieldErrors: { [fieldKey]: validation.message },
-          traceId,
-        },
-        { status: 400 }
-      );
+      await db
+        .insert(jobDraftV2FieldState)
+        .values({
+          draftId: id,
+          fieldKey,
+          valueHash: null,
+          status: "error" as const,
+          savedAt: null,
+          lastErrorCode: "VALIDATION_FAILED",
+          lastErrorMessage: validation.message,
+        })
+        .onConflictDoUpdate({
+          target: [jobDraftV2FieldState.draftId, jobDraftV2FieldState.fieldKey],
+          set: {
+            status: "error" as const,
+            savedAt: null,
+            lastErrorCode: "VALIDATION_FAILED",
+            lastErrorMessage: validation.message,
+          },
+        });
+      return errorJson(400, "VALIDATION_FAILED", validation.message, traceId, {
+        fieldErrors: { [fieldKey]: validation.message },
+      });
     }
 
     if (fieldKey === "details.geo" && value && typeof value === "object") {
@@ -168,27 +178,23 @@ export async function POST(req: Request) {
       const expectedCountry = String(draft.countryCode ?? "").trim().toUpperCase();
       const expectedState = String(draft.stateCode ?? "").trim().toUpperCase();
       if (gotCountry && gotState && (gotCountry !== expectedCountry || gotState !== expectedState)) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: "JURISDICTION_MISMATCH",
-            expected: { countryCode: expectedCountry, stateCode: expectedState },
-            got: { countryCode: gotCountry, stateCode: gotState },
-            traceId,
-          },
-          { status: 409 }
-        );
+        return errorJson(409, "JURISDICTION_MISMATCH", "Geo jurisdiction does not match draft jurisdiction.", traceId, {
+          expected: { countryCode: expectedCountry, stateCode: expectedState },
+          got: { countryCode: gotCountry, stateCode: gotState },
+        });
       }
     }
 
     const versionBefore = draft.version;
     const newData = setNestedValue((draft.data ?? {}) as Record<string, unknown>, fieldKey, value);
+    const nextValidation = computeDraftValidation(newData);
     const now = new Date();
 
     const updateResult = await db
       .update(jobDraftV2)
       .set({
         data: newData,
+        validation: nextValidation,
         lastSavedAt: now,
         updatedAt: now,
         version: draft.version + 1,
@@ -208,6 +214,7 @@ export async function POST(req: Request) {
           {
             success: false,
             code: "VERSION_CONFLICT",
+            message: "Draft version conflict.",
             draft: draftToResponse(fresh, allStates),
             traceId,
           },
@@ -264,7 +271,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       draft: draftToResponse(
-        { ...finalDraft, data: newData, version: finalVersion } as typeof draft,
+        { ...finalDraft, data: newData, validation: nextValidation, version: finalVersion } as typeof draft,
         allStates
       ),
       traceId,
@@ -276,12 +283,7 @@ export async function POST(req: Request) {
       route,
       context: { traceId, userId, draftId, message: err instanceof Error ? err.message : "unknown" },
     });
-    return jobPosterRouteErrorFromUnknown({
-      route,
-      err,
-      userId,
-      jobId: draftId,
-      extraJson: { success: false, code: "DRAFT_SAVE_FAILED", requiresSupportTicket: true, traceId },
-    });
+    const { status } = classifyJobPosterRouteError(err);
+    return errorJson(status >= 400 && status < 600 ? status : 500, "DRAFT_SAVE_FAILED", "Failed to save field.", traceId);
   }
 }

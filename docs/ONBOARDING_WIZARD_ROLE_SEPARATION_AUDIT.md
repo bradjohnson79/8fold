@@ -29,11 +29,11 @@
 | **B) Flow** | | |
 | Redirect to terms after signup? | **CLIENT-ONLY** | Layout wraps in `JobPosterTosGate`; gate shows modal if not accepted. |
 | Manual navigate to /dashboard before terms? | **PARTIAL** | Layout loads; gate blocks children. If API called directly (e.g. `POST /api/web/job-poster/jobs/create-draft`), **no TOS check**. |
-| API blocks if terms null? | **NO** | `create-draft`, `drafts/save`, and other job poster endpoints do **not** check TOS. |
+| API blocks if terms null? | **NO** | `create-draft` and other job poster endpoints do **not** check TOS. |
 
 **File references:** `apps/web/src/app/app/job-poster/JobPosterTosGate.tsx`, `apps/web/src/app/app/job-poster/layout.tsx`, `apps/api/app/api/web/job-poster-tos/route.ts`, `apps/api/app/api/web/job-poster/jobs/create-draft/route.ts`
 
-**Bypass risk:** **HIGH** — Job poster can call `create-draft`, `drafts/save`, and other APIs without accepting TOS.
+**Bypass risk:** **HIGH** — Job poster can call `create-draft` and other APIs without accepting TOS.
 
 ---
 
@@ -88,11 +88,11 @@
 | Country, State, City? | **YES** | `create-draft` requires `profile.address`, `profile.city`, `profile.stateProvince`, `profile.country` (full address). |
 | **C) Enforcement** | | |
 | Dashboard access blocked if profile incomplete? | **NO** | Layout does not check profile. |
-| Enforced server-side? | **PARTIAL** | Only `create-draft` checks profile. `drafts/save` does **not** check profile. |
-| API endpoints blocked if profile incomplete? | **PARTIAL** | `create-draft` blocks; other endpoints (drafts/save, jobs list, etc.) do not. |
+| Enforced server-side? | **PARTIAL** | Only `create-draft` checks profile. |
+| API endpoints blocked if profile incomplete? | **PARTIAL** | `create-draft` blocks; other endpoints (jobs list, etc.) do not. |
 | Can user manually hit /dashboard and bypass wizard? | **YES** | Dashboard layout loads; no profile gate. |
 
-**File references:** `apps/api/app/api/web/job-poster/jobs/create-draft/route.ts`, `apps/api/app/api/web/job-poster/drafts/save/route.ts`, `apps/api/db/schema/jobPosterProfile.ts`
+**File references:** `apps/api/app/api/web/job-poster/jobs/create-draft/route.ts`, `apps/api/db/schema/jobPosterProfile.ts`
 
 **Bypass risk:** **MEDIUM** — Can create draft via drafts/save without full profile; create-draft requires profile.
 
@@ -264,7 +264,7 @@
 **Needs Hardening**
 
 - **Router:** Strong server-side enforcement. Terms and profile gated before routing.
-- **Job Poster:** TOS enforcement is client-only; profile only enforced on create-draft. drafts/save and other endpoints do not check TOS or profile.
+- **Job Poster:** TOS enforcement is client-only; profile only enforced on create-draft.
 - **Contractor:** Wizard enforcement is client-only. API does not check wizardCompleted.
 
 ---

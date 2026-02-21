@@ -2,13 +2,13 @@
 
 ## Summary
 
-Full rebuild of the Job Poster "Post a Job" wizard with a server-authoritative state machine, deterministic per-field autosave, robust resume/recovery, mandatory AI appraisal, and preserved Stripe payment flow. Delivered as a parallel V2 implementation behind feature flag `NEXT_PUBLIC_JOB_WIZARD_V2`.
+Full rebuild of the Job Poster "Post a Job" wizard with a server-authoritative state machine, deterministic per-field autosave, robust resume/recovery, mandatory AI appraisal, and preserved Stripe payment flow.
 
 ## Implementation Status
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 0 | Done | V2 route, feature flag, sidebar/CTAs |
+| 0 | Done | Canonical route and sidebar/CTAs |
 | 1 | Done | DB schema, migration, API routes |
 | 2 | Done | Shared schemas, fieldKeys, steps |
 | 3 | Done | Web proxies |
@@ -175,6 +175,5 @@ pnpm test:wizard-v2
 - `packages/shared/src/jobDraftV2.steps.ts`
 - `apps/api/app/api/web/job-poster/drafts-v2/*` (6 routes)
 - `apps/web/src/app/api/app/job-poster/drafts-v2/*` (6 proxies)
-- `apps/web/src/app/app/job-poster/(app)/post-a-job-v2/WizardV2.tsx`
-- `apps/web/src/app/app/job-poster/(app)/post-a-job-v2/useDraftV2.ts`
+- `apps/web/src/app/app/job-poster/(app)/post-a-job` wizard module files
 - `apps/web/src/app/app/job-poster/payment/return-v2/page.tsx`

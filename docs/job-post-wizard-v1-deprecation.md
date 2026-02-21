@@ -1,32 +1,28 @@
-# Job Post Wizard V1 Deprecation
+# Job Post Wizard Stabilization
 
 Date: 2026-02-21
 
 ## Decision
 
-Job Post Wizard V1 is permanently deprecated. Job Poster traffic is now hard-cut to Wizard V2.
+Legacy wizard runtime is permanently deprecated.
 
 ## Cutover behavior
 
-- Canonical route is `"/app/job-poster/post-a-job-v2"`.
-- Legacy `"/app/job-poster/post-a-job"` now hard-redirects to V2.
-- Legacy `"/app/job-poster/payment/return"` now hard-redirects to `"/app/job-poster/payment/return-v2"`.
+- Canonical route is `"/app/job-poster/post-a-job"`.
+- The alternate wizard route redirects to canonical.
+- The legacy payment return route redirects to the canonical return handler.
 
 ## Deprecated API behavior
 
-The following legacy API endpoints are intentionally kept as explicit deprecations and now return `410` with:
+Legacy wizard API endpoints are intentionally kept as explicit deprecations and now return `410` with:
 
 ```json
 { "success": false, "code": "DEPRECATED_ENDPOINT" }
 ```
 
-- `POST /api/web/job-poster/drafts/save`
-- `GET /api/web/job-poster/drafts/:id`
-- `DELETE /api/web/job-poster/drafts/:id`
-- `POST /api/web/job-poster/drafts/:id/start-appraisal`
-- `POST /api/web/job-poster/drafts/:id/wizard-step`
-- `POST /api/web/job-poster/payments/verify`
-- `POST /api/web/job-poster/jobs/:id/create-payment-intent` (legacy flow)
+- Legacy draft create/update/read/delete handlers
+- Legacy draft appraisal/step handlers
+- Legacy payment verify/create-intent handlers used by the removed flow
 
 ## Data posture
 

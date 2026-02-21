@@ -23,6 +23,9 @@ type UseDraftV2Result = {
   versionConflictBanner: boolean;
   pendingSaves: Set<string>;
   saveField: (fieldKey: string, value: unknown) => Promise<boolean>;
+  queueTextSave: (fieldKey: string, value: unknown) => void;
+  blurFieldSave: (fieldKey: string, value: unknown) => Promise<boolean>;
+  getFieldSaveState: (fieldKey: string) => "idle" | "saving" | "saved" | "error";
   advanceStep: (targetStep: string) => Promise<boolean>;
   startAppraisal: () => Promise<boolean>;
   createPaymentIntent: () => Promise<{ clientSecret: string; returnUrl: string } | null>;
@@ -37,6 +40,12 @@ export function useDraftV2(): UseDraftV2Result {
   const [versionConflictBanner, setVersionConflictBanner] = useState(false);
   const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
+  const textDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const latestDraftRef = useRef<DraftV2 | null>(null);
+
+  useEffect(() => {
+    latestDraftRef.current = draft;
+  }, [draft]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,22 +76,25 @@ export function useDraftV2(): UseDraftV2Result {
     void load();
     return () => {
       abortRef.current?.abort();
+      for (const timer of textDebounceTimers.current.values()) {
+        clearTimeout(timer);
+      }
+      textDebounceTimers.current.clear();
     };
   }, [load]);
 
   const dismissVersionBanner = useCallback(() => setVersionConflictBanner(false), []);
 
-  const saveField = useCallback(
-    async (fieldKey: string, value: unknown): Promise<boolean> => {
-      if (!draft) return false;
+  const saveFieldInternal = useCallback(
+    async (fieldKey: string, value: unknown, draftSnapshot: DraftV2): Promise<boolean> => {
       setPendingSaves((prev) => new Set(prev).add(fieldKey));
       try {
         const resp = await fetch("/api/app/job-poster/drafts-v2/save-field", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            draftId: draft.id,
-            expectedVersion: draft.version,
+            draftId: draftSnapshot.id,
+            expectedVersion: draftSnapshot.version,
             fieldKey,
             value,
           }),
@@ -106,7 +118,52 @@ export function useDraftV2(): UseDraftV2Result {
         });
       }
     },
-    [draft]
+    []
+  );
+
+  const saveField = useCallback(
+    async (fieldKey: string, value: unknown): Promise<boolean> => {
+      const snapshot = latestDraftRef.current;
+      if (!snapshot) return false;
+      return saveFieldInternal(fieldKey, value, snapshot);
+    },
+    [saveFieldInternal]
+  );
+
+  const queueTextSave = useCallback(
+    (fieldKey: string, value: unknown) => {
+      const existing = textDebounceTimers.current.get(fieldKey);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        void saveField(fieldKey, value);
+        textDebounceTimers.current.delete(fieldKey);
+      }, 750);
+      textDebounceTimers.current.set(fieldKey, timer);
+    },
+    [saveField]
+  );
+
+  const blurFieldSave = useCallback(
+    async (fieldKey: string, value: unknown): Promise<boolean> => {
+      const existing = textDebounceTimers.current.get(fieldKey);
+      if (existing) {
+        clearTimeout(existing);
+        textDebounceTimers.current.delete(fieldKey);
+      }
+      return saveField(fieldKey, value);
+    },
+    [saveField]
+  );
+
+  const getFieldSaveState = useCallback(
+    (fieldKey: string): "idle" | "saving" | "saved" | "error" => {
+      if (pendingSaves.has(fieldKey)) return "saving";
+      const serverState = draft?.fieldStates?.[fieldKey]?.status;
+      if (serverState === "saved") return "saved";
+      if (serverState === "error") return "error";
+      return "idle";
+    },
+    [draft?.fieldStates, pendingSaves]
   );
 
   const advanceStep = useCallback(
@@ -193,6 +250,9 @@ export function useDraftV2(): UseDraftV2Result {
     versionConflictBanner,
     pendingSaves,
     saveField,
+    queueTextSave,
+    blurFieldSave,
+    getFieldSaveState,
     advanceStep,
     startAppraisal,
     createPaymentIntent,

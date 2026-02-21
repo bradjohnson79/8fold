@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const isProdAudit = String(process.env.AUDIT_ENV ?? "").toLowerCase() === "production";
+const isE2EMode = String(process.env.E2E_TEST_MODE ?? "0").trim() === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -39,5 +40,13 @@ export default defineConfig({
       },
     },
   ],
+  webServer: isE2EMode
+    ? {
+        command: "pnpm dev",
+        url: "http://localhost:3006",
+        reuseExistingServer: false,
+        timeout: 120_000,
+      }
+    : undefined,
 });
 

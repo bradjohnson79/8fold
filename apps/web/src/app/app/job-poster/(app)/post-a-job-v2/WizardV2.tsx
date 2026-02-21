@@ -22,6 +22,9 @@ export function WizardV2() {
     versionConflictBanner,
     pendingSaves,
     saveField,
+    queueTextSave,
+    blurFieldSave,
+    getFieldSaveState,
     advanceStep,
     startAppraisal,
     createPaymentIntent,
@@ -32,6 +35,14 @@ export function WizardV2() {
   const [localError, setLocalError] = React.useState("");
   const [appraising, setAppraising] = React.useState(false);
   const [paymentLoading, setPaymentLoading] = React.useState(false);
+  const [titleInput, setTitleInput] = React.useState("");
+  const [scopeInput, setScopeInput] = React.useState("");
+
+  React.useEffect(() => {
+    const details = (draft?.data?.details as any) ?? {};
+    setTitleInput(String(details.title ?? ""));
+    setScopeInput(String(details.scope ?? ""));
+  }, [draft?.id, draft?.version]);
 
   const currentIndex = STEPS.findIndex((s) => s.id === draft?.currentStep) ?? 0;
 
@@ -129,7 +140,58 @@ export function WizardV2() {
         )}
         {draft.currentStep === "DETAILS" && (
           <div className="mt-4">
-            <p className="text-sm text-gray-500">Job details step — full UI to be wired.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
+                <input
+                  value={titleInput}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTitleInput(v);
+                    queueTextSave("details.title", v);
+                  }}
+                  onBlur={() => void blurFieldSave("details.title", titleInput)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  placeholder="Enter a clear job title"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Status: {getFieldSaveState("details.title")}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scope</label>
+                <textarea
+                  value={scopeInput}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setScopeInput(v);
+                    queueTextSave("details.scope", v);
+                  }}
+                  onBlur={() => void blurFieldSave("details.scope", scopeInput)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 min-h-[110px]"
+                  placeholder="Describe the work in detail"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Status: {getFieldSaveState("details.scope")}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
+                <select
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={String(((draft.data?.details as any)?.jobType ?? "urban"))}
+                  onChange={(e) => void saveField("details.jobType", e.target.value)}
+                >
+                  <option value="urban">Urban</option>
+                  <option value="regional">Regional</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Status: {getFieldSaveState("details.jobType")}
+                </p>
+              </div>
+            </div>
             <button
               onClick={handleNext}
               disabled={hasPendingSaves}
