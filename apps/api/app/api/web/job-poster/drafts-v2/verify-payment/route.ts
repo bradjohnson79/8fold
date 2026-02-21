@@ -52,8 +52,7 @@ export async function POST(req: Request) {
         level: "error",
         event: "job_draft_v2.verify_payment.finalize_failed",
         route,
-        traceId,
-        context: { userId, jobId: finalized.jobId, reason: finalized.reason },
+        context: { traceId, userId, jobId: finalized.jobId, reason: finalized.reason },
       });
       return NextResponse.json(
         {
@@ -87,8 +86,7 @@ export async function POST(req: Request) {
       level: "info",
       event: "job_draft_v2.verify_payment",
       route,
-      traceId,
-      context: { userId, jobId: finalized.jobId, idempotent: finalized.idempotent },
+      context: { traceId, userId, jobId: finalized.jobId, idempotent: finalized.idempotent },
     });
 
     return NextResponse.json({
@@ -103,8 +101,7 @@ export async function POST(req: Request) {
       level: "error",
       event: "job_draft_v2.verify_payment.failed",
       route,
-      traceId,
-      context: { userId, jobId, message: err instanceof Error ? err.message : "unknown" },
+      context: { traceId, userId, jobId, message: err instanceof Error ? err.message : "unknown" },
     });
     return jobPosterRouteErrorFromUnknown({
       route,
