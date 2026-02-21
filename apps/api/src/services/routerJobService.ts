@@ -4,7 +4,8 @@ import { db } from "@/server/db/drizzle";
 import { auditLogs } from "../../db/schema/auditLog";
 import { jobs } from "../../db/schema/job";
 import { routers } from "../../db/schema/router";
-import { stateFromRegion } from "../jobs/geo";
+import { users } from "../../db/schema/user";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../jurisdiction";
 
 const ACTIVE_STATUSES = [
   "PUBLISHED",
@@ -30,9 +31,12 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
         status: routers.status,
         homeCountry: routers.homeCountry,
         homeRegionCode: routers.homeRegionCode,
+        countryCode: users.countryCode,
+        stateCode: users.stateCode,
         dailyRouteLimit: routers.dailyRouteLimit,
       })
       .from(routers)
+      .innerJoin(users, eq(users.id, routers.userId))
       .where(eq(routers.userId, userId))
       .limit(1);
     const router = routerRows[0] ?? null;
@@ -70,7 +74,9 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
         routingStatus: jobs.routingStatus,
         firstRoutedAt: jobs.firstRoutedAt,
         country: jobs.country,
+        countryCode: jobs.countryCode,
         regionCode: jobs.regionCode,
+        stateCode: jobs.stateCode,
         region: jobs.region,
         isMock: jobs.isMock,
         jobSource: jobs.jobSource,
@@ -99,9 +105,15 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
     if (current.routingStatus !== "UNROUTED") return { kind: "job_not_open" };
 
     // Enforce router region restriction.
-    const jobRegionCode = String((current as any).regionCode ?? stateFromRegion(current.region)).trim().toUpperCase();
-    if (router.homeCountry !== (current as any).country || String(router.homeRegionCode) !== jobRegionCode) {
-      throw Object.assign(new Error("Router region mismatch"), { status: 403 });
+    const routerCountryCode = normalizeCountryCode(String((router as any).countryCode ?? router.homeCountry ?? ""));
+    const routerStateCode = normalizeStateCode(String((router as any).stateCode ?? router.homeRegionCode ?? ""));
+    const jobCountryCode = normalizeCountryCode(String((current as any).countryCode ?? current.country ?? ""));
+    const jobStateCode = normalizeStateCode(String((current as any).stateCode ?? current.regionCode ?? ""));
+    if (!isSameJurisdiction(routerCountryCode, routerStateCode, jobCountryCode, jobStateCode)) {
+      throw Object.assign(new Error("8Fold restricts work to within your registered state/province."), {
+        status: 403,
+        code: "CROSS_JURISDICTION_BLOCKED",
+      });
     }
 
     const updated = await tx

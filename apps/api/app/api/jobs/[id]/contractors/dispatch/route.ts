@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { HOURS_24_MS } from "../../../../../../src/services/monitoringService";
 import { toHttpError } from "../../../../../../src/http/errors";
-import { stateFromRegion } from "../../../../../../src/jobs/geo";
 import { z } from "zod";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../../../../../../db/drizzle";
 import { auditLogs, contractors, jobDispatches, jobs, routerProfiles } from "../../../../../../db/schema";
+import { users } from "../../../../../../db/schema/user";
+import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../../../../../../src/jurisdiction";
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
@@ -46,7 +47,10 @@ export async function POST(req: Request) {
             .select({
               id: jobs.id,
               status: jobs.status,
-              region: jobs.region,
+              country: jobs.country,
+              countryCode: jobs.countryCode,
+              regionCode: jobs.regionCode,
+              stateCode: jobs.stateCode,
               serviceType: jobs.serviceType,
               routerId: jobs.claimedByUserId,
               contractorPayoutCents: jobs.contractorPayoutCents,
@@ -63,14 +67,23 @@ export async function POST(req: Request) {
       const profile =
         (
           await tx
-            .select({ stateProvince: (routerProfiles as any).stateProvince })
-            .from(routerProfiles)
-            .where(eq(routerProfiles.userId, router.userId))
+            .select({
+              routerStateProvince: (routerProfiles as any).stateProvince,
+              userCountryCode: users.countryCode,
+              userStateCode: users.stateCode,
+            })
+            .from(users)
+            .leftJoin(routerProfiles as any, eq(routerProfiles.userId, users.id))
+            .where(eq(users.id, router.userId))
             .limit(1)
         )[0] ?? null;
-      const jobState = stateFromRegion(job.region);
-      const routerState = String((profile as any)?.stateProvince ?? "").trim().toUpperCase();
-      if (!routerState || routerState !== jobState) return { kind: "router_state_mismatch" as const };
+      const routerCountryCode = normalizeCountryCode(String((profile as any)?.userCountryCode ?? ""));
+      const routerStateCode = normalizeStateCode(String((profile as any)?.userStateCode ?? (profile as any)?.routerStateProvince ?? ""));
+      const jobCountryCode = normalizeCountryCode(String((job as any).countryCode ?? (job as any).country ?? ""));
+      const jobStateCode = normalizeStateCode(String((job as any).stateCode ?? (job as any).regionCode ?? ""));
+      if (!isSameJurisdiction(routerCountryCode, routerStateCode, jobCountryCode, jobStateCode)) {
+        return { kind: "cross_jurisdiction_blocked" as const };
+      }
 
       // v1 routing: allow up to 5 contractors per job (busy contractors allowed but deprioritized elsewhere).
       const now = new Date();
@@ -146,8 +159,11 @@ export async function POST(req: Request) {
     if (result.kind === "forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (result.kind === "job_not_available") return NextResponse.json({ error: "Job not available" }, { status: 409 });
     if (result.kind === "pricing_unlocked") return NextResponse.json({ error: "Job pricing is not locked" }, { status: 409 });
-    if (result.kind === "router_state_mismatch")
-      return NextResponse.json({ error: "Router must be in the same state/province as the job" }, { status: 409 });
+    if (result.kind === "cross_jurisdiction_blocked")
+      return NextResponse.json(
+        { error: "8Fold restricts work to within your registered state/province.", code: "CROSS_JURISDICTION_BLOCKED" },
+        { status: 409 },
+      );
     if (result.kind === "already_sent") return NextResponse.json({ error: "Already sent to that contractor" }, { status: 409 });
     if (result.kind === "too_many") return NextResponse.json({ error: "Max 5 contractors per job" }, { status: 409 });
     if (result.kind === "contractor_not_eligible")

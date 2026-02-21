@@ -7,6 +7,8 @@ import { jobDispatches } from "../../../../../db/schema/jobDispatch";
 import { jobs } from "../../../../../db/schema/job";
 import { jobPayments } from "../../../../../db/schema/jobPayment";
 import { routers } from "../../../../../db/schema/router";
+import { users } from "../../../../../db/schema/user";
+import { normalizeCountryCode, normalizeStateCode } from "../../../../../src/jurisdiction";
 
 export async function GET(req: Request) {
   try {
@@ -18,15 +20,20 @@ export async function GET(req: Request) {
       .select({
         homeCountry: routers.homeCountry,
         homeRegionCode: routers.homeRegionCode,
+        countryCode: users.countryCode,
+        stateCode: users.stateCode,
         status: routers.status,
       })
       .from(routers)
+      .innerJoin(users, eq(users.id, routers.userId))
       .where(eq(routers.userId, router.userId))
       .limit(1);
 
     const routerRow = routerRows[0] ?? null;
     if (!routerRow) return ok({ jobs: [] });
-    if (!String(routerRow.homeRegionCode ?? "").trim()) {
+    const routerCountryCode = normalizeCountryCode(String((routerRow as any).countryCode ?? routerRow.homeCountry ?? ""));
+    const routerStateCode = normalizeStateCode(String((routerRow as any).stateCode ?? routerRow.homeRegionCode ?? ""));
+    if (!routerCountryCode || !routerStateCode) {
       // Should be unreachable: profile completeness is required by requireRouterActive().
       return ok({ jobs: [] });
     }
@@ -112,8 +119,8 @@ export async function GET(req: Request) {
           eq(jobs.routingStatus, "UNROUTED"),
           isNull(jobs.claimedByUserId), // Prisma `routerId: null` maps to claimedByUserId
           eq(jobs.isMock, false),
-          eq(jobs.country, routerRow.homeCountry),
-          eq(jobs.regionCode, routerRow.homeRegionCode),
+          eq(jobs.countryCode, routerCountryCode as any),
+          eq(jobs.stateCode, routerStateCode),
           eq(jobPayments.status, "CAPTURED"),
         ),
       )

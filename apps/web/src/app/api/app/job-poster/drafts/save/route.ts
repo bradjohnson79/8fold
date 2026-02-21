@@ -42,11 +42,13 @@ export async function POST(req: Request) {
         return null;
       }
     })() as any;
+    const code = String(parsed?.code ?? "").trim();
     const traceId = String(parsed?.traceId ?? "").trim() || randomUUID();
     return NextResponse.json(
       {
         error: String(parsed?.error ?? "Draft save failed."),
         code: "DRAFT_SAVE_FAILED",
+        code: code === "JOB_STATE_MISMATCH" ? "JOB_STATE_MISMATCH" : "DRAFT_SAVE_FAILED",
         requiresSupportTicket: true,
         traceId,
       },
