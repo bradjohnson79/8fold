@@ -2,13 +2,26 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useClerk } from "@clerk/nextjs";
 
 export function TokenPendingClient(props: { nextFallback?: string }) {
   const router = useRouter();
+  const { signOut } = useClerk();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [attempt, setAttempt] = React.useState(0);
   const [exhausted, setExhausted] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
+
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOut({ redirectUrl: "/login" });
+    } catch {
+      window.location.href = "/login";
+    }
+  }
 
   React.useEffect(() => {
     let cancelled = false;
@@ -50,13 +63,21 @@ export function TokenPendingClient(props: { nextFallback?: string }) {
             ? "Please try refreshing. If this keeps happening, sign out and sign in again."
             : `Attempt ${attempt || 1}…`}
         </div>
-        <div className="mt-5 flex items-center justify-center gap-3">
+        <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
             type="button"
             onClick={() => window.location.reload()}
             className="inline-flex bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-5 py-2.5 rounded-lg"
           >
             Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+            className="inline-flex bg-white border border-gray-200 hover:bg-gray-50 text-gray-900 font-semibold px-5 py-2.5 rounded-lg disabled:opacity-50"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
           </button>
           <a
             href={`/login?next=${encodeURIComponent(fallbackNext)}`}
