@@ -145,7 +145,7 @@ export async function POST(req: Request) {
     if (job.isMock) return badRequest("mock_job_cannot_be_disputed");
 
     // Dispute eligibility (frontend mirrors this).
-    if (String(job.paymentStatus ?? "") !== "FUNDED") {
+    if (!["FUNDED", "FUNDS_SECURED"].includes(String(job.paymentStatus ?? "").toUpperCase())) {
       return fail(409, "job_not_funded");
     }
     if (String(job.payoutStatus ?? "") === "RELEASED") {

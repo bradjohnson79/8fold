@@ -82,6 +82,10 @@ export const paymentStatusEnum = pgEnum("PaymentStatus", [
   "FUNDED",
   "FAILED",
   "REFUNDED",
+  // V3 manual-capture lifecycle (add-only enum evolution).
+  "AUTHORIZED",
+  "FUNDS_SECURED",
+  "EXPIRED_UNFUNDED",
 ]);
 
 // Avoid name collision with existing Postgres enum "PayoutStatus" (PENDING/PAID/FAILED).
@@ -301,18 +305,4 @@ export const sendBlockedReasonEnum = pgEnum("SendBlockedReason", [
   "INTERVAL_LIMIT_EXCEEDED",
 ]);
 
-// Job Post Wizard V2
-export const jobDraftV2StepEnum = pgEnum("JobDraftV2Step", [
-  "PROFILE",
-  "DETAILS",
-  "PRICING",
-  "PAYMENT",
-  "CONFIRMED",
-]);
-export const jobDraftV2FieldStateStatusEnum = pgEnum("JobDraftV2FieldStateStatus", [
-  "idle",
-  "saving",
-  "saved",
-  "error",
-]);
 

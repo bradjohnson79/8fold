@@ -93,7 +93,7 @@ function PaymentConfirmCard(props: {
                 elements: elements!,
                 redirect: "if_required",
                 confirmParams: {
-                  return_url: `${window.location.origin}/app/job-poster/payment/return-v2`,
+                  return_url: `${window.location.origin}/app/job-poster/post-a-job-v3`,
                 },
               });
               if (res.error) throw new Error(res.error.message || "Payment failed");

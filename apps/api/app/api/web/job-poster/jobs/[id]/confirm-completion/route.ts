@@ -48,6 +48,7 @@ export async function POST(req: Request) {
           archived: jobs.archived,
           paymentStatus: jobs.paymentStatus,
           payoutStatus: jobs.payoutStatus,
+          completionDeadlineAt: jobs.completionDeadlineAt,
           jobPosterUserId: jobs.jobPosterUserId,
           routerUserId: jobs.claimedByUserId,
           contractorCompletedAt: jobs.contractorCompletedAt,
@@ -61,14 +62,30 @@ export async function POST(req: Request) {
 
       if (String(job.jobPosterUserId ?? "") !== u.userId) return { kind: "forbidden" as const };
       if (job.archived) return { kind: "inactive" as const };
-      if (String(job.paymentStatus ?? "") !== "FUNDED") return { kind: "inactive" as const };
+      if (!["FUNDED", "FUNDS_SECURED"].includes(String(job.paymentStatus ?? "").toUpperCase())) return { kind: "inactive" as const };
       if (String(job.payoutStatus ?? "") === "RELEASED") return { kind: "already_released" as const };
       if (String(job.status ?? "") === "DISPUTED") return { kind: "disputed" as const };
+      const now = new Date();
+      if (
+        job.completionDeadlineAt instanceof Date &&
+        job.completionDeadlineAt.getTime() < now.getTime() &&
+        !["COMPLETED", "COMPLETED_APPROVED"].includes(String(job.status ?? "").toUpperCase())
+      ) {
+        await tx
+          .update(jobs)
+          .set({
+            status: "COMPLETION_FLAGGED" as any,
+            completionFlaggedAt: now,
+            completionFlagReason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
+            updatedAt: now,
+          } as any)
+          .where(eq(jobs.id, jobId));
+        return { kind: "deadline_exceeded" as const };
+      }
 
       if (!job.contractorCompletedAt) return { kind: "awaiting_contractor" as const };
       if (job.customerApprovedAt) return { kind: "already_submitted" as const };
 
-      const now = new Date();
       const updated = await tx
         .update(jobs)
         .set({
@@ -118,6 +135,9 @@ export async function POST(req: Request) {
     }
     if (result.kind === "disputed") {
       return NextResponse.json({ ok: false, error: "Job is disputed. Completion confirmation is disabled." }, { status: 409 });
+    }
+    if (result.kind === "deadline_exceeded") {
+      return NextResponse.json({ ok: false, error: "Completion deadline exceeded. Manual review required." }, { status: 409 });
     }
 
     return NextResponse.json({ ok: true });

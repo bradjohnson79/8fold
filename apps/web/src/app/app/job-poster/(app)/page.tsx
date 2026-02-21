@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { postAJobPath } from "@/lib/jobWizardV2";
+import { postAJobPath } from "@/lib/jobWizardV3";
 import { ContractorResponsesCard } from "./ContractorResponsesCard";
 import { EcdCheckInsCard } from "./EcdCheckInsCard";
 import { ErrorDisplay } from "../../../../components/ErrorDisplay";
@@ -59,7 +59,7 @@ function isJobActiveForPm(job: { status?: string | null; paymentStatus?: string 
   const status = String(job.status ?? "").toUpperCase();
   const paymentStatus = String(job.paymentStatus ?? "").toUpperCase();
   return (
-    paymentStatus === "FUNDED" &&
+    (paymentStatus === "FUNDED" || paymentStatus === "FUNDS_SECURED") &&
     ["OPEN_FOR_ROUTING", "ROUTED", "ACCEPTED", "ASSIGNED", "IN_PROGRESS"].includes(status)
   );
 }
@@ -340,14 +340,15 @@ export default function JobPosterDashboard() {
 
         <div className="mt-5 space-y-3">
           {pendingJobs.map((j) => {
-            const funded = Boolean(j.escrowLockedAt);
+            const paymentStatusUpper = String(j.paymentStatus ?? "").toUpperCase();
+            const funded = paymentStatusUpper === "FUNDED" || paymentStatusUpper === "FUNDS_SECURED";
             const total = j.laborTotalCents + j.materialsTotalCents;
             const repeatStatus = j.repeatContractorRequest?.status ?? null;
             const badge = completionBadgeForJob(j);
             const canConfirmCompletion = Boolean(j.contractorCompletedAt) && !j.customerApprovedAt;
             const isDisputed = String(j.status ?? "").toUpperCase() === "DISPUTED";
             const disputeEligible =
-              String(j.paymentStatus ?? "").toUpperCase() === "FUNDED" &&
+              (paymentStatusUpper === "FUNDED" || paymentStatusUpper === "FUNDS_SECURED") &&
               String(j.payoutStatus ?? "").toUpperCase() !== "RELEASED" &&
               !j.routerApprovedAt &&
               !isDisputed;
@@ -380,6 +381,11 @@ export default function JobPosterDashboard() {
                     {j.assignment?.contractor ? (
                       <div className="text-sm text-gray-700 mt-2">
                         Contractor: <span className="font-semibold">{j.assignment.contractor.businessName}</span>
+                      </div>
+                    ) : null}
+                    {String(j.paymentStatus ?? "").toUpperCase() === "FUNDS_SECURED" ? (
+                      <div className="mt-2 rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">
+                        ✅ A contractor has accepted your job. Your card has now been charged and funds are securely held until completion.
                       </div>
                     ) : null}
                   </div>

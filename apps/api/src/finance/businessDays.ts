@@ -124,3 +124,13 @@ export function nextBusinessDayUTC(fromDate: Date, country: CountryCode): Date {
   return d;
 }
 
+export function addBusinessDaysUTC(fromDate: Date, country: CountryCode, businessDays: number): Date {
+  let d = fromYMD(toYMD(fromDate));
+  let remaining = Math.max(0, Math.floor(businessDays));
+  while (remaining > 0) {
+    d = nextBusinessDayUTC(d, country);
+    remaining -= 1;
+  }
+  return d;
+}
+

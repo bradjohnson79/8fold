@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { requireSupportRequester } from "../../../../../../src/auth/rbac";
 import { db } from "../../../../../../db/drizzle";
 import { jobs } from "../../../../../../db/schema/job";
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
           eq(jobs.isMock, false),
           eq(jobs.archived, false),
           whereClause,
-          eq(jobs.paymentStatus, "FUNDED" as any),
+          inArray(jobs.paymentStatus, ["FUNDED", "FUNDS_SECURED"] as any),
           ne(jobs.payoutStatus, "RELEASED" as any),
           isNull(jobs.routerApprovedAt),
           ne(jobs.status, "DISPUTED" as any),

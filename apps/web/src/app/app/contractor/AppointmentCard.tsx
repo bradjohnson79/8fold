@@ -35,7 +35,7 @@ function isJobActiveForPm(job: { status?: string | null; paymentStatus?: string 
   const status = String(job.status ?? "").toUpperCase();
   const paymentStatus = String(job.paymentStatus ?? "").toUpperCase();
   return (
-    paymentStatus === "FUNDED" &&
+    (paymentStatus === "FUNDED" || paymentStatus === "FUNDS_SECURED") &&
     ["OPEN_FOR_ROUTING", "ROUTED", "ACCEPTED", "ASSIGNED", "IN_PROGRESS"].includes(status)
   );
 }
@@ -88,7 +88,7 @@ export function AppointmentCard() {
   const isDisputed = String(job?.status ?? "").toUpperCase() === "DISPUTED";
   const disputeEligible =
     Boolean(job?.id) &&
-    String(job?.paymentStatus ?? "").toUpperCase() === "FUNDED" &&
+    ["FUNDED", "FUNDS_SECURED"].includes(String(job?.paymentStatus ?? "").toUpperCase()) &&
     String(job?.payoutStatus ?? "").toUpperCase() !== "RELEASED" &&
     !job?.routerApprovedAt &&
     !isDisputed;

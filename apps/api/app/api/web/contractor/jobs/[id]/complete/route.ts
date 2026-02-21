@@ -54,6 +54,7 @@ export async function POST(req: Request) {
           archived: jobs.archived,
           paymentStatus: jobs.paymentStatus,
           payoutStatus: jobs.payoutStatus,
+          completionDeadlineAt: jobs.completionDeadlineAt,
           jobPosterUserId: jobs.jobPosterUserId,
           routerUserId: jobs.claimedByUserId,
           contractorCompletedAt: jobs.contractorCompletedAt,
@@ -63,10 +64,27 @@ export async function POST(req: Request) {
         .limit(1);
       const job = jobRows[0] ?? null;
       if (!job) return { kind: "not_found" as const };
+      const now = new Date();
 
       if (job.archived) return { kind: "inactive" as const };
       if (!isJobActive(job)) return { kind: "inactive" as const };
       if (String(job.payoutStatus ?? "") === "RELEASED") return { kind: "already_released" as const };
+      if (
+        job.completionDeadlineAt instanceof Date &&
+        job.completionDeadlineAt.getTime() < now.getTime() &&
+        !["COMPLETED", "COMPLETED_APPROVED"].includes(String(job.status ?? "").toUpperCase())
+      ) {
+        await tx
+          .update(jobs)
+          .set({
+            status: "COMPLETION_FLAGGED" as any,
+            completionFlaggedAt: now,
+            completionFlagReason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
+            updatedAt: now,
+          } as any)
+          .where(eq(jobs.id, jobId));
+        return { kind: "deadline_exceeded" as const };
+      }
 
       const assignRows = await tx
         .select({ contractorId: jobAssignments.contractorId })
@@ -79,7 +97,6 @@ export async function POST(req: Request) {
 
       if (job.contractorCompletedAt) return { kind: "already_submitted" as const };
 
-      const now = new Date();
       const updatedRows = await tx
         .update(jobs)
         .set({
@@ -147,6 +164,9 @@ export async function POST(req: Request) {
     }
     if (result.kind === "already_submitted") {
       return NextResponse.json({ ok: false, error: "Completion already submitted." }, { status: 400 });
+    }
+    if (result.kind === "deadline_exceeded") {
+      return NextResponse.json({ ok: false, error: "Completion deadline exceeded. Manual review required." }, { status: 409 });
     }
 
     return NextResponse.json({ ok: true });

@@ -141,7 +141,10 @@ export async function finalizeJobFundingFromPaymentIntent(
       return fail("payment_row_mapped_to_different_payment_intent", meta.jobId);
     }
 
-    if (String(job.paymentStatus ?? "") === "FUNDED" || String(payment?.status ?? "") === "CAPTURED") {
+    if (
+      ["FUNDED", "FUNDS_SECURED"].includes(String(job.paymentStatus ?? "").toUpperCase()) ||
+      String(payment?.status ?? "") === "CAPTURED"
+    ) {
       return {
         ok: true,
         idempotent: true,
@@ -184,11 +187,12 @@ export async function finalizeJobFundingFromPaymentIntent(
     await tx
       .update(jobs)
       .set({
-        paymentStatus: "FUNDED" as any,
+        paymentStatus: "FUNDS_SECURED" as any,
+        fundsSecuredAt: now,
         fundedAt: now,
         stripePaymentIntentId: pi.id,
         stripeChargeId: typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null,
-        status: "OPEN_FOR_ROUTING" as any,
+        status: String(job.status ?? "").toUpperCase() === "DRAFT" ? ("OPEN_FOR_ROUTING" as any) : (job.status as any),
         escrowLockedAt: now,
         paymentCapturedAt: now,
       } as any)

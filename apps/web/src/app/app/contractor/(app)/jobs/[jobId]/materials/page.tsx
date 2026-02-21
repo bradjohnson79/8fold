@@ -367,7 +367,7 @@ export default function ContractorMaterialsPage() {
                             Receipts: {req.receipts.length} · Verified: {req.receipts.filter((r) => r.verified).length}
                           </div>
 
-                          {req.status === "FUNDED" ? (
+                          {req.status === "FUNDED" || req.status === "PAYMENT_PENDING" ? (
                             <div className="mt-4">
                               <label className="text-sm font-semibold text-gray-700">Upload Receipt</label>
                               <input

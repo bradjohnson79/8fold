@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function LegacyPaymentReturnPage() {
-  redirect("/app/job-poster/payment/return-v2");
+  redirect("/app/job-poster/post-a-job-v3");
 }

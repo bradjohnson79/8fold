@@ -12,7 +12,7 @@ const pricingGuardFiles = [
   "apps/web/src/app/app/job-poster/(app)/post-a-job/page.tsx",
   "apps/api/src/pricing/jobPricingAppraisal.ts",
   "apps/api/src/pricing/aiAppraisal.ts",
-  "apps/api/app/api/web/job-poster/drafts-v2/start-appraisal/route.ts",
+  "apps/api/app/api/job-draft/appraise/route.ts",
   "apps/api/app/api/web/job-poster/jobs/create-draft/route.ts",
 ];
 

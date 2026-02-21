@@ -86,6 +86,8 @@ export async function POST(req: Request) {
     const idempotencyKey = buildPmPiIdempotencyKey(body.pmRequestId);
     const pi = await createPaymentIntent(amountCents, {
       currency,
+      captureMethod: "manual",
+      requestExtendedAuthorization: true,
       idempotencyKey,
       metadata: buildPmPiMetadata({
         pmRequestId: body.pmRequestId,
