@@ -5,7 +5,7 @@
 - PaymentIntent is created server-side from `apps/api/app/api/web/job-poster/jobs/[id]/create-payment-intent/route.ts`.
 - Stripe confirmation happens client-side with Stripe Elements (`stripe.confirmPayment`) and a `return_url`.
 - Return page at `apps/web/src/app/app/job-poster/payment/return/page.tsx` calls server verification before showing success.
-- Server verification is handled by `apps/api/app/api/web/job-poster/payments/verify/route.ts`.
+- Server verification is handled by the canonical wizard payment verification route.
 - Webhook processing is handled by `apps/api/app/api/webhooks/stripe/route.ts`, and `/api/stripe/webhook` now forwards to that same handler.
 
 ## 2) Threat Model

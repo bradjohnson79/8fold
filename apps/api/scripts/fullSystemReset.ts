@@ -208,7 +208,6 @@ async function main() {
     { key: "jobPosters", table: schema.jobPosters },
     { key: "jobPosterProfiles", table: schema.jobPosterProfiles },
     { key: "jobs", table: schema.jobs },
-    { key: "jobDrafts", table: schema.jobDrafts },
     { key: "jobAssignments", table: schema.jobAssignments },
     { key: "jobDispatches", table: schema.jobDispatches },
     { key: "jobHolds", table: schema.jobHolds },
@@ -318,7 +317,6 @@ async function main() {
     { key: "routingHubs", table: schema.routingHubs },
 
     { key: "materialsRequests", table: schema.materialsRequests },
-    { key: "jobDrafts", table: schema.jobDrafts },
     { key: "jobs", table: schema.jobs },
     { key: "submissions", table: schema.submissions },
     { key: "backlinks", table: schema.backlinks },

@@ -10,10 +10,23 @@ import {
   JobPricingAppraisalError,
   type JobPricingAppraisalInput,
 } from "../../../../../../src/pricing/jobPricingAppraisal";
-import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../src/http/jobPosterRouteErrors";
+import { classifyJobPosterRouteError } from "../../../../../../src/http/jobPosterRouteErrors";
 import { logEvent } from "../../../../../../src/server/observability/log";
 
 const route = "POST /api/web/job-poster/drafts-v2/start-appraisal";
+
+function errorJson(
+  status: number,
+  code: string,
+  message: string,
+  traceId: string,
+  extra: Record<string, unknown> = {},
+) {
+  return NextResponse.json(
+    { success: false, code, message, traceId, ...extra },
+    { status },
+  );
+}
 
 function draftToResponse(draft: typeof jobDraftV2.$inferSelect, fieldStates: Array<{ fieldKey: string; status: string; savedAt: Date | null }>) {
   const fieldStatesMap: Record<string, { status: string; savedAt: string | null }> = {};
@@ -43,6 +56,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "AI_CONFIG_MISSING",
+          message: "AI configuration is missing.",
           requiresSupportTicket: true,
           traceId,
         },
@@ -65,16 +79,9 @@ export async function POST(req: Request) {
 
     draftId = id || null;
 
-    if (!id) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "VALIDATION_ERROR",
-        status: 400,
-        err: new Error("Missing draftId"),
-        userId,
-        jobId: draftId,
-        extraJson: { success: false, code: "MISSING_DRAFT_ID", traceId },
-      });
+    if (!id) return errorJson(400, "MISSING_DRAFT_ID", "Missing draftId.", traceId);
+    if (typeof expectedVersion !== "number") {
+      return errorJson(400, "MISSING_EXPECTED_VERSION", "Missing expectedVersion.", traceId);
     }
 
     const draftRows = await db
@@ -84,19 +91,9 @@ export async function POST(req: Request) {
       .limit(1);
     const draft = draftRows[0] ?? null;
 
-    if (!draft) {
-      return jobPosterRouteErrorResponse({
-        route,
-        errorType: "INTERNAL_ERROR",
-        status: 404,
-        err: new Error("Draft not found"),
-        userId,
-        jobId: id,
-        extraJson: { success: false, code: "DRAFT_NOT_FOUND", traceId },
-      });
-    }
+    if (!draft) return errorJson(404, "DRAFT_NOT_FOUND", "Draft not found.", traceId);
 
-    if (typeof expectedVersion !== "number" || expectedVersion !== draft.version) {
+    if (expectedVersion !== draft.version) {
       const fieldStates = await db
         .select({ fieldKey: jobDraftV2FieldState.fieldKey, status: jobDraftV2FieldState.status, savedAt: jobDraftV2FieldState.savedAt })
         .from(jobDraftV2FieldState)
@@ -105,6 +102,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "VERSION_CONFLICT",
+          message: "Draft version conflict.",
           draft: draftToResponse(draft, fieldStates),
           traceId,
         },
@@ -153,6 +151,7 @@ export async function POST(req: Request) {
           {
             success: false,
             code: err.code,
+            message: "AI appraisal failed.",
             requiresSupportTicket: true,
             traceId: err.traceId,
           },
@@ -163,6 +162,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "AI_RUNTIME_ERROR",
+          message: "AI appraisal runtime error.",
           requiresSupportTicket: true,
           traceId,
         },
@@ -201,6 +201,7 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "AI_INVALID_RESPONSE",
+          message: "AI returned an invalid response.",
           requiresSupportTicket: true,
           traceId,
         },
@@ -247,6 +248,7 @@ export async function POST(req: Request) {
           {
             success: false,
             code: "VERSION_CONFLICT",
+            message: "Draft version conflict.",
             draft: draftToResponse(fresh, fieldStates),
             traceId,
           },
@@ -294,12 +296,13 @@ export async function POST(req: Request) {
       route,
       context: { traceId, userId, draftId, message: err instanceof Error ? err.message : "unknown" },
     });
-    return jobPosterRouteErrorFromUnknown({
-      route,
-      err,
-      userId,
-      jobId: draftId,
-      extraJson: { success: false, requiresSupportTicket: true, traceId },
-    });
+    const { status } = classifyJobPosterRouteError(err);
+    return errorJson(
+      status >= 400 && status < 600 ? status : 500,
+      "START_APPRAISAL_FAILED",
+      "Failed to start appraisal.",
+      traceId,
+      { requiresSupportTicket: true },
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TradeCategorySchema } from "./trades";
 import type { FieldKey } from "./jobDraftV2.fieldKeys";
+import { ALL_FIELD_KEYS } from "./jobDraftV2.fieldKeys";
 
 const NonEmptyTrimmedString = z.string().trim().min(1);
 
@@ -180,4 +181,27 @@ export function validateFieldValue(fieldKey: FieldKey, value: unknown): { ok: tr
   } catch {
     return { ok: false, message: "Validation failed" };
   }
+}
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let cur: unknown = obj;
+  for (const p of parts) {
+    if (!cur || typeof cur !== "object" || !(p in (cur as Record<string, unknown>))) {
+      return undefined;
+    }
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  return cur;
+}
+
+export function computeDraftValidation(data: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of ALL_FIELD_KEYS) {
+    const value = getNestedValue(data, key);
+    if (typeof value === "undefined") continue;
+    const result = validateFieldValue(key, value);
+    if (!result.ok) out[key] = result.message;
+  }
+  return out;
 }

@@ -1,9 +1,33 @@
 import { NextResponse } from "next/server";
 import { requireSession, requireApiToken } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
+import {
+  getE2EUserIdFromHeader,
+  getOrCreateState,
+  invalidE2EIdentityResponse,
+  isE2ETestModeEnabled,
+  saveField,
+} from "@/server/e2e/jobWizardV2TestMode";
 
 export async function POST(req: Request) {
   try {
+    if (isE2ETestModeEnabled()) {
+      const userId = getE2EUserIdFromHeader(req);
+      if (!userId) return invalidE2EIdentityResponse();
+      const state = getOrCreateState(userId);
+      const body = (await req.json().catch(() => null)) as {
+        expectedVersion?: number;
+        fieldKey?: string;
+        value?: unknown;
+      } | null;
+      const result = saveField(state, {
+        expectedVersion: body?.expectedVersion,
+        fieldKey: body?.fieldKey,
+        value: body?.value,
+      });
+      return NextResponse.json(result.body, { status: result.status });
+    }
+
     await requireSession(req);
     const token = await requireApiToken();
     const contentType = req.headers.get("content-type") ?? "application/json";
@@ -22,6 +46,6 @@ export async function POST(req: Request) {
       headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: "Failed to save field" }, { status: 500 });
+    return NextResponse.json({ success: false, code: "SAVE_FAILED", message: "Failed to save field." }, { status: 500 });
   }
 }

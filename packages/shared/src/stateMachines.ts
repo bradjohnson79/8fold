@@ -1,24 +1,10 @@
 import { z } from "zod";
 
 /**
- * Explicit state machines (v1)
+ * Explicit state machines
  * - Keep transitions centralized and auditable.
  * - APIs should validate transitions before writing.
  */
-
-export const JobDraftStatusSchema = z.enum([
-  "DRAFT",
-  "APPRAISING",
-  "PRICED",
-  "PAYMENT_PENDING",
-  "PAYMENT_FAILED",
-  "CANCELLED",
-  "IN_REVIEW",
-  "NEEDS_CLARIFICATION",
-  "REJECTED",
-  "APPROVED"
-]);
-export type JobDraftStatus = z.infer<typeof JobDraftStatusSchema>;
 
 export const JobStatusSchema = z.enum([
   "ASSIGNED",
@@ -59,25 +45,6 @@ export function assertAllowedTransition<TStatus extends string>(
     );
   }
 }
-
-export const JobDraftAllowedTransitions: Readonly<
-  Record<JobDraftStatus, readonly JobDraftStatus[]>
-> = {
-  // Admin workflow
-  DRAFT: ["APPRAISING", "IN_REVIEW", "CANCELLED"],
-  IN_REVIEW: ["NEEDS_CLARIFICATION", "REJECTED", "APPROVED", "CANCELLED"],
-  NEEDS_CLARIFICATION: ["IN_REVIEW", "REJECTED", "CANCELLED"],
-
-  // Pricing/payment workflow
-  APPRAISING: ["PRICED", "CANCELLED"],
-  PRICED: ["PAYMENT_PENDING", "CANCELLED"],
-  PAYMENT_PENDING: ["PAYMENT_FAILED", "CANCELLED"],
-  PAYMENT_FAILED: ["PAYMENT_PENDING", "CANCELLED"],
-
-  CANCELLED: [],
-  REJECTED: [],
-  APPROVED: []
-} as const;
 
 export const JobAllowedTransitions: Readonly<
   Record<JobStatus, readonly JobStatus[]>

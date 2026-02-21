@@ -42,9 +42,9 @@ No new DB columns or timestamps were added.
 `requireJobPosterReady()` applied to:
 
 - `create-draft`
-- `drafts/save`
+- legacy draft save route
 - `drafts/[id]` (GET, DELETE)
-- `drafts/[id]/wizard-step`
+- legacy draft step route
 - `drafts/[id]/start-appraisal`
 - `jobs/route` (dashboard jobs list)
 - `jobs/[id]/create-payment-intent`
@@ -145,7 +145,6 @@ Incomplete onboarding returns 403 JSON; client redirects to wizard.
 ## Example Endpoint (Enforcement Pattern)
 
 ```typescript
-// apps/api/app/api/web/job-poster/drafts/save/route.ts
 export async function POST(req: Request) {
   try {
     const ready = await requireJobPosterReady(req);

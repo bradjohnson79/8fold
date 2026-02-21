@@ -15,7 +15,6 @@ type JobRow = {
   status: string;
   paymentStatus?: string;
   payoutStatus?: string;
-  jobPosterWizardStep?: string | null;
   aiAppraisalStatus?: string | null;
   appraisalStatus?: string | null;
   region: string;
@@ -76,8 +75,6 @@ export default function JobPosterDashboard() {
     eligibleAtByJobId: Record<string, string>;
   }>(null);
   const [refundMetaError, setRefundMetaError] = React.useState("");
-  const [confirmDelete, setConfirmDelete] = React.useState<null | { id: string; title: string }>(null);
-  const [deleting, setDeleting] = React.useState(false);
 
   const [completionModal, setCompletionModal] = React.useState<null | { id: string; title: string }>(null);
   const [completionSummary, setCompletionSummary] = React.useState("");
@@ -131,7 +128,6 @@ export default function JobPosterDashboard() {
   }, []);
 
   const pendingJobs = jobs.filter((j) => isPendingStatus(j.status));
-  const draftJobs = jobs.filter((j) => j.status === "DRAFT");
   const completedJobs = jobs.filter((j) => j.status === "COMPLETED_APPROVED" || j.status === "COMPLETED");
 
   function completionBadgeForJob(j: JobRow): null | string {
@@ -142,25 +138,6 @@ export default function JobPosterDashboard() {
     if (contractorDone && customerDone) return "Awaiting Router Confirmation";
     if (contractorDone) return "Awaiting Customer Confirmation";
     return null;
-  }
-
-  async function deleteDraft(id: string) {
-    setDeleting(true);
-    setError("");
-    try {
-      const resp = await fetch(`/api/app/job-poster/drafts/${encodeURIComponent(id)}`, { method: "DELETE" });
-      const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error ?? "Failed to delete draft");
-      setConfirmDelete(null);
-      const jobsResp = await fetch("/api/app/job-poster/jobs", { cache: "no-store", credentials: "include" });
-      const jobsJson = await jobsResp.json().catch(() => null);
-      if (!jobsResp.ok) throw new Error(jobsJson?.error ?? "Failed to load jobs");
-      setJobs((jobsJson?.jobs ?? []) as JobRow[]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setDeleting(false);
-    }
   }
 
   async function confirmCompletion() {
@@ -243,33 +220,6 @@ export default function JobPosterDashboard() {
       {loading ? (
         <div className="mt-6">
           <LoadingSpinner label="Loading dashboard…" />
-        </div>
-      ) : null}
-
-      {confirmDelete ? (
-        <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 p-6">
-            <div className="text-lg font-bold text-gray-900">Delete draft?</div>
-            <div className="text-sm text-gray-600 mt-2">
-              This will permanently delete <span className="font-semibold">{confirmDelete.title}</span>. This cannot be undone.
-            </div>
-            <div className="mt-5 flex gap-3 justify-end">
-              <button
-                disabled={deleting}
-                onClick={() => setConfirmDelete(null)}
-                className="border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold px-4 py-2 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={deleting}
-                onClick={() => void deleteDraft(confirmDelete.id)}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg disabled:bg-gray-200 disabled:text-gray-500"
-              >
-                {deleting ? "Deleting…" : "Delete draft"}
-              </button>
-            </div>
-          </div>
         </div>
       ) : null}
 
@@ -367,57 +317,6 @@ export default function JobPosterDashboard() {
                 {disputeSubmitting ? "Submitting…" : "Submit dispute"}
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Drafts */}
-      {draftJobs.length ? (
-        <div className="mt-6 border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">Drafts</h2>
-              <p className="text-gray-600 mt-1">Unconfirmed job postings saved to your account.</p>
-            </div>
-            <a
-              href={postAJobPath}
-              className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
-            >
-              New draft
-            </a>
-          </div>
-          <div className="mt-5 space-y-3">
-            {draftJobs.map((j) => (
-              <div key={j.id} className="border border-gray-200 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="font-bold text-gray-900">{j.title}</div>
-                    <div className="text-sm text-gray-600 mt-1">
-                      Status: <span className="font-mono">DRAFT</span>
-                      {j.jobPosterWizardStep ? (
-                        <span className="ml-2 text-xs font-semibold px-2 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-700">
-                          {String(j.jobPosterWizardStep).toUpperCase()}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <a
-                      href={`${postAJobPath}?resumeJobId=${encodeURIComponent(j.id)}`}
-                      className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
-                    >
-                      Resume
-                    </a>
-                    <button
-                      onClick={() => setConfirmDelete({ id: j.id, title: j.title })}
-                      className="border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold px-4 py-2 rounded-lg"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       ) : null}

@@ -45,19 +45,6 @@ export const tradeCategoryEnum = pgEnum("TradeCategory", [
   "FURNITURE_ASSEMBLY",
 ]);
 
-export const jobDraftStatusEnum = pgEnum("JobDraftStatus", [
-  "DRAFT",
-  "IN_REVIEW",
-  "NEEDS_CLARIFICATION",
-  "REJECTED",
-  "APPROVED",
-  "APPRAISING",
-  "PRICED",
-  "PAYMENT_PENDING",
-  "PAYMENT_FAILED",
-  "CANCELLED",
-]);
-
 export const jobStatusEnum = pgEnum("JobStatus", [
   "DRAFT",
   "PUBLISHED",

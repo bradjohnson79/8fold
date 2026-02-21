@@ -4,7 +4,6 @@ import { handleApiError } from "@/src/lib/errorHandler";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { contractors } from "../../../../db/schema/contractor";
-import { jobDrafts } from "../../../../db/schema/jobDraft";
 import { jobs } from "../../../../db/schema/job";
 import { payoutRequests } from "../../../../db/schema/payoutRequest";
 
@@ -22,7 +21,6 @@ export async function GET(req: Request) {
     const [
       contractorsTotal,
       contractorsApproved,
-      jobDraftsTotal,
       jobsTotal,
       jobsPublished,
       jobsAssigned,
@@ -36,7 +34,6 @@ export async function GET(req: Request) {
     ] = await Promise.all([
       count(db.select({ c: sql<number>`count(*)` }).from(contractors)),
       count(db.select({ c: sql<number>`count(*)` }).from(contractors).where(eq(contractors.status, "APPROVED"))),
-      count(db.select({ c: sql<number>`count(*)` }).from(jobDrafts)),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(eq(jobs.isMock, false))),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.isMock, false), eq(jobs.status, "PUBLISHED")))),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.isMock, false), eq(jobs.status, "ASSIGNED")))),
@@ -53,7 +50,6 @@ export async function GET(req: Request) {
       ok: true,
       data: {
         contractors: { total: contractorsTotal, approved: contractorsApproved },
-        jobDrafts: { total: jobDraftsTotal },
         jobs: {
           total: jobsTotal,
           assigned: jobsAssigned,

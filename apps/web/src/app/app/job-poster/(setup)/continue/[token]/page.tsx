@@ -30,7 +30,7 @@ export default function JobPosterContinuePage() {
         if (!alive) return;
         const jobId = (json as any)?.job?.id;
         if (!jobId) throw new Error("Missing job");
-        router.replace(`${postAJobPath}?resumeJobId=${encodeURIComponent(jobId)}`);
+        router.replace(postAJobPath);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed");

@@ -14,10 +14,11 @@
     "dev": "node scripts/dev.mjs",
     "predev:verify": "pnpm -C apps/api db:verify",
     "build": "pnpm -C apps/web build",
-    "lint": "pnpm -C apps/web lint",
+    "lint": "pnpm check:no-legacy-job-wizard && pnpm -C apps/web lint",
     "typecheck": "pnpm -C apps/web typecheck",
     "test": "pnpm -C apps/web test",
     "test:wizard-v2": "pnpm -C apps/api test -- jobDraftV2; pnpm -C apps/web audit:e2e:local -- job-wizard-v2",
+    "test:wizard-v2:ci": "E2E_TEST_MODE=1 pnpm -C apps/web exec playwright test e2e/job-wizard-v2 --project=default --workers=1",
     "format": "prettier -w .",
     "guardrails": "node scripts/guardrails.mjs",
     "ai:guard": "tsx scripts/ai-guard.ts",
@@ -37,7 +38,8 @@
     "mock:refresh": "node -e \"console.error('❌ Mock refresh via Prisma has been removed. Use Drizzle-native refresh scripts.'); process.exit(1)\"",
     "payout:schedule": "node -e \"console.error('❌ Legacy payout scheduler removed during Prisma removal.'); process.exit(1)\"",
     "contractorPayout:schedule": "node -e \"console.error('❌ Legacy payout scheduler removed during Prisma removal.'); process.exit(1)\"",
-    "db:studio": "node -e \"console.error('❌ No DB studio configured.'); process.exit(1)\""
+    "db:studio": "node -e \"console.error('❌ No DB studio configured.'); process.exit(1)\"",
+    "check:no-legacy-job-wizard": "bash scripts/no-legacy-job-wizard.sh"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",
