@@ -213,8 +213,8 @@ export async function POST(req: Request) {
       level: "info",
       event: "job_draft_v2.advance",
       route,
-      traceId,
       context: {
+        traceId,
         draftId: id,
         userId,
         currentStep: targetStepRaw,
@@ -238,8 +238,7 @@ export async function POST(req: Request) {
       level: "error",
       event: "job_draft_v2.advance.failed",
       route,
-      traceId,
-      context: { userId, draftId, message: err instanceof Error ? err.message : "unknown" },
+      context: { traceId, userId, draftId, message: err instanceof Error ? err.message : "unknown" },
     });
     return jobPosterRouteErrorFromUnknown({ route, err, userId, jobId: draftId });
   }

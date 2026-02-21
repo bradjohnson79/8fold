@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
-import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingGuards";
-import { db } from "../../../../../../../db/drizzle";
-import { jobDraftV2 } from "../../../../../../../db/schema/jobDraftV2";
-import { jobs } from "../../../../../../../db/schema/job";
-import { jobPayments } from "../../../../../../../db/schema/jobPayment";
-import { auditLogs } from "../../../../../../../db/schema/auditLog";
+import { requireJobPosterReady } from "../../../../../../src/auth/onboardingGuards";
+import { db } from "../../../../../../db/drizzle";
+import { jobDraftV2 } from "../../../../../../db/schema/jobDraftV2";
+import { jobs } from "../../../../../../db/schema/job";
+import { jobPayments } from "../../../../../../db/schema/jobPayment";
+import { auditLogs } from "../../../../../../db/schema/auditLog";
 import { calculatePayoutBreakdown } from "@8fold/shared";
 import { paymentReady } from "@8fold/shared";
-import { createPaymentIntent } from "../../../../../../../src/payments/stripe";
-import { getBaseUrl } from "../../../../../../../src/lib/getBaseUrl";
-import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../../src/http/jobPosterRouteErrors";
-import { logEvent } from "../../../../../../../src/server/observability/log";
+import { createPaymentIntent } from "../../../../../../src/payments/stripe";
+import { getBaseUrl } from "../../../../../../src/lib/getBaseUrl";
+import { jobPosterRouteErrorFromUnknown, jobPosterRouteErrorResponse } from "../../../../../../src/http/jobPosterRouteErrors";
+import { logEvent } from "../../../../../../src/server/observability/log";
 
 const route = "POST /api/web/job-poster/drafts-v2/create-payment-intent";
 
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     }
 
     if (draft.paymentIntentId) {
-      const { stripe } = await import("../../../../../../../src/payments/stripe");
+      const { stripe } = await import("../../../../../../src/payments/stripe");
       if (stripe) {
         const pi = await stripe.paymentIntents.retrieve(draft.paymentIntentId);
         if (pi.client_secret) {
@@ -161,7 +161,7 @@ export async function POST(req: Request) {
       jobType: (details.jobType ?? "urban") as any,
       tradeCategory: (details.tradeCategory ?? "HANDYMAN") as any,
       serviceType: "handyman",
-      laborTotalCents,
+      laborTotalCents: laborCents,
       materialsTotalCents: materialsCents,
       transactionFeeCents: breakdown.transactionFeeCents,
       contractorPayoutCents: breakdown.contractorPayoutCents,
@@ -202,8 +202,7 @@ export async function POST(req: Request) {
         level: "error",
         event: "job_draft_v2.create_payment_intent.stripe_failed",
         route,
-        traceId,
-        context: { draftId: id, userId, message: err instanceof Error ? err.message : "unknown" },
+        context: { traceId, draftId: id, userId, message: err instanceof Error ? err.message : "unknown" },
       });
       return jobPosterRouteErrorResponse({
         route,
@@ -255,7 +254,7 @@ export async function POST(req: Request) {
 
     if (updateResult.length === 0) {
       if (draft.paymentIntentId) {
-        const { stripe } = await import("../../../../../../../src/payments/stripe");
+        const { stripe } = await import("../../../../../../src/payments/stripe");
         if (stripe) {
           const existingPi = await stripe.paymentIntents.retrieve(draft.paymentIntentId);
           if (existingPi.client_secret) {
@@ -276,8 +275,8 @@ export async function POST(req: Request) {
       level: "info",
       event: "job_draft_v2.create_payment_intent",
       route,
-      traceId,
       context: {
+        traceId,
         draftId: id,
         userId,
         jobId,
@@ -299,8 +298,7 @@ export async function POST(req: Request) {
       level: "error",
       event: "job_draft_v2.create_payment_intent.failed",
       route,
-      traceId,
-      context: { userId, draftId, message: err instanceof Error ? err.message : "unknown" },
+      context: { traceId, userId, draftId, message: err instanceof Error ? err.message : "unknown" },
     });
     return jobPosterRouteErrorFromUnknown({
       route,

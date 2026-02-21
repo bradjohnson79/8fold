@@ -105,8 +105,7 @@ export async function GET(req: Request) {
       level: "info",
       event: "job_draft_v2.created",
       route,
-      traceId,
-      context: { draftId: newId, userId: user.userId },
+      context: { traceId, draftId: newId, userId: user.userId },
     });
 
     return NextResponse.json({
@@ -119,8 +118,7 @@ export async function GET(req: Request) {
       level: "error",
       event: "job_draft_v2.current.failed",
       route,
-      traceId,
-      context: { userId, message: err instanceof Error ? err.message : "unknown" },
+      context: { traceId, userId, message: err instanceof Error ? err.message : "unknown" },
     });
     return jobPosterRouteErrorFromUnknown({ route, err, userId });
   }

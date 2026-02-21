@@ -250,8 +250,8 @@ export async function POST(req: Request) {
       level: "info",
       event: "job_draft_v2.save_field",
       route,
-      traceId,
       context: {
+        traceId,
         draftId: id,
         userId,
         fieldKey,
@@ -274,8 +274,7 @@ export async function POST(req: Request) {
       level: "error",
       event: "job_draft_v2.save_field.failed",
       route,
-      traceId,
-      context: { userId, draftId, message: err instanceof Error ? err.message : "unknown" },
+      context: { traceId, userId, draftId, message: err instanceof Error ? err.message : "unknown" },
     });
     return jobPosterRouteErrorFromUnknown({
       route,
