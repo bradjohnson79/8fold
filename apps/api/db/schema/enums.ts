@@ -125,6 +125,11 @@ export const ledgerEntryTypeEnum = pgEnum("LedgerEntryType", [
   "PLATFORM_FEE",
   "ROUTER_EARN",
   "CONTRACTOR_EARN",
+  // P&M sub-escrow (Phase 9)
+  "PM_ESCROW_FUNDED",
+  "PM_RELEASE",
+  "PM_REFUND",
+  "PM_CREDIT",
 ]);
 
 // Escrow + parts/materials (bank-ledger foundations; added in 0008)
@@ -136,6 +141,21 @@ export const partsMaterialStatusEnum = pgEnum("PartsMaterialStatus", [
   "PAID",
   "REJECTED",
   "CANCELLED",
+]);
+
+// P&M sub-escrow state machine (0049)
+export const pmRequestStatusEnum = pgEnum("PMRequestStatus", [
+  "DRAFT",
+  "SUBMITTED",
+  "AMENDMENT_REQUESTED",
+  "APPROVED",
+  "PAYMENT_PENDING",
+  "FUNDED",
+  "RECEIPTS_SUBMITTED",
+  "VERIFIED",
+  "RELEASED",
+  "CLOSED",
+  "REJECTED",
 ]);
 
 export const routerStatusEnum = pgEnum("RouterStatus", ["ACTIVE", "SUSPENDED"]);
@@ -292,5 +312,20 @@ export const sendBlockedReasonEnum = pgEnum("SendBlockedReason", [
   "IDENTITY_PAUSED",
   "DAILY_LIMIT_EXCEEDED",
   "INTERVAL_LIMIT_EXCEEDED",
+]);
+
+// Job Post Wizard V2
+export const jobDraftV2StepEnum = pgEnum("JobDraftV2Step", [
+  "PROFILE",
+  "DETAILS",
+  "PRICING",
+  "PAYMENT",
+  "CONFIRMED",
+]);
+export const jobDraftV2FieldStateStatusEnum = pgEnum("JobDraftV2FieldStateStatus", [
+  "idle",
+  "saving",
+  "saved",
+  "error",
 ]);
 

@@ -49,4 +49,9 @@ export * from "./monitoringEvent";
 export * from "./routingHub";
 export * from "./clerkWebhookEvent";
 export * from "./directoryEngine";
+export * from "./jobDraftV2";
+export * from "./jobDraftV2FieldState";
+export * from "./pmRequest";
+export * from "./pmLineItem";
+export * from "./pmReceipt";
 

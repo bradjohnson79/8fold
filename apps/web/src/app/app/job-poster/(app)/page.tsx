@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { postAJobPath } from "@/lib/jobWizardV2";
 import { ContractorResponsesCard } from "./ContractorResponsesCard";
 import { EcdCheckInsCard } from "./EcdCheckInsCard";
 import { ErrorDisplay } from "../../../../components/ErrorDisplay";
@@ -379,7 +380,7 @@ export default function JobPosterDashboard() {
               <p className="text-gray-600 mt-1">Unconfirmed job postings saved to your account.</p>
             </div>
             <a
-              href="/app/job-poster/post-a-job"
+              href={postAJobPath}
               className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
             >
               New draft
@@ -402,7 +403,7 @@ export default function JobPosterDashboard() {
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <a
-                      href={`/app/job-poster/post-a-job?resumeJobId=${encodeURIComponent(j.id)}`}
+                      href={`${postAJobPath}?resumeJobId=${encodeURIComponent(j.id)}`}
                       className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
                     >
                       Resume
@@ -431,7 +432,7 @@ export default function JobPosterDashboard() {
             </p>
           </div>
           <a
-            href="/app/job-poster/post-a-job"
+            href={postAJobPath}
             className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
           >
             Post a job
@@ -491,6 +492,12 @@ export default function JobPosterDashboard() {
                 </div>
 
                 <div className="mt-3 flex gap-2 flex-wrap">
+                  <a
+                    href={`/app/job-poster/jobs/${encodeURIComponent(j.id)}/materials`}
+                    className="border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold px-3 py-2 rounded-lg"
+                  >
+                    Parts &amp; Materials
+                  </a>
                   <a
                     href="/app/job-poster"
                     className="border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold px-3 py-2 rounded-lg"
