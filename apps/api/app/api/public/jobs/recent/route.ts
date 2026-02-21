@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NextResponse } from "next/server";
+import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { badRequest, ok } from "../../../../../src/lib/api/respond";
 import { countEligiblePublicJobs, listNewestJobs } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 import { db } from "@/server/db/drizzle";
@@ -76,11 +76,7 @@ export async function GET(req: Request) {
 
     return ok({ jobs: out });
   } catch (err) {
-    console.error("RECENT_JOBS_ERROR:", err);
-    return NextResponse.json(
-      { ok: false, error: String(err) },
-      { status: 500 }
-    );
+    return handleApiError(err, "GET /api/public/jobs/recent");
   }
 }
 
