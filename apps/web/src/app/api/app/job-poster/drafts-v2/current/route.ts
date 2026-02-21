@@ -31,9 +31,24 @@ export async function GET(req: Request) {
       request: req,
     });
     const text = await resp.text();
+    const ct = resp.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      return NextResponse.json(
+        { success: false, code: "UPSTREAM_SHAPE_INVALID", traceId, status: resp.status },
+        { status: 502 }
+      );
+    }
+    try {
+      JSON.parse(text);
+    } catch {
+      return NextResponse.json(
+        { success: false, code: "UPSTREAM_SHAPE_INVALID", traceId, status: resp.status },
+        { status: 502 }
+      );
+    }
     return new NextResponse(text, {
       status: resp.status,
-      headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
+      headers: { "Content-Type": ct },
     });
   } catch (err) {
     const status =
