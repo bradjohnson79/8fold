@@ -12,6 +12,7 @@
     "test": "node scripts/run-vitest.mjs",
     "audit:finance": "DOTENV_CONFIG_PATH=.env.local pnpm exec tsx -r dotenv/config src/payouts/auditFinanceCi.ts",
     "db:verify": "tsx scripts/verifyDbSchema.ts",
+    "verify:prod-schema": "DOTENV_CONFIG_PATH=.env.local tsx scripts/verify-prod-schema.ts",
     "remove-mock-actors": "tsx scripts/remove-mock-actors.ts",
     "financial-db-introspect": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/financial-db-introspect.ts",
     "verify-financial-schema": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/verify-financial-schema.ts",

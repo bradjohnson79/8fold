@@ -1,19 +1,9 @@
 import { pgSchema, pgTable } from "drizzle-orm/pg-core";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 
-// Prisma uses `?schema=...` in DATABASE_URL to set the Postgres schema.
-// Drizzle schemas should point at the same schema to mirror existing tables.
-function getSchemaName(): string {
-  const url = process.env.DATABASE_URL ?? "";
-  try {
-    const u = new URL(url);
-    const s = u.searchParams.get("schema");
-    return s && /^[a-zA-Z0-9_]+$/.test(s) ? s : "public";
-  } catch {
-    return "public";
-  }
-}
-
-export const DB_SCHEMA = getSchemaName();
+// Production: always public. Local/test: may use 8fold_test via ?schema=8fold_test.
+// No dynamic schema in production build.
+export const DB_SCHEMA = getResolvedSchema();
 // drizzle-orm forbids pgSchema("public") because Postgres uses public by default.
 // When we're on public, use pgTable() (default schema) under the same `.table()` callsite.
 //

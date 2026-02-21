@@ -37,7 +37,8 @@
     "payout:schedule": "node -e \"console.error('❌ Legacy payout scheduler removed during Prisma removal.'); process.exit(1)\"",
     "contractorPayout:schedule": "node -e \"console.error('❌ Legacy payout scheduler removed during Prisma removal.'); process.exit(1)\"",
     "db:studio": "node -e \"console.error('❌ No DB studio configured.'); process.exit(1)\"",
-    "check:no-legacy-job-wizard": "bash scripts/no-legacy-job-wizard.sh"
+    "check:no-legacy-job-wizard": "bash scripts/no-legacy-job-wizard.sh",
+    "verify:prod-schema": "pnpm -C apps/api verify:prod-schema"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",
