@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DB_SCHEMA } from "../../../../../db/schema/_dbSchema";
+import { DB_SCHEMA } from "@/db/schema/_dbSchema";
 
 function parseSchemaFromDatabaseUrl(databaseUrl: string | undefined): string | null {
   const raw = String(databaseUrl ?? "").trim();

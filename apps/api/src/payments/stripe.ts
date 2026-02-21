@@ -21,6 +21,7 @@ export async function createPaymentIntent(
     description?: string;
     captureMethod?: "automatic" | "manual";
     confirmationMethod?: "automatic" | "manual";
+    requestExtendedAuthorization?: boolean;
   }
 ): Promise<PaymentIntentResult> {
   if (!stripe) {
@@ -41,6 +42,13 @@ export async function createPaymentIntent(
       description: opts.description,
       capture_method: opts.captureMethod ?? "automatic",
       confirmation_method: opts.confirmationMethod ?? "automatic",
+      payment_method_options: opts.requestExtendedAuthorization
+        ? {
+            card: {
+              request_extended_authorization: "if_available",
+            },
+          }
+        : undefined,
       // Escrow-style approach:
       // - We capture funds into the platform account
       // - We DO NOT split at charge time (transfers happen later, controlled by backend)

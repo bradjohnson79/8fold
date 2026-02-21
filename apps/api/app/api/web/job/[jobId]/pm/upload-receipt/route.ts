@@ -8,6 +8,7 @@ import { pmReceipts } from "@/db/schema/pmReceipt";
 import { loadPmRouteContext } from "@/src/pm/routeHelpers";
 import { toHttpError } from "@/src/http/errors";
 import { logEvent } from "@/src/server/observability/log";
+import { stripe } from "@/src/stripe/stripe";
 
 const BodySchema = z.object({
   pmRequestId: z.string().uuid(),
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
         status: pmRequests.status,
         jobId: pmRequests.jobId,
         contractorId: pmRequests.contractorId,
+        stripePaymentIntentId: pmRequests.stripePaymentIntentId,
       })
       .from(pmRequests)
       .where(
@@ -47,8 +49,30 @@ export async function POST(req: Request) {
       .then((r) => r[0] ?? null);
 
     if (!pm) return NextResponse.json({ error: "Not found", traceId: ctx.traceId }, { status: 404 });
-    if (pm.status !== "FUNDED" && pm.status !== "RECEIPTS_SUBMITTED") {
-      return NextResponse.json({ error: "Receipts can only be uploaded when request is FUNDED", traceId: ctx.traceId }, { status: 400 });
+    if (pm.status !== "FUNDED" && pm.status !== "RECEIPTS_SUBMITTED" && pm.status !== "PAYMENT_PENDING") {
+      return NextResponse.json({ error: "Receipts can only be uploaded after payment hold/charge.", traceId: ctx.traceId }, { status: 400 });
+    }
+
+    if (pm.status === "PAYMENT_PENDING") {
+      const piId = String(pm.stripePaymentIntentId ?? "").trim();
+      if (!piId || !stripe) {
+        return NextResponse.json({ error: "Payment hold is required before receipts upload.", traceId: ctx.traceId }, { status: 409 });
+      }
+      const pi = await stripe.paymentIntents.retrieve(piId);
+      if (pi.status === "requires_capture") {
+        await stripe.paymentIntents.capture(piId, undefined, {
+          idempotencyKey: `pm-receipt-capture:${body.pmRequestId}`,
+        });
+      } else if (pi.status !== "succeeded") {
+        return NextResponse.json({ error: "Payment hold is not capturable.", traceId: ctx.traceId }, { status: 409 });
+      }
+      await db
+        .update(pmRequests)
+        .set({
+          status: "FUNDED",
+          updatedAt: new Date(),
+        })
+        .where(eq(pmRequests.id, pm.id));
     }
 
     const receiptId = randomUUID();

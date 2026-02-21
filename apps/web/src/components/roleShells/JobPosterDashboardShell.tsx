@@ -4,7 +4,7 @@ import React from "react";
 import { DashboardShell } from "../DashboardShell";
 import { useSupportInboxBadge } from "./useSupportInboxBadge";
 
-import { postAJobPath } from "@/lib/jobWizardV2";
+import { postAJobPath } from "@/lib/jobWizardV3";
 
 export function JobPosterDashboardShell({ children }: { children: React.ReactNode }) {
   const { hasUnread } = useSupportInboxBadge("job-poster");

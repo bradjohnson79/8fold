@@ -52,6 +52,7 @@ export async function POST(req: Request) {
               contractorUserId: jobs.contractorUserId,
               payoutStatus: jobs.payoutStatus,
               paymentStatus: jobs.paymentStatus,
+              completionDeadlineAt: jobs.completionDeadlineAt,
             })
             .from(jobs)
             .where(eq(jobs.id, id))
@@ -61,6 +62,26 @@ export async function POST(req: Request) {
       if (job.isMock) return { kind: "mock_job" as const };
       if (String(job.status ?? "") === "DISPUTED") return { kind: "disputed" as const };
       if (job.routerId !== user.userId) return { kind: "forbidden" as const };
+      if (!["FUNDS_SECURED", "FUNDED"].includes(String(job.paymentStatus ?? "").toUpperCase())) {
+        return { kind: "payment_not_secured" as const };
+      }
+      const now = new Date();
+      if (
+        job.completionDeadlineAt instanceof Date &&
+        job.completionDeadlineAt.getTime() < now.getTime() &&
+        !["COMPLETED", "COMPLETED_APPROVED"].includes(String(job.status ?? "").toUpperCase())
+      ) {
+        await tx
+          .update(jobs)
+          .set({
+            status: "COMPLETION_FLAGGED" as any,
+            completionFlaggedAt: now,
+            completionFlagReason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
+            updatedAt: now,
+          } as any)
+          .where(eq(jobs.id, id));
+        return { kind: "deadline_exceeded" as const };
+      }
 
       const pendingMaterials =
         (
@@ -84,7 +105,7 @@ export async function POST(req: Request) {
         )[0] ?? null;
       if (!assignment) return { kind: "no_assignment" as const };
 
-      const approvedAt = new Date();
+      const approvedAt = now;
 
       const jobUpdated = await tx
         .update(jobs)
@@ -193,6 +214,12 @@ export async function POST(req: Request) {
       );
     }
     if (result.kind === "conflict") return NextResponse.json({ error: "Job routing changed; retry." }, { status: 409 });
+    if (result.kind === "payment_not_secured") {
+      return NextResponse.json({ error: "Funds are not secured for this job." }, { status: 409 });
+    }
+    if (result.kind === "deadline_exceeded") {
+      return NextResponse.json({ error: "Completion deadline exceeded. Manual review required." }, { status: 409 });
+    }
     // Release funds (Stripe Connect transfers). Best-effort: completion approval is authoritative even if payout fails.
     try {
       await releaseJobFunds({ jobId: id, triggeredByUserId: user.userId });

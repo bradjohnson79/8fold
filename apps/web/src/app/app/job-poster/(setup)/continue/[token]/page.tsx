@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { postAJobPath } from "@/lib/jobWizardV2";
+import { postAJobPath } from "@/lib/jobWizardV3";
 
 type RedeemResp =
   | { ok: true; job: { id: string } }

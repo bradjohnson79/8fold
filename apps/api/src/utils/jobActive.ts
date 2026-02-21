@@ -7,7 +7,7 @@ const ACTIVE_STATUSES = ["OPEN_FOR_ROUTING", "ROUTED", "ACCEPTED", "ASSIGNED", "
 
 /**
  * Job is ACTIVE when:
- * - paymentStatus === "FUNDED"
+ * - paymentStatus is captured/secured (FUNDS_SECURED or legacy FUNDED)
  * - status in ACTIVE_STATUSES
  *
  * NOTE: Current DB enum uses "ASSIGNED" (not "ACCEPTED") and routing is tracked via `routingStatus`.
@@ -17,6 +17,6 @@ const ACTIVE_STATUSES = ["OPEN_FOR_ROUTING", "ROUTED", "ACCEPTED", "ASSIGNED", "
 export function isJobActive(job: JobActiveLike): boolean {
   const paymentStatus = String(job.paymentStatus ?? "").trim().toUpperCase();
   const status = String(job.status ?? "").trim().toUpperCase();
-  return paymentStatus === "FUNDED" && (ACTIVE_STATUSES as readonly string[]).includes(status);
+  return ["FUNDS_SECURED", "FUNDED"].includes(paymentStatus) && (ACTIVE_STATUSES as readonly string[]).includes(status);
 }
 

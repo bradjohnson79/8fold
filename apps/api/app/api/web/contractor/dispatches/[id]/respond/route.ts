@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "../../../../../../../db/drizzle";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
 import { conversations } from "../../../../../../../db/schema/conversation";
@@ -15,6 +15,7 @@ import { toHttpError } from "../../../../../../../src/http/errors";
 import { generateActionToken, hashActionToken } from "../../../../../../../src/jobs/actionTokens";
 import { getOrCreatePlatformUserId } from "../../../../../../../src/system/platformUser";
 import { ensureActiveAccountTx } from "../../../../../../../src/server/accountGuard";
+import { stripe } from "@/src/payments/stripe";
 
 const BodySchema = z.object({
   decision: z.enum(["accept", "decline"]),
@@ -76,6 +77,9 @@ export async function POST(req: Request) {
 
           job_status: jobs.status,
           job_archived: jobs.archived,
+          job_paymentStatus: jobs.paymentStatus,
+          job_stripePaymentIntentId: jobs.stripePaymentIntentId,
+          job_authorizationExpiresAt: jobs.authorizationExpiresAt,
           job_claimedByUserId: jobs.claimedByUserId,
           job_jobPosterUserId: jobs.jobPosterUserId,
           job_contractorActionTokenHash: jobs.contractorActionTokenHash,
@@ -116,6 +120,39 @@ export async function POST(req: Request) {
 
       // accept
       const platformAdminUserId = await getOrCreatePlatformUserId(tx as any);
+      const authorizationExpired =
+        dispatch.job_authorizationExpiresAt instanceof Date && dispatch.job_authorizationExpiresAt.getTime() < now.getTime();
+      if (authorizationExpired && String(dispatch.job_paymentStatus ?? "").toUpperCase() === "AUTHORIZED") {
+        await tx
+          .update(jobs)
+          .set({
+            paymentStatus: "EXPIRED_UNFUNDED" as any,
+            archived: true,
+            completionFlagReason: "AUTHORIZATION_EXPIRED_NO_ACCEPTANCE",
+            updatedAt: now,
+          } as any)
+          .where(eq(jobs.id, dispatch.jobId));
+        return { kind: "authorization_expired" as const };
+      }
+
+      const currentPayment = String(dispatch.job_paymentStatus ?? "").toUpperCase();
+      if (currentPayment !== "FUNDS_SECURED") {
+        const piId = String(dispatch.job_stripePaymentIntentId ?? "").trim();
+        if (!piId || !stripe) return { kind: "payment_not_authorized" as const };
+        try {
+          const pi = await stripe.paymentIntents.retrieve(piId);
+          if (pi.status === "requires_capture") {
+            const captured = await stripe.paymentIntents.capture(piId, undefined, {
+              idempotencyKey: `job-accept-capture:${dispatch.jobId}`,
+            });
+            if (captured.status !== "succeeded") return { kind: "payment_not_authorized" as const };
+          } else if (pi.status !== "succeeded") {
+            return { kind: "payment_not_authorized" as const };
+          }
+        } catch {
+          return { kind: "payment_not_authorized" as const };
+        }
+      }
 
       const contractorToken = generateActionToken();
       const customerToken = generateActionToken();
@@ -124,8 +161,18 @@ export async function POST(req: Request) {
 
       const updated = await tx
         .update(jobs)
-        .set({ status: "ASSIGNED", contractorActionTokenHash: contractorHash, customerActionTokenHash: customerHash } as any)
-        .where(and(eq(jobs.id, dispatch.jobId), inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any)))
+        .set({
+          status: "ASSIGNED",
+          contractorActionTokenHash: contractorHash,
+          customerActionTokenHash: customerHash,
+          paymentStatus: "FUNDS_SECURED" as any,
+          fundsSecuredAt: now,
+          fundedAt: now,
+          paymentCapturedAt: now,
+          acceptedAt: now,
+          completionDeadlineAt: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
+        } as any)
+        .where(and(eq(jobs.id, dispatch.jobId), eq(jobs.status, "OPEN_FOR_ROUTING" as any)))
         .returning({ id: jobs.id });
       if (updated.length !== 1) return { kind: "job_not_available" as const };
 
@@ -203,6 +250,12 @@ export async function POST(req: Request) {
     if (result.kind === "expired") return NextResponse.json({ error: "Expired" }, { status: 409 });
     if (result.kind === "job_not_owned") return NextResponse.json({ error: "Job not owned by router" }, { status: 409 });
     if (result.kind === "job_not_available") return NextResponse.json({ error: "Job not available" }, { status: 409 });
+    if (result.kind === "authorization_expired") {
+      return NextResponse.json({ error: "Authorization expired. Job closed without charge." }, { status: 409 });
+    }
+    if (result.kind === "payment_not_authorized") {
+      return NextResponse.json({ error: "Payment hold is not capturable." }, { status: 409 });
+    }
     if (result.kind === "ok_declined") return NextResponse.json({ ok: true, status: "DECLINED" });
     return NextResponse.json({ ok: true, status: "ACCEPTED", tokens: (result as any).tokens });
   } catch (err) {

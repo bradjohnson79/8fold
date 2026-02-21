@@ -88,6 +88,11 @@ export const jobs = dbSchema.table(
   stripeChargeId: text("stripeChargeId"),
   stripeCustomerId: text("stripeCustomerId"),
   stripePaymentMethodId: text("stripePaymentMethodId"),
+  // Hold phase lifecycle timestamps (manual capture policy).
+  acceptedAt: timestamp("acceptedAt", { mode: "date" }),
+  authorizationExpiresAt: timestamp("authorizationExpiresAt", { mode: "date" }),
+  fundsSecuredAt: timestamp("fundsSecuredAt", { mode: "date" }),
+  completionDeadlineAt: timestamp("completionDeadlineAt", { mode: "date" }),
   fundedAt: timestamp("fundedAt", { mode: "date" }),
   releasedAt: timestamp("releasedAt", { mode: "date" }),
   refundedAt: timestamp("refundedAt", { mode: "date" }),

@@ -17,8 +17,6 @@
     "lint": "pnpm check:no-legacy-job-wizard && pnpm -C apps/web lint",
     "typecheck": "pnpm -C apps/web typecheck",
     "test": "pnpm -C apps/web test",
-    "test:wizard-v2": "pnpm -C apps/api test -- jobDraftV2; pnpm -C apps/web audit:e2e:local -- job-wizard-v2",
-    "test:wizard-v2:ci": "E2E_TEST_MODE=1 pnpm -C apps/web exec playwright test e2e/job-wizard-v2 --project=default --workers=1",
     "format": "prettier -w .",
     "guardrails": "node scripts/guardrails.mjs",
     "ai:guard": "tsx scripts/ai-guard.ts",

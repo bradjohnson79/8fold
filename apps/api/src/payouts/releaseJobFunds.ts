@@ -258,9 +258,12 @@ export async function releaseJobFunds(input: {
     if (job.archived) return { kind: "archived" as const };
     if (job.isMock) return { kind: "mock" as const };
     if (String(job.status ?? "") === "DISPUTED") return { kind: "disputed" as const };
+    if (String(job.status ?? "") === "COMPLETION_FLAGGED") return { kind: "not_ready" as const };
 
     const paymentStatus = String(job.paymentStatus ?? "");
-    if (paymentStatus !== "FUNDED") return { kind: "not_funded" as const, paymentStatus };
+    if (!["FUNDED", "FUNDS_SECURED"].includes(paymentStatus)) {
+      return { kind: "not_funded" as const, paymentStatus };
+    }
 
     // Refuse release if refund has been initiated/completed (no clawback exists).
     const jpRows = await tx

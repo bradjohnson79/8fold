@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { postAJobPath } from "@/lib/jobWizardV2";
+import { postAJobPath } from "@/lib/jobWizardV3";
 import { ErrorDisplay } from "../../../../../components/ErrorDisplay";
 import { LoadingSpinner } from "../../../../../components/LoadingSpinner";
 
@@ -88,7 +88,8 @@ export default function JobPosterJobsPage() {
 
       <div className="mt-6 space-y-3">
         {nonDrafts.map((j) => {
-          const funded = Boolean(j.escrowLockedAt);
+          const paymentStatusUpper = String(j.payment?.status ?? "").toUpperCase();
+          const funded = paymentStatusUpper === "FUNDED" || paymentStatusUpper === "FUNDS_SECURED";
           const total = j.laborTotalCents + j.materialsTotalCents;
           const now = Date.now();
           const guaranteeEligibleAtMs = j.guaranteeEligibleAt
@@ -174,6 +175,11 @@ export default function JobPosterJobsPage() {
                   Parts &amp; Materials
                 </a>
               </div>
+              {paymentStatusUpper === "FUNDS_SECURED" ? (
+                <div className="mt-3 rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">
+                  ✅ A contractor has accepted your job. Your card has now been charged and funds are securely held until completion.
+                </div>
+              ) : null}
             </div>
           );
         })}
