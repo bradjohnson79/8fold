@@ -57,6 +57,8 @@ function decodeJwtClaimsUnsafe(token: string): { iss?: string; aud?: string | st
   }
 }
 
+const API_AUTH_DEBUG = process.env.AUTH_DEBUG === "true";
+
 function logAuth401Diagnostic(opts: {
   token: string;
   expectedIssuer: string;
@@ -64,7 +66,9 @@ function logAuth401Diagnostic(opts: {
   requestId: string;
   path: "verify_throw" | "issuer_mismatch";
   verifiedIssuer?: string;
+  reason?: string;
 }): void {
+  if (!API_AUTH_DEBUG) return;
   const claims = decodeJwtClaimsUnsafe(opts.token);
   // eslint-disable-next-line no-console
   console.warn("[AUTH_401_DIAGNOSTIC]", {
@@ -75,6 +79,7 @@ function logAuth401Diagnostic(opts: {
     configured_CLERK_ISSUER: opts.expectedIssuer,
     configured_CLERK_AUDIENCE: opts.expectedAudience.length ? opts.expectedAudience : "(empty)",
     ...(opts.verifiedIssuer !== undefined && { verified_iss_after_normalize: opts.verifiedIssuer }),
+    ...(opts.reason !== undefined && { reason: opts.reason }),
   });
 }
 
@@ -97,6 +102,7 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
   const authorizedParties = parseCommaList(process.env.CLERK_AUTHORIZED_PARTIES);
   const expectedIssuerRaw = String(process.env.CLERK_ISSUER ?? "").trim();
   const expectedIssuer = normalizeIssuer(expectedIssuerRaw);
+  const issuerAllowlist = parseCommaList(process.env.CLERK_ISSUER_ALLOWLIST).map(normalizeIssuer).filter(Boolean);
 
   if (!jwtKey && !secretKey) {
     logAuthFailure(req, {
@@ -120,12 +126,13 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
     // Clerk token verification is local (no REST calls). We optionally pass an `issuer`
     // hint for runtime validation if the SDK supports it. We still enforce issuer ourselves
     // using the `iss` claim to avoid relying on SDK behavior/types.
+    // When allowlist is set, omit issuer from SDK so we can accept multiple issuers via manual check.
     const verifyOpts: any = {
       ...(jwtKey ? { jwtKey } : {}),
       ...(secretKey ? { secretKey } : {}),
       ...(audience.length ? { audience } : {}),
       ...(authorizedParties.length ? { authorizedParties } : {}),
-      ...(expectedIssuer ? { issuer: expectedIssuer } : {}),
+      ...(expectedIssuer && issuerAllowlist.length === 0 ? { issuer: expectedIssuer } : {}),
     };
     verified = await verifyToken(token, verifyOpts);
   } catch (err) {
@@ -136,15 +143,16 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
         ? AuthErrorCodes.AUTH_EXPIRED_TOKEN
         : msgLower.includes("issuer") || msgLower.includes("invalid iss") || msgLower.includes(" iss ") || msgLower.includes("iss=") || msgLower.includes("iss:")
           ? AuthErrorCodes.AUTH_INVALID_ISSUER
-        : audience.length && (msgLower.includes("audience") || msgLower.includes(" aud ") || msgLower.includes("aud=") || msgLower.includes("aud:"))
-          ? AuthErrorCodes.AUTH_INVALID_AUDIENCE
-          : AuthErrorCodes.AUTH_INVALID_TOKEN;
+          : audience.length && (msgLower.includes("audience") || msgLower.includes(" aud ") || msgLower.includes("aud=") || msgLower.includes("aud:"))
+            ? AuthErrorCodes.AUTH_INVALID_AUDIENCE
+            : AuthErrorCodes.AUTH_INVALID_TOKEN;
     logAuth401Diagnostic({
       token,
       expectedIssuer,
       expectedAudience: audience,
       requestId,
       path: "verify_throw",
+      reason: msg.slice(0, 300),
     });
     logAuthFailure(req, {
       level: "warn",
@@ -193,7 +201,9 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
       details: { missing: ["CLERK_ISSUER"], observedIssuer: issuer || null },
     });
   }
-  if (issuer !== expectedIssuer) {
+  const allowedIssuers = [expectedIssuer, ...issuerAllowlist].filter(Boolean);
+  const issuerAccepted = allowedIssuers.some((a) => issuer === a);
+  if (!issuerAccepted) {
     logAuth401Diagnostic({
       token,
       expectedIssuer,
@@ -201,6 +211,7 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
       requestId,
       path: "issuer_mismatch",
       verifiedIssuer: issuer,
+      reason: `Token iss "${issuer}" not in allowed list`,
     });
     logAuthFailure(req, {
       level: "warn",
@@ -215,7 +226,7 @@ export async function requireAuth(req: Request): Promise<RequireAuthOk | Respons
       code: AuthErrorCodes.AUTH_INVALID_ISSUER,
       message: "Token issuer mismatch",
       requestId,
-      details: { iss: issuer, expected: expectedIssuer },
+      details: { iss: issuer, expected: expectedIssuer, allowlist: issuerAllowlist },
     });
   }
 
