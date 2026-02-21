@@ -17,6 +17,11 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+const AUTH_DEBUG = process.env.WEB_AUTH_DEBUG_LOG === "true";
+function authDebugLog(msg: string, data?: Record<string, unknown>): void {
+  if (AUTH_DEBUG) console.warn("[auth.debug]", msg, data ?? {});
+}
+
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<{ ok: true; value: T } | { ok: false }> {
   if (ms <= 0) return { ok: false };
   let t: ReturnType<typeof setTimeout> | null = null;
@@ -34,14 +39,16 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<{ ok: true; va
 }
 
 export async function requireApiToken(): Promise<string> {
+  const tokenStart = Date.now();
   const { getToken, userId } = await auth();
 
   // Hard cap: never block server render indefinitely waiting for Clerk.
-  // Prod is fixed; dev is configurable but still bounded.
+  // Prod: 10s to avoid premature null when Clerk token issuance is slow after redirect.
+  // Dev: configurable but bounded.
   const maxWaitMsDefault =
     process.env.NODE_ENV !== "production"
       ? clamp(Number(process.env.WEB_AUTH_TOKEN_MAX_WAIT_MS ?? 2500), 200, 5000)
-      : 2000;
+      : 10000;
   const maxWaitMs = maxWaitMsDefault;
   const deadline = Date.now() + maxWaitMs;
 
@@ -63,17 +70,23 @@ export async function requireApiToken(): Promise<string> {
   }
 
   if (!token) {
-    // Distinguish "not signed in" from "signed in, token not ready yet" for better redirects.
+    const durationMs = Date.now() - tokenStart;
+    authDebugLog("token_acquisition_failed", {
+      acquired: false,
+      durationMs,
+      code: userId ? (Date.now() >= deadline ? "AUTH_TOKEN_TIMEOUT" : "AUTH_TOKEN_PENDING") : "AUTH_MISSING_TOKEN",
+    });
     const timedOut = Date.now() >= deadline;
     const code = userId ? (timedOut ? "AUTH_TOKEN_TIMEOUT" : "AUTH_TOKEN_PENDING") : "AUTH_MISSING_TOKEN";
     throw Object.assign(new Error("Unauthorized"), { status: 401, code });
   }
+  authDebugLog("token_acquired", { acquired: true, durationMs: Date.now() - tokenStart });
   return token;
 }
 
 async function requireMeSession(req?: Request): Promise<Session> {
   const start = Date.now();
-  const stabilizationBudgetMs = process.env.NODE_ENV !== "production" ? 2500 : 2000;
+  const stabilizationBudgetMs = process.env.NODE_ENV !== "production" ? 2500 : 12000;
   const deadline = start + stabilizationBudgetMs;
 
   const token = await requireApiToken();
@@ -83,6 +96,7 @@ async function requireMeSession(req?: Request): Promise<Session> {
   }
 
   // Delegate to apps/api (DB-authoritative). This keeps apps/web DB-free.
+  authDebugLog("api_me_calling", {});
   let resp: Response;
   try {
     resp = await apiFetch({
@@ -104,6 +118,7 @@ async function requireMeSession(req?: Request): Promise<Session> {
     }
     throw e;
   }
+  authDebugLog("api_me_response", { status: resp.status, ok: resp.ok });
   const json = (await resp.json().catch(() => null)) as any;
   if (!resp.ok || json?.ok !== true) {
     const code = String(json?.error?.code ?? json?.code ?? "");
@@ -117,6 +132,7 @@ async function requireMeSession(req?: Request): Promise<Session> {
   const u = json.data as any;
   const rawRole = String(u.role ?? "").trim();
   const roleAssigned = u?.roleAssigned !== false && rawRole.length > 0;
+  authDebugLog("session_ok", { branch: "session_ok" });
   return {
     userId: String(u.id ?? ""),
     email: u.email ?? null,
@@ -139,10 +155,12 @@ async function loadServerMeSession(): Promise<Session | null> {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
     const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
     if (status === 401) {
-      if (process.env.WEB_AUTH_DEBUG_LOG === "true") {
-        const msg = (err as Error)?.message ?? String(err);
-        console.warn("[auth.session_null]", { code, status, message: msg.slice(0, 200) });
-      }
+      authDebugLog("session_null", {
+        branch: "session_null",
+        code,
+        status,
+        message: ((err as Error)?.message ?? String(err)).slice(0, 200),
+      });
       return null;
     }
     if (code === "USER_ROLE_NOT_ASSIGNED") {
