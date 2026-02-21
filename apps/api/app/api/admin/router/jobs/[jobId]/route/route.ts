@@ -117,7 +117,10 @@ export async function POST(req: Request) {
           jobRegionCode: job.regionCode,
         } as any,
       });
-      return NextResponse.json({ ok: false, error: "job_not_in_context_region" }, { status: 403 });
+      return NextResponse.json(
+        { ok: false, error: "8Fold restricts work to within your registered state/province.", code: "CROSS_JURISDICTION_BLOCKED" },
+        { status: 403 },
+      );
     }
 
     // Overdue + unrouted enforcement

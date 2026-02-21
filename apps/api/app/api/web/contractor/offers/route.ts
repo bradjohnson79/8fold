@@ -14,11 +14,18 @@ export async function GET(req: Request) {
     if (ready instanceof Response) return ready;
     const u = ready;
 
-    const userRows = await db.select({ email: users.email }).from(users).where(eq(users.id, u.userId)).limit(1);
+    const userRows = await db
+      .select({ email: users.email, countryCode: users.countryCode, stateCode: users.stateCode })
+      .from(users)
+      .where(eq(users.id, u.userId))
+      .limit(1);
     const email = String(userRows[0]?.email ?? "").trim().toLowerCase();
+    const countryCode = String((userRows[0] as any)?.countryCode ?? "").trim().toUpperCase();
+    const stateCode = String((userRows[0] as any)?.stateCode ?? "").trim().toUpperCase();
     if (!email) {
       return NextResponse.json({ ok: true, hasContractor: false, offers: [] });
     }
+    if (!countryCode || !stateCode) return NextResponse.json({ ok: true, hasContractor: true, offers: [] });
 
     const contractorRows = await db
       .select({ id: contractors.id, businessName: contractors.businessName })
@@ -41,6 +48,8 @@ export async function GET(req: Request) {
           id: jobs.id,
           title: jobs.title,
           region: jobs.region,
+          countryCode: jobs.countryCode,
+          stateCode: jobs.stateCode,
           tradeCategory: jobs.tradeCategory,
           status: jobs.status,
           availability: jobs.availability,
@@ -48,7 +57,15 @@ export async function GET(req: Request) {
       })
       .from(jobDispatches)
       .innerJoin(jobs, eq(jobDispatches.jobId, jobs.id))
-      .where(and(eq(jobDispatches.contractorId, contractor.id), eq(jobDispatches.status, "PENDING"), sql`${jobDispatches.expiresAt} > ${now}`))
+      .where(
+        and(
+          eq(jobDispatches.contractorId, contractor.id),
+          eq(jobDispatches.status, "PENDING"),
+          sql`${jobDispatches.expiresAt} > ${now}`,
+          eq(jobs.countryCode, countryCode as any),
+          eq(jobs.stateCode, stateCode),
+        ),
+      )
       .orderBy(desc(jobDispatches.createdAt))
       .limit(50);
 
