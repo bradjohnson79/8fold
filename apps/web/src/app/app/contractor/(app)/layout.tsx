@@ -42,7 +42,21 @@ export default async function ContractorAppLayout({ children }: { children: Reac
   const statusJson = (await statusResp.json().catch(() => null)) as any;
   if (!statusResp.ok || !statusJson || (statusJson as any).ok !== true) {
     if (statusResp.status === 401) redirect("/app");
-    redirect("/login?next=/app/contractor");
+    return (
+      <ContractorDashboardShell>
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="text-sm font-semibold text-amber-900">We couldn&apos;t load your contractor status right now.</div>
+          <div className="mt-2">
+            <a
+              href="/app/contractor"
+              className="inline-flex rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Retry
+            </a>
+          </div>
+        </div>
+      </ContractorDashboardShell>
+    );
   }
 
   const steps = (statusJson as any).steps as any;
