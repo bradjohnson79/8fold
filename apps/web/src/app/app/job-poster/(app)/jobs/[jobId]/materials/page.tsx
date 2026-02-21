@@ -1,51 +1,55 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { PMStatus } from "@8fold/shared";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { IncentiveBadge } from "../../../../../../../components/Progress";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { formatMoney, pmBadgeClassByStatus } from "@/lib/pmStatus";
 
-type MaterialsItem = {
+type PMLineItem = {
   id: string;
-  name: string;
-  category: string;
+  description: string;
   quantity: number;
-  unitPriceCents: number;
-  priceUrl: string | null;
+  unitPrice: string;
+  url?: string | null;
+  lineTotal: string;
 };
 
-type MaterialsResponse = {
-  request: null | {
-    id: string;
-    status: "SUBMITTED" | "APPROVED" | "ESCROWED" | "RECEIPTS_SUBMITTED" | "REIMBURSED" | "DECLINED";
-    currency: "USD" | "CAD";
-    totalAmountCents: number;
-    submittedAt: string;
-    approvedAt: string | null;
-    declinedAt: string | null;
-    items: MaterialsItem[];
-    escrow: null | {
-      status: "HELD" | "RELEASED";
-      amountCents: number;
-      releaseDueAt: string | null;
-      releasedAt: string | null;
-    };
-  };
-  viewer: { isJobPoster: boolean };
-  error?: string;
+type PMReceipt = {
+  id: string;
+  extractedTotal: string | null;
+  verified: boolean;
 };
 
-type PaymentIntentResponse = {
-  clientSecret: string;
-  paymentIntentId: string;
-  totalCents?: number;
-  amountCents?: number;
+type PMRequest = {
+  id: string;
+  status: PMStatus;
+  autoTotal: string;
+  manualTotal: string | null;
+  approvedTotal: string | null;
+  stripePaymentIntentId: string | null;
+  proposedBudget: string | null;
+  amendReason: string | null;
+  currency: string;
+  lineItems: PMLineItem[];
+  receipts: PMReceipt[];
+  updatedAt: string;
 };
 
-function money(cents: number, currency: string) {
-  const amt = (cents / 100).toFixed(2);
-  return currency === "CAD" ? `C$${amt}` : `$${amt}`;
+type PMListResponse = { requests: PMRequest[]; error?: string; traceId?: string };
+type JobStatusResponse = { jobs?: Array<{ id: string; title?: string; status?: string | null }> };
+type PaymentIntentResponse = { clientSecret: string; paymentIntentId: string; traceId?: string; error?: string };
+
+function decimal(v: string | number | null | undefined): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseError(json: any, fallback: string): string {
+  const msg = String(json?.error ?? fallback);
+  const trace = json?.traceId ? ` (traceId: ${String(json.traceId)})` : "";
+  return `${msg}${trace}`;
 }
 
 function PaymentConfirmCard(props: {
@@ -89,19 +93,10 @@ function PaymentConfirmCard(props: {
                 elements: elements!,
                 redirect: "if_required",
                 confirmParams: {
-                  return_url: `${window.location.origin}/app/job-poster/payment/return`,
+                  return_url: `${window.location.origin}/app/job-poster/payment/return-v2`,
                 },
               });
               if (res.error) throw new Error(res.error.message || "Payment failed");
-
-              const resp = await fetch(`/api/app/materials/${encodeURIComponent(props.requestId)}/confirm-payment`, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ paymentIntentId: props.paymentIntentId })
-              });
-              const json = await resp.json().catch(() => ({}));
-              if (!resp.ok) throw new Error(json?.error || "Failed to confirm payment");
-
               await props.onDone();
             } catch (e) {
               setErr(e instanceof Error ? e.message : "Payment failed");
@@ -120,7 +115,7 @@ function PaymentConfirmCard(props: {
 
 export default function JobPosterMaterialsPage() {
   const params = useParams<{ jobId: string }>();
-  const jobId = params.jobId;
+  const jobId = String(params?.jobId ?? "");
 
   const stripePromise = useState(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -128,22 +123,33 @@ export default function JobPosterMaterialsPage() {
   })[0];
 
   const [loading, setLoading] = useState(true);
+  const [loadingAction, setLoadingAction] = useState(false);
   const [error, setError] = useState("");
-  const [data, setData] = useState<MaterialsResponse | null>(null);
-  const [acting, setActing] = useState(false);
+  const [requests, setRequests] = useState<PMRequest[]>([]);
+  const [jobStatus, setJobStatus] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [amendReason, setAmendReason] = useState("");
+  const [proposedBudget, setProposedBudget] = useState("");
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/api/app/materials/by-job?jobId=${encodeURIComponent(jobId)}`, {
-        cache: "no-store"
-      });
-      const json = (await resp.json().catch(() => ({}))) as MaterialsResponse;
-      if (!resp.ok) throw new Error((json as any)?.error || "Failed to load");
-      setData(json);
+      const [jobsResp, pmResp] = await Promise.all([
+        fetch("/api/app/job-poster/jobs", { cache: "no-store", credentials: "include" }),
+        fetch(`/api/app/job/${encodeURIComponent(jobId)}/pm`, { cache: "no-store", credentials: "include" }),
+      ]);
+      const jobsJson = (await jobsResp.json().catch(() => ({}))) as JobStatusResponse;
+      const pmJson = (await pmResp.json().catch(() => ({}))) as PMListResponse;
+      if (!jobsResp.ok) throw new Error(parseError(jobsJson, "Failed to load job"));
+      if (!pmResp.ok) throw new Error(parseError(pmJson, "Failed to load P&M requests"));
+      const job = (jobsJson.jobs ?? []).find((j) => String(j.id) === jobId);
+      setJobStatus(String(job?.status ?? ""));
+      setJobTitle(String(job?.title ?? ""));
+      setRequests(Array.isArray(pmJson.requests) ? pmJson.requests : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -155,158 +161,331 @@ export default function JobPosterMaterialsPage() {
     void load();
   }, [jobId]);
 
-  async function approve() {
-    if (!data?.request) return;
-    setActing(true);
+  const activeRequest = useMemo(() => requests[0] ?? null, [requests]);
+  const isInactive = String(jobStatus).toUpperCase() !== "IN_PROGRESS";
+
+  async function callAction(action: string, body: Record<string, unknown>) {
+    const resp = await fetch(`/api/app/job/${encodeURIComponent(jobId)}/pm/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(parseError(json, `Failed to ${action}`));
+    return json;
+  }
+
+  async function initiateFromPoster() {
+    setLoadingAction(true);
     setError("");
     try {
-      const resp = await fetch(`/api/app/materials/${data.request.id}/create-payment-intent`, { method: "POST" });
-      const json = (await resp.json().catch(() => ({}))) as PaymentIntentResponse;
-      if (!resp.ok) throw new Error((json as any)?.error || "Failed to create payment intent");
-      setClientSecret(json.clientSecret);
-      setPaymentIntentId(json.paymentIntentId);
+      await callAction("initiate", { initiatedBy: "POSTER" });
+      await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(e instanceof Error ? e.message : "Failed to initiate");
     } finally {
-      setActing(false);
+      setLoadingAction(false);
     }
   }
 
-  async function decline() {
-    if (!data?.request) return;
-    setActing(true);
+  async function approve() {
+    if (!activeRequest) return;
+    setLoadingAction(true);
     setError("");
     try {
-      const resp = await fetch(`/api/app/materials/${data.request.id}/decline`, { method: "POST" });
-      const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Failed to decline");
+      await callAction("approve", { pmRequestId: activeRequest.id });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(e instanceof Error ? e.message : "Failed to approve");
     } finally {
-      setActing(false);
+      setLoadingAction(false);
+    }
+  }
+
+  async function amend() {
+    if (!activeRequest) return;
+    setLoadingAction(true);
+    setError("");
+    try {
+      await callAction("amend", {
+        pmRequestId: activeRequest.id,
+        amendReason: amendReason.trim() || "Need amendment",
+        proposedBudget: decimal(proposedBudget || activeRequest.autoTotal),
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to request amendment");
+    } finally {
+      setLoadingAction(false);
+    }
+  }
+
+  async function reject() {
+    if (!activeRequest) return;
+    setLoadingAction(true);
+    setError("");
+    try {
+      await callAction("reject", { pmRequestId: activeRequest.id });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reject");
+    } finally {
+      setLoadingAction(false);
+    }
+  }
+
+  async function createPaymentIntent() {
+    if (!activeRequest) return;
+    setLoadingAction(true);
+    setError("");
+    try {
+      const resp = await fetch(`/api/app/job/${encodeURIComponent(jobId)}/pm/create-payment-intent`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pmRequestId: activeRequest.id }),
+      });
+      const json = (await resp.json().catch(() => ({}))) as PaymentIntentResponse;
+      if (!resp.ok) throw new Error(parseError(json, "Failed to create payment intent"));
+      setClientSecret(json.clientSecret);
+      setPaymentIntentId(json.paymentIntentId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create payment intent");
+    } finally {
+      setLoadingAction(false);
+    }
+  }
+
+  async function verifyReceipts() {
+    if (!activeRequest) return;
+    setLoadingAction(true);
+    setError("");
+    try {
+      await callAction("verify-receipts", { pmRequestId: activeRequest.id });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to verify receipts");
+    } finally {
+      setLoadingAction(false);
+    }
+  }
+
+  async function releaseFunds() {
+    if (!activeRequest) return;
+    setLoadingAction(true);
+    setError("");
+    try {
+      await callAction("release-funds", { pmRequestId: activeRequest.id });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to release funds");
+    } finally {
+      setLoadingAction(false);
     }
   }
 
   return (
-    <>
-      <h2 className="text-lg font-bold text-gray-900">Materials decision</h2>
-      <p className="text-gray-600 mt-2">
-        Review factual parts/materials only. No labor, markup, or estimates. Funds are held in escrow and released
-        only upon receipt verification.
-      </p>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-gray-200 p-6">
+        <div className="text-sm font-semibold uppercase tracking-wide text-gray-500">CardHeader</div>
+        <h2 className="mt-1 text-xl font-bold text-gray-900">Parts &amp; Materials</h2>
+        <div className="mt-4 space-y-4">
+          {loading ? <div className="text-gray-600">Loading…</div> : null}
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          ) : null}
 
-      {error ? (
-        <div className="mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      ) : null}
-
-      {loading ? (
-        <div className="mt-6 text-gray-600">Loading…</div>
-      ) : data?.request ? (
-        <div className="mt-6 space-y-6">
-          <div className="border border-gray-200 rounded-2xl p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-bold text-gray-900">
-                  Status:{" "}
-                  <span className="inline-flex px-2 py-1 rounded-full text-sm bg-gray-100 border border-gray-200">
-                    {data.request.status}
-                  </span>
-                </div>
-                <div className="text-gray-600 mt-1">
-                  Total materials: <span className="font-semibold text-gray-900">{money(data.request.totalAmountCents, data.request.currency)}</span>
-                </div>
-              </div>
-              <IncentiveBadge
-                status={
-                  data.request.status === "SUBMITTED"
-                    ? "IN_PROGRESS"
-                    : data.request.status === "APPROVED"
-                      ? "COMPLETED_AWAITING_ADMIN"
-                      : "LOCKED"
-                }
-              />
+          {!loading && isInactive ? (
+            <div className="space-y-3 text-gray-700">
+              <p>The Parts and Materials section will become active and optional during a job in progress.</p>
+              <p>
+                During an active job, this feature allows the Contractor to request reimbursement for materials purchased
+                on behalf of the Job Poster. All payouts require receipt uploads and approval.
+              </p>
             </div>
+          ) : null}
 
-            <div className="mt-4 divide-y divide-gray-100 border border-gray-100 rounded-xl">
-              {data.request.items.map((it) => (
-                <div key={it.id} className="p-4 flex items-start justify-between gap-4">
-                  <div>
-                    <div className="font-semibold text-gray-900">{it.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">Category: {it.category}</div>
-                    <div className="text-sm text-gray-600 mt-1">
-                      Qty {it.quantity} · Unit {money(it.unitPriceCents, data.request!.currency)}
-                    </div>
-                    {it.priceUrl ? (
-                      <a
-                        className="text-sm text-8fold-green hover:text-8fold-green-dark mt-2 inline-block"
-                        href={it.priceUrl}
+          {!loading && !isInactive ? (
+            <div className="space-y-4">
+              {jobTitle ? <div className="text-sm text-gray-600">Job: <span className="font-semibold text-gray-900">{jobTitle}</span></div> : null}
+              {!activeRequest ? (
+                <button
+                  type="button"
+                  disabled={loadingAction}
+                  onClick={() => void initiateFromPoster()}
+                  className="rounded-lg bg-8fold-green px-4 py-2 font-semibold text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500"
+                >
+                  {loadingAction ? "Working…" : "Request P&M Quote from Contractor"}
+                </button>
+              ) : null}
+
+              <div className="space-y-3">
+                {requests.map((req) => {
+                  const isOpen = Boolean(expanded[req.id]);
+                  const total = decimal(req.approvedTotal ?? req.manualTotal ?? req.autoTotal);
+                  return (
+                    <div key={req.id} className="rounded-xl border border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => setExpanded((s) => ({ ...s, [req.id]: !isOpen }))}
+                        className="flex w-full items-center justify-between gap-3 p-4 text-left"
                       >
-                        Price link →
-                      </a>
-                    ) : null}
-                  </div>
-                  <div className="text-gray-700 font-semibold">
-                    {money(it.quantity * it.unitPriceCents, data.request!.currency)}
-                  </div>
-                </div>
-              ))}
+                        <div>
+                          <div className="font-semibold text-gray-900">Request {req.id.slice(0, 8)}</div>
+                          <div className="mt-1 text-sm text-gray-600">Total: {formatMoney(total, req.currency)}</div>
+                        </div>
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${pmBadgeClassByStatus[req.status]}`}>
+                          {req.status}
+                        </span>
+                      </button>
+
+                      {isOpen ? (
+                        <div className="border-t border-gray-100 p-4 space-y-4">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-gray-500">
+                                  <th className="py-1">Description</th>
+                                  <th className="py-1">Qty</th>
+                                  <th className="py-1">Unit Price</th>
+                                  <th className="py-1">Line Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {req.lineItems.map((item) => (
+                                  <tr key={item.id} className="border-t border-gray-100">
+                                    <td className="py-2">{item.description}</td>
+                                    <td className="py-2">{item.quantity}</td>
+                                    <td className="py-2">{formatMoney(decimal(item.unitPrice), req.currency)}</td>
+                                    <td className="py-2">{formatMoney(decimal(item.lineTotal), req.currency)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="text-sm text-gray-700">
+                            Receipts: {req.receipts.length} · Verified: {req.receipts.filter((r) => r.verified).length}
+                          </div>
+
+                          {req.status === "SUBMITTED" ? (
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <input
+                                  value={amendReason}
+                                  onChange={(e) => setAmendReason(e.target.value)}
+                                  placeholder="Amendment reason"
+                                  className="rounded-lg border border-gray-300 px-3 py-2"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min={0}
+                                  value={proposedBudget}
+                                  onChange={(e) => setProposedBudget(e.target.value)}
+                                  placeholder="Proposed budget"
+                                  className="rounded-lg border border-gray-300 px-3 py-2"
+                                />
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={loadingAction}
+                                  onClick={() => void approve()}
+                                  className="rounded-lg bg-8fold-green px-3 py-2 text-sm font-semibold text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={loadingAction}
+                                  onClick={() => void amend()}
+                                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                                >
+                                  Request Amendment
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={loadingAction}
+                                  onClick={() => void reject()}
+                                  className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {req.status === "APPROVED" ? (
+                            <div className="space-y-3">
+                              <button
+                                type="button"
+                                disabled={loadingAction || Boolean(req.stripePaymentIntentId)}
+                                onClick={() => void createPaymentIntent()}
+                                className="rounded-lg bg-8fold-green px-3 py-2 text-sm font-semibold text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500"
+                              >
+                                {req.stripePaymentIntentId ? "PaymentIntent Already Created" : loadingAction ? "Working…" : "Pay P&M Quote"}
+                              </button>
+                              {clientSecret && paymentIntentId && stripePromise ? (
+                                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                                  <PaymentConfirmCard
+                                    requestId={req.id}
+                                    clientSecret={clientSecret}
+                                    paymentIntentId={paymentIntentId}
+                                    amountLabel={formatMoney(total, req.currency)}
+                                    onDone={async () => {
+                                      setClientSecret(null);
+                                      setPaymentIntentId(null);
+                                      await load();
+                                    }}
+                                  />
+                                </Elements>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {req.status === "RECEIPTS_SUBMITTED" ? (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={loadingAction}
+                                onClick={() => void verifyReceipts()}
+                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                              >
+                                Verify Receipts
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {req.status === "VERIFIED" ? (
+                            <button
+                              type="button"
+                              disabled={loadingAction}
+                              onClick={() => void releaseFunds()}
+                              className="rounded-lg bg-8fold-green px-3 py-2 text-sm font-semibold text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500"
+                            >
+                              Release Funds
+                            </button>
+                          ) : null}
+
+                          {(req.status === "RELEASED" || req.status === "CLOSED") ? (
+                            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                              Released amount: {formatMoney(total, req.currency)}. Any remainder was handled as wallet credit or Stripe refund.
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {!requests.length ? <div className="text-sm text-gray-600">No P&amp;M requests yet.</div> : null}
+              </div>
             </div>
-
-            {data.request.status === "SUBMITTED" ? (
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => void approve()}
-                  disabled={acting}
-                  className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-5 py-2.5 rounded-lg"
-                >
-                  {acting ? "Working…" : "Approve & Pay (Stripe)"}
-                </button>
-                <button
-                  onClick={() => void decline()}
-                  disabled={acting}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold px-5 py-2.5 rounded-lg"
-                >
-                  Decline
-                </button>
-              </div>
-            ) : null}
-
-            {data.request.status === "SUBMITTED" && clientSecret && paymentIntentId && stripePromise ? (
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <PaymentConfirmCard
-                  requestId={data.request.id}
-                  clientSecret={clientSecret}
-                  paymentIntentId={paymentIntentId}
-                  amountLabel={money(data.request.totalAmountCents, data.request.currency)}
-                  onDone={async () => {
-                    setClientSecret(null);
-                    setPaymentIntentId(null);
-                    await load();
-                  }}
-                />
-              </Elements>
-            ) : null}
-
-            {data.request.status === "ESCROWED" && data.request.escrow ? (
-              <div className="mt-6 bg-green-50 border border-green-200 rounded-2xl p-5">
-                <div className="font-bold text-green-900">Escrow funded</div>
-                <div className="text-green-800 mt-1">
-                  Funds are held in materials escrow and will be released only upon receipt verification.
-                </div>
-              </div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
-      ) : (
-        <div className="mt-6 border border-gray-200 rounded-2xl p-6">
-          <div className="font-bold text-gray-900">No materials request</div>
-          <div className="text-gray-600 mt-1">There is no pending materials request for this job.</div>
-        </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
 

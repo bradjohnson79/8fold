@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useParams, useRouter } from "next/navigation";
+import { postAJobPath } from "@/lib/jobWizardV2";
 
 type RedeemResp =
   | { ok: true; job: { id: string } }
@@ -29,7 +30,7 @@ export default function JobPosterContinuePage() {
         if (!alive) return;
         const jobId = (json as any)?.job?.id;
         if (!jobId) throw new Error("Missing job");
-        router.replace(`/app/job-poster/post-a-job?resumeJobId=${encodeURIComponent(jobId)}`);
+        router.replace(`${postAJobPath}?resumeJobId=${encodeURIComponent(jobId)}`);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed");

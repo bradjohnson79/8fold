@@ -13,6 +13,10 @@ import { auditLogs } from "@/db/schema/auditLog";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { escrows } from "@/db/schema/escrow";
 import { finalizeJobFundingFromPaymentIntent } from "@/src/payments/finalizeJobFundingFromPaymentIntent";
+import {
+  finalizePmFundingFromPaymentIntent,
+  requirePmEscrowMetadata,
+} from "@/src/pm/finalizePmFunding";
 
 /**
  * LOCAL DEV:
@@ -147,6 +151,34 @@ export async function POST(req: Request) {
       switch (event.type) {
         case "payment_intent.succeeded": {
           const pi = event.data.object as Stripe.PaymentIntent;
+          const pmMeta = requirePmEscrowMetadata(pi.metadata);
+          if (pmMeta) {
+            testLog({ eventType: event.type, jobId: pmMeta.jobId });
+            const finalized = await finalizePmFundingFromPaymentIntent(pi, {
+              route: "/api/webhooks/stripe",
+              source: "webhook",
+              webhookEventId: event.id,
+              tx,
+            });
+            if (!finalized.ok) {
+              logEvent({
+                level: "error",
+                event: "stripe.webhook_pm_finalize_failed",
+                route: "/api/webhooks/stripe",
+                method: "POST",
+                status: 200,
+                code: finalized.code,
+                context: {
+                  eventId: event.id,
+                  paymentIntentId: pi.id,
+                  pmRequestId: pmMeta.pmRequestId,
+                  reason: finalized.reason,
+                },
+              });
+            }
+            return;
+          }
+
           const meta = requireJobEscrowMetadata(pi.metadata);
           if (!meta) {
             logEvent({

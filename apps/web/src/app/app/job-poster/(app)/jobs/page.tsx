@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { postAJobPath } from "@/lib/jobWizardV2";
 import { ErrorDisplay } from "../../../../../components/ErrorDisplay";
 import { LoadingSpinner } from "../../../../../components/LoadingSpinner";
 
@@ -156,7 +157,7 @@ export default function JobPosterJobsPage() {
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <a
-                      href={`/app/job-poster/post-a-job?resumeJobId=${encodeURIComponent(j.id)}`}
+                      href={`${postAJobPath}?resumeJobId=${encodeURIComponent(j.id)}`}
                       className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
                     >
                       Resume
@@ -237,7 +238,7 @@ export default function JobPosterJobsPage() {
                 <div className="mt-3">
                   <a
                     className="text-8fold-green font-semibold hover:text-8fold-green-dark"
-                    href="/app/job-poster/post-a-job"
+                    href={postAJobPath}
                   >
                     Continue payment →
                   </a>
@@ -255,6 +256,14 @@ export default function JobPosterJobsPage() {
                   </button>
                 </div>
               ) : null}
+              <div className="mt-3">
+                <a
+                  href={`/app/job-poster/jobs/${encodeURIComponent(j.id)}/materials`}
+                  className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Parts &amp; Materials
+                </a>
+              </div>
             </div>
           );
         })}
