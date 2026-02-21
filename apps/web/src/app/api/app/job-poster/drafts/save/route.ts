@@ -47,7 +47,6 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: String(parsed?.error ?? "Draft save failed."),
-        code: "DRAFT_SAVE_FAILED",
         code: code === "JOB_STATE_MISMATCH" ? "JOB_STATE_MISMATCH" : "DRAFT_SAVE_FAILED",
         requiresSupportTicket: true,
         traceId,
