@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   const traceId = randomUUID();
   try {
     const resp = await apiFetch({
-      path: "/api/_diag/build",
+      path: "/api/diag/build",
       method: "GET",
       request: req,
     });

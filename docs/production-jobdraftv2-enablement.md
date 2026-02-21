@@ -7,13 +7,13 @@ This runbook ensures `JobDraftV2` is available in the same schema the API uses a
 API host:
 
 ```bash
-curl -sS "https://<api-host>/api/_diag/build" | jq
+curl -sS "https://<api-host>/api/diag/build" | jq
 ```
 
 Web proxy host:
 
 ```bash
-curl -sS "https://8fold.app/api/app/_diag/build" | jq
+curl -sS "https://8fold.app/api/app/diag/build" | jq
 ```
 
 Expected:
