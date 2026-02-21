@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useClerk } from "@clerk/nextjs";
 import { AdminColors, AdminRadii } from "./theme";
 import { SecondaryButton, Pill } from "./primitives";
 
@@ -62,6 +63,8 @@ function getSectionForPath(pathname: string, search: string): string | null {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { signOut } = useClerk();
   const search = searchParams?.toString() ?? "";
 
   const defaultSection = getSectionForPath(pathname, search) ?? SECTIONS[0]!.title;
@@ -100,12 +103,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return <div style={{ background: AdminColors.bg, color: AdminColors.text }}>{children}</div>;
   }
 
-  async function signOut() {
-    try {
-      await fetch("/api/logout", { method: "POST" });
-    } finally {
-      window.location.href = `${BASE}/login`;
-    }
+  async function handleSignOut() {
+    await signOut();
+    router.push(`${BASE}/login`);
+    router.refresh();
   }
 
   return (
@@ -242,7 +243,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Pill label={envLabel()} tone="neutral" />
               <span style={{ fontSize: 11, color: AdminColors.muted }}>{envDetail()}</span>
             </div>
-            <SecondaryButton onClick={() => void signOut()}>Sign out</SecondaryButton>
+            <SecondaryButton onClick={() => void handleSignOut()}>Sign out</SecondaryButton>
           </div>
         </aside>
 

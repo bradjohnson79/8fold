@@ -6,7 +6,7 @@ import { RouterDashboardLayoutClient } from "./RouterDashboardLayoutClient";
 
 export default async function RouterLayout({ children }: { children: React.ReactNode }) {
   const session = await requireServerSession();
-  if (session?.role === "USER_ROLE_NOT_ASSIGNED") redirect("/onboarding/role");
+  if (session?.role === "USER_ROLE_NOT_ASSIGNED" && session?.dbEnrichmentSucceeded === true) redirect("/onboarding/role");
   if (!session?.userId) {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) redirect("/login?next=/app/router");
