@@ -1,10 +1,14 @@
-import { apiFetch } from "@/server/api/apiClient";
 import { auth } from "@clerk/nextjs/server";
+import { apiFetch } from "@/server/api/apiClient";
+import { getClerkIdentity } from "./clerkIdentity";
 
 export type Session = {
   userId: string;
   email: string | null;
   role: string;
+  firstName: string | null;
+  lastName: string | null;
+  superuser: boolean;
   walletBalanceCents: number;
 };
 
@@ -84,60 +88,48 @@ export async function requireApiToken(): Promise<string> {
   return token;
 }
 
-async function requireMeSession(req?: Request): Promise<Session> {
-  const start = Date.now();
-  const stabilizationBudgetMs = process.env.NODE_ENV !== "production" ? 2500 : 12000;
-  const deadline = start + stabilizationBudgetMs;
-
-  const token = await requireApiToken();
-  const remainingMs = deadline - Date.now();
-  if (remainingMs <= 0) {
-    throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_SESSION_TIMEOUT" });
+async function requireMeSession(_req?: Request): Promise<Session> {
+  const identity = await getClerkIdentity();
+  if (!identity) {
+    throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_MISSING_TOKEN" });
   }
 
-  // Delegate to apps/api (DB-authoritative). This keeps apps/web DB-free.
-  authDebugLog("api_me_calling", {});
-  let resp: Response;
+  let role = identity.role;
+  let email = identity.email;
+  let walletBalanceCents = 0;
+
+  // Best-effort DB role enrichment. Auth remains Clerk-authoritative if this fails.
   try {
-    resp = await apiFetch({
+    const token = await requireApiToken();
+    const resp = await apiFetch({
       path: "/api/me",
       method: "GET",
       sessionToken: token,
-      request: req,
-      timeoutMs: remainingMs,
+      timeoutMs: 1_500,
     });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Node/undici throws AbortError/DOMException on aborted fetch.
-    const aborted =
-      (e as any)?.name === "AbortError" ||
-      (e as any)?.code === "UND_ERR_ABORTED" ||
-      msg.toLowerCase().includes("aborted");
-    if (aborted) {
-      throw Object.assign(new Error("Unauthorized"), { status: 401, code: "AUTH_SESSION_TIMEOUT" });
+    const json = (await resp.json().catch(() => null)) as any;
+    if (resp.ok && json?.ok === true && json?.data && typeof json.data === "object") {
+      const data = json.data as any;
+      const dbRole = String(data.role ?? "").trim().toUpperCase();
+      if (dbRole) role = dbRole;
+      if (!email && typeof data.email === "string") email = data.email;
+      walletBalanceCents = Number(data.walletBalanceCents ?? 0) || 0;
     }
-    throw e;
-  }
-  authDebugLog("api_me_response", { status: resp.status, ok: resp.ok });
-  const json = (await resp.json().catch(() => null)) as any;
-  if (!resp.ok || json?.ok !== true) {
-    const code = String(json?.error?.code ?? json?.code ?? "");
-    const msg = String(json?.error?.message ?? json?.error ?? "Unauthorized");
-    const err = new Error(msg);
-    (err as any).status = resp.status || 401;
-    (err as any).code = code;
-    throw err;
+  } catch (error) {
+    authDebugLog("api_role_enrichment_failed", {
+      message: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+    });
   }
 
-  const u = json.data as any;
-  const rawRole = String(u.role ?? "").trim();
-  const roleAssigned = u?.roleAssigned !== false && rawRole.length > 0;
-  authDebugLog("session_ok", { branch: "session_ok" });
+  authDebugLog("session_ok", { branch: "clerk_only_identity" });
   return {
-    userId: String(u.id ?? ""),
-    email: u.email ?? null,
-    role: roleAssigned ? rawRole : "USER_ROLE_NOT_ASSIGNED",
-    walletBalanceCents: Number(u.walletBalanceCents ?? 0),
+    userId: identity.userId,
+    email,
+    role,
+    firstName: identity.firstName,
+    lastName: identity.lastName,
+    superuser: identity.superuser,
+    walletBalanceCents,
   };
 }
 
@@ -153,18 +145,13 @@ async function loadServerMeSession(): Promise<Session | null> {
     return await requireMeSession();
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : null;
-    const code = typeof (err as any)?.code === "string" ? String((err as any).code) : "";
     if (status === 401) {
       authDebugLog("session_null", {
         branch: "session_null",
-        code,
         status,
         message: ((err as Error)?.message ?? String(err)).slice(0, 200),
       });
       return null;
-    }
-    if (code === "USER_ROLE_NOT_ASSIGNED") {
-      return { userId: "", email: null, role: "USER_ROLE_NOT_ASSIGNED", walletBalanceCents: 0 };
     }
     throw err;
   }

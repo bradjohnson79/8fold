@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { Suspense } from "react";
+import { AuthSyncBanner } from "./AuthSyncBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       }
     >
+      <AuthSyncBanner />
       {children}
     </Suspense>
   );

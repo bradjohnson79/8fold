@@ -1,26 +1,27 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/login(.*)",
+  "/signup(.*)",
+  "/api/public(.*)",
+  "/api/webhooks(.*)",
+  "/api/stripe/webhook(.*)",
+  "/admin/login(.*)",
+]);
 
 const isProtectedRoute = createRouteMatcher([
   "/app(.*)",
+  "/admin(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    // Clerk handles redirects/rewrites internally for protected routes.
-    // Do not return the auth object (not a NextMiddlewareResult).
+  if (isProtectedRoute(req) && !isPublicRoute(req)) {
     await auth.protect();
   }
-
-  // Server Components (layouts/pages) don't get the pathname directly.
-  // We pass it through so role/onboarding layouts can enforce hard redirects without loops.
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-pathname", req.nextUrl.pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export const config = {
-  // Run on all routes except Next.js internals and static files.
   matcher: ["/((?!_next|.*\\..*).*)"],
 };
 

@@ -3,18 +3,18 @@
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-function readErrorMeta(err: unknown): { status: number | null; code: string } {
+function readErrorMeta(err: unknown): { status: number | null; code: string; requestId: string } {
   const anyErr = err as any;
   const status = typeof anyErr?.status === "number" ? (anyErr.status as number) : null;
   const code = typeof anyErr?.code === "string" ? String(anyErr.code) : "";
-  return { status, code };
+  const requestId = typeof anyErr?.requestId === "string" ? String(anyErr.requestId) : "";
+  return { status, code, requestId };
 }
 
 function isAuthishError(err: unknown): boolean {
   const { status, code } = readErrorMeta(err);
-  if (status === 401) return true;
-  if (code.startsWith("AUTH_")) return true;
-  return false;
+  void code;
+  return status === 401;
 }
 
 export default function AppErrorBoundary({
@@ -57,6 +57,14 @@ export default function AppErrorBoundary({
               {String(error?.message || "Error")}
               {meta.status != null ? `\nstatus=${meta.status}` : ""}
               {meta.code ? `\ncode=${meta.code}` : ""}
+              {meta.requestId ? `\nrequestId=${meta.requestId}` : ""}
+            </div>
+          ) : null}
+
+          {meta.code || meta.requestId ? (
+            <div className="mt-3 text-xs font-mono text-gray-500">
+              {meta.code ? <div>code={meta.code}</div> : null}
+              {meta.requestId ? <div>requestId={meta.requestId}</div> : null}
             </div>
           ) : null}
 
