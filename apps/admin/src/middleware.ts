@@ -16,6 +16,8 @@ export default function middleware(req: any) {
 
   const token = String(req?.cookies?.get("admin_session")?.value ?? "").trim();
   if (!token) {
+    // eslint-disable-next-line no-console
+    console.log("[ADMIN_MIDDLEWARE]", { path: pathname, hasSession: false, redirect: "/login" });
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);

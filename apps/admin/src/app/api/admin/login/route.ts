@@ -38,6 +38,8 @@ export async function POST(req: Request) {
   } | null;
 
   if (resp.status !== 200 || !json?.ok || !json.data?.sessionToken || !json.data?.expiresAt) {
+    // eslint-disable-next-line no-console
+    console.log("[ADMIN_LOGIN]", { ok: false, email, apiStatus: resp.status, hasToken: !!json?.data?.sessionToken });
     const failUrl = new URL("/login", req.url);
     failUrl.searchParams.set("error", "invalid");
     if (redirectPath !== "/") failUrl.searchParams.set("next", redirectPath);
@@ -45,13 +47,16 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.redirect(new URL(redirectPath, req.url), 302);
-  res.cookies.set(ADMIN_SESSION_COOKIE_NAME, json.data.sessionToken, {
+  const cookieOpts: Record<string, unknown> = {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     expires: new Date(json.data.expiresAt),
-    ...(process.env.NODE_ENV === "production" && { domain: ".8fold.app" }),
-  });
+  };
+  // Omit domain — host-only cookie for admin.8fold.app is more reliable than domain=.8fold.app
+  res.cookies.set(ADMIN_SESSION_COOKIE_NAME, json.data.sessionToken, cookieOpts);
+  // eslint-disable-next-line no-console
+  console.log("[ADMIN_LOGIN]", { ok: true, email, redirectPath, hasCookie: true });
   return res;
 }
