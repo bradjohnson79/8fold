@@ -12,7 +12,8 @@ export const users = dbSchema.table("User", {
   clerkUserId: text("clerkUserId").notNull().unique(),
   authUserId: text("authUserId").unique(),
   email: text("email").unique(),
-  phone: text("phone"),
+  // Production canonical column name is phoneNumber; keep property key `phone` for back-compat.
+  phone: text("phoneNumber"),
   name: text("name"),
 
   // Canonical role taxonomy: JOB_POSTER | ROUTER | CONTRACTOR | ADMIN
