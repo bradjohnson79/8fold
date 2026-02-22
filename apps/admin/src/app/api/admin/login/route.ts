@@ -4,6 +4,7 @@ import { getValidatedApiOrigin } from "@/server/env";
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
 
 export async function POST(req: Request) {
+  console.log("[ADMIN_LOGIN_ROUTE_HIT]");
   const apiOrigin = getValidatedApiOrigin();
   const url = `${apiOrigin}/api/admin/login`;
 
