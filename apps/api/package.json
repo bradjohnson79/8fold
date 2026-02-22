@@ -13,6 +13,7 @@
     "audit:finance": "DOTENV_CONFIG_PATH=.env.local pnpm exec tsx -r dotenv/config src/payouts/auditFinanceCi.ts",
     "db:verify": "tsx scripts/verifyDbSchema.ts",
     "verify:prod-schema": "DOTENV_CONFIG_PATH=.env.local tsx scripts/verify-prod-schema.ts",
+    "validate:jobs-schema": "tsx scripts/validate_jobs_schema.ts",
     "verify:prod-gate": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/verify-prod-gate.ts",
     "remove-mock-actors": "tsx scripts/remove-mock-actors.ts",
     "financial-db-introspect": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/financial-db-introspect.ts",
@@ -26,7 +27,13 @@
     "migrate:router-rewards": "tsx scripts/migrate-router-rewards.ts",
     "check:prod": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionDbCheck.ts",
     "seed:prod": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/seedProductionTestJob.ts",
-    "audit:prod-auth-db": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionAuthDbAudit.ts"
+    "audit:prod-auth-db": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionAuthDbAudit.ts",
+    "schema:hygiene": "DOTENV_CONFIG_PATH=.env.local tsx scripts/schema-hygiene-scan.ts",
+    "hygiene:phaseA": "DOTENV_CONFIG_PATH=.env.local tsx scripts/run-hygiene-phaseA-migration.ts",
+    "hygiene:phaseA:check": "DOTENV_CONFIG_PATH=.env.local tsx scripts/hygienePhaseACheck.ts",
+    "hygiene:guard": "DOTENV_CONFIG_PATH=.env.local pnpm validate:jobs-schema && DOTENV_CONFIG_PATH=.env.local pnpm hygiene:phaseA:check",
+    "predeploy": "pnpm hygiene:guard",
+    "smoke:test": "tsx scripts/runtimeSmokeTest.ts"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
