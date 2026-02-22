@@ -49,7 +49,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .where(
         and(
           inArray(jobs.status, ACTIVE_JOB_STATUSES as any),
-          or(eq(jobs.jobPosterUserId, id), eq(jobs.contractorUserId, id))
+          or(eq(jobs.job_poster_user_id, id), eq(jobs.contractor_user_id, id))
         )
       )
       .limit(1);

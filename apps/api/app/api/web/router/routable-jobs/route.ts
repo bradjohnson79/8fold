@@ -52,9 +52,9 @@ export async function GET(req: Request) {
         .where(
           and(
             eq(jobs.archived, false),
-            eq(jobs.isMock, false),
+            eq(jobs.is_mock, false),
             eq(jobs.status, "OPEN_FOR_ROUTING"),
-            eq(jobs.routingStatus, "ROUTED_BY_ROUTER"),
+            eq(jobs.routing_status, "ROUTED_BY_ROUTER"),
           ),
         );
       const candidateIds = candidateJobs.map((j) => j.id);
@@ -82,10 +82,10 @@ export async function GET(req: Request) {
       await tx
         .update(jobs)
         .set({
-          claimedByUserId: null,
-          claimedAt: null,
-          routedAt: null,
-          routingStatus: "UNROUTED" as any,
+          claimed_by_user_id: null,
+          claimed_at: null,
+          routed_at: null,
+          routing_status: "UNROUTED" as any,
         })
         .where(inArray(jobs.id, recycleIds as any));
     });
@@ -97,17 +97,17 @@ export async function GET(req: Request) {
         title: jobs.title,
         scope: jobs.scope,
         region: jobs.region,
-        postedAt: jobs.postedAt,
-        serviceType: jobs.serviceType,
-        tradeCategory: jobs.tradeCategory,
-        jobType: jobs.jobType,
-        contractorPayoutCents: jobs.contractorPayoutCents,
-        routerEarningsCents: jobs.routerEarningsCents,
-        brokerFeeCents: jobs.brokerFeeCents,
-        laborTotalCents: jobs.laborTotalCents,
-        materialsTotalCents: jobs.materialsTotalCents,
-        transactionFeeCents: jobs.transactionFeeCents,
-        publishedAt: jobs.publishedAt,
+        postedAt: jobs.posted_at,
+        serviceType: jobs.service_type,
+        tradeCategory: jobs.trade_category,
+        jobType: jobs.job_type,
+        contractorPayoutCents: jobs.contractor_payout_cents,
+        routerEarningsCents: jobs.router_earnings_cents,
+        brokerFeeCents: jobs.broker_fee_cents,
+        laborTotalCents: jobs.labor_total_cents,
+        materialsTotalCents: jobs.materials_total_cents,
+        transactionFeeCents: jobs.transaction_fee_cents,
+        publishedAt: jobs.published_at,
       })
       .from(jobs)
       .innerJoin(jobPayments, eq(jobPayments.jobId, jobs.id))
@@ -116,15 +116,15 @@ export async function GET(req: Request) {
           eq(jobs.archived, false),
           // Router open-jobs list (only)
           eq(jobs.status, "OPEN_FOR_ROUTING"),
-          eq(jobs.routingStatus, "UNROUTED"),
-          isNull(jobs.claimedByUserId), // Prisma `routerId: null` maps to claimedByUserId
-          eq(jobs.isMock, false),
-          eq(jobs.countryCode, routerCountryCode as any),
-          eq(jobs.stateCode, routerStateCode),
+          eq(jobs.routing_status, "UNROUTED"),
+          isNull(jobs.claimed_by_user_id), // Prisma `routerId: null` maps to claimedByUserId
+          eq(jobs.is_mock, false),
+          eq(jobs.country_code, routerCountryCode as any),
+          eq(jobs.state_code, routerStateCode),
           eq(jobPayments.status, "CAPTURED"),
         ),
       )
-      .orderBy(desc(jobs.publishedAt), desc(jobs.id))
+      .orderBy(desc(jobs.published_at), desc(jobs.id))
       .limit(100);
 
     const jobsRes = raw.map((j) => {

@@ -237,7 +237,7 @@ export async function POST(req: Request) {
 
           await tx
             .update(jobs)
-            .set({ paymentStatus: "FAILED" as any } as any)
+            .set({ payment_status: "FAILED" as any })
             .where(eq(jobs.id, meta.jobId));
           return;
         }
@@ -253,8 +253,8 @@ export async function POST(req: Request) {
 
           await tx
             .update(jobs)
-            .set({ paymentStatus: "REFUNDED" as any, refundedAt: now } as any)
-            .where(eq(jobs.stripePaymentIntentId, paymentIntentId));
+            .set({ payment_status: "REFUNDED" as any, refunded_at: now })
+            .where(eq(jobs.stripe_payment_intent_id, paymentIntentId));
           return;
         }
         case "transfer.created": {

@@ -48,12 +48,12 @@ export async function POST(req: Request) {
               id: jobs.id,
               status: jobs.status,
               country: jobs.country,
-              countryCode: jobs.countryCode,
-              regionCode: jobs.regionCode,
-              stateCode: jobs.stateCode,
-              serviceType: jobs.serviceType,
-              routerId: jobs.claimedByUserId,
-              contractorPayoutCents: jobs.contractorPayoutCents,
+              countryCode: jobs.country_code,
+              regionCode: jobs.region_code,
+              stateCode: jobs.state_code,
+              serviceType: jobs.service_type,
+              routerId: jobs.claimed_by_user_id,
+              contractorPayoutCents: jobs.contractor_payout_cents,
             })
             .from(jobs)
             .where(eq(jobs.id, jobId))
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       const claim =
         (
           await tx
-            .select({ routerId: jobs.claimedByUserId, status: jobs.status })
+            .select({ routerId: jobs.claimed_by_user_id, status: jobs.status })
             .from(jobs)
             .where(eq(jobs.id, job.id))
             .limit(1)

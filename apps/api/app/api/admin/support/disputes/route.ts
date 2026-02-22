@@ -4,6 +4,7 @@ import { requireAdminOrSeniorRouter } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 import { disputeCases } from "@/db/schema/disputeCase";
 import { jobs } from "@/db/schema/job";
 import { supportTickets } from "@/db/schema/supportTicket";
@@ -57,6 +58,9 @@ export async function GET(req: Request) {
           ] as any[])),
     );
 
+    const schema = getResolvedSchema();
+    const supportAttachmentsT = sql.raw(`"${schema}"."support_attachments"`);
+    const disputeVotesT = sql.raw(`"${schema}"."dispute_votes"`);
     const rows = await db
       .select({
         id: disputeCases.id,
@@ -72,16 +76,16 @@ export async function GET(req: Request) {
         decision: disputeCases.decision,
         decisionAt: disputeCases.decisionAt,
         deadlineAt: disputeCases.deadlineAt,
-        jobAmountCents: jobs.amountCents,
-        jobCurrency: jobs.paymentCurrency,
+        jobAmountCents: jobs.amount_cents,
+        jobCurrency: jobs.payment_currency,
         evidenceCount: sql<number>`(
           select count(*)::int
-          from "8fold_test"."support_attachments" sa
+          from ${supportAttachmentsT} sa
           where sa."ticketId" = ${disputeCases.ticketId}
         )`,
         voteCount: sql<number>`(
           select count(*)::int
-          from "8fold_test"."dispute_votes" dv
+          from ${disputeVotesT} dv
           where dv."disputeCaseId" = ${disputeCases.id}
         )`,
         ticket: {

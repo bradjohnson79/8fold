@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       await tx
         .update(jobs)
         .set({ archived: true })
-        .where(and(eq(jobs.jobPosterUserId, user.userId), eq(jobs.status, "OPEN_FOR_ROUTING")));
+        .where(and(eq(jobs.job_poster_user_id, user.userId), eq(jobs.status, "OPEN_FOR_ROUTING")));
     });
 
     return NextResponse.json({ ok: true, accountStatus: "ARCHIVED" }, { status: 200 });

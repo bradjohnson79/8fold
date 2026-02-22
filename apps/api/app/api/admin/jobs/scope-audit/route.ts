@@ -45,13 +45,13 @@ export async function GET(req: Request) {
         id: jobs.id,
         title: jobs.title,
         scope: jobs.scope,
-        tradeCategory: jobs.tradeCategory,
-        createdAt: jobs.createdAt,
+        tradeCategory: jobs.trade_category,
+        createdAt: jobs.created_at,
         archived: jobs.archived,
       })
       .from(jobs)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(jobs.createdAt))
+      .orderBy(desc(jobs.created_at))
       .limit(take);
 
     const items = rows

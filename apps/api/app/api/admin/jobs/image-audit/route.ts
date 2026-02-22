@@ -33,22 +33,22 @@ export async function GET(req: Request) {
     const baseWhere: any[] = [];
     if (!includeArchived) baseWhere.push(eq(jobs.archived, false));
     if (mockOnly) {
-      baseWhere.push(eq(jobs.isMock, true));
+      baseWhere.push(eq(jobs.is_mock, true));
     } else {
-      baseWhere.push(eq(jobs.isMock, false));
+      baseWhere.push(eq(jobs.is_mock, false));
     }
 
     // Single grouped query (distinct jobs + distinct jobs with at least one image url).
     const grouped = await db
       .select({
-        tradeCategory: jobs.tradeCategory,
+        tradeCategory: jobs.trade_category,
         totalJobs: sql<number>`count(distinct ${jobs.id})::int`,
         withImage: sql<number>`count(distinct case when ${jobPhotos.url} is not null and ${jobPhotos.url} <> '' then ${jobs.id} end)::int`,
       })
       .from(jobs)
       .leftJoin(jobPhotos, eq(jobPhotos.jobId, jobs.id))
       .where(and(...baseWhere))
-      .groupBy(jobs.tradeCategory);
+      .groupBy(jobs.trade_category);
 
     const groupedByTrade = new Map<string, { totalJobs: number; withImage: number }>();
     for (const r of grouped as any[]) {

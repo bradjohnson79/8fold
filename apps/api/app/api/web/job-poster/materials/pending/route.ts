@@ -21,7 +21,7 @@ export async function GET(req: Request) {
         currency: materialsRequests.currency,
         totalAmountCents: materialsRequests.totalAmountCents,
         jobId: materialsRequests.jobId,
-        job: { id: jobs.id, title: jobs.title, status: jobs.status, paymentStatus: jobs.paymentStatus },
+        job: { id: jobs.id, title: jobs.title, status: jobs.status, paymentStatus: jobs.payment_status },
       })
       .from(materialsRequests)
       .innerJoin(jobs, eq(jobs.id, materialsRequests.jobId))

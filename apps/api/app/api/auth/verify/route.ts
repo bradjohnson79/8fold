@@ -184,7 +184,7 @@ export async function POST(req: Request) {
         const existingJob = await tx
           .select({ id: jobs.id })
           .from(jobs)
-          .where(or(eq(jobs.jobPosterUserId, userId), eq(jobs.contractorUserId, userId)))
+          .where(or(eq(jobs.job_poster_user_id, userId), eq(jobs.contractor_user_id, userId)))
           .limit(1);
         if (existingJob[0]?.id) return;
 

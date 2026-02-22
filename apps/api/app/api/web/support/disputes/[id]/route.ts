@@ -41,14 +41,14 @@ export async function GET(req: Request) {
         ticketSubject: supportTickets.subject,
         jobTitle: jobs.title,
         jobStatus: jobs.status,
-        jobPaymentStatus: jobs.paymentStatus,
-        jobPayoutStatus: jobs.payoutStatus,
-        jobRouterApprovedAt: jobs.routerApprovedAt,
-        jobContractorCompletedAt: jobs.contractorCompletedAt,
-        jobCustomerApprovedAt: jobs.customerApprovedAt,
-        jobPosterUserId: jobs.jobPosterUserId,
-        routerUserId: jobs.claimedByUserId,
-        contractorUserId: jobs.contractorUserId,
+        jobPaymentStatus: jobs.payment_status,
+        jobPayoutStatus: jobs.payout_status,
+        jobRouterApprovedAt: jobs.router_approved_at,
+        jobContractorCompletedAt: jobs.contractor_completed_at,
+        jobCustomerApprovedAt: jobs.customer_approved_at,
+        jobPosterUserId: jobs.job_poster_user_id,
+        routerUserId: jobs.claimed_by_user_id,
+        contractorUserId: jobs.contractor_user_id,
       })
       .from(disputeCases)
       .innerJoin(supportTickets, eq(supportTickets.id, disputeCases.ticketId))

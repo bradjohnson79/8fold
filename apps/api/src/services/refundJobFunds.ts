@@ -42,17 +42,17 @@ export async function refundJobFunds(jobId: string): Promise<RefundJobFundsKind>
   const s = requireStripe();
 
   return await db.transaction(async (tx: any) => {
-    await tx.execute(sql`select "id" from "8fold_test"."Job" where "id" = ${jobId} for update`);
+    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
     const jobRows = await tx
       .select({
         id: jobs.id,
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
-        payoutStatus: jobs.payoutStatus,
-        stripePaymentIntentId: jobs.stripePaymentIntentId,
-        stripeChargeId: jobs.stripeChargeId,
-        amountCents: jobs.amountCents,
+        paymentStatus: jobs.payment_status,
+        payoutStatus: jobs.payout_status,
+        stripePaymentIntentId: jobs.stripe_payment_intent_id,
+        stripeChargeId: jobs.stripe_charge_id,
+        amountCents: jobs.amount_cents,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -111,8 +111,8 @@ export async function refundJobFunds(jobId: string): Promise<RefundJobFundsKind>
     await tx
       .update(jobs)
       .set({
-        paymentStatus: "REFUNDED" as any,
-        refundedAt: now,
+        payment_status: "REFUNDED" as any,
+        refunded_at: now,
       } as any)
       .where(eq(jobs.id, jobId));
 

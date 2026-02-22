@@ -67,23 +67,23 @@ export async function POST(req: Request) {
         .select({
           id: jobs.id,
           archived: jobs.archived,
-          isMock: jobs.isMock,
-          jobSource: jobs.jobSource,
+          isMock: jobs.is_mock,
+          jobSource: jobs.job_source,
           status: jobs.status,
-          routingStatus: jobs.routingStatus,
+          routingStatus: jobs.routing_status,
           country: jobs.country,
-          countryCode: jobs.countryCode,
+          countryCode: jobs.country_code,
           region: jobs.region,
-          regionCode: jobs.regionCode,
-          stateCode: jobs.stateCode,
-          serviceType: jobs.serviceType,
-          tradeCategory: jobs.tradeCategory,
-          jobType: jobs.jobType,
+          regionCode: jobs.region_code,
+          stateCode: jobs.state_code,
+          serviceType: jobs.service_type,
+          tradeCategory: jobs.trade_category,
+          jobType: jobs.job_type,
           lat: jobs.lat,
           lng: jobs.lng,
-          claimedByUserId: jobs.claimedByUserId,
-          firstRoutedAt: jobs.firstRoutedAt,
-          contractorPayoutCents: jobs.contractorPayoutCents,
+          claimedByUserId: jobs.claimed_by_user_id,
+          firstRoutedAt: jobs.first_routed_at,
+          contractorPayoutCents: jobs.contractor_payout_cents,
         })
         .from(jobs)
         .where(eq(jobs.id, body.data.jobId))
@@ -200,13 +200,13 @@ export async function POST(req: Request) {
       const updated = await tx
         .update(jobs)
         .set({
-          claimedByUserId: router.userId,
-          claimedAt: now,
-          routedAt: now,
-          routingStatus: "ROUTED_BY_ROUTER" as any,
-          firstRoutedAt: (job.firstRoutedAt ?? now) as any,
+          claimed_by_user_id: router.userId,
+          claimed_at: now,
+          routed_at: now,
+          routing_status: "ROUTED_BY_ROUTER" as any,
+          first_routed_at: (job.firstRoutedAt ?? now) as any,
         })
-        .where(and(eq(jobs.id, job.id), eq(jobs.routingStatus, "UNROUTED"), sql`${jobs.claimedByUserId} is null`))
+        .where(and(eq(jobs.id, job.id), eq(jobs.routing_status, "UNROUTED"), sql`${jobs.claimed_by_user_id} is null`))
         .returning({ id: jobs.id });
       if (updated.length !== 1) return { kind: "job_not_available" as const };
 

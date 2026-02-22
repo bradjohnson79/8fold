@@ -54,7 +54,7 @@ export async function GET(req: Request) {
         stripeTransferId: transferRecords.stripeTransferId,
         externalRef: transferRecords.externalRef,
         failureReason: transferRecords.failureReason,
-        job: { id: jobs.id, title: jobs.title, payoutStatus: jobs.payoutStatus },
+        job: { id: jobs.id, title: jobs.title, payoutStatus: jobs.payout_status },
       })
       .from(transferRecords)
       .leftJoin(jobs, eq(jobs.id, transferRecords.jobId))

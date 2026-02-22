@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
     const activeStatusesWhere = or(
       eq(jobs.status, "ASSIGNED" as any),
-      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
+      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
     );
 
     const [activeJobs, awaitingRouter, unassignedOver24h, adminOwnedJobs, jobRows] = await Promise.all([
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
         db
           .select({ c: sql<number>`count(*)` })
           .from(jobs)
-          .where(and(archivedExcluded, eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)))
+          .where(and(archivedExcluded, eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)))
       ),
       count(
         db
@@ -47,8 +47,8 @@ export async function GET(req: Request) {
             and(
               archivedExcluded,
               eq(jobs.status, "CUSTOMER_APPROVED" as any),
-              isNull(jobs.routerApprovedAt),
-              lt(jobs.createdAt, cutoff24h),
+              isNull(jobs.router_approved_at),
+              lt(jobs.created_at, cutoff24h),
             )
           )
       ),
@@ -56,26 +56,26 @@ export async function GET(req: Request) {
         db
           .select({ c: sql<number>`count(*)` })
           .from(jobs)
-          .where(and(archivedExcluded, eq(jobs.adminRoutedById, auth.userId)))
+          .where(and(archivedExcluded, eq(jobs.admin_routed_by_id, auth.userId)))
       ),
       db
         .select({
           id: jobs.id,
           status: jobs.status,
           title: jobs.title,
-          jobSource: jobs.jobSource,
+          jobSource: jobs.job_source,
           region: jobs.region,
-          regionName: jobs.regionName,
-          addressFull: jobs.addressFull,
+          regionName: jobs.region_name,
+          addressFull: jobs.address_full,
           city: jobs.city,
-          publishedAt: jobs.publishedAt,
-          routingStatus: jobs.routingStatus,
-          adminRoutedById: jobs.adminRoutedById,
-          createdAt: jobs.createdAt,
+          publishedAt: jobs.published_at,
+          routingStatus: jobs.routing_status,
+          adminRoutedById: jobs.admin_routed_by_id,
+          createdAt: jobs.created_at,
         })
         .from(jobs)
         .where(and(archivedExcluded, activeStatusesWhere))
-        .orderBy(desc(jobs.publishedAt))
+        .orderBy(desc(jobs.published_at))
         .limit(limit),
     ]);
 

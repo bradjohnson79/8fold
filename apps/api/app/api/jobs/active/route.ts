@@ -30,29 +30,29 @@ export async function GET(req: Request) {
       .select({
         id: jobs.id,
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
-        payoutStatus: jobs.payoutStatus,
+        paymentStatus: jobs.payment_status,
+        payoutStatus: jobs.payout_status,
         title: jobs.title,
         scope: jobs.scope,
         region: jobs.region,
-        serviceType: jobs.serviceType,
-        timeWindow: jobs.timeWindow,
-        routerEarningsCents: jobs.routerEarningsCents,
-        claimedAt: jobs.claimedAt,
-        routedAt: jobs.routedAt,
-        contractorCompletedAt: jobs.contractorCompletedAt,
-        customerApprovedAt: jobs.customerApprovedAt,
-        routerApprovedAt: jobs.routerApprovedAt,
+        serviceType: jobs.service_type,
+        timeWindow: jobs.time_window,
+        routerEarningsCents: jobs.router_earnings_cents,
+        claimedAt: jobs.claimed_at,
+        routedAt: jobs.routed_at,
+        contractorCompletedAt: jobs.contractor_completed_at,
+        customerApprovedAt: jobs.customer_approved_at,
+        routerApprovedAt: jobs.router_approved_at,
       })
       .from(jobs)
       .where(
         and(
           // Prisma field `routerId` is mapped to DB column `claimedByUserId`.
-          eq(jobs.claimedByUserId, user.userId),
+          eq(jobs.claimed_by_user_id, user.userId),
           inArray(jobs.status, [...ACTIVE_STATUSES]),
         ),
       )
-      .orderBy(desc(jobs.claimedAt))
+      .orderBy(desc(jobs.claimed_at))
       .limit(1);
 
     const job = rows[0] ?? null;

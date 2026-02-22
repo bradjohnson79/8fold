@@ -51,7 +51,7 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
     const claimedTodayRows = await tx
       .select({ count: sql<number>`count(*)` })
       .from(jobs)
-      .where(and(eq(jobs.claimedByUserId, userId), sql`${jobs.claimedAt} >= ${start}`, sql`${jobs.claimedAt} < ${end}`));
+      .where(and(eq(jobs.claimed_by_user_id, userId), sql`${jobs.claimed_at} >= ${start}`, sql`${jobs.claimed_at} < ${end}`));
     const claimedToday = Number((claimedTodayRows[0] as any)?.count ?? 0);
     if (claimedToday >= Number(router.dailyRouteLimit ?? 0)) {
       throw Object.assign(new Error("Daily route limit exceeded"), { status: 429 });
@@ -60,7 +60,7 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
     const activeRows = await tx
       .select({ id: jobs.id })
       .from(jobs)
-      .where(and(eq(jobs.claimedByUserId, userId), inArray(jobs.status, [...ACTIVE_STATUSES] as any)))
+      .where(and(eq(jobs.claimed_by_user_id, userId), inArray(jobs.status, [...ACTIVE_STATUSES] as any)))
       .limit(1);
     const active = activeRows[0] ?? null;
     if (active) return { kind: "already_active", activeJobId: active.id };
@@ -70,16 +70,16 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
         id: jobs.id,
         archived: jobs.archived,
         status: jobs.status,
-        claimedByUserId: jobs.claimedByUserId,
-        routingStatus: jobs.routingStatus,
-        firstRoutedAt: jobs.firstRoutedAt,
+        claimedByUserId: jobs.claimed_by_user_id,
+        routingStatus: jobs.routing_status,
+        firstRoutedAt: jobs.first_routed_at,
         country: jobs.country,
-        countryCode: jobs.countryCode,
-        regionCode: jobs.regionCode,
-        stateCode: jobs.stateCode,
+        countryCode: jobs.country_code,
+        regionCode: jobs.region_code,
+        stateCode: jobs.state_code,
         region: jobs.region,
-        isMock: jobs.isMock,
-        jobSource: jobs.jobSource,
+        isMock: jobs.is_mock,
+        jobSource: jobs.job_source,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -119,20 +119,20 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
     const updated = await tx
       .update(jobs)
       .set({
-        claimedAt: now,
-        claimedByUserId: userId,
-        contactedAt: now,
-        routingStatus: "ROUTED_BY_ROUTER" as any,
-        firstRoutedAt: (current.firstRoutedAt ?? now) as any,
-        routedAt: now,
+        claimed_at: now,
+        claimed_by_user_id: userId,
+        contacted_at: now,
+        routing_status: "ROUTED_BY_ROUTER" as any,
+        first_routed_at: (current.firstRoutedAt ?? now) as any,
+        routed_at: now,
       } as any)
       .where(
         and(
           eq(jobs.id, jobId),
           eq(jobs.archived, false),
           inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
-          eq(jobs.routingStatus, "UNROUTED"),
-          sql`${jobs.claimedByUserId} is null`,
+          eq(jobs.routing_status, "UNROUTED"),
+          sql`${jobs.claimed_by_user_id} is null`,
         ),
       )
       .returning({ id: jobs.id });

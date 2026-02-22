@@ -48,16 +48,16 @@ export async function POST(req: Request) {
         .select({
           id: jobs.id,
           status: jobs.status,
-          isMock: jobs.isMock,
-          routerUserId: jobs.claimedByUserId,
-          routerEarningsCents: jobs.routerEarningsCents,
-          brokerFeeCents: jobs.brokerFeeCents,
-          contractorPayoutCents: jobs.contractorPayoutCents,
-          amountCents: jobs.amountCents,
-          paymentStatus: jobs.paymentStatus,
-          payoutStatus: jobs.payoutStatus,
-          fundedAt: jobs.fundedAt,
-          releasedAt: jobs.releasedAt,
+          isMock: jobs.is_mock,
+          routerUserId: jobs.claimed_by_user_id,
+          routerEarningsCents: jobs.router_earnings_cents,
+          brokerFeeCents: jobs.broker_fee_cents,
+          contractorPayoutCents: jobs.contractor_payout_cents,
+          amountCents: jobs.amount_cents,
+          paymentStatus: jobs.payment_status,
+          payoutStatus: jobs.payout_status,
+          fundedAt: jobs.funded_at,
+          releasedAt: jobs.released_at,
         })
         .from(jobs)
         .where(eq(jobs.id, jobId))
@@ -124,9 +124,9 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "COMPLETED_APPROVED",
-          routerApprovedAt: now,
-          routerApprovalNotes: `ADMIN_OVERRIDE: ${body.data.reason}`,
-        } as any)
+          router_approved_at: now,
+          router_approval_notes: `ADMIN_OVERRIDE: ${body.data.reason}`,
+        })
         .where(eq(jobs.id, jobId))
         .returning();
       const updatedJob = updatedJobRows[0] as any;

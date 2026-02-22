@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const result = await db.transaction(async (tx) => {
       const jobRows = await tx
-        .select({ id: jobs.id, status: jobs.status, jobPosterUserId: jobs.jobPosterUserId, tradeCategory: jobs.tradeCategory })
+        .select({ id: jobs.id, status: jobs.status, jobPosterUserId: jobs.job_poster_user_id, tradeCategory: jobs.trade_category })
         .from(jobs)
         .where(eq(jobs.id, jobId))
         .limit(1);
@@ -45,8 +45,8 @@ export async function POST(req: Request) {
       const priorRows = await tx
         .select({
           id: jobs.id,
-          jobPosterUserId: jobs.jobPosterUserId,
-          tradeCategory: jobs.tradeCategory,
+          jobPosterUserId: jobs.job_poster_user_id,
+          tradeCategory: jobs.trade_category,
           status: jobs.status,
           assignment_contractorId: jobAssignments.contractorId,
         })

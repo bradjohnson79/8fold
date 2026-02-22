@@ -64,15 +64,15 @@ export async function loadPayoutIntegritySnapshotFromDb(input: {
   const releasedJobs = await db
     .select({
       id: jobs.id,
-      payoutStatus: jobs.payoutStatus,
-      amountCents: jobs.amountCents,
+      payoutStatus: jobs.payout_status,
+      amountCents: jobs.amount_cents,
       currency: jobs.currency,
-      createdAt: jobs.createdAt,
-      releasedAt: jobs.releasedAt,
+      createdAt: jobs.created_at,
+      releasedAt: jobs.released_at,
     })
     .from(jobs)
-    .where(eq(jobs.payoutStatus, "RELEASED" as any))
-    .orderBy(desc(jobs.releasedAt))
+    .where(eq(jobs.payout_status, "RELEASED" as any))
+    .orderBy(desc(jobs.released_at))
     .limit(take);
 
   const jobIds = releasedJobs.map((j) => String(j.id)).filter(Boolean);

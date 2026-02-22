@@ -48,7 +48,7 @@ export async function GET(req: Request) {
         title: jobs.title,
         region: jobs.region,
         status: jobs.status,
-        estimatedCompletionDate: jobs.estimatedCompletionDate,
+        estimatedCompletionDate: jobs.estimated_completion_date,
         assignment_contractorId: jobAssignments.contractorId,
         contractor_id: contractors.id,
         contractor_businessName: contractors.businessName,
@@ -58,8 +58,8 @@ export async function GET(req: Request) {
       .from(jobs)
       .leftJoin(jobAssignments, eq(jobAssignments.jobId, jobs.id))
       .leftJoin(contractors, eq(contractors.id, jobAssignments.contractorId))
-      .where(and(eq(jobs.jobPosterUserId, u.userId), inArray(jobs.status, ["ASSIGNED", "IN_PROGRESS"])))
-      .orderBy(desc(jobs.publishedAt))
+      .where(and(eq(jobs.job_poster_user_id, u.userId), inArray(jobs.status, ["ASSIGNED", "IN_PROGRESS"])))
+      .orderBy(desc(jobs.published_at))
       .limit(25);
 
     const baseItems = jobRows.flatMap((row) => {

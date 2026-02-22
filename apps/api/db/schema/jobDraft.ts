@@ -10,17 +10,17 @@ export const jobDraftStepEnum = pgEnum("JobDraftStep", [
 ]);
 
 export const jobDraft = pgTable(
-  "JobDraft",
+  "job_draft",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("userId").notNull(),
+    user_id: text("user_id").notNull(),
     status: jobDraftStatusEnum("status").notNull().default("ACTIVE"),
     step: jobDraftStepEnum("step").notNull().default("DETAILS"),
     data: jsonb("data").notNull().default({}),
-    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
-    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+    created_at: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => ({
-    userIdStatusIdx: index("JobDraft_userId_status_idx").on(t.userId, t.status),
+    userIdStatusIdx: index("job_draft_user_id_status_idx").on(t.user_id, t.status),
   })
 );

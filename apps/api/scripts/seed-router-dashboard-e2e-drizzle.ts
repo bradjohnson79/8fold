@@ -185,7 +185,7 @@ async function main() {
   const existingJob = await db
     .select({ id: jobs.id })
     .from(jobs)
-    .where(and(eq(jobs.title, jobTitle), eq(jobs.isMock, false), eq(jobs.jobSource, "REAL"), eq(jobs.country, "US"), eq(jobs.regionCode, "TX")))
+    .where(and(eq(jobs.title, jobTitle), eq(jobs.is_mock, false), eq(jobs.job_source, "REAL"), eq(jobs.country, "US"), eq(jobs.region_code, "TX")))
     .limit(1);
 
   const jobId = existingJob[0]?.id ?? crypto.randomUUID();
@@ -194,14 +194,14 @@ async function main() {
       .update(jobs)
       .set({
         status: "PUBLISHED",
-        routingStatus: "UNROUTED",
-        claimedByUserId: null,
-        claimedAt: null,
-        contactedAt: null,
-        routedAt: null,
-        firstRoutedAt: null,
-        adminRoutedById: null,
-        contractorUserId: null,
+        routing_status: "UNROUTED",
+        claimed_by_user_id: null,
+        claimed_at: null,
+        contacted_at: null,
+        routed_at: null,
+        first_routed_at: null,
+        admin_routed_by_id: null,
+        contractor_user_id: null,
         archived: false,
       } as any)
       .where(eq(jobs.id, jobId));
@@ -264,7 +264,7 @@ async function main() {
       set: { status: "CAPTURED", stripePaymentIntentStatus: "succeeded", paymentCapturedAt: now, updatedAt: now } as any,
     });
 
-  await db.update(jobs).set({ paymentCapturedAt: now, escrowLockedAt: now } as any).where(eq(jobs.id, jobId));
+  await db.update(jobs).set({ payment_captured_at: now, escrow_locked_at: now }).where(eq(jobs.id, jobId));
 
   console.log(
     JSON.stringify(

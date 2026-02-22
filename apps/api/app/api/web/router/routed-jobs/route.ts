@@ -44,10 +44,10 @@ export async function GET(req: Request) {
         .where(
           and(
             eq(jobs.archived, false),
-            eq(jobs.isMock, false),
-            eq(jobs.claimedByUserId, router.userId),
+            eq(jobs.is_mock, false),
+            eq(jobs.claimed_by_user_id, router.userId),
             eq(jobs.status, "OPEN_FOR_ROUTING"),
-            eq(jobs.routingStatus, "ROUTED_BY_ROUTER"),
+            eq(jobs.routing_status, "ROUTED_BY_ROUTER"),
           ),
         );
       const activeJobIds = activeJobRows.map((r) => r.id);
@@ -75,10 +75,10 @@ export async function GET(req: Request) {
           await tx
             .update(jobs)
             .set({
-              claimedByUserId: null,
-              claimedAt: null,
-              routedAt: null,
-              routingStatus: "UNROUTED" as any,
+              claimed_by_user_id: null,
+              claimed_at: null,
+              routed_at: null,
+              routing_status: "UNROUTED" as any,
             })
             .where(inArray(jobs.id, recycleIds as any));
         }
@@ -106,7 +106,7 @@ export async function GET(req: Request) {
         pendingJobIds.length === 0
           ? []
           : await tx
-              .select({ id: jobs.id, title: jobs.title, region: jobs.region, tradeCategory: jobs.tradeCategory })
+              .select({ id: jobs.id, title: jobs.title, region: jobs.region, tradeCategory: jobs.trade_category })
               .from(jobs)
               .where(inArray(jobs.id, pendingJobIds as any));
       const pendingJobMap = new Map(pendingJobs.map((j) => [j.id, j]));
@@ -154,7 +154,7 @@ export async function GET(req: Request) {
         expiredJobIds.length === 0
           ? []
           : await tx
-              .select({ id: jobs.id, title: jobs.title, region: jobs.region, tradeCategory: jobs.tradeCategory })
+              .select({ id: jobs.id, title: jobs.title, region: jobs.region, tradeCategory: jobs.trade_category })
               .from(jobs)
               .where(inArray(jobs.id, expiredJobIds as any));
       const expiredJobMap = new Map(expiredJobs.map((j) => [j.id, j]));

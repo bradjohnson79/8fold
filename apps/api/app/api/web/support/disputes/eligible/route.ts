@@ -27,19 +27,19 @@ export async function GET(req: Request) {
     if (role === "ROUTER") return ok({ eligible: false });
 
     const whereClause =
-      role === "CONTRACTOR" ? eq(jobs.contractorUserId, user.userId) : eq(jobs.jobPosterUserId, user.userId);
+      role === "CONTRACTOR" ? eq(jobs.contractor_user_id, user.userId) : eq(jobs.job_poster_user_id, user.userId);
 
     const rows = await db
       .select({ id: jobs.id })
       .from(jobs)
       .where(
         and(
-          eq(jobs.isMock, false),
+          eq(jobs.is_mock, false),
           eq(jobs.archived, false),
           whereClause,
-          inArray(jobs.paymentStatus, ["FUNDED", "FUNDS_SECURED"] as any),
-          ne(jobs.payoutStatus, "RELEASED" as any),
-          isNull(jobs.routerApprovedAt),
+          inArray(jobs.payment_status, ["FUNDED", "FUNDS_SECURED"] as any),
+          ne(jobs.payout_status, "RELEASED" as any),
+          isNull(jobs.router_approved_at),
           ne(jobs.status, "DISPUTED" as any),
         ),
       )

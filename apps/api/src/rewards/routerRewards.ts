@@ -61,9 +61,9 @@ export async function maybeCreateRouterReferralRewardForUser(opts: {
     .where(
       and(
         eq(jobs.status, "COMPLETED_APPROVED" as any),
-        eq(jobs.isMock, false),
+        eq(jobs.is_mock, false),
         ne(jobs.id, jobId),
-        or(eq(jobs.jobPosterUserId, referredUserId), eq(jobs.contractorUserId, referredUserId)),
+        or(eq(jobs.job_poster_user_id, referredUserId), eq(jobs.contractor_user_id, referredUserId)),
       ),
     )
     .limit(1);
@@ -109,7 +109,7 @@ export async function trySettleRouterReward(opts: {
 
   // Only settle after payout is released (refund-safe: refund blocks after RELEASED).
   const jobRows = await tx
-    .select({ id: jobs.id, payoutStatus: jobs.payoutStatus, paymentStatus: jobs.paymentStatus })
+    .select({ id: jobs.id, payoutStatus: jobs.payout_status, paymentStatus: jobs.payment_status })
     .from(jobs)
     .where(eq(jobs.id, reward.jobId))
     .limit(1);

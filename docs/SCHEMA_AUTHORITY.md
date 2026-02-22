@@ -34,3 +34,14 @@ All future schema changes must:
 - `8fold_test` is **test-only**; never used in production.
 - Run `pnpm verify:prod-schema` before deployment. CI should fail if schema mismatch.
 
+### Schema drift lock (2026-02-21)
+
+**Effective immediately** — no exceptions:
+
+- **No manual DB edits.** All schema changes must go through Drizzle migrations.
+- **No renames outside migrations.** Column/table renames require explicit migration steps.
+- **All schema updates via Drizzle.** `drizzle-kit generate` + migration file, then `drizzle-kit push` or deploy.
+- **All DB changes versioned.** Every change must have a corresponding migration in `drizzle/`.
+
+Schema drift (e.g. camelCase vs snake_case, `Job` vs `jobs`) caused 401/500 instability. The jobs reconciliation (0060) normalized the `jobs` table to snake_case and production naming. Do not reintroduce drift.
+

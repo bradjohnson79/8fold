@@ -71,16 +71,16 @@ export async function runMonitoringEvaluation(): Promise<{
     // - now >= postedAt + 20h
     // - now < routingDueAt (if routingDueAt null, assume postedAt + 24h)
     const approaching = await tx
-      .select({ id: jobs.id, routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt })
+      .select({ id: jobs.id, routingDueAt: jobs.routing_due_at, postedAt: jobs.posted_at })
       .from(jobs)
       .where(
         and(
-          eq(jobs.isMock, false),
-          eq(jobs.routingStatus, "UNROUTED"),
+          eq(jobs.is_mock, false),
+          eq(jobs.routing_status, "UNROUTED"),
           // Avoid routing alerts once work has started (or is already assigned).
           inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
-          lte(jobs.postedAt, postedAt20h),
-          jobNotOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
+          lte(jobs.posted_at, postedAt20h),
+          jobNotOverdueWhere({ routingDueAt: jobs.routing_due_at, postedAt: jobs.posted_at }, now),
         ),
       );
     const approachingFiltered = approaching.filter((j) => !isJobOverdue({ routingDueAt: j.routingDueAt, postedAt: j.postedAt }, now));
@@ -104,15 +104,15 @@ export async function runMonitoringEvaluation(): Promise<{
     // - UNROUTED
     // - now > routingDueAt (if routingDueAt null, assume postedAt+24h)
     const overdue = await tx
-      .select({ id: jobs.id, routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt })
+      .select({ id: jobs.id, routingDueAt: jobs.routing_due_at, postedAt: jobs.posted_at })
       .from(jobs)
       .where(
         and(
-          eq(jobs.isMock, false),
-          eq(jobs.routingStatus, "UNROUTED"),
+          eq(jobs.is_mock, false),
+          eq(jobs.routing_status, "UNROUTED"),
           // Avoid routing alerts once work has started (or is already assigned).
           inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
-          jobOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
+          jobOverdueWhere({ routingDueAt: jobs.routing_due_at, postedAt: jobs.posted_at }, now),
         ),
       );
     const overdueFiltered = overdue.filter((j) => isJobOverdue({ routingDueAt: j.routingDueAt, postedAt: j.postedAt }, now));
@@ -137,12 +137,12 @@ export async function runMonitoringEvaluation(): Promise<{
     const routed = await tx
       .select({
         id: jobs.id,
-        routingStatus: jobs.routingStatus,
-        routerUserId: jobs.claimedByUserId,
-        adminRoutedById: jobs.adminRoutedById,
+        routingStatus: jobs.routing_status,
+        routerUserId: jobs.claimed_by_user_id,
+        adminRoutedById: jobs.admin_routed_by_id,
       })
       .from(jobs)
-      .where(and(eq(jobs.isMock, false), isNotNull(jobs.firstRoutedAt)));
+      .where(and(eq(jobs.is_mock, false), isNotNull(jobs.first_routed_at)));
     if (routed.length) {
       const inserted = await tx
         .insert(monitoringEvents)
@@ -176,15 +176,15 @@ export async function runMonitoringEvaluation(): Promise<{
     const completed = await tx
       .select({
         id: jobs.id,
-        jobPosterUserId: jobs.jobPosterUserId,
+        jobPosterUserId: jobs.job_poster_user_id,
         assignmentCompletedAt: jobAssignments.completedAt,
       })
       .from(jobs)
       .leftJoin(jobAssignments, eq(jobAssignments.jobId, jobs.id))
       .where(
         and(
-          eq(jobs.isMock, false),
-          or(eq(jobs.status, "COMPLETED_APPROVED"), isNotNull(jobs.customerApprovedAt), isNotNull(jobAssignments.completedAt)),
+          eq(jobs.is_mock, false),
+          or(eq(jobs.status, "COMPLETED_APPROVED"), isNotNull(jobs.customer_approved_at), isNotNull(jobAssignments.completedAt)),
         ),
       );
     if (completed.length) {

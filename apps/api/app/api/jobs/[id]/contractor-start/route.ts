@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         .select({
           id: jobs.id,
           status: jobs.status,
-          contractorActionTokenHash: jobs.contractorActionTokenHash,
+          contractorActionTokenHash: jobs.contractor_action_token_hash,
         })
         .from(jobs)
         .where(eq(jobs.id, id))
@@ -51,9 +51,13 @@ export async function POST(req: Request) {
 
       const updatedRows = await tx
         .update(jobs)
-        .set({ status: "IN_PROGRESS", publicStatus: "IN_PROGRESS" })
+        .set({ status: "IN_PROGRESS", public_status: "IN_PROGRESS" })
         .where(eq(jobs.id, id))
-        .returning();
+        .returning({
+          id: jobs.id,
+          status: jobs.status,
+          publicStatus: jobs.public_status,
+        });
       const updated = updatedRows[0] as any;
 
       await tx.insert(auditLogs).values({

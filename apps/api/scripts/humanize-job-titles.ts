@@ -37,15 +37,15 @@ async function main() {
       id: jobs.id,
       title: jobs.title,
       scope: jobs.scope,
-      tradeCategory: jobs.tradeCategory,
-      junkHaulingItems: jobs.junkHaulingItems,
+      tradeCategory: jobs.trade_category,
+      junkHaulingItems: jobs.junk_hauling_items,
       archived: jobs.archived,
-      isMock: jobs.isMock,
-      createdAt: jobs.createdAt,
+      isMock: jobs.is_mock,
+      createdAt: jobs.created_at,
     })
     .from(jobs)
-    .where(and(eq(jobs.isMock, false)))
-    .orderBy(desc(jobs.createdAt))
+    .where(and(eq(jobs.is_mock, false)))
+    .orderBy(desc(jobs.created_at))
     .limit(take);
 
   const plan = rows
@@ -93,10 +93,11 @@ async function main() {
 
   if (!apply) return;
 
+  const now = new Date();
   const updated = await db.transaction(async (tx: any) => {
     let n = 0;
     for (const p of plan) {
-      await tx.update(jobs).set({ title: p.to } as any).where(eq(jobs.id, p.id));
+      await tx.update(jobs).set({ title: p.to, updated_at: now }).where(eq(jobs.id, p.id));
       n++;
       await tx.insert(auditLogs).values({
         id: crypto.randomUUID(),

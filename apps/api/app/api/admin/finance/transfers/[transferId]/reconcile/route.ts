@@ -4,6 +4,7 @@ import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { stripe } from "@/src/stripe/stripe";
 import { db } from "@/server/db/drizzle";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 import { transferRecords } from "@/db/schema/transferRecord";
 import { desiredTransferRecordStatusFromStripeTransfer, buildTransferRecordReconcilePlan } from "@/src/payouts/stripeTransferReconcile";
 import { type TransferRecordStatus } from "@/src/payouts/transferStatusTransitions";
@@ -105,9 +106,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const schema = getResolvedSchema();
+    const transferRecordT = sql.raw(`"${schema}"."TransferRecord"`);
     const after = await db.transaction(async (tx: any) => {
       // Lock the row for deterministic reconciliation.
-      await tx.execute(sql`select "id" from "8fold_test"."TransferRecord" where "id" = ${row.id}::uuid for update`);
+      await tx.execute(sql`select "id" from ${transferRecordT} where "id" = ${row.id}::uuid for update`);
 
       let current: TransferRecordStatus = fromStatus;
       for (const step of plan.steps) {

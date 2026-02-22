@@ -52,12 +52,12 @@ export async function POST(req: Request) {
           id: jobs.id,
           status: jobs.status,
           archived: jobs.archived,
-          paymentStatus: jobs.paymentStatus,
-          payoutStatus: jobs.payoutStatus,
-          completionDeadlineAt: jobs.completionDeadlineAt,
-          jobPosterUserId: jobs.jobPosterUserId,
-          routerUserId: jobs.claimedByUserId,
-          contractorCompletedAt: jobs.contractorCompletedAt,
+          paymentStatus: jobs.payment_status,
+          payoutStatus: jobs.payout_status,
+          completionDeadlineAt: jobs.completion_deadline_at,
+          jobPosterUserId: jobs.job_poster_user_id,
+          routerUserId: jobs.claimed_by_user_id,
+          contractorCompletedAt: jobs.contractor_completed_at,
         })
         .from(jobs)
         .where(eq(jobs.id, jobId))
@@ -78,10 +78,10 @@ export async function POST(req: Request) {
           .update(jobs)
           .set({
             status: "COMPLETION_FLAGGED" as any,
-            completionFlaggedAt: now,
-            completionFlagReason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
-            updatedAt: now,
-          } as any)
+            completion_flagged_at: now,
+            completion_flag_reason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
+            updated_at: now,
+          })
           .where(eq(jobs.id, jobId));
         return { kind: "deadline_exceeded" as const };
       }
@@ -101,10 +101,10 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "CONTRACTOR_COMPLETED" as any,
-          contractorCompletedAt: now,
-          contractorCompletionSummary: summary,
-        } as any)
-        .where(and(eq(jobs.id, jobId), isNull(jobs.contractorCompletedAt)))
+          contractor_completed_at: now,
+          contractor_completion_summary: summary,
+        })
+        .where(and(eq(jobs.id, jobId), isNull(jobs.contractor_completed_at)))
         .returning({ id: jobs.id });
       if (!updatedRows.length) return { kind: "already_submitted" as const };
 

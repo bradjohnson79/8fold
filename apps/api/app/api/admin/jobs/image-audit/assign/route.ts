@@ -50,22 +50,22 @@ export async function POST(req: Request) {
     // We treat "has image" as: exists JobPhoto with non-empty url.
     const baseWhere: any[] = [];
     if (!includeArchived) baseWhere.push(eq(jobs.archived, false));
-    if (mockOnly) baseWhere.push(eq(jobs.isMock, true));
-    else baseWhere.push(eq(jobs.isMock, false));
+    if (mockOnly) baseWhere.push(eq(jobs.is_mock, true));
+    else baseWhere.push(eq(jobs.is_mock, false));
 
     // Identify candidates via grouped join.
     const candidates = await db
       .select({
         id: jobs.id,
-        tradeCategory: jobs.tradeCategory,
-        createdAt: jobs.createdAt,
+        tradeCategory: jobs.trade_category,
+        createdAt: jobs.created_at,
         hasImage: sql<number>`max(case when ${jobPhotos.url} is not null and ${jobPhotos.url} <> '' then 1 else 0 end)::int`,
       })
       .from(jobs)
       .leftJoin(jobPhotos, eq(jobPhotos.jobId, jobs.id))
       .where(and(...baseWhere))
-      .groupBy(jobs.id, jobs.tradeCategory, jobs.createdAt)
-      .orderBy(asc(jobs.createdAt), asc(jobs.id))
+      .groupBy(jobs.id, jobs.trade_category, jobs.created_at)
+      .orderBy(asc(jobs.created_at), asc(jobs.id))
       .limit(take);
 
     const needs = candidates.filter((c: any) => Number(c.hasImage ?? 0) === 0) as Array<{

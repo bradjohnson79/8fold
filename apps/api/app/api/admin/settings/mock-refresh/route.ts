@@ -44,12 +44,12 @@ export async function POST(req: Request) {
     // so they remain visible without creating any new mock rows.
     const refreshed = await db
       .update(jobs)
-      .set({ publishedAt: sql`now()` as any })
+      .set({ published_at: sql`now()` as any })
       .where(
         and(
-          eq(jobs.publicStatus, "OPEN" as any),
-          eq(jobs.isMock, true),
-          lt(jobs.publishedAt, sql`now() - interval '48 hours'` as any),
+          eq(jobs.public_status, "OPEN" as any),
+          eq(jobs.is_mock, true),
+          lt(jobs.published_at, sql`now() - interval '48 hours'` as any),
         ),
       )
       .returning({ id: jobs.id });

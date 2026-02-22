@@ -54,14 +54,14 @@ export async function POST(req: Request) {
         archived: jobs.archived,
         status: jobs.status,
         country: jobs.country,
-        regionCode: jobs.regionCode,
-        isMock: jobs.isMock,
-        routingStatus: jobs.routingStatus,
-        routerUserId: jobs.claimedByUserId,
-        routingDueAt: jobs.routingDueAt,
-        postedAt: jobs.postedAt,
-        firstRoutedAt: jobs.firstRoutedAt,
-        routerEarningsCents: jobs.routerEarningsCents,
+        regionCode: jobs.region_code,
+        isMock: jobs.is_mock,
+        routingStatus: jobs.routing_status,
+        routerUserId: jobs.claimed_by_user_id,
+        routingDueAt: jobs.routing_due_at,
+        postedAt: jobs.posted_at,
+        firstRoutedAt: jobs.first_routed_at,
+        routerEarningsCents: jobs.router_earnings_cents,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -226,26 +226,26 @@ export async function POST(req: Request) {
       const updatedRows = await tx
         .update(jobs)
         .set({
-          routingStatus: "ROUTED_BY_ADMIN",
-          adminRoutedById: identity.userId,
-          claimedByUserId: null,
-          failsafeRouting: true,
-          // firstRoutedAt is immutable once set, even under concurrent reroutes.
-          firstRoutedAt: sql`coalesce(${jobs.firstRoutedAt}, ${now})` as any,
-          routedAt: now,
+          routing_status: "ROUTED_BY_ADMIN",
+          admin_routed_by_id: identity.userId,
+          claimed_by_user_id: null,
+          failsafe_routing: true,
+          // first_routed_at is immutable once set, even under concurrent reroutes.
+          first_routed_at: sql`coalesce(${jobs.first_routed_at}, ${now})` as any,
+          routed_at: now,
         } as any)
         .where(
           and(
             eq(jobs.id, job.id),
-            eq(jobs.routingStatus, "UNROUTED"),
-            isNull(jobs.claimedByUserId),
+            eq(jobs.routing_status, "UNROUTED"),
+            isNull(jobs.claimed_by_user_id),
             ne(jobs.status, "IN_PROGRESS" as any),
             ne(jobs.status, "ASSIGNED" as any),
             // Re-check overdue at update time to avoid racey early reroutes.
-            jobOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
+            jobOverdueWhere({ routingDueAt: jobs.routing_due_at, postedAt: jobs.posted_at }, now),
           ),
         )
-        .returning({ id: jobs.id, routingStatus: jobs.routingStatus, adminRoutedById: jobs.adminRoutedById, firstRoutedAt: jobs.firstRoutedAt });
+        .returning({ id: jobs.id, routingStatus: jobs.routing_status, adminRoutedById: jobs.admin_routed_by_id, firstRoutedAt: jobs.first_routed_at });
       const updated = updatedRows[0] as any;
       if (!updated) return { kind: "stale" as const };
 

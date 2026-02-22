@@ -23,8 +23,8 @@ export async function GET(req: Request) {
     const jobRows = await db
       .select({
         id: jobs.id,
-        jobPosterUserId: jobs.jobPosterUserId,
-        escrowLockedAt: jobs.escrowLockedAt,
+        jobPosterUserId: jobs.job_poster_user_id,
+        escrowLockedAt: jobs.escrow_locked_at,
         status: jobs.status,
       })
       .from(jobs)

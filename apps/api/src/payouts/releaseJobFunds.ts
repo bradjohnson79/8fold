@@ -227,28 +227,28 @@ export async function releaseJobFunds(input: {
   // Stripe calls are network-bound; keep DB transactions tight. We do a lock/read, then execute legs,
   // then persist results under lock again. Idempotency is enforced by TransferRecord unique(jobId,role).
   const snapshot = await db.transaction(async (tx: any) => {
-    await tx.execute(sql`select "id" from "8fold_test"."Job" where "id" = ${jobId} for update`);
+    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
     const rows = await tx
       .select({
         id: jobs.id,
         archived: jobs.archived,
-        isMock: jobs.isMock,
+        isMock: jobs.is_mock,
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
-        payoutStatus: jobs.payoutStatus,
-        amountCents: jobs.amountCents,
+        paymentStatus: jobs.payment_status,
+        payoutStatus: jobs.payout_status,
+        amountCents: jobs.amount_cents,
         country: jobs.country,
         currency: jobs.currency,
-        stripePaymentIntentId: jobs.stripePaymentIntentId,
-        claimedByUserId: jobs.claimedByUserId,
-        contractorUserId: jobs.contractorUserId,
-        contractorCompletedAt: jobs.contractorCompletedAt,
-        customerApprovedAt: jobs.customerApprovedAt,
-        routerApprovedAt: jobs.routerApprovedAt,
-        contractorTransferId: jobs.contractorTransferId,
-        routerTransferId: jobs.routerTransferId,
-        releasedAt: jobs.releasedAt,
+        stripePaymentIntentId: jobs.stripe_payment_intent_id,
+        claimedByUserId: jobs.claimed_by_user_id,
+        contractorUserId: jobs.contractor_user_id,
+        contractorCompletedAt: jobs.contractor_completed_at,
+        customerApprovedAt: jobs.customer_approved_at,
+        routerApprovedAt: jobs.router_approved_at,
+        contractorTransferId: jobs.contractor_transfer_id,
+        routerTransferId: jobs.router_transfer_id,
+        releasedAt: jobs.released_at,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -513,7 +513,7 @@ export async function releaseJobFunds(input: {
 
   // Persist + sanity invariants.
   await db.transaction(async (tx: any) => {
-    await tx.execute(sql`select "id" from "8fold_test"."Job" where "id" = ${jobId} for update`);
+    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
     // Ensure we have an escrow row (JOB_ESCROW) tied to this payment intent for traceability.
     const stripePaymentIntentId = String((snapshot.job as any)?.stripePaymentIntentId ?? "").trim();
@@ -673,11 +673,11 @@ export async function releaseJobFunds(input: {
     await tx
       .update(jobs)
       .set({
-        contractorTransferId: contractorSent?.stripeTransferId ?? (snapshot.job as any).contractorTransferId ?? null,
-        routerTransferId: routerSent?.stripeTransferId ?? (snapshot.job as any).routerTransferId ?? null,
-        releasedAt: allSent ? now : (snapshot.job as any).releasedAt ?? null,
-        payoutStatus: allSent ? ("RELEASED" as any) : ("FAILED" as any),
-      } as any)
+        contractor_transfer_id: contractorSent?.stripeTransferId ?? (snapshot.job as any).contractorTransferId ?? null,
+        router_transfer_id: routerSent?.stripeTransferId ?? (snapshot.job as any).routerTransferId ?? null,
+        released_at: allSent ? now : (snapshot.job as any).releasedAt ?? null,
+        payout_status: allSent ? ("RELEASED" as any) : ("FAILED" as any),
+      })
       .where(eq(jobs.id, jobId));
 
     if (allSent && escrow?.id) {

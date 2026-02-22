@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const rows = await db
       .select()
       .from(jobDraft)
-      .where(and(eq(jobDraft.userId, user.userId), eq(jobDraft.status, "ACTIVE")))
+      .where(and(eq(jobDraft.user_id, user.userId), eq(jobDraft.status, "ACTIVE")))
       .limit(1);
     const draft = rows[0] ?? null;
     if (!draft) {
@@ -63,8 +63,8 @@ export async function POST(req: Request) {
         };
         await db
           .update(jobDraft)
-          .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
-          .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
+          .set({ data: nextData, updated_at: new Date(), step: "PAYMENT" })
+          .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.user_id, user.userId)));
         return NextResponse.json({
           success: true,
           clientSecret: refreshed.client_secret,
@@ -95,8 +95,8 @@ export async function POST(req: Request) {
     };
     await db
       .update(jobDraft)
-      .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
-      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
+      .set({ data: nextData, updated_at: new Date(), step: "PAYMENT" })
+      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.user_id, user.userId)));
 
     return NextResponse.json({
       success: true,

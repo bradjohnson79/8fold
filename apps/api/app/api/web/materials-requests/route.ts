@@ -60,7 +60,7 @@ export async function GET(req: Request) {
     const job =
       (
         await db
-          .select({ id: jobs.id, routerId: jobs.claimedByUserId, jobPosterUserId: jobs.jobPosterUserId })
+          .select({ id: jobs.id, routerId: jobs.claimed_by_user_id, jobPosterUserId: jobs.job_poster_user_id })
           .from(jobs)
           .where(eq(jobs.id, jobId))
           .limit(1)
@@ -226,9 +226,9 @@ export async function POST(req: Request) {
           .select({
             id: jobs.id,
             status: jobs.status,
-            paymentStatus: jobs.paymentStatus,
-            routerId: jobs.claimedByUserId,
-            jobPosterUserId: jobs.jobPosterUserId,
+            paymentStatus: jobs.payment_status,
+            routerId: jobs.claimed_by_user_id,
+            jobPosterUserId: jobs.job_poster_user_id,
           })
           .from(jobs)
           .where(eq(jobs.id, body.data.jobId))

@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
     const where = and(
       eq(jobs.archived, false),
-      eq(jobs.jobPosterUserId, user.userId),
+      eq(jobs.job_poster_user_id, user.userId),
       status ? eq(jobs.status, status as any) : undefined,
     );
 
@@ -29,29 +29,29 @@ export async function GET(req: Request) {
         title: jobs.title,
         region: jobs.region,
         city: jobs.city,
-        regionCode: jobs.regionCode,
-        tradeCategory: jobs.tradeCategory,
+        regionCode: jobs.region_code,
+        tradeCategory: jobs.trade_category,
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
-        payoutStatus: jobs.payoutStatus,
-        createdAt: jobs.createdAt,
-        publishedAt: jobs.publishedAt,
-        contactedAt: jobs.contactedAt,
-        guaranteeEligibleAt: jobs.guaranteeEligibleAt,
-        laborTotalCents: jobs.laborTotalCents,
-        materialsTotalCents: jobs.materialsTotalCents,
-        transactionFeeCents: jobs.transactionFeeCents,
-        repeatContractorDiscountCents: jobs.repeatContractorDiscountCents,
-        escrowLockedAt: jobs.escrowLockedAt,
-        paymentCapturedAt: jobs.paymentCapturedAt,
-        paymentReleasedAt: jobs.paymentReleasedAt,
-        contractorCompletedAt: jobs.contractorCompletedAt,
-        customerApprovedAt: jobs.customerApprovedAt,
-        routerApprovedAt: jobs.routerApprovedAt,
+        paymentStatus: jobs.payment_status,
+        payoutStatus: jobs.payout_status,
+        createdAt: jobs.created_at,
+        publishedAt: jobs.published_at,
+        contactedAt: jobs.contacted_at,
+        guaranteeEligibleAt: jobs.guarantee_eligible_at,
+        laborTotalCents: jobs.labor_total_cents,
+        materialsTotalCents: jobs.materials_total_cents,
+        transactionFeeCents: jobs.transaction_fee_cents,
+        repeatContractorDiscountCents: jobs.repeat_contractor_discount_cents,
+        escrowLockedAt: jobs.escrow_locked_at,
+        paymentCapturedAt: jobs.payment_captured_at,
+        paymentReleasedAt: jobs.payment_released_at,
+        contractorCompletedAt: jobs.contractor_completed_at,
+        customerApprovedAt: jobs.customer_approved_at,
+        routerApprovedAt: jobs.router_approved_at,
       })
       .from(jobs)
       .where(where)
-      .orderBy(desc(jobs.createdAt))
+      .orderBy(desc(jobs.created_at))
       .limit(200);
 
     const ids = base.map((j) => j.id).filter(Boolean) as string[];

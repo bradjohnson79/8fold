@@ -99,7 +99,7 @@ export async function executePendingDisputeEnforcementActions(opts: {
         // WITHHOLD / PARTIAL: represented by JobHold rows for auditability + future payout blocking.
         // FLAG: creates InternalAccountFlag rows (append-only; resolvable later).
         if (a.type === "RELEASE_ESCROW_FULL") {
-          await tx.update(jobs).set({ paymentReleasedAt: now } as any).where(eq(jobs.id, dispute.jobId));
+          await tx.update(jobs).set({ payment_released_at: now }).where(eq(jobs.id, dispute.jobId));
           await tx
             .update(jobPayments)
             .set({ paymentReleasedAt: now, updatedAt: now } as any)
@@ -150,7 +150,7 @@ export async function executePendingDisputeEnforcementActions(opts: {
             throw new Error("Invalid payload for partial release");
           }
 
-          await tx.update(jobs).set({ paymentReleasedAt: now } as any).where(eq(jobs.id, dispute.jobId));
+          await tx.update(jobs).set({ payment_released_at: now }).where(eq(jobs.id, dispute.jobId));
           await tx
             .update(jobPayments)
             .set({ paymentReleasedAt: now, updatedAt: now } as any)

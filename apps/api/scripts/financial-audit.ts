@@ -110,7 +110,7 @@ async function main() {
     `
     select e."id" as "escrowId", e."jobId"
     from "${schema}"."Escrow" e
-    left join "${schema}"."Job" j on j."id" = e."jobId"
+    left join "${schema}"."jobs" j on j."id" = e."jobId"
     where j."id" is null
     `,
   );
@@ -139,7 +139,7 @@ async function main() {
     `
     select p."id", p."jobId", p."contractorId"
     from "${schema}"."PartsMaterialRequest" p
-    left join "${schema}"."Job" j on j."id" = p."jobId"
+    left join "${schema}"."jobs" j on j."id" = p."jobId"
     left join "${schema}"."Contractor" c on c."id" = p."contractorId"
     where j."id" is null or c."id" is null
     `,
@@ -158,7 +158,7 @@ async function main() {
     `
     select l."id", l."jobId", l."escrowId"
     from "${schema}"."LedgerEntry" l
-    left join "${schema}"."Job" j on j."id" = l."jobId"
+    left join "${schema}"."jobs" j on j."id" = l."jobId"
     left join "${schema}"."Escrow" e on e."id" = l."escrowId"
     where (l."jobId" is not null and j."id" is null)
        or (l."escrowId" is not null and e."id" is null)

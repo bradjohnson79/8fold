@@ -60,7 +60,7 @@ async function removeCandidates(
         const verify =
           (
             await tx
-              .select({ jobSource: jobs.jobSource })
+              .select({ jobSource: jobs.job_source })
               .from(jobs)
               .where(eq(jobs.id, job.id))
               .limit(1)
@@ -106,13 +106,13 @@ export async function removeMockJobsByCity(opts: {
   dryRun?: boolean;
 }): Promise<RemovalResult> {
   const candidates = await db
-    .select({ id: jobs.id, title: jobs.title, city: jobs.city, regionCode: jobs.regionCode, createdAt: jobs.createdAt })
+    .select({ id: jobs.id, title: jobs.title, city: jobs.city, regionCode: jobs.region_code, createdAt: jobs.created_at })
     .from(jobs)
     .where(
       and(
-        eq(jobs.jobSource, "MOCK" as any),
+        eq(jobs.job_source, "MOCK" as any),
         ilike(jobs.city, opts.city),
-        ...(opts.regionCode ? [eq(jobs.regionCode, opts.regionCode.toUpperCase())] : []),
+        ...(opts.regionCode ? [eq(jobs.region_code, opts.regionCode.toUpperCase())] : []),
         ...(opts.country ? [eq(jobs.country, opts.country as any)] : []),
       ) as any,
     );
@@ -125,12 +125,12 @@ export async function removeMockJobsByRegion(opts: {
   dryRun?: boolean;
 }): Promise<RemovalResult> {
   const candidates = await db
-    .select({ id: jobs.id, title: jobs.title, city: jobs.city, regionCode: jobs.regionCode, createdAt: jobs.createdAt })
+    .select({ id: jobs.id, title: jobs.title, city: jobs.city, regionCode: jobs.region_code, createdAt: jobs.created_at })
     .from(jobs)
     .where(
       and(
-        eq(jobs.jobSource, "MOCK" as any),
-        eq(jobs.regionCode, opts.regionCode.toUpperCase()),
+        eq(jobs.job_source, "MOCK" as any),
+        eq(jobs.region_code, opts.regionCode.toUpperCase()),
         ...(opts.country ? [eq(jobs.country, opts.country as any)] : []),
       ) as any,
     );
@@ -143,9 +143,9 @@ export async function removeMockJobsByDateRange(opts: {
   dryRun?: boolean;
 }): Promise<RemovalResult> {
   const candidates = await db
-    .select({ id: jobs.id, title: jobs.title, city: jobs.city, regionCode: jobs.regionCode, createdAt: jobs.createdAt })
+    .select({ id: jobs.id, title: jobs.title, city: jobs.city, regionCode: jobs.region_code, createdAt: jobs.created_at })
     .from(jobs)
-    .where(and(eq(jobs.jobSource, "MOCK" as any), gte(jobs.createdAt, opts.startDate), lte(jobs.createdAt, opts.endDate)));
+    .where(and(eq(jobs.job_source, "MOCK" as any), gte(jobs.created_at, opts.startDate), lte(jobs.created_at, opts.endDate)));
   return removeCandidates("MOCK_JOB_REMOVED_BY_DATE_RANGE", candidates as any, { dryRun: opts.dryRun });
 }
 

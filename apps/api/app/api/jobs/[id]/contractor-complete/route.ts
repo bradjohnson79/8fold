@@ -43,7 +43,7 @@ export async function POST(req: Request) {
         .select({
           id: jobs.id,
           status: jobs.status,
-          contractorActionTokenHash: jobs.contractorActionTokenHash,
+          contractorActionTokenHash: jobs.contractor_action_token_hash,
         })
         .from(jobs)
         .where(eq(jobs.id, id))
@@ -62,11 +62,16 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "CONTRACTOR_COMPLETED",
-          contractorCompletedAt: new Date(),
-          contractorCompletionSummary: body.data.summary,
+          contractor_completed_at: new Date(),
+          contractor_completion_summary: body.data.summary,
         })
         .where(eq(jobs.id, id))
-        .returning();
+        .returning({
+          id: jobs.id,
+          status: jobs.status,
+          contractorCompletedAt: jobs.contractor_completed_at,
+          contractorCompletionSummary: jobs.contractor_completion_summary,
+        });
       const updated = updatedRows[0] as any;
 
       // advisory photos only

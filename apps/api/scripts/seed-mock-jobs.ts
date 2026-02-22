@@ -209,19 +209,19 @@ async function main() {
     "AB","BC","MB","NB","NL","NS","ON","PE","QC","SK",
   ]);
 
-  // Safety: require mockSeedBatch column to exist (migration must be applied).
+  // Safety: require mock_seed_batch column to exist (migration must be applied).
   const colCheck = await db.execute(
     sql`select 1 as ok
         from information_schema.columns
         where table_schema = '8fold_test'
-          and table_name = 'Job'
-          and column_name = 'mockSeedBatch'
+          and table_name = 'jobs'
+          and column_name = 'mock_seed_batch'
         limit 1`,
   );
   const colOk = Array.isArray((colCheck as any)?.rows) ? (colCheck as any).rows.length > 0 : false;
   if (!colOk) {
     throw new Error(
-      `Missing Job.mockSeedBatch column. Apply migration drizzle/0037_mock_jobs_north_america_v1.sql, then rerun.`,
+      `Missing jobs.mock_seed_batch column. Apply migration drizzle/0037_mock_jobs_north_america_v1.sql, then rerun.`,
     );
   }
 
@@ -230,13 +230,13 @@ async function main() {
     await db.execute(
       sql`delete from "8fold_test"."JobPhoto"
           where "jobId" in (
-            select id from "8fold_test"."Job"
-            where "isMock" = true and "mockSeedBatch" = ${MOCK_SEED_BATCH}
+            select id from "8fold_test"."jobs"
+            where "is_mock" = true and "mock_seed_batch" = ${MOCK_SEED_BATCH}
           )`,
     );
     await db.execute(
-      sql`delete from "8fold_test"."Job"
-          where "isMock" = true and "mockSeedBatch" = ${MOCK_SEED_BATCH}`,
+      sql`delete from "8fold_test"."jobs"
+          where "is_mock" = true and "mock_seed_batch" = ${MOCK_SEED_BATCH}`,
     );
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ ok: true, reset: true, batch: MOCK_SEED_BATCH }, null, 2));
@@ -340,46 +340,48 @@ async function main() {
 
         jobsToInsert.push({
           id,
-          mockSeedBatch: MOCK_SEED_BATCH,
-          isMock: true,
-          jobSource: "MOCK",
+          mock_seed_batch: MOCK_SEED_BATCH,
+          is_mock: true,
+          job_source: "MOCK",
           archived: false,
 
           status: "ASSIGNED",
-          routingStatus: "ROUTED_BY_ROUTER",
+          routing_status: "ROUTED_BY_ROUTER",
 
           title,
           scope,
           region: regionSlug,
           country,
+          country_code: country,
+          state_code: regionCode,
           currency,
-          paymentCurrency,
-          regionCode,
-          regionName: r.regionName,
+          payment_currency: paymentCurrency,
+          region_code: regionCode,
+          region_name: r.regionName,
           city,
-          postalCode,
-          addressFull,
-          tradeCategory,
-          serviceType: String(tradeCategory).toLowerCase().replace(/_/g, " "),
-          jobType,
+          postal_code: postalCode,
+          address_full: addressFull,
+          trade_category: tradeCategory,
+          service_type: String(tradeCategory).toLowerCase().replace(/_/g, " "),
+          job_type: jobType,
           lat,
           lng,
 
-          laborTotalCents,
-          materialsTotalCents: 0,
-          transactionFeeCents: 0,
-          routerEarningsCents,
-          contractorPayoutCents,
-          brokerFeeCents,
-          amountCents: laborTotalCents,
+          labor_total_cents: laborTotalCents,
+          materials_total_cents: 0,
+          transaction_fee_cents: 0,
+          router_earnings_cents: routerEarningsCents,
+          contractor_payout_cents: contractorPayoutCents,
+          broker_fee_cents: brokerFeeCents,
+          amount_cents: laborTotalCents,
 
-          publicStatus: "IN_PROGRESS",
-          createdAt,
-          publishedAt,
-          postedAt,
-          updatedAt: createdAt,
-          routedAt: createdAt,
-          firstRoutedAt: createdAt,
+          public_status: "IN_PROGRESS",
+          created_at: createdAt,
+          published_at: publishedAt,
+          posted_at: postedAt,
+          updated_at: createdAt,
+          routed_at: createdAt,
+          first_routed_at: createdAt,
         });
 
         if (withImage) {

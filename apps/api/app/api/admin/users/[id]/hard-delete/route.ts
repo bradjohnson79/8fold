@@ -34,7 +34,7 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     const jobCount = await db
       .select({ id: jobs.id })
       .from(jobs)
-      .where(or(eq(jobs.jobPosterUserId, id), eq(jobs.contractorUserId, id)))
+      .where(or(eq(jobs.job_poster_user_id, id), eq(jobs.contractor_user_id, id)))
       .limit(1);
 
     if (jobCount.length > 0) {

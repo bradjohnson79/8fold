@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     // Job.status=CUSTOMER_APPROVED AND routerApprovedAt IS NULL.
     const activeStatusesWhere = or(
       eq(jobs.status, "ASSIGNED" as any),
-      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
+      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
     );
 
     const [
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
             and(
               archivedExcluded,
               eq(jobs.status, "CUSTOMER_APPROVED" as any),
-              isNull(jobs.routerApprovedAt),
+              isNull(jobs.router_approved_at),
             )
           )
       ),
@@ -94,8 +94,8 @@ export async function GET(req: Request) {
           .where(
             and(
               archivedExcluded,
-              or(eq(jobs.routingStatus, "ROUTED_BY_ROUTER"), eq(jobs.routingStatus, "ROUTED_BY_ADMIN")),
-              lt(sql`coalesce(${jobs.routedAt}, ${jobs.publishedAt})`, cutoff24h)
+              or(eq(jobs.routing_status, "ROUTED_BY_ROUTER"), eq(jobs.routing_status, "ROUTED_BY_ADMIN")),
+              lt(sql`coalesce(${jobs.routed_at}, ${jobs.published_at})`, cutoff24h)
             )
           )
       ),
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
         db
           .select({ c: sql<number>`count(*)` })
           .from(jobs)
-          .where(and(archivedExcluded, eq(jobs.status, "OPEN_FOR_ROUTING" as any), lt(jobs.publishedAt, cutoff48h))),
+          .where(and(archivedExcluded, eq(jobs.status, "OPEN_FOR_ROUTING" as any), lt(jobs.published_at, cutoff48h))),
       ),
       count(
         db
@@ -129,27 +129,27 @@ export async function GET(req: Request) {
           id: jobs.id,
           title: jobs.title,
           country: jobs.country,
-          regionCode: jobs.regionCode,
+          regionCode: jobs.region_code,
           city: jobs.city,
-          createdAt: jobs.createdAt,
+          createdAt: jobs.created_at,
         })
         .from(jobs)
         .where(
           and(
             archivedExcluded,
             eq(jobs.status, "CUSTOMER_APPROVED" as any),
-            isNull(jobs.routerApprovedAt),
-            lt(jobs.createdAt, cutoff24h),
+            isNull(jobs.router_approved_at),
+            lt(jobs.created_at, cutoff24h),
           ),
         )
-        .orderBy(asc(jobs.createdAt), asc(jobs.id))
+        .orderBy(asc(jobs.created_at), asc(jobs.id))
         .limit(200),
       db
         .select({
           id: jobs.id,
           title: jobs.title,
           city: jobs.city,
-          regionCode: jobs.regionCode,
+          regionCode: jobs.region_code,
           flagCount: sql<number>`count(${jobFlags.id})`,
         })
         .from(jobs)
