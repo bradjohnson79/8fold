@@ -54,8 +54,11 @@ export function StepPayment({ draft }: { draft: DraftHook }) {
   const pricing = (draft.draft?.data?.pricing ?? {}) as Record<string, any>;
   const selectedPriceCents = Number(pricing.selectedPriceCents ?? 0);
   const isRegional = Boolean(pricing.isRegional ?? details.isRegional);
-  const totalCents = selectedPriceCents + (isRegional ? 2000 : 0);
-  const totalLabel = `$${(totalCents / 100).toFixed(2)}`;
+  const countryCode = String(details.countryCode ?? "US").toUpperCase();
+  const currency = countryCode === "CA" ? "CAD" : "USD";
+  const regionalFeeCents = isRegional ? 2000 : 0;
+  const totalCents = selectedPriceCents + regionalFeeCents;
+  const totalLabel = `$${(totalCents / 100).toFixed(2)} ${currency}`;
 
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [holdSecured, setHoldSecured] = useState(false);
@@ -83,7 +86,14 @@ export function StepPayment({ draft }: { draft: DraftHook }) {
           8Fold does not store your card details.
         </div>
       </div>
-      <div className="text-sm font-semibold text-gray-900">Total (includes +$20 regional if selected): {totalLabel}</div>
+      <div className="text-sm font-semibold text-gray-900">
+        Total: {totalLabel}
+        {isRegional && (
+          <span className="text-gray-600 font-normal ml-1">
+            (job + $20 {currency} regional fee → contractor on acceptance)
+          </span>
+        )}
+      </div>
 
       {localError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 px-4 py-3">{localError}</div>
