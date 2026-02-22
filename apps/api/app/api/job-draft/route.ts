@@ -16,6 +16,7 @@ async function getOrCreateActiveDraft(userId: string) {
   const inserted = await db
     .insert(jobDraft)
     .values({
+      id: crypto.randomUUID(),
       userId,
       status: "ACTIVE",
       step: "DETAILS",
