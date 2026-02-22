@@ -71,11 +71,18 @@ export async function POST(req: Request) {
       expiresAt,
     });
 
+    const isProxyRequest = req.headers.get("x-admin-proxy") === "true";
     const res = NextResponse.json(
-      { ok: true, data: { admin: { id: String(admin.id), email: String(admin.email), role: String(admin.role ?? "ADMIN") } } },
+      {
+        ok: true,
+        data: {
+          admin: { id: String(admin.id), email: String(admin.email), role: String(admin.role ?? "ADMIN") },
+          ...(isProxyRequest && { sessionToken: token, expiresAt: expiresAt.toISOString() }),
+        },
+      },
       { status: 200 },
     );
-    setSessionCookie(res, token, expiresAt);
+    if (!isProxyRequest) setSessionCookie(res, token, expiresAt);
     return res;
   } catch (err) {
     logEvent({

@@ -6,7 +6,7 @@ import { useState } from "react";
 
 export default function LoginClient() {
   const sp = useSearchParams();
-  const next = sp.get("next") ?? "/admin";
+  const next = sp.get("next") ?? "/";
   const backHref = (process.env.NEXT_PUBLIC_WEB_ORIGIN ?? "").trim() || "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +21,7 @@ export default function LoginClient() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include",
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok || !json || json.ok !== true) {
