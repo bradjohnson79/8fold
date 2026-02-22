@@ -42,17 +42,14 @@ export async function POST(req: Request) {
   if (token && expiresAt) {
     const secure = process.env.NODE_ENV === "production";
     const domain = process.env.NODE_ENV === "production" ? ".8fold.app" : undefined;
-    const parts = [
-      `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
-      "Path=/",
-      "HttpOnly",
-      "SameSite=Lax",
-      `Expires=${new Date(expiresAt).toUTCString()}`,
-      secure ? "Secure" : null,
-      domain ? `Domain=${domain}` : null,
-    ].filter(Boolean);
-    const cookieHeader = parts.join("; ");
-    res.headers.set("Set-Cookie", cookieHeader);
+    res.cookies.set(ADMIN_SESSION_COOKIE_NAME, token, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure,
+      expires: new Date(expiresAt),
+      ...(domain && { domain }),
+    });
     console.log("[ADMIN_LOGIN_PROXY]", { step: "cookie_set", domain, secure, path: "/" });
   }
   return res;
