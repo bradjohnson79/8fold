@@ -22,7 +22,10 @@
     "test:lifecycle:financial": "tsx scripts/financialLifecycleTest.ts",
     "ci:smoke": "tsx scripts/ci-smoke.ts",
     "backfill:roles": "tsx scripts/backfill-role-taxonomy.ts",
-    "migrate:router-rewards": "tsx scripts/migrate-router-rewards.ts"
+    "migrate:router-rewards": "tsx scripts/migrate-router-rewards.ts",
+    "check:prod": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionDbCheck.ts",
+    "seed:prod": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/seedProductionTestJob.ts",
+    "audit:prod-auth-db": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionAuthDbAudit.ts"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
