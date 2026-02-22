@@ -29,28 +29,54 @@ BEGIN
   END IF;
 
   -- PmRequest table (P&M sub-escrow request)
-  EXECUTE format(
-    'CREATE TABLE IF NOT EXISTS %I."PmRequest" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "jobId" text NOT NULL REFERENCES %I."Job"("id"),
-      "contractorId" text NOT NULL,
-      "jobPosterUserId" text NOT NULL,
-      "initiatedBy" text NOT NULL,
-      "status" "PMRequestStatus" NOT NULL DEFAULT ''DRAFT''::"PMRequestStatus",
-      "autoTotal" decimal(12,2) NOT NULL DEFAULT 0,
-      "manualTotal" decimal(12,2),
-      "approvedTotal" decimal(12,2),
-      "taxAmount" decimal(12,2),
-      "currency" text NOT NULL DEFAULT ''USD'',
-      "stripePaymentIntentId" text,
-      "escrowId" uuid REFERENCES %I."Escrow"("id"),
-      "amendReason" text,
-      "proposedBudget" decimal(12,2),
-      "createdAt" timestamptz NOT NULL DEFAULT now(),
-      "updatedAt" timestamptz NOT NULL DEFAULT now()
-    )',
-    s, s, s
-  );
+  -- escrowId FK only if Escrow exists (production may lack Escrow)
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = s AND table_name = 'Escrow') THEN
+    EXECUTE format(
+      'CREATE TABLE IF NOT EXISTS %I."PmRequest" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "jobId" text NOT NULL REFERENCES %I."Job"("id"),
+        "contractorId" text NOT NULL,
+        "jobPosterUserId" text NOT NULL,
+        "initiatedBy" text NOT NULL,
+        "status" "PMRequestStatus" NOT NULL DEFAULT ''DRAFT''::"PMRequestStatus",
+        "autoTotal" decimal(12,2) NOT NULL DEFAULT 0,
+        "manualTotal" decimal(12,2),
+        "approvedTotal" decimal(12,2),
+        "taxAmount" decimal(12,2),
+        "currency" text NOT NULL DEFAULT ''USD'',
+        "stripePaymentIntentId" text,
+        "escrowId" uuid REFERENCES %I."Escrow"("id"),
+        "amendReason" text,
+        "proposedBudget" decimal(12,2),
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      )',
+      s, s, s
+    );
+  ELSE
+    EXECUTE format(
+      'CREATE TABLE IF NOT EXISTS %I."PmRequest" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "jobId" text NOT NULL REFERENCES %I."Job"("id"),
+        "contractorId" text NOT NULL,
+        "jobPosterUserId" text NOT NULL,
+        "initiatedBy" text NOT NULL,
+        "status" "PMRequestStatus" NOT NULL DEFAULT ''DRAFT''::"PMRequestStatus",
+        "autoTotal" decimal(12,2) NOT NULL DEFAULT 0,
+        "manualTotal" decimal(12,2),
+        "approvedTotal" decimal(12,2),
+        "taxAmount" decimal(12,2),
+        "currency" text NOT NULL DEFAULT ''USD'',
+        "stripePaymentIntentId" text,
+        "escrowId" uuid,
+        "amendReason" text,
+        "proposedBudget" decimal(12,2),
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      )',
+      s, s
+    );
+  END IF;
 
   EXECUTE format('CREATE INDEX IF NOT EXISTS "PmRequest_jobId_idx" ON %I."PmRequest" ("jobId")', s);
   EXECUTE format('CREATE INDEX IF NOT EXISTS "PmRequest_status_idx" ON %I."PmRequest" ("status")', s);

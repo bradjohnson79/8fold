@@ -88,6 +88,8 @@ export async function POST(req: Request) {
       regionCode: stateCode,
       city: String(details.city ?? "") || null,
       addressFull: String(details.address ?? "") || null,
+      lat: typeof details.lat === "number" && Number.isFinite(details.lat) ? details.lat : null,
+      lng: typeof details.lon === "number" && Number.isFinite(details.lon) ? details.lon : null,
       currency: (countryCode === "CA" ? "CAD" : "USD") as any,
       paymentCurrency: countryCode === "CA" ? "cad" : "usd",
       amountCents: totalCents,

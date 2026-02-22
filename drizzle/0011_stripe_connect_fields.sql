@@ -1,11 +1,12 @@
--- Stripe Connect onboarding fields for payouts (8fold_test)
+-- Stripe Connect onboarding fields for payouts
+-- Schema-agnostic: uses current_schema()
 
-ALTER TABLE "8fold_test"."Contractor"
-  ADD COLUMN IF NOT EXISTS "stripePayoutsEnabled" boolean NOT NULL DEFAULT false;
-
-ALTER TABLE "8fold_test"."RouterProfile"
-  ADD COLUMN IF NOT EXISTS "stripePayoutsEnabled" boolean NOT NULL DEFAULT false;
-
-CREATE INDEX IF NOT EXISTS "Contractor_stripeAccountId_idx" ON "8fold_test"."Contractor" ("stripeAccountId");
-CREATE INDEX IF NOT EXISTS "RouterProfile_stripeAccountId_idx" ON "8fold_test"."RouterProfile" ("stripeAccountId");
-
+DO $$
+DECLARE
+  s text := current_schema();
+BEGIN
+  EXECUTE format('ALTER TABLE %I."Contractor" ADD COLUMN IF NOT EXISTS "stripePayoutsEnabled" boolean NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS "stripeAccountId" text', s);
+  EXECUTE format('ALTER TABLE %I."RouterProfile" ADD COLUMN IF NOT EXISTS "stripePayoutsEnabled" boolean NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS "stripeAccountId" text', s);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS "Contractor_stripeAccountId_idx" ON %I."Contractor" ("stripeAccountId")', s);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS "RouterProfile_stripeAccountId_idx" ON %I."RouterProfile" ("stripeAccountId")', s);
+END $$;

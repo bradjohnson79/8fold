@@ -70,6 +70,7 @@ export async function POST(req: Request) {
     if (min >= median) median = min + 5;
     if (median >= max) max = median + 5;
 
+    const appraisalInputHash = [category, description, region, countryCode, String(isRegional)].join("|");
     const nextData = {
       ...data,
       appraisal: {
@@ -80,6 +81,7 @@ export async function POST(req: Request) {
         blurb: String(appraisal.output.reasoning ?? "").slice(0, 100),
         model: appraisal.model,
       },
+      appraisalInputHash,
     };
 
     await db
