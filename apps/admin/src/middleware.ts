@@ -16,11 +16,9 @@ export default function middleware(req: any) {
 
   const token = String(req?.cookies?.get("admin_session")?.value ?? "").trim();
   const hasSession = Boolean(token);
-  if (process.env.NODE_ENV !== "production") {
-    // Dev-only: visibility into why /admin routes redirect (never log tokens/cookies).
-    // eslint-disable-next-line no-console
-    console.log("[ADMIN MIDDLEWARE]", { path: pathname, hasSession });
-  }
+  // Temporary: log for session bounce diagnosis (never log token value).
+  // eslint-disable-next-line no-console
+  console.log("[ADMIN MIDDLEWARE]", { path: pathname, hasSession });
 
   if (!hasSession) {
     const url = new URL("/login", req.url);

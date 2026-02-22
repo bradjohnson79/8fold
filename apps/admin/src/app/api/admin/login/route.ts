@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   const expiresAt = json.data?.expiresAt;
   if (token && expiresAt) {
     const secure = process.env.NODE_ENV === "production";
+    const domain = process.env.NODE_ENV === "production" ? ".8fold.app" : undefined;
     const parts = [
       `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
       "Path=/",
@@ -48,8 +49,11 @@ export async function POST(req: Request) {
       "SameSite=Lax",
       `Expires=${new Date(expiresAt).toUTCString()}`,
       secure ? "Secure" : null,
+      domain ? `Domain=${domain}` : null,
     ].filter(Boolean);
-    res.headers.set("Set-Cookie", parts.join("; "));
+    const cookieHeader = parts.join("; ");
+    res.headers.set("Set-Cookie", cookieHeader);
+    console.log("[ADMIN_LOGIN_PROXY]", { step: "cookie_set", domain, secure, path: "/" });
   }
   return res;
 }
