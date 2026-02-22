@@ -53,6 +53,12 @@ function logAdminEnvOnce(): void {
 }
 
 export function validateAdminEnv(): void {
-  void getValidatedApiOrigin();
-  logAdminEnvOnce();
+  try {
+    void getValidatedApiOrigin();
+    logAdminEnvOnce();
+  } catch (e) {
+    // Log before rethrow so Vercel logs show the cause (e.g. missing NEXT_PUBLIC_API_URL)
+    console.error("[ADMIN_ENV_ERROR]", { message: (e as Error)?.message });
+    throw e;
+  }
 }

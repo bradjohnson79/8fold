@@ -20,6 +20,13 @@ export default async function AdminAppLayout({ children }: { children: React.Rea
     return <AdminLayout adminEmail={adminEmail} adminTier={tier as any}>{children}</AdminLayout>;
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : null;
+    // Instrumentation: log before redirect/rethrow so Vercel logs show the actual error
+    console.error("[ADMIN_LAYOUT_ERROR]", {
+      message: err?.message,
+      status,
+      name: err?.name,
+      stack: err?.stack?.split("\n").slice(0, 3).join(" | "),
+    });
     if (status === 401) redirect("/login");
     if (status === 403) redirect("/403");
     throw err;
