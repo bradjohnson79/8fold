@@ -43,7 +43,10 @@ export async function POST(req: Request) {
 
     const raw = await req.json().catch(() => null);
     const parsed = BodySchema.safeParse(raw);
-    if (!parsed.success) return unauthorized();
+    if (!parsed.success) {
+      console.log("[ADMIN_LOGIN]", { step: "parse_fail", raw: typeof raw });
+      return unauthorized();
+    }
 
     const email = parsed.data.email.trim().toLowerCase();
     const password = parsed.data.password;
@@ -54,11 +57,18 @@ export async function POST(req: Request) {
       .where(eq(adminUsers.email, email))
       .limit(1);
     const admin = rows[0] ?? null;
-    if (!admin?.id || !admin.passwordHash) return unauthorized();
+    if (!admin?.id || !admin.passwordHash) {
+      console.log("[ADMIN_LOGIN]", { step: "no_admin", email, hasRows: rows.length > 0 });
+      return unauthorized();
+    }
 
     const ok = await bcrypt.compare(password, String(admin.passwordHash)).catch(() => false);
-    if (!ok) return unauthorized();
+    if (!ok) {
+      console.log("[ADMIN_LOGIN]", { step: "compare_fail", email });
+      return unauthorized();
+    }
 
+    console.log("[ADMIN_LOGIN]", { step: "compare_ok", email, adminId: admin.id });
     const token = newAdminSessionToken();
     const tokenHash = sessionTokenHash(token);
     const expiresAt = expiresAtFromNow();
@@ -70,6 +80,7 @@ export async function POST(req: Request) {
       sessionTokenHash: tokenHash,
       expiresAt,
     });
+    console.log("[ADMIN_LOGIN]", { step: "session_created", email });
 
     const isProxyRequest = req.headers.get("x-admin-proxy") === "true";
     const res = NextResponse.json(
@@ -83,8 +94,10 @@ export async function POST(req: Request) {
       { status: 200 },
     );
     if (!isProxyRequest) setSessionCookie(res, token, expiresAt);
+    console.log("[ADMIN_LOGIN]", { step: "success", email, isProxyRequest });
     return res;
   } catch (err) {
+    console.error("[ADMIN_LOGIN]", { step: "catch", error: (err as Error)?.message });
     logEvent({
       level: "error",
       event: "admin.login_error",
