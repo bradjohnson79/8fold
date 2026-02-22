@@ -72,9 +72,9 @@ async function runTests(): Promise<boolean> {
         return true;
       }
       await db
-        .select({ id: jobPhotos.id, job_id: jobPhotos.job_id, kind: jobPhotos.kind, url: jobPhotos.url })
+        .select({ id: jobPhotos.id, job_id: jobPhotos.jobId, kind: jobPhotos.kind, url: jobPhotos.url })
         .from(jobPhotos)
-        .where(inArray(jobPhotos.job_id, ids))
+        .where(inArray(jobPhotos.jobId, ids))
         .limit(10);
       console.log("[PASS] job_photos query");
       return true;

@@ -124,7 +124,7 @@ export async function POST(req: Request) {
           storageKey: null,
           metadata: { tradeCategory: p.tradeCategory, imageIndex: p.imageIndex } as any,
           createdAt: new Date(),
-        } as any);
+        });
         inserted++;
 
         await tx.insert(auditLogs).values({
