@@ -88,18 +88,13 @@ export async function getAdminIdentityBySessionToken(token: string): Promise<Adm
   const hash = sessionTokenHash(raw);
   const now = new Date();
 
-  // Join session -> admin user.
+  // Join session -> admin user. Only select columns that exist (AdminUser may lack profile cols).
   const rows = await db
     .select({
       id: adminUsers.id,
       email: adminUsers.email,
       role: adminUsers.role,
       createdAt: adminUsers.createdAt,
-      fullName: adminUsers.fullName,
-      country: adminUsers.country,
-      state: adminUsers.state,
-      city: adminUsers.city,
-      address: adminUsers.address,
     })
     .from(adminSessions)
     .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.adminUserId))
@@ -113,11 +108,11 @@ export async function getAdminIdentityBySessionToken(token: string): Promise<Adm
     email: String(r.email),
     role: String(r.role ?? "ADMIN"),
     createdAt: r.createdAt,
-    fullName: r.fullName ?? null,
-    country: r.country ?? null,
-    state: r.state ?? null,
-    city: r.city ?? null,
-    address: r.address ?? null,
+    fullName: (r as any).fullName ?? null,
+    country: (r as any).country ?? null,
+    state: (r as any).state ?? null,
+    city: (r as any).city ?? null,
+    address: (r as any).address ?? null,
   };
 }
 
