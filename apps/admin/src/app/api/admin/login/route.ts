@@ -19,6 +19,14 @@ export async function POST(req: Request) {
   });
 
   const json = (await resp.json().catch(() => null)) as { ok?: boolean; data?: { admin?: unknown; sessionToken?: string; expiresAt?: string } } | null;
+  const hasToken = Boolean(json?.data?.sessionToken);
+  let emailLog = "(no body)";
+  try {
+    if (body) emailLog = (JSON.parse(body) as { email?: string })?.email ?? "(no email)";
+  } catch {
+    emailLog = "(parse failed)";
+  }
+  console.log("[ADMIN_LOGIN_PROXY]", { apiStatus: resp.status, hasToken, ok: json?.ok, email: emailLog });
   if (resp.status !== 200 || !json) {
     return NextResponse.json(json ?? { ok: false, error: "unauthorized" }, { status: resp.status });
   }

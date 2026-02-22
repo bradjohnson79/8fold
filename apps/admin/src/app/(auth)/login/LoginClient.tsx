@@ -13,7 +13,8 @@ export default function LoginClient() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit() {
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setError(null);
     try {
@@ -38,7 +39,8 @@ export default function LoginClient() {
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#070b14", color: "#e2e8f0" }}>
-      <div
+      <form
+        onSubmit={(e) => void submit(e)}
         style={{
           width: 420,
           maxWidth: "92vw",
@@ -108,9 +110,8 @@ export default function LoginClient() {
 
         <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
           <button
-            type="button"
+            type="submit"
             disabled={busy || !email.trim() || !password.trim()}
-            onClick={() => void submit()}
             style={{
               padding: "10px 12px",
               borderRadius: 12,
@@ -132,7 +133,7 @@ export default function LoginClient() {
           </Link>
           <span style={{ color: "rgba(226,232,240,0.55)" }}>Access is provisioned internally</span>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
