@@ -29,6 +29,8 @@ export default function LoginClient() {
         setError("Invalid email or password");
         return;
       }
+      // Allow browser to process Set-Cookie before navigation (avoids redirect-before-cookie-stored)
+      await new Promise((r) => setTimeout(r, 100));
       window.location.href = next;
     } catch {
       setError("Login failed");
