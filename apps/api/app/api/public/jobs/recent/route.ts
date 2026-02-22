@@ -4,9 +4,9 @@ import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { badRequest, ok } from "../../../../../src/lib/api/respond";
 import { countEligiblePublicJobs, listNewestJobs } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 import { db } from "@/server/db/drizzle";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 import { asc, inArray } from "drizzle-orm";
 import { jobPhotos } from "../../../../../db/schema/jobPhoto";
-import { getResolvedSchema } from "../../../../../src/server/db/schemaLock";
 
 const QuerySchema = z.object({
   limit: z
@@ -19,61 +19,53 @@ const QuerySchema = z.object({
     })
 });
 
-function diagHeaders(diag: {
-  resolvedSchema: string;
-  currentSchema: string;
-  jobExists: boolean;
-  jobsExists: boolean;
-}): Headers {
-  const h = new Headers();
-  h.set("x-8fold-resolved-schema", diag.resolvedSchema);
-  h.set("x-8fold-current-schema", diag.currentSchema);
-  h.set("x-8fold-job-exists", String(diag.jobExists));
-  h.set("x-8fold-jobs-exists", String(diag.jobsExists));
-  return h;
+type DiagHeaders = Record<string, string>;
+
+async function runDiagProbe(): Promise<DiagHeaders> {
+  const resolvedSchema = getResolvedSchema();
+  const headers: DiagHeaders = {
+    "x-8fold-resolved-schema": resolvedSchema,
+    "x-8fold-current-schema": "?",
+    "x-8fold-job-exists": "?",
+    "x-8fold-jobs-exists": "?",
+  };
+  try {
+    const schemaRes = await db.execute<{ current_schema: string }>(sql`SELECT current_schema() as current_schema`);
+    const currentSchema = (schemaRes as { rows?: { current_schema: string }[] })?.rows?.[0]?.current_schema ?? "?";
+    headers["x-8fold-current-schema"] = currentSchema;
+
+    const tablesRes = await db.execute<{ table_name: string }>(sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = ${resolvedSchema} AND table_name IN ('Job', 'jobs')
+    `);
+    const names = ((tablesRes as { rows?: { table_name: string }[] })?.rows ?? []).map((r) => r.table_name);
+    headers["x-8fold-job-exists"] = names.includes("Job") ? "1" : "0";
+    headers["x-8fold-jobs-exists"] = names.includes("jobs") ? "1" : "0";
+  } catch (e) {
+    headers["x-8fold-current-schema"] = "probe_err";
+    headers["x-8fold-job-exists"] = "probe_err";
+    headers["x-8fold-jobs-exists"] = "probe_err";
+  }
+  return headers;
 }
 
 export async function GET(req: Request) {
-  const resolvedSchema = getResolvedSchema();
-  const diag: {
-    resolvedSchema: string;
-    currentSchema: string;
-    jobExists: boolean;
-    jobsExists: boolean;
-  } = {
-    resolvedSchema,
-    currentSchema: "unknown",
-    jobExists: false,
-    jobsExists: false,
+  const diagHeaders = await runDiagProbe();
+  const diagPayload = {
+    resolvedSchema: diagHeaders["x-8fold-resolved-schema"],
+    currentSchema: diagHeaders["x-8fold-current-schema"],
+    jobExists: diagHeaders["x-8fold-job-exists"],
+    jobsExists: diagHeaders["x-8fold-jobs-exists"],
   };
-
-  try {
-    const schemaRes = await db.execute<{ current_schema: string }>(sql`SELECT current_schema() as current_schema`);
-    diag.currentSchema = (schemaRes as { rows?: { current_schema: string }[] })?.rows?.[0]?.current_schema ?? "unknown";
-    const jobRes = await db.execute<{ exists: boolean }>(
-      sql`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = ${resolvedSchema} AND table_name = 'Job') as exists`,
-    );
-    diag.jobExists = (jobRes as { rows?: { exists: boolean }[] })?.rows?.[0]?.exists ?? false;
-    const jobsRes = await db.execute<{ exists: boolean }>(
-      sql`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = ${resolvedSchema} AND table_name = 'jobs') as exists`,
-    );
-    diag.jobsExists = (jobsRes as { rows?: { exists: boolean }[] })?.rows?.[0]?.exists ?? false;
-  } catch (probeErr) {
-    diag.currentSchema = "probe_failed";
-    // eslint-disable-next-line no-console
-    console.error("PUBLIC_JOBS_RECENT_PROBE_ERROR::", probeErr);
-  }
-
   // eslint-disable-next-line no-console
-  console.log("PUBLIC_JOBS_RECENT_DIAG::", JSON.stringify(diag));
-  const headers = diagHeaders(diag);
+  console.info("PUBLIC_JOBS_RECENT_DIAG::", JSON.stringify(diagPayload));
 
   try {
     const url = new URL(req.url);
     const parsed = QuerySchema.safeParse({
       limit: url.searchParams.get("limit") ?? undefined
     });
-    if (!parsed.success) return badRequest("invalid_query", { headers });
+    if (!parsed.success) return badRequest("invalid_query", { headers: diagHeaders });
 
     const { limit } = parsed.data;
 
@@ -124,36 +116,25 @@ export async function GET(req: Request) {
       createdAt: j.createdAt.toISOString(),
     }));
 
-    return ok({ jobs: out }, { headers });
+    return ok({ jobs: out }, { headers: diagHeaders });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const code = (err as { code?: string })?.code;
-    const detail = (err as { detail?: string })?.detail;
-    const table = (err as { table?: string })?.table;
-    const column = (err as { column?: string })?.column;
-    const constraint = (err as { constraint?: string })?.constraint;
-    const stackTop = err instanceof Error && err.stack ? err.stack.split("\n").slice(0, 5).join(" | ") : undefined;
+    const pg = err as { code?: string; message?: string; detail?: string; schema?: string; table?: string; column?: string; constraint?: string };
+    const stackTop = err instanceof Error ? (err.stack ?? "").split("\n").slice(0, 3).join(" | ") : "";
     // eslint-disable-next-line no-console
-    console.error(
-      "PUBLIC_JOBS_RECENT_ERROR::",
-      JSON.stringify({
-        resolvedSchema: diag.resolvedSchema,
-        currentSchema: diag.currentSchema,
-        jobExists: diag.jobExists,
-        jobsExists: diag.jobsExists,
-        message: msg,
-        code,
-        detail,
-        table,
-        column,
-        constraint,
-        stackTop,
-      }),
-    );
-    const errResp = handleApiError(err, "GET /api/public/jobs/recent");
-    const h = new Headers(errResp.headers);
-    headers.forEach((v, k) => h.set(k, v));
-    return new Response(errResp.body, { status: errResp.status, headers: h });
+    console.error("PUBLIC_JOBS_RECENT_ERROR::", JSON.stringify({
+      code: pg.code ?? null,
+      message: pg.message ?? (err instanceof Error ? err.message : String(err)),
+      detail: pg.detail ?? null,
+      schema: pg.schema ?? null,
+      table: pg.table ?? null,
+      column: pg.column ?? null,
+      constraint: pg.constraint ?? null,
+      stackTop: stackTop || null,
+    }));
+    const resp = handleApiError(err, "GET /api/public/jobs/recent");
+    const h = new Headers(resp.headers);
+    Object.entries(diagHeaders).forEach(([k, v]) => h.set(k, v));
+    return new Response(resp.body, { status: resp.status, headers: h });
   }
 }
 
