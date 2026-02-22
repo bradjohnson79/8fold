@@ -3,56 +3,55 @@ import { getValidatedApiOrigin } from "@/server/env";
 
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
 
+/**
+ * Admin login — minimal straight-line auth.
+ * Accepts form POST, calls API for validation, sets cookie, returns 302 redirect.
+ * No fetch from client. No JSON + redirect mix. Pure HTTP.
+ */
 export async function POST(req: Request) {
-  console.log("[ADMIN_LOGIN_ROUTE_HIT]");
   const apiOrigin = getValidatedApiOrigin();
   const url = `${apiOrigin}/api/admin/login`;
 
-  const body = await req.text();
+  const formData = await req.formData().catch(() => null);
+  const email = String(formData?.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData?.get("password") ?? "");
+  const next = String(formData?.get("next") ?? "").trim() || "/";
+  const redirectPath = next.startsWith("/") ? next : "/";
+
+  if (!email || !password) {
+    const failUrl = new URL("/login", req.url);
+    failUrl.searchParams.set("error", "invalid");
+    if (redirectPath !== "/") failUrl.searchParams.set("next", redirectPath);
+    return NextResponse.redirect(failUrl);
+  }
+
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "content-type": req.headers.get("content-type") ?? "application/json",
-      "x-admin-proxy": "true",
-    },
-    body,
+    headers: { "content-type": "application/json", "x-admin-proxy": "true" },
+    body: JSON.stringify({ email, password }),
     cache: "no-store",
   });
 
-  const json = (await resp.json().catch(() => null)) as { ok?: boolean; data?: { admin?: unknown; sessionToken?: string; expiresAt?: string } } | null;
-  const hasToken = Boolean(json?.data?.sessionToken);
-  let emailLog = "(no body)";
-  try {
-    if (body) emailLog = (JSON.parse(body) as { email?: string })?.email ?? "(no email)";
-  } catch {
-    emailLog = "(parse failed)";
-  }
-  console.log("[ADMIN_LOGIN_PROXY]", { apiStatus: resp.status, hasToken, ok: json?.ok, email: emailLog });
-  if (resp.status !== 200 || !json) {
-    return NextResponse.json(json ?? { ok: false, error: "unauthorized" }, { status: resp.status });
+  const json = (await resp.json().catch(() => null)) as {
+    ok?: boolean;
+    data?: { sessionToken?: string; expiresAt?: string };
+  } | null;
+
+  if (resp.status !== 200 || !json?.ok || !json.data?.sessionToken || !json.data?.expiresAt) {
+    const failUrl = new URL("/login", req.url);
+    failUrl.searchParams.set("error", "invalid");
+    if (redirectPath !== "/") failUrl.searchParams.set("next", redirectPath);
+    return NextResponse.redirect(failUrl);
   }
 
-  const res = NextResponse.json(
-    { ok: json.ok, data: { admin: json.data?.admin } },
-    { status: 200 },
-  );
-  res.headers.set("content-type", "application/json");
-
-  const token = json.data?.sessionToken;
-  const expiresAt = json.data?.expiresAt;
-  if (token && expiresAt) {
-    const secure = process.env.NODE_ENV === "production";
-    const domain = process.env.NODE_ENV === "production" ? ".8fold.app" : undefined;
-    res.cookies.set(ADMIN_SESSION_COOKIE_NAME, token, {
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-      secure,
-      expires: new Date(expiresAt),
-      ...(domain && { domain }),
-    });
-    console.log("[ADMIN_LOGIN_PROXY]", { step: "cookie_set", domain, secure, path: "/" });
-  }
+  const res = NextResponse.redirect(new URL(redirectPath, req.url), 302);
+  res.cookies.set(ADMIN_SESSION_COOKIE_NAME, json.data.sessionToken, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    expires: new Date(json.data.expiresAt),
+    ...(process.env.NODE_ENV === "production" && { domain: ".8fold.app" }),
+  });
   return res;
 }
-

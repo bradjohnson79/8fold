@@ -15,12 +15,7 @@ export default function middleware(req: any) {
   if (isPublicPath(pathname)) return;
 
   const token = String(req?.cookies?.get("admin_session")?.value ?? "").trim();
-  const hasSession = Boolean(token);
-  // Temporary: log for session bounce diagnosis (never log token value).
-  // eslint-disable-next-line no-console
-  console.log("[ADMIN MIDDLEWARE]", { path: pathname, hasSession });
-
-  if (!hasSession) {
+  if (!token) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
