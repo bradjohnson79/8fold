@@ -1,0 +1,220 @@
+-- 8Fold Production Freeze Schema Snapshot
+-- Generated: 2026-02-23T02:17:39.219Z
+-- Source: public schema. Run with production DATABASE_URL for prod snapshot.
+
+-- Enum: AddressVerificationStatus = PENDING, VERIFIED, ADDRESS_MISMATCH
+-- Enum: AgentIntent = JOB_POSTER, JOB_POSTER, JOB_POSTER, CONTRACTOR, CONTRACTOR, CONTRACTOR
+-- Enum: AgentPlatform = CRAIGSLIST, CRAIGSLIST, CRAIGSLIST, KIJIJI, KIJIJI, KIJIJI, NEXTDOOR, NEXTDOOR, NEXTDOOR
+-- Enum: AgentScheduleGeneratedBy = GPT_5_1_MINI, GPT_5_1_MINI, GPT_5_1_MINI, ADMIN, ADMIN, ADMIN
+-- Enum: AgentSchedulePlanStatus = DRAFT, DRAFT, DRAFT, APPROVED, APPROVED, APPROVED, ACTIVE, ACTIVE, ACTIVE, ARCHIVED, ARCHIVED, ARCHIVED
+-- Enum: AgentScheduledRunStatus = SCHEDULED, SCHEDULED, SCHEDULED, RUNNING, RUNNING, RUNNING, COMPLETE, COMPLETE, COMPLETE, SKIPPED, SKIPPED, SKIPPED, WAITING_FOR_ADMIN, WAITING_FOR_ADMIN, WAITING_FOR_ADMIN
+-- Enum: AiAppraisalStatus = PENDING, PENDING, COMPLETED, COMPLETED, FAILED, FAILED, APPLIED, APPLIED, SUPERSEDED, SUPERSEDED
+-- Enum: BulkAiJobStatus = PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+-- Enum: CampaignPhase = PHASE_1_JOB_POSTER, PHASE_1_JOB_POSTER, PHASE_1_JOB_POSTER
+-- Enum: CampaignWeek = WEEK_1, WEEK_1, WEEK_1, WEEK_2, WEEK_2, WEEK_2
+-- Enum: ContactStatus = NEW, NEW, NEW, DRAFTED, DRAFTED, DRAFTED, APPROVED, APPROVED, APPROVED, SENT, SENT, SENT, SKIPPED, SKIPPED, SKIPPED
+-- Enum: ContractorLedgerBucket = PENDING, PENDING, PENDING, PAID, PAID, PAID
+-- Enum: ContractorLedgerEntryType = CONTRACTOR_EARNING, CONTRACTOR_EARNING, CONTRACTOR_EARNING, CONTRACTOR_PAYOUT, CONTRACTOR_PAYOUT, CONTRACTOR_PAYOUT
+-- Enum: ContractorOnboardingStatus = INCOMPLETE, ON_HOLD, ACTIVE
+-- Enum: ContractorPayoutStatus = PENDING, PENDING, PENDING, PAID, PAID, PAID, FAILED, FAILED, FAILED
+-- Enum: ContractorStatus = PENDING, PENDING, PENDING, APPROVED, APPROVED, APPROVED, REJECTED, REJECTED, REJECTED
+-- Enum: ContractorTrade = JUNK_REMOVAL, JUNK_REMOVAL, JUNK_REMOVAL, YARDWORK_GROUNDSKEEPING, YARDWORK_GROUNDSKEEPING, YARDWORK_GROUNDSKEEPING, CARPENTRY, CARPENTRY, CARPENTRY, DRYWALL, DRYWALL, DRYWALL, ROOFING, ROOFING, ROOFING, PLUMBING, PLUMBING, PLUMBING, ELECTRICAL, ELECTRICAL, ELECTRICAL, WELDING, WELDING, WELDING
+-- Enum: ContractorWizardStep = WAIVER, PROFILE, ADDRESS_VERIFICATION, TRADE_EXPERIENCE, PAYOUT_SETUP, STATUS_RESOLUTION
+-- Enum: CountryCode = CA, CA, CA, US, US, US
+-- Enum: CurrencyCode = CAD, CAD, CAD, USD, USD, USD
+-- Enum: CustomerRejectReason = QUALITY_ISSUE, QUALITY_ISSUE, QUALITY_ISSUE, INCOMPLETE_WORK, INCOMPLETE_WORK, INCOMPLETE_WORK, DAMAGE, DAMAGE, DAMAGE, NO_SHOW, NO_SHOW, NO_SHOW, OTHER, OTHER, OTHER
+-- Enum: DisputeAgainstRole = JOB_POSTER, JOB_POSTER, CONTRACTOR, CONTRACTOR
+-- Enum: DisputeAlertType = DEADLINE_BREACHED, DEADLINE_BREACHED
+-- Enum: DisputeDecision = FAVOR_POSTER, REFUND_CUSTOMER, PAY_CONTRACTOR, FAVOR_CONTRACTOR, PARTIAL, PARTIAL_REFUND, DENY_CLAIM, NO_ACTION, FAVOR_JOB_POSTER, FAVOR_POSTER, FAVOR_CONTRACTOR, PARTIAL, NO_ACTION, FAVOR_JOB_POSTER
+-- Enum: DisputeEnforcementActionStatus = PENDING, PENDING, EXECUTED, EXECUTED, FAILED, FAILED, CANCELLED, CANCELLED
+-- Enum: DisputeEnforcementActionType = RELEASE_ESCROW_FULL, RELEASE_ESCROW_FULL, WITHHOLD_FUNDS, WITHHOLD_FUNDS, RELEASE_ESCROW_PARTIAL, RELEASE_ESCROW_PARTIAL, FLAG_ACCOUNT_INTERNAL, FLAG_ACCOUNT_INTERNAL
+-- Enum: DisputeReason = PRICING, PRICING, WORK_QUALITY, SCOPE_MISMATCH, NO_SHOW, NO_SHOW, PAYMENT, UNPROFESSIONAL_CONDUCT, OTHER, SAFETY_INCIDENT, PROPERTY_DAMAGE, INCOMPLETE_WORK, OTHER, WORK_QUALITY, PAYMENT
+-- Enum: DisputeStatus = SUBMITTED, SUBMITTED, UNDER_REVIEW, UNDER_REVIEW, NEEDS_INFO, NEEDS_INFO, DECIDED, DECIDED, CLOSED, CLOSED
+-- Enum: EcdUpdateReason = AWAITING_PARTS_MATERIALS, AWAITING_PARTS_MATERIALS, AWAITING_PARTS_MATERIALS, SCOPE_EXPANDED, SCOPE_EXPANDED, SCOPE_EXPANDED, SCHEDULING_DELAY, SCHEDULING_DELAY, SCHEDULING_DELAY, OTHER, OTHER, OTHER
+-- Enum: EmailIdentityKey = HELLO, HELLO, HELLO, OUTREACH, OUTREACH, OUTREACH, LOCAL, LOCAL, LOCAL, CONNECT, CONNECT, CONNECT, SUPPORT, SUPPORT, SUPPORT, PARTNERSHIPS, PARTNERSHIPS, PARTNERSHIPS
+-- Enum: EmailLabel = JOB_POSTER_OUTREACH, JOB_POSTER_OUTREACH, JOB_POSTER_OUTREACH, CONTRACTOR_OUTREACH, CONTRACTOR_OUTREACH, CONTRACTOR_OUTREACH, ROUTER_OUTREACH, ROUTER_OUTREACH, ROUTER_OUTREACH
+-- Enum: EscrowKind = JOB_ESCROW, PARTS_MATERIALS
+-- Enum: EscrowStatus = PENDING, FUNDED, RELEASED, REFUNDED, FAILED
+-- Enum: InternalAccountFlagType = DISPUTE_RISK, FRAUD_REVIEW, MANUAL_REVIEW
+-- Enum: JobAssignmentStatus = ASSIGNED, ASSIGNED, ASSIGNED, COMPLETED, COMPLETED, COMPLETED, CANCELLED, CANCELLED, CANCELLED
+-- Enum: JobDispatchStatus = PENDING, PENDING, PENDING, ACCEPTED, ACCEPTED, ACCEPTED, DECLINED, DECLINED, DECLINED, EXPIRED, EXPIRED, EXPIRED
+-- Enum: JobDraftStatus = DRAFT, DRAFT, DRAFT, IN_REVIEW, IN_REVIEW, IN_REVIEW, NEEDS_CLARIFICATION, NEEDS_CLARIFICATION, NEEDS_CLARIFICATION, REJECTED, REJECTED, REJECTED, APPROVED, APPROVED, APPROVED, APPRAISING, APPRAISING, APPRAISING, PRICED, PRICED, PRICED, PAYMENT_PENDING, PAYMENT_PENDING, PAYMENT_PENDING, PAYMENT_FAILED, PAYMENT_FAILED, PAYMENT_FAILED, CANCELLED, CANCELLED, CANCELLED, ACTIVE, ARCHIVED
+-- Enum: JobDraftStep = DETAILS, PRICING, AVAILABILITY, PAYMENT, CONFIRMED
+-- Enum: JobDraftV2FieldStateStatus = idle, idle, saving, saving, saved, saved, error, error
+-- Enum: JobDraftV2Step = PROFILE, PROFILE, DETAILS, DETAILS, PRICING, PRICING, PAYMENT, PAYMENT, CONFIRMED, CONFIRMED
+-- Enum: JobHoldReason = DISPUTE, DISPUTE, DISPUTE, QUALITY_ISSUE, QUALITY_ISSUE, QUALITY_ISSUE, FRAUD_REVIEW, FRAUD_REVIEW, FRAUD_REVIEW, MANUAL_REVIEW, MANUAL_REVIEW, MANUAL_REVIEW
+-- Enum: JobHoldStatus = ACTIVE, ACTIVE, ACTIVE, RELEASED, RELEASED, RELEASED
+-- Enum: JobPayoutStatus = NOT_READY, NOT_READY, READY, READY, RELEASED, RELEASED, FAILED, FAILED
+-- Enum: JobPhotoActor = CUSTOMER, CUSTOMER, CUSTOMER, CONTRACTOR, CONTRACTOR, CONTRACTOR
+-- Enum: JobPhotoKind = CUSTOMER_SCOPE, CUSTOMER_SCOPE, CUSTOMER_SCOPE, CONTRACTOR_COMPLETION, CONTRACTOR_COMPLETION, CONTRACTOR_COMPLETION
+-- Enum: JobSource = MOCK, MOCK, REAL, REAL, AI_REGENERATED, AI_REGENERATED
+-- Enum: JobStatus = DRAFT, DRAFT, DRAFT, PUBLISHED, PUBLISHED, PUBLISHED, ASSIGNED, ASSIGNED, ASSIGNED, IN_PROGRESS, IN_PROGRESS, IN_PROGRESS, CONTRACTOR_COMPLETED, CONTRACTOR_COMPLETED, CONTRACTOR_COMPLETED, CUSTOMER_APPROVED, CUSTOMER_APPROVED, CUSTOMER_APPROVED, CUSTOMER_REJECTED, CUSTOMER_REJECTED, CUSTOMER_REJECTED, COMPLETION_FLAGGED, COMPLETION_FLAGGED, COMPLETION_FLAGGED, COMPLETED_APPROVED, COMPLETED_APPROVED, COMPLETED_APPROVED, OPEN_FOR_ROUTING, OPEN_FOR_ROUTING, OPEN_FOR_ROUTING, COMPLETED, COMPLETED, DISPUTED, DISPUTED
+-- Enum: JobType = urban, urban, urban, regional, regional, regional
+-- Enum: LedgerBucket = PENDING, PENDING, PENDING, AVAILABLE, AVAILABLE, AVAILABLE, PAID, PAID, PAID, HELD, HELD, HELD
+-- Enum: LedgerDirection = CREDIT, CREDIT, CREDIT, DEBIT, DEBIT, DEBIT
+-- Enum: LedgerEntryType = ROUTER_EARNING, ROUTER_EARNING, ROUTER_EARNING, BROKER_FEE, BROKER_FEE, BROKER_FEE, PAYOUT, PAYOUT, PAYOUT, ADJUSTMENT, ADJUSTMENT, ADJUSTMENT, ESCROW_FUND, ESCROW_FUND, PNM_FUND, PNM_FUND, ESCROW_RELEASE, ESCROW_RELEASE, ESCROW_REFUND, ESCROW_REFUND, PLATFORM_FEE, PLATFORM_FEE, ROUTER_EARN, ROUTER_EARN, CONTRACTOR_EARN, CONTRACTOR_EARN, PM_ESCROW_FUNDED, PM_RELEASE, PM_REFUND, PM_CREDIT
+-- Enum: MaterialsEscrowLedgerEntryType = DEPOSIT, DEPOSIT, DEPOSIT, RELEASE, RELEASE, RELEASE, POSTER_CREDIT, POSTER_CREDIT, POSTER_REFUND, POSTER_REFUND
+-- Enum: MaterialsEscrowStatus = HELD, HELD, HELD, RELEASED, RELEASED, RELEASED
+-- Enum: MaterialsPaymentStatus = PENDING, CAPTURED, FAILED, REFUNDED
+-- Enum: MaterialsReceiptStatus = DRAFT, SUBMITTED
+-- Enum: MaterialsRequestStatus = SUBMITTED, SUBMITTED, SUBMITTED, APPROVED, APPROVED, APPROVED, DECLINED, DECLINED, DECLINED, ESCROWED, ESCROWED, RECEIPTS_SUBMITTED, RECEIPTS_SUBMITTED, REIMBURSED, REIMBURSED
+-- Enum: MonitoringActorRole = ADMIN, ROUTER, CONTRACTOR, JOB_POSTER
+-- Enum: MonitoringEventType = JOB_APPROACHING_24H, JOB_OVERDUE_UNROUTED, JOB_ROUTED, JOB_COMPLETED
+-- Enum: OnboardingRole = JOB_POSTER, ROUTER, CONTRACTOR
+-- Enum: PMRequestStatus = DRAFT, SUBMITTED, AMENDMENT_REQUESTED, APPROVED, PAYMENT_PENDING, FUNDED, RECEIPTS_SUBMITTED, VERIFIED, RELEASED, CLOSED, REJECTED
+-- Enum: PartsMaterialReleaseStatus = NOT_READY, READY, RELEASED, FAILED
+-- Enum: PartsMaterialStatus = REQUESTED, APPROVED, PAID, REJECTED, CANCELLED
+-- Enum: PaymentStatus = UNPAID, UNPAID, REQUIRES_ACTION, REQUIRES_ACTION, FUNDED, FUNDED, FAILED, FAILED, REFUNDED, REFUNDED, AUTHORIZED, FUNDS_SECURED, EXPIRED_UNFUNDED
+-- Enum: PayoutProvider = STRIPE, STRIPE, STRIPE, PAYPAL, PAYPAL, PAYPAL, WISE, WISE, WISE
+-- Enum: PayoutRequestStatus = REQUESTED, REQUESTED, REQUESTED, REJECTED, REJECTED, REJECTED, PAID, PAID, PAID, CANCELLED, CANCELLED, CANCELLED
+-- Enum: PayoutStatus = PENDING, PENDING, PENDING, PAID, PAID, PAID, FAILED, FAILED, FAILED
+-- Enum: PublicJobStatus = OPEN, OPEN, IN_PROGRESS, IN_PROGRESS
+-- Enum: RepeatContractorRequestStatus = REQUESTED, ACCEPTED, DECLINED, CANCELLED, EXPIRED
+-- Enum: RolePayoutMethod = STRIPE, STRIPE, PAYPAL, PAYPAL
+-- Enum: RolePayoutStatus = UNSET, UNSET, PENDING, PENDING, ACTIVE, ACTIVE
+-- Enum: RoleProjectionStatus = ADMIN_PROJECTED
+-- Enum: RouterOnboardingStatus = INCOMPLETE, INCOMPLETE, INCOMPLETE, SUBMITTED, SUBMITTED, SUBMITTED, AI_APPROVED, AI_APPROVED, AI_APPROVED, ACTIVE, ACTIVE, ACTIVE
+-- Enum: RouterStatus = ACTIVE, ACTIVE, SUSPENDED, SUSPENDED
+-- Enum: RoutingStatus = UNROUTED, UNROUTED, ROUTED_BY_ROUTER, ROUTED_BY_ROUTER, ROUTED_BY_ADMIN, ROUTED_BY_ADMIN
+-- Enum: SendBlockedReason = REGION_PAUSED, REGION_PAUSED, REGION_PAUSED, IDENTITY_PAUSED, IDENTITY_PAUSED, IDENTITY_PAUSED, DAILY_LIMIT_EXCEEDED, DAILY_LIMIT_EXCEEDED, DAILY_LIMIT_EXCEEDED, INTERVAL_LIMIT_EXCEEDED, INTERVAL_LIMIT_EXCEEDED, INTERVAL_LIMIT_EXCEEDED
+-- Enum: SendQueueStatus = QUEUED, QUEUED, QUEUED, SENT, SENT, SENT, FAILED, FAILED, FAILED, BLOCKED, BLOCKED, BLOCKED
+-- Enum: SupportRoleContext = JOB_POSTER, JOB_POSTER, ROUTER, ROUTER, CONTRACTOR, CONTRACTOR, ADMIN
+-- Enum: SupportTicketCategory = PRICING, GENERAL, TECHNICAL, JOB_POSTING, BILLING, ROUTING, CONTRACTOR, PAYMENT, PAYOUTS, DISPUTE, OTHER, ACCOUNT, BOOKING, INCIDENT, OTHER, PRICING, JOB_POSTING, ROUTING, CONTRACTOR, PAYOUTS, AI_APPRAISAL_FAILURE
+-- Enum: SupportTicketPriority = LOW, LOW, NORMAL, NORMAL, HIGH, HIGH
+-- Enum: SupportTicketStatus = OPEN, OPEN, IN_PROGRESS, IN_PROGRESS, RESOLVED, RESOLVED, CLOSED, CLOSED
+-- Enum: SupportTicketType = HELP, HELP, DISPUTE, DISPUTE
+-- Enum: TradeCategory = PLUMBING, PLUMBING, PLUMBING, ELECTRICAL, ELECTRICAL, ELECTRICAL, HVAC, HVAC, HVAC, APPLIANCE, APPLIANCE, APPLIANCE, HANDYMAN, HANDYMAN, HANDYMAN, PAINTING, PAINTING, PAINTING, CARPENTRY, CARPENTRY, CARPENTRY, DRYWALL, DRYWALL, DRYWALL, ROOFING, ROOFING, ROOFING, JANITORIAL_CLEANING, JANITORIAL_CLEANING, JANITORIAL_CLEANING, LANDSCAPING, LANDSCAPING, LANDSCAPING, FENCING, FENCING, FENCING, SNOW_REMOVAL, SNOW_REMOVAL, SNOW_REMOVAL, JUNK_REMOVAL, JUNK_REMOVAL, JUNK_REMOVAL, MOVING, MOVING, MOVING, AUTOMOTIVE, AUTOMOTIVE, AUTOMOTIVE, FURNITURE_ASSEMBLY, FURNITURE_ASSEMBLY
+-- Enum: UserRole = USER, USER, USER, ADMIN, ADMIN, ADMIN, CUSTOMER, CUSTOMER, CUSTOMER, CONTRACTOR, CONTRACTOR, CONTRACTOR, ROUTER, ROUTER, ROUTER, JOB_POSTER, JOB_POSTER
+-- Enum: UserStatus = ACTIVE, SUSPENDED, PENDING, ARCHIVED
+
+-- Migrations applied: 68
+--   0000_messaging_notifications.sql
+--   0001_job_posting_draft_defaults.sql
+--   0002_contractor_accounts_wizard_columns.sql
+--   0003_jobposterprofile_unique_userid.sql
+--   0004_user_account_status_fields.sql
+--   0005_jobposterprofile_updatedat_default.sql
+--   0006_user_role_no_admin.sql
+--   0007_admin_user_profile.sql
+--   0008_financial_ledger_hardening.sql
+--   0009_financial_idempotency_indexes.sql
+--   0010_job_parts_payment_state.sql
+--   0011_stripe_connect_fields.sql
+--   0012_job_refunded_at.sql
+--   0013_user_lifecycle_fields.sql
+--   0014_job_completion_customer_summary.sql
+--   0015_job_status_disputed.sql
+--   0016_dispute_evidence_votes.sql
+--   0017_dispute_votes_status.sql
+--   0018_dispute_votes_status_check.sql
+--   0019_job_customer_completion_summary.sql
+--   0020_sessions_table.sql
+--   0021_contractor_accounts_nullable_wizard_fields.sql
+--   0022_job_poster_accounts.sql
+--   0024_job_updated_at.sql
+--   0025_admin_sessions.sql
+--   0026_directory_engine.sql
+--   0027_directory_engine_scope.sql
+--   0028_directory_engine_directories_updated_at.sql
+--   0029_user_clerk_user_id.sql
+--   0030_clerk_webhook_events.sql
+--   0031_user_role_immutable.sql
+--   0032_user_referred_by_router_id.sql
+--   0033_user_location_coords.sql
+--   0034_job_updated_at.sql
+--   0035_structured_geocode_profile_fields.sql
+--   0036_user_legal_address.sql
+--   0037_mock_jobs_north_america_v1.sql
+--   0038_job_status_archived_idx.sql
+--   0039_job_selector_filter_idx.sql
+--   0040_admin_overview_idx.sql
+--   0041_job_flags.sql
+--   0042_transfer_records.sql
+--   0043_escrow_released_at.sql
+--   0044_stripe_only_payouts.sql
+--   0045_support_ticket_category_ai_appraisal_failure.sql
+--   0046_user_geo_nullable_no_default.sql
+--   0047_jurisdiction_country_state_codes.sql
+--   0048_job_draft_v2.sql
+--   0049_parts_materials.sql
+--   0050_job_draft_v2_production_parity.sql
+--   0050_pm_hardening.sql
+--   0051_job_draft_v2_schema_alignment.sql
+--   0052_job_draft_v3.sql
+--   0053_v3_financial_policy_refinement.sql
+--   0054_jobs_schema_normalization.sql
+--   0055_add_phoneNumber_to_user.sql
+--   0056_public_user_canonical_shape.sql
+--   0057_canonicalize_public_job.sql
+--   0058_public_admin_domain_missing_tables.sql
+--   0059_job_draft_v3_alter_legacy.sql
+--   0060_jobs_reconciliation.sql
+--   0061_canonicalize_jobs_table.sql
+--   0063_jobs_legacy_cleanup.sql
+--   0064_stripe_webhook_event.sql
+--   1000_dev_baseline.sql
+--   1001_job_poster_profile_fields.sql
+--   1002_contractor_waiver_fields.sql
+--   1003_contractor_accounts_waiverAccepted.sql
+
+-- Table: AdminInvite (6 columns)
+-- Table: AdminUser (5 columns)
+-- Table: AuditLog (8 columns)
+-- Table: AuthToken (6 columns)
+-- Table: Contractor (18 columns)
+-- Table: ContractorLedgerEntry (8 columns)
+-- Table: ContractorPayout (11 columns)
+-- Table: JobAssignment (7 columns)
+-- Table: JobDispatch (10 columns)
+-- Table: JobDraft (24 columns)
+-- Table: JobDraftV2 (15 columns)
+-- Table: JobDraftV2FieldState (7 columns)
+-- Table: JobHold (14 columns)
+-- Table: JobPayment (15 columns)
+-- Table: JobPosterProfile (18 columns)
+-- Table: LedgerEntry (9 columns)
+-- Table: MaterialsEscrow (8 columns)
+-- Table: MaterialsEscrowLedgerEntry (8 columns)
+-- Table: MaterialsItem (8 columns)
+-- Table: MaterialsRequest (15 columns)
+-- Table: Payout (12 columns)
+-- Table: PayoutMethod (8 columns)
+-- Table: PayoutRequest (6 columns)
+-- Table: PmLineItem (7 columns)
+-- Table: PmReceipt (6 columns)
+-- Table: PmRequest (17 columns)
+-- Table: RouterProfile (12 columns)
+-- Table: Session (6 columns)
+-- Table: StripeWebhookEvent (5 columns)
+-- Table: User (29 columns)
+-- Table: _prisma_migrations (8 columns)
+-- Table: admin_sessions (5 columns)
+-- Table: agent_mission_templates (14 columns)
+-- Table: agent_schedule_plans (7 columns)
+-- Table: agent_scheduled_runs (9 columns)
+-- Table: campaign_regions (10 columns)
+-- Table: contacts (11 columns)
+-- Table: contractor_accounts (33 columns)
+-- Table: conversations (6 columns)
+-- Table: discovery_batches (5 columns)
+-- Table: discovery_items (10 columns)
+-- Table: dispute_alerts (5 columns)
+-- Table: dispute_cases (15 columns)
+-- Table: dispute_enforcement_actions (11 columns)
+-- Table: dispute_evidence (8 columns)
+-- Table: dispute_votes (11 columns)
+-- Table: drizzle_sql_migrations (2 columns)
+-- Table: email_drafts (13 columns)
+-- Table: email_identities (11 columns)
+-- Table: job_photos (8 columns)
+-- Table: job_poster_accounts (6 columns)
+-- Table: jobs (103 columns)
+-- Table: messages (6 columns)
+-- Table: region_email_logs (10 columns)
+-- Table: routers (17 columns)
+-- Table: send_counters (7 columns)
+-- Table: send_queue (9 columns)
+-- Table: sessions (4 columns)
+-- Table: support_attachments (9 columns)
+-- Table: support_messages (5 columns)
+-- Table: support_tickets (11 columns)
