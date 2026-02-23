@@ -39,23 +39,23 @@ export async function GET(req: Request) {
 
     let cursorDueAt: Date | null = null;
     if (cursor) {
-      const cur = await db.select({ due: jobs.routingDueAt }).from(jobs).where(eq(jobs.id, cursor)).limit(1);
+      const cur = await db.select({ due: jobs.routing_due_at }).from(jobs).where(eq(jobs.id, cursor)).limit(1);
       cursorDueAt = cur[0]?.due ?? null;
     }
 
     const where = and(
       eq(jobs.country, ctx.country as any),
-      eq(jobs.regionCode, ctx.regionCode),
-      eq(jobs.routingStatus, "UNROUTED"),
-      isNull(jobs.claimedByUserId),
-      jobOverdueWhere({ routingDueAt: jobs.routingDueAt, postedAt: jobs.postedAt }, now),
+      eq(jobs.region_code, ctx.regionCode),
+      eq(jobs.routing_status, "UNROUTED"),
+      isNull(jobs.claimed_by_user_id),
+      jobOverdueWhere({ routingDueAt: jobs.routing_due_at, postedAt: jobs.posted_at }, now),
       inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
-      eq(jobs.isMock, false),
+      eq(jobs.is_mock, false),
       ...(cursor && cursorDueAt
         ? ([
             or(
-              sql`${jobs.routingDueAt} > ${cursorDueAt}`,
-              and(sql`${jobs.routingDueAt} = ${cursorDueAt}`, sql`${jobs.id} > ${cursor}`),
+              sql`${jobs.routing_due_at} > ${cursorDueAt}`,
+              and(sql`${jobs.routing_due_at} = ${cursorDueAt}`, sql`${jobs.id} > ${cursor}`),
             ),
           ] as any[])
         : ([] as any[])),
@@ -68,24 +68,24 @@ export async function GET(req: Request) {
         scope: jobs.scope,
         status: jobs.status,
         country: jobs.country,
-        regionCode: jobs.regionCode,
+        regionCode: jobs.region_code,
         region: jobs.region,
-        serviceType: jobs.serviceType,
-        tradeCategory: jobs.tradeCategory,
-        postedAt: jobs.postedAt,
-        routingDueAt: jobs.routingDueAt,
-        routingStatus: jobs.routingStatus,
-        failsafeRouting: jobs.failsafeRouting,
-        laborTotalCents: jobs.laborTotalCents,
-        materialsTotalCents: jobs.materialsTotalCents,
-        transactionFeeCents: jobs.transactionFeeCents,
-        routerEarningsCents: jobs.routerEarningsCents,
-        brokerFeeCents: jobs.brokerFeeCents,
-        contractorPayoutCents: jobs.contractorPayoutCents,
+        serviceType: jobs.service_type,
+        tradeCategory: jobs.trade_category,
+        postedAt: jobs.posted_at,
+        routingDueAt: jobs.routing_due_at,
+        routingStatus: jobs.routing_status,
+        failsafeRouting: jobs.failsafe_routing,
+        laborTotalCents: jobs.labor_total_cents,
+        materialsTotalCents: jobs.materials_total_cents,
+        transactionFeeCents: jobs.transaction_fee_cents,
+        routerEarningsCents: jobs.router_earnings_cents,
+        brokerFeeCents: jobs.broker_fee_cents,
+        contractorPayoutCents: jobs.contractor_payout_cents,
       })
       .from(jobs)
       .where(where)
-      .orderBy(asc(jobs.routingDueAt), asc(jobs.id))
+      .orderBy(asc(jobs.routing_due_at), asc(jobs.id))
       .limit(take);
 
     // Audit: query + per-job view (<=50)

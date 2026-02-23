@@ -40,8 +40,8 @@ export async function POST(req: Request) {
         id: jobs.id,
         title: jobs.title,
         scope: jobs.scope,
-        tradeCategory: jobs.tradeCategory,
-        junkHaulingItems: jobs.junkHaulingItems,
+        tradeCategory: jobs.trade_category,
+        junkHaulingItems: jobs.junk_hauling_items,
         archived: jobs.archived,
       })
       .from(jobs)
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       const now = new Date();
 
       for (const p of plan) {
-        await tx.update(jobs).set({ title: p.to, updatedAt: now } as any).where(eq(jobs.id, p.id));
+        await tx.update(jobs).set({ title: p.to, updated_at: now }).where(eq(jobs.id, p.id));
         updated++;
         updatedIds.push(p.id);
 

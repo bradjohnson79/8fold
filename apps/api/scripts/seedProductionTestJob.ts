@@ -26,7 +26,7 @@ function publicEligibility() {
     eq(jobs.archived, false),
     or(
       eq(jobs.status, "ASSIGNED"),
-      and(eq(jobs.status, "CUSTOMER_APPROVED"), isNull(jobs.routerApprovedAt)),
+      and(eq(jobs.status, "CUSTOMER_APPROVED"), isNull(jobs.router_approved_at)),
     ),
   );
 }
@@ -57,21 +57,21 @@ async function main() {
     region: "vancouver-bc",
     status: "ASSIGNED",
     archived: false,
-    jobType: "urban",
-    serviceType: "handyman",
+    job_type: "urban",
+    service_type: "handyman",
     country: "CA",
-    countryCode: "CA",
-    stateCode: "",
-    regionCode: "BC",
+    country_code: "CA",
+    state_code: "",
+    region_code: "BC",
     city: "Vancouver",
-    routerEarningsCents: 0,
-    brokerFeeCents: 0,
-    contractorPayoutCents: 0,
-    laborTotalCents: 0,
-    materialsTotalCents: 0,
-    transactionFeeCents: 0,
-    amountCents: 0,
-    routingStatus: "UNROUTED",
+    router_earnings_cents: 0,
+    broker_fee_cents: 0,
+    contractor_payout_cents: 0,
+    labor_total_cents: 0,
+    materials_total_cents: 0,
+    transaction_fee_cents: 0,
+    amount_cents: 0,
+    routing_status: "UNROUTED",
   });
 
   console.log(`[seedProductionTestJob] Inserted test job id=${id}`);

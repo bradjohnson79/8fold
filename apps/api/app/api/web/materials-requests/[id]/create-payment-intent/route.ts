@@ -28,7 +28,7 @@ export async function POST(req: Request) {
         jobId: materialsRequests.jobId,
         jobPosterUserId: materialsRequests.jobPosterUserId,
         jobStatus: jobs.status,
-        jobPaymentStatus: jobs.paymentStatus,
+        jobPaymentStatus: jobs.payment_status,
       })
       .from(materialsRequests)
       .innerJoin(jobs, eq(jobs.id, materialsRequests.jobId))

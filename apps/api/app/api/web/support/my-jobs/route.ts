@@ -25,10 +25,10 @@ export async function GET(req: Request) {
 
     const whereClause =
       role === "ROUTER"
-        ? eq(jobs.claimedByUserId, user.userId)
+        ? eq(jobs.claimed_by_user_id, user.userId)
         : role === "CONTRACTOR"
-          ? eq(jobs.contractorUserId, user.userId)
-          : eq(jobs.jobPosterUserId, user.userId);
+          ? eq(jobs.contractor_user_id, user.userId)
+          : eq(jobs.job_poster_user_id, user.userId);
 
     const rows = await db
       .select({
@@ -36,11 +36,11 @@ export async function GET(req: Request) {
         title: jobs.title,
         status: jobs.status,
         region: jobs.region,
-        publishedAt: jobs.publishedAt,
+        publishedAt: jobs.published_at,
       })
       .from(jobs)
-      .where(and(eq(jobs.isMock, false), whereClause))
-      .orderBy(desc(jobs.publishedAt), desc(jobs.id))
+      .where(and(eq(jobs.is_mock, false), whereClause))
+      .orderBy(desc(jobs.published_at), desc(jobs.id))
       .limit(200);
 
     return ok({

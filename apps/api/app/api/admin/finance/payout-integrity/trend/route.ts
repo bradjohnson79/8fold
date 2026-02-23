@@ -38,26 +38,26 @@ export async function GET(req: Request) {
     // 1) Released jobs per day (SQL).
     const releasedByDay = await db
       .select({
-        day: sql<string>`to_char(date_trunc('day', ${jobs.releasedAt}), 'YYYY-MM-DD')`,
+        day: sql<string>`to_char(date_trunc('day', ${jobs.released_at}), 'YYYY-MM-DD')`,
         releasedJobs: sql<number>`count(*)::int`,
       })
       .from(jobs)
-      .where(and(eq(jobs.payoutStatus, "RELEASED" as any), gte(jobs.releasedAt, since as any)))
-      .groupBy(sql`date_trunc('day', ${jobs.releasedAt})`)
-      .orderBy(sql`date_trunc('day', ${jobs.releasedAt})`);
+      .where(and(eq(jobs.payout_status, "RELEASED" as any), gte(jobs.released_at, since as any)))
+      .groupBy(sql`date_trunc('day', ${jobs.released_at})`)
+      .orderBy(sql`date_trunc('day', ${jobs.released_at})`);
 
     // 2) For violation counts, pull the released jobs in window (bounded).
     const releasedJobs = await db
       .select({
         id: jobs.id,
-        payoutStatus: jobs.payoutStatus,
-        amountCents: jobs.amountCents,
+        payoutStatus: jobs.payout_status,
+        amountCents: jobs.amount_cents,
         currency: jobs.currency,
-        releasedAt: jobs.releasedAt,
+        releasedAt: jobs.released_at,
       })
       .from(jobs)
-      .where(and(eq(jobs.payoutStatus, "RELEASED" as any), gte(jobs.releasedAt, since as any)))
-      .orderBy(sql`${jobs.releasedAt} desc`)
+      .where(and(eq(jobs.payout_status, "RELEASED" as any), gte(jobs.released_at, since as any)))
+      .orderBy(sql`${jobs.released_at} desc`)
       .limit(maxJobs);
 
     const jobIds = releasedJobs.map((j) => String(j.id)).filter(Boolean);

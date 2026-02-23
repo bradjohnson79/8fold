@@ -34,10 +34,10 @@ export async function GET(req: Request) {
     const jobRows = await db
       .select({
         id: jobs.id,
-        isMock: jobs.isMock,
-        jobPosterUserId: jobs.jobPosterUserId,
-        routerId: jobs.claimedByUserId,
-        contractorUserId: jobs.contractorUserId,
+        isMock: jobs.is_mock,
+        jobPosterUserId: jobs.job_poster_user_id,
+        routerId: jobs.claimed_by_user_id,
+        contractorUserId: jobs.contractor_user_id,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))

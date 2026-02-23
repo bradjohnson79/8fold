@@ -23,12 +23,12 @@ export async function GET(req: Request) {
       .select({
         id: jobs.id,
         archived: jobs.archived,
-        jobPosterUserId: jobs.jobPosterUserId,
+        jobPosterUserId: jobs.job_poster_user_id,
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
-        payoutStatus: jobs.payoutStatus,
-        fundedAt: jobs.fundedAt,
-        releasedAt: jobs.releasedAt,
+        paymentStatus: jobs.payment_status,
+        payoutStatus: jobs.payout_status,
+        fundedAt: jobs.funded_at,
+        releasedAt: jobs.released_at,
       })
       .from(jobs)
       .where(and(eq(jobs.id, jobId), eq(jobs.archived, false)))

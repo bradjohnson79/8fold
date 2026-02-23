@@ -33,7 +33,7 @@ export async function POST(req: Request) {
         .select({
           id: jobs.id,
           status: jobs.status,
-          contractorUserId: jobs.contractorUserId,
+          contractorUserId: jobs.contractor_user_id,
           archived: jobs.archived,
         })
         .from(jobs)
@@ -65,9 +65,9 @@ export async function POST(req: Request) {
       await tx
         .update(jobs)
         .set({
-          contractorUserId: null,
+          contractor_user_id: null,
           status: "PUBLISHED",
-        } as any)
+        })
         .where(eq(jobs.id, jobId));
 
       await tx.insert(auditLogs).values({

@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     const jobRows = await db
       .select({
         id: jobs.id,
-        jobPosterUserId: jobs.jobPosterUserId,
-        routerId: jobs.claimedByUserId, // Prisma `routerId` is mapped to DB column `claimedByUserId`
+        jobPosterUserId: jobs.job_poster_user_id,
+        routerId: jobs.claimed_by_user_id, // Prisma `routerId` is mapped to DB column `claimedByUserId`
       })
       .from(jobs)
       .where(eq(jobs.id, body.data.jobId))

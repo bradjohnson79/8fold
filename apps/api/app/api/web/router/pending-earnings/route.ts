@@ -22,12 +22,12 @@ export async function GET(req: Request) {
     const router = authed;
 
     const jobRows = await db
-      .select({ routerEarningsCents: jobs.routerEarningsCents })
+      .select({ routerEarningsCents: jobs.router_earnings_cents })
       .from(jobs)
       .where(
         and(
-          eq(jobs.claimedByUserId, router.userId), // Prisma routerId @map("claimedByUserId")
-          isNotNull(jobs.routedAt),
+          eq(jobs.claimed_by_user_id, router.userId), // Prisma routerId @map("claimedByUserId")
+          isNotNull(jobs.routed_at),
           inArray(jobs.status, [...PENDING_EARNING_STATUSES] as unknown as any),
         ),
       );

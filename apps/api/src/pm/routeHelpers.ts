@@ -51,7 +51,7 @@ export async function loadPmRouteContext(
     .select({
       id: jobs.id,
       status: jobs.status,
-      jobPosterUserId: jobs.jobPosterUserId,
+      jobPosterUserId: jobs.job_poster_user_id,
       archived: jobs.archived,
     })
     .from(jobs)

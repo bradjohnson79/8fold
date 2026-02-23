@@ -48,9 +48,9 @@ export async function GET(req: Request) {
           id: jobs.id,
           title: jobs.title,
           region: jobs.region,
-          countryCode: jobs.countryCode,
-          stateCode: jobs.stateCode,
-          tradeCategory: jobs.tradeCategory,
+          countryCode: jobs.country_code,
+          stateCode: jobs.state_code,
+          tradeCategory: jobs.trade_category,
           status: jobs.status,
           availability: jobs.availability,
         },
@@ -62,8 +62,8 @@ export async function GET(req: Request) {
           eq(jobDispatches.contractorId, contractor.id),
           eq(jobDispatches.status, "PENDING"),
           sql`${jobDispatches.expiresAt} > ${now}`,
-          eq(jobs.countryCode, countryCode as any),
-          eq(jobs.stateCode, stateCode),
+          eq(jobs.country_code, countryCode as any),
+          eq(jobs.state_code, stateCode),
         ),
       )
       .orderBy(desc(jobDispatches.createdAt))

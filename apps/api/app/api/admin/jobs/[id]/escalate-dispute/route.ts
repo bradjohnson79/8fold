@@ -41,8 +41,8 @@ export async function POST(req: Request) {
       .select({
         id: jobs.id,
         title: jobs.title,
-        jobPosterUserId: jobs.jobPosterUserId,
-        contractorUserId: jobs.contractorUserId,
+        jobPosterUserId: jobs.job_poster_user_id,
+        contractorUserId: jobs.contractor_user_id,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))

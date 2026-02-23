@@ -2,6 +2,7 @@ import { createPaymentIntent, verifyPaymentIntent } from "./stripe";
 import crypto from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 import { auditLogs } from "../../db/schema/auditLog";
 import { materialsEscrows } from "../../db/schema/materialsEscrow";
 import { materialsEscrowLedgerEntries } from "../../db/schema/materialsEscrowLedgerEntry";
@@ -126,12 +127,15 @@ export async function confirmMaterialsPayment(requestId: string, paymentIntentId
     throw Object.assign(new Error("Payment not completed"), { status: 409 });
   }
 
+  const schema = getResolvedSchema();
+  const materialsPaymentT = sql.raw(`"${schema}"."MaterialsPayment"`);
+  const materialsRequestT = sql.raw(`"${schema}"."MaterialsRequest"`);
   await db.transaction(async (tx) => {
     // Lock payment + request rows so deposit is written once.
     await tx.execute(
-      sql`select "id" from "8fold_test"."MaterialsPayment" where "requestId" = ${requestId} for update`,
+      sql`select "id" from ${materialsPaymentT} where "requestId" = ${requestId} for update`,
     );
-    await tx.execute(sql`select "id" from "8fold_test"."MaterialsRequest" where "id" = ${requestId} for update`);
+    await tx.execute(sql`select "id" from ${materialsRequestT} where "id" = ${requestId} for update`);
 
     const reqRows = await tx
       .select({

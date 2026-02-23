@@ -57,7 +57,7 @@ export async function GET(req: Request) {
       role === "ROUTER" &&
       (
         await db
-          .select({ routerUserId: jobs.claimedByUserId })
+          .select({ routerUserId: jobs.claimed_by_user_id })
           .from(jobs)
           .where(eq(jobs.id, dispute.jobId))
           .limit(1)
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       role === "ROUTER" &&
       (
         await db
-          .select({ routerUserId: jobs.claimedByUserId })
+          .select({ routerUserId: jobs.claimed_by_user_id })
           .from(jobs)
           .where(eq(jobs.id, dispute.jobId))
           .limit(1)

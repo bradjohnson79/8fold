@@ -30,15 +30,15 @@ export async function POST(req: Request) {
       const jobRows = await db
         .select({
           id: jobs.id,
-          amountCents: jobs.amountCents,
-          paymentStatus: jobs.paymentStatus,
-          payoutStatus: jobs.payoutStatus,
-          fundedAt: jobs.fundedAt,
-          releasedAt: jobs.releasedAt,
+          amountCents: jobs.amount_cents,
+          paymentStatus: jobs.payment_status,
+          payoutStatus: jobs.payout_status,
+          fundedAt: jobs.funded_at,
+          releasedAt: jobs.released_at,
           status: jobs.status,
-          contractorPayoutCents: jobs.contractorPayoutCents,
-          routerEarningsCents: jobs.routerEarningsCents,
-          brokerFeeCents: jobs.brokerFeeCents,
+          contractorPayoutCents: jobs.contractor_payout_cents,
+          routerEarningsCents: jobs.router_earnings_cents,
+          brokerFeeCents: jobs.broker_fee_cents,
         })
         .from(jobs)
         .where(eq(jobs.id, jobId))

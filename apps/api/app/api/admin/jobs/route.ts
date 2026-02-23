@@ -106,7 +106,7 @@ export async function GET(req: Request) {
     else if (status === "CUSTOMER_REJECTED") conditions.push(eq(jobs.status, "CUSTOMER_REJECTED" as any));
     else if (status === "CUSTOMER_APPROVED_AWAITING_ROUTER") {
       conditions.push(eq(jobs.status, "CUSTOMER_APPROVED" as any));
-      conditions.push(isNull(jobs.routerApprovedAt));
+      conditions.push(isNull(jobs.router_approved_at));
     } else if (status === "FLAGGED_HOLD") {
       // Active holds are already filtered in the leftJoin condition.
       // Avoid referencing jobHolds.status in WHERE to prevent SQL instability.
@@ -114,12 +114,12 @@ export async function GET(req: Request) {
     }
 
     if (country) conditions.push(eq(jobs.country, country as any));
-    if (tradeCategory) conditions.push(eq(jobs.tradeCategory, tradeCategory as any));
-    if (jobSource) conditions.push(eq(jobs.jobSource, jobSource as any));
+    if (tradeCategory) conditions.push(eq(jobs.trade_category, tradeCategory as any));
+    if (jobSource) conditions.push(eq(jobs.job_source, jobSource as any));
 
     if (state) {
       const s = state.trim().toUpperCase();
-      conditions.push(or(eq(jobs.regionCode, s), eq(jobs.region, s)));
+      conditions.push(or(eq(jobs.region_code, s), eq(jobs.region, s)));
     }
 
     if (city) {
@@ -134,7 +134,7 @@ export async function GET(req: Request) {
         or(
           eq(jobs.id, q),
           ilike(jobs.title, pat),
-          ilike(jobs.addressFull, pat),
+          ilike(jobs.address_full, pat),
           ilike(jobs.city, pat),
         ) as any,
       );
@@ -143,7 +143,7 @@ export async function GET(req: Request) {
     if (dateRange !== "ALL") {
       const days = dateRange === "1D" ? 1 : dateRange === "7D" ? 7 : dateRange === "30D" ? 30 : 90;
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      conditions.push(gte(jobs.createdAt, since));
+      conditions.push(gte(jobs.created_at, since));
     }
 
     const where = and(...conditions);
@@ -160,7 +160,7 @@ export async function GET(req: Request) {
         .leftJoin(jobAssignments, eq(jobAssignments.jobId, jobs.id))
         .leftJoin(contractors, eq(contractors.id, jobAssignments.contractorId))
         .where(where as any)
-        .orderBy(desc(jobs.publishedAt))
+        .orderBy(desc(jobs.published_at))
         .limit(200);
     } catch (err) {
       // Postgres enum invalid input (e.g. JobStatus / JobSource mismatch) → 400, not a 500.

@@ -10,7 +10,7 @@ function publicEligibility() {
       eq(jobs.status, "ASSIGNED"),
       and(
         eq(jobs.status, "CUSTOMER_APPROVED"),
-        isNull(jobs.routerApprovedAt)
+        isNull(jobs.router_approved_at)
       )
     )
   );
@@ -47,9 +47,9 @@ async function maybeLogPublicDiscoveryDiagnostics(): Promise<void> {
   console.log("JOB STATUS COUNTS:", counts);
 
   const regions = await db
-    .selectDistinct({ regionCode: jobs.regionCode })
+    .selectDistinct({ regionCode: jobs.region_code })
     .from(jobs)
-    .where(and(publicEligibility(), isNotNull(jobs.regionCode)));
+    .where(and(publicEligibility(), isNotNull(jobs.region_code)));
   // eslint-disable-next-line no-console
   console.log("REGIONS FROM ELIGIBLE JOBS:", regions);
 }
@@ -61,13 +61,13 @@ export async function listRegionsWithJobs(): Promise<
   const rows = await db
     .select({
       country: jobs.country,
-      regionCode: jobs.regionCode,
+      regionCode: jobs.region_code,
       jobCount: sql<number>`count(*)::int`,
     })
     .from(jobs)
-    .where(and(publicEligibility(), isNotNull(jobs.regionCode)))
-    .groupBy(jobs.country, jobs.regionCode)
-    .orderBy(asc(jobs.country), asc(jobs.regionCode));
+    .where(and(publicEligibility(), isNotNull(jobs.region_code)))
+    .groupBy(jobs.country, jobs.region_code)
+    .orderBy(asc(jobs.country), asc(jobs.region_code));
 
   const mapped = rows
     .map((r) => {
@@ -108,8 +108,8 @@ export async function listCitiesByRegion(
       and(
         publicEligibility(),
         eq(jobs.country, country as any),
-        isNotNull(jobs.regionCode),
-        eq(jobs.regionCode, rc),
+        isNotNull(jobs.region_code),
+        eq(jobs.region_code, rc),
         isNotNull(jobs.city),
       ),
     )
@@ -153,21 +153,21 @@ export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[
       region: jobs.region,
       country: jobs.country,
       city: jobs.city,
-      tradeCategory: jobs.tradeCategory,
-      createdAt: jobs.createdAt,
-      laborTotalCents: jobs.laborTotalCents,
-      contractorPayoutCents: jobs.contractorPayoutCents,
-      routerEarningsCents: jobs.routerEarningsCents,
-      brokerFeeCents: jobs.brokerFeeCents,
-      materialsTotalCents: jobs.materialsTotalCents,
-      transactionFeeCents: jobs.transactionFeeCents,
-      amountCents: jobs.amountCents,
-      paymentStatus: jobs.paymentStatus,
-      publicStatus: jobs.publicStatus,
+      tradeCategory: jobs.trade_category,
+      createdAt: jobs.created_at,
+      laborTotalCents: jobs.labor_total_cents,
+      contractorPayoutCents: jobs.contractor_payout_cents,
+      routerEarningsCents: jobs.router_earnings_cents,
+      brokerFeeCents: jobs.broker_fee_cents,
+      materialsTotalCents: jobs.materials_total_cents,
+      transactionFeeCents: jobs.transaction_fee_cents,
+      amountCents: jobs.amount_cents,
+      paymentStatus: jobs.payment_status,
+      publicStatus: jobs.public_status,
     })
     .from(jobs)
     .where(publicEligibility())
-    .orderBy(desc(jobs.createdAt), desc(jobs.id))
+    .orderBy(desc(jobs.created_at), desc(jobs.id))
     .limit(take);
 
   if (process.env.NODE_ENV !== "production") {
@@ -215,13 +215,13 @@ export async function listJobsByLocation(opts: {
     .where(
       and(
         publicEligibility(),
-        isNotNull(jobs.regionCode),
-        eq(jobs.regionCode, rc),
+        isNotNull(jobs.region_code),
+        eq(jobs.region_code, rc),
         // Legacy behavior: match either explicit city (case-insensitive) OR region slug
         sql`(lower(${jobs.city}) = lower(${city}) OR ${jobs.region} = ${regionSlug})`,
       ),
     )
-    .orderBy(desc(jobs.publishedAt), desc(jobs.id))
+    .orderBy(desc(jobs.published_at), desc(jobs.id))
     .limit(200);
 }
 

@@ -19,8 +19,8 @@ export async function GET(req: Request) {
         await db
           .select({
             id: jobs.id,
-            jobPosterUserId: jobs.jobPosterUserId,
-            repeatContractorDiscountCents: jobs.repeatContractorDiscountCents,
+            jobPosterUserId: jobs.job_poster_user_id,
+            repeatContractorDiscountCents: jobs.repeat_contractor_discount_cents,
           })
           .from(jobs)
           .where(eq(jobs.id, jobId))

@@ -46,8 +46,8 @@ export async function POST(req: Request) {
             .select({
               id: jobs.id,
               status: jobs.status,
-              customerActionTokenHash: jobs.customerActionTokenHash,
-              routerId: jobs.claimedByUserId,
+              customerActionTokenHash: jobs.customer_action_token_hash,
+              routerId: jobs.claimed_by_user_id,
             })
             .from(jobs)
             .where(eq(jobs.id, id))
@@ -64,15 +64,23 @@ export async function POST(req: Request) {
           .update(jobs)
           .set({
             status: "CUSTOMER_APPROVED" as any,
-            customerApprovedAt: new Date(),
-            customerFeedback: body.data.feedback?.trim() || null,
+            customer_approved_at: new Date(),
+            customer_feedback: body.data.feedback?.trim() || null,
           })
           .where(eq(jobs.id, id));
 
         const updated =
           (
             await tx
-              .select()
+              .select({
+                id: jobs.id,
+                status: jobs.status,
+                payoutStatus: jobs.payout_status,
+                paymentStatus: jobs.payment_status,
+                createdAt: jobs.created_at,
+                updatedAt: jobs.updated_at,
+                publishedAt: jobs.published_at,
+              })
               .from(jobs)
               .where(eq(jobs.id, id))
               .limit(1)
@@ -99,16 +107,24 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "CUSTOMER_REJECTED" as any,
-          customerRejectedAt: new Date(),
-          customerRejectReason: body.data.rejectReason as any,
-          customerRejectNotes: body.data.rejectNotes?.trim() || null,
+          customer_rejected_at: new Date(),
+          customer_reject_reason: body.data.rejectReason as any,
+          customer_reject_notes: body.data.rejectNotes?.trim() || null,
         })
         .where(eq(jobs.id, id));
 
       const updated =
         (
           await tx
-            .select()
+            .select({
+              id: jobs.id,
+              status: jobs.status,
+              payoutStatus: jobs.payout_status,
+              paymentStatus: jobs.payment_status,
+              createdAt: jobs.created_at,
+              updatedAt: jobs.updated_at,
+              publishedAt: jobs.published_at,
+            })
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1)
@@ -152,7 +168,7 @@ export async function POST(req: Request) {
       const job =
         (
           await db
-            .select({ routerId: jobs.claimedByUserId })
+            .select({ routerId: jobs.claimed_by_user_id })
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1)
