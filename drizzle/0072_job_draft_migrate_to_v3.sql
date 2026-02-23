@@ -1,6 +1,6 @@
 -- Migrate canonical data from legacy JobDraft to JobDraft_v3.
--- Archives duplicate ACTIVE drafts (keeps newest per user).
--- Only migrates rows with valid UUID id (legacy may have text ids).
+-- Archives duplicate ACTIVE drafts (none expected but safe).
+-- Uses gen_random_uuid() for id (legacy id is text, do not trust cast).
 
 BEGIN;
 
@@ -20,7 +20,7 @@ WHERE id IN (
   SELECT id FROM ranked WHERE rn > 1
 );
 
--- Migrate canonical fields only (filter valid UUID ids for cast safety)
+-- Migrate canonical fields only
 INSERT INTO "JobDraft_v3" (
   id,
   "userId",
@@ -31,15 +31,13 @@ INSERT INTO "JobDraft_v3" (
   "updatedAt"
 )
 SELECT
-  id::uuid,
+  gen_random_uuid(), -- legacy id is text, do not trust cast
   "userId",
   status,
   step,
-  COALESCE("data", '{}'::jsonb),
-  COALESCE("createdAt", now()),
+  data,
+  "createdAt",
   COALESCE("updatedAt", now())
-FROM "JobDraft"
-WHERE id::text ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-ON CONFLICT (id) DO NOTHING;
+FROM "JobDraft";
 
 COMMIT;

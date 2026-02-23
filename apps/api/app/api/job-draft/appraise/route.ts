@@ -70,26 +70,23 @@ export async function POST(req: Request) {
     if (min >= median) median = min + 5;
     if (median >= max) max = median + 5;
 
-    const appraisalInputHash = [category, description, region, countryCode, String(isRegional)].join("|");
-    const nextData = {
-      ...data,
+    const rationale = String(appraisal.output.reasoning ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 500);
+    const rationaleWords = rationale.split(/\s+/).filter(Boolean).slice(0, 100);
+    const finalRationale = rationaleWords.join(" ");
+
+    return NextResponse.json({
+      success: true,
       appraisal: {
         min,
         median,
         max,
         step: 5,
-        blurb: String(appraisal.output.reasoning ?? "").slice(0, 100),
-        model: appraisal.model,
+        rationale: finalRationale,
       },
-      appraisalInputHash,
-    };
-
-    await db
-      .update(jobDraft)
-      .set({ data: nextData, updatedAt: new Date() })
-      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
-
-    return NextResponse.json({ success: true, appraisal: nextData.appraisal });
+    });
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
     return NextResponse.json(

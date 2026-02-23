@@ -139,6 +139,8 @@ export async function appraiseJobTotalWithAi(
     "- priceRange.low must be < priceRange.high.",
     "- If data is limited, set confidence closer to 0 (e.g., 0.25) and explain briefly in reasoning.",
     "- isOutlier: true if currentTotal is meaningfully outside typical market pricing for this job + region.",
+    "- reasoning must be plain text only (no markdown).",
+    "- reasoning must be under 100 words.",
     "",
     "Required JSON shape:",
     '{ "suggestedTotal": 425, "currency": "USD", "confidence": 0.84, "priceRange": { "low": 350, "high": 500 }, "reasoning": "…", "isOutlier": true }',

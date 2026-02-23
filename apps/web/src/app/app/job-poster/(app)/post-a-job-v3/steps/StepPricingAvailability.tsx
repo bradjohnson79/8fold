@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { useJobDraftV3 } from "../useJobDraftV3";
 
 type DraftHook = ReturnType<typeof useJobDraftV3>;
@@ -8,51 +8,40 @@ type DraftHook = ReturnType<typeof useJobDraftV3>;
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const WINDOWS = ["Morning", "Afternoon", "Evening"] as const;
 
-function detailsHash(details: Record<string, any>): string {
-  const parts = [
-    String(details.category ?? ""),
-    String(details.description ?? ""),
-    String(details.region ?? ""),
-    String(details.countryCode ?? "US"),
-    String(details.isRegional ?? false),
-  ];
-  return parts.join("|");
-}
-
 export function StepPricingAvailability({ draft }: { draft: DraftHook }) {
   const details = (draft.draft?.data?.details ?? {}) as Record<string, any>;
-  const appraisal = (draft.draft?.data?.appraisal ?? null) as
+  const persistedAppraisal = (draft.draft?.data?.appraisal ?? null) as
     | null
-    | { min: number; median: number; max: number; step: number; blurb: string };
-  const appraisalInputHash = (draft.draft?.data?.appraisalInputHash ?? "") as string;
+    | { min: number; median: number; max: number; step?: number; rationale?: string; blurb?: string };
+  const appraisal = (draft.appraisal ?? persistedAppraisal ?? null) as
+    | null
+    | { min: number; median: number; max: number; step?: number; rationale?: string; blurb?: string };
   const pricing = (draft.draft?.data?.pricing ?? {}) as Record<string, any>;
   const availability = (draft.draft?.data?.availability ?? {}) as Record<string, boolean>;
-  const appraisalRunRef = useRef(false);
-  const currentHash = detailsHash(details);
-  const hashMatches = appraisalInputHash === currentHash;
 
-  const selectedCents = Number(
-    pricing.selectedPriceCents ?? (typeof appraisal?.median === "number" ? appraisal.median * 100 : 0)
-  );
-  const selectedDollars = Math.max(0, Math.round(selectedCents / 100));
+  const initialSelectedDollars = useMemo(() => {
+    const fromPricing = Number(pricing.selectedPriceCents ?? 0);
+    if (Number.isFinite(fromPricing) && fromPricing > 0) return Math.max(0, Math.round(fromPricing / 100));
+    return Number(appraisal?.median ?? 0);
+  }, [pricing.selectedPriceCents, appraisal?.median]);
+  const [selectedDollars, setSelectedDollars] = useState<number>(initialSelectedDollars);
+  useEffect(() => {
+    setSelectedDollars(initialSelectedDollars);
+  }, [initialSelectedDollars]);
+
+  const selectedCents = Math.max(0, Math.round(selectedDollars * 100));
   const min = Number(appraisal?.min ?? 50);
   const max = Number(appraisal?.max ?? 500);
   const median = Number(appraisal?.median ?? 100);
   const step = 5;
+  const rationale = String(appraisal?.rationale ?? appraisal?.blurb ?? "").trim();
 
   const guidance =
     selectedDollars < median
-      ? "Caution: selected price is below AI median."
+      ? "Lower pricing may result in slower response from 8Fold Contractors."
       : selectedDollars > median
-        ? "Encouraging: selected price is above AI median."
-        : "Selected price matches AI median.";
-
-  useEffect(() => {
-    if (appraisalRunRef.current) return;
-    if (appraisal && hashMatches) return;
-    appraisalRunRef.current = true;
-    void draft.appraise();
-  }, [appraisal, hashMatches, draft]);
+        ? "Higher pricing encourages faster response from 8Fold Contractors."
+        : "";
 
   function key(day: string, window: string) {
     return `${day}_${window}`;
@@ -73,6 +62,8 @@ export function StepPricingAvailability({ draft }: { draft: DraftHook }) {
 
       {appraisal ? (
         <div className="rounded-xl border border-gray-200 p-4">
+          <div className="text-sm font-semibold text-gray-900">Job Appraisal Rationale</div>
+          <div className="mt-1 text-xs text-gray-700">{rationale}</div>
           <div className="text-sm text-gray-700">
             Estimated range: <span className="font-semibold">${min}</span> - <span className="font-semibold">${max}</span> · Median{" "}
             <span className="font-semibold">${median}</span>
@@ -85,25 +76,16 @@ export function StepPricingAvailability({ draft }: { draft: DraftHook }) {
             value={Math.min(max, Math.max(min, selectedDollars))}
             onChange={(e) => {
               const dollars = Number(e.target.value);
-              draft.autosavePatch({
-                pricing: {
-                  ...pricing,
-                  selectedPriceCents: dollars * 100,
-                  isRegional: Boolean(details.isRegional),
-                },
-              });
+              setSelectedDollars(Math.min(max, Math.max(min, dollars)));
             }}
             className="w-full mt-3"
           />
           <div className="mt-2 text-sm font-semibold text-gray-900">Selected: ${selectedDollars} ($5 increments)</div>
-          <div className="mt-1 text-xs text-gray-600">{appraisal.blurb}</div>
-          <div className="mt-2 text-xs text-gray-700">{guidance}</div>
+          {guidance ? <div className="mt-2 text-xs text-gray-700">{guidance}</div> : null}
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-          <div className="text-sm text-gray-600">
-            {draft.saving ? "Running AI appraisal..." : "Loading AI appraisal..."}
-          </div>
+          <div className="text-sm text-gray-600">Run appraisal from the Details step to continue.</div>
         </div>
       )}
 
@@ -150,7 +132,28 @@ export function StepPricingAvailability({ draft }: { draft: DraftHook }) {
           Back
         </button>
         <button
-          onClick={() => void draft.patchDraft({ step: "PAYMENT" })}
+          onClick={() => {
+            if (!appraisal) return;
+            void draft.patchDraft({
+              dataPatch: {
+                appraisal: {
+                  min: appraisal.min,
+                  median: appraisal.median,
+                  max: appraisal.max,
+                  step: step,
+                  rationale: rationale,
+                },
+                pricing: {
+                  ...pricing,
+                  selectedPriceCents: selectedCents,
+                  isRegional: Boolean(details.isRegional),
+                  totalCents: selectedCents + (Boolean(details.isRegional) ? 2000 : 0),
+                },
+              },
+              step: "PAYMENT",
+            });
+          }}
+          disabled={!appraisal}
           className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
         >
           Continue to Payment

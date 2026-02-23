@@ -3,7 +3,7 @@ import { requireJobPoster } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
 import { storeJobPosterPhoto } from "../../../../../src/storage/jobPosterPhotos";
 
-const MAX_BYTES = 8 * 1024 * 1024; // 8MB
+const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req: Request) {
   try {

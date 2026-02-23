@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobDraft } from "@/db/schema/jobDraft";
 import { jobs } from "@/db/schema/job";
+import { jobPhotos } from "@/db/schema/jobPhoto";
 import { requireJobPoster } from "@/src/auth/rbac";
 import { addBusinessDaysUTC } from "@/src/finance/businessDays";
 import { stripe } from "@/src/payments/stripe";
@@ -52,8 +53,11 @@ export async function POST(req: Request) {
     const title = String(details.title ?? "").trim();
     const scope = String(details.description ?? details.scope ?? "").trim();
     const countryCode = String(details.countryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US";
-    const stateCode = String(details.stateCode ?? details.region ?? "").trim();
+    const stateCode = String(details.province ?? details.stateCode ?? details.region ?? "")
+      .trim()
+      .toUpperCase();
     const region = String(details.region ?? `${stateCode}-${countryCode}`).trim().toLowerCase() || `${stateCode}-${countryCode}`.toLowerCase();
+    const postalCode = String(details.postalCode ?? details.postal_code ?? "").trim();
     const selectedPriceCents = Number(pricing.selectedPriceCents ?? 0);
     const totalCents = Number(pricing.totalCents ?? pi.amount ?? 0);
     const isRegional = Boolean(pricing.isRegional ?? details.isRegional);
@@ -72,6 +76,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Draft is missing required fields." }, { status: 400 });
     }
 
+    // Real jobs MUST use AI appraisal — no boilerplate pricing.
+    const appraisal = data?.appraisal;
+    const hasAppraisal =
+      appraisal &&
+      typeof appraisal === "object" &&
+      Number.isFinite(Number((appraisal as any).min)) &&
+      Number.isFinite(Number((appraisal as any).median)) &&
+      Number.isFinite(Number((appraisal as any).max)) &&
+      String((appraisal as any).rationale ?? "").trim().length > 0;
+    if (!hasAppraisal) {
+      return NextResponse.json(
+        { success: false, message: "Real jobs must use AI appraisal. Complete the pricing step first." },
+        { status: 400 }
+      );
+    }
+
     const now = new Date();
     const authorizationExpiresAt = addBusinessDaysUTC(now, countryCode as "US" | "CA", 5);
     const jobId = randomUUID();
@@ -87,7 +107,9 @@ export async function POST(req: Request) {
       state_code: stateCode,
       region_code: stateCode,
       city: String(details.city ?? "") || null,
+      postal_code: postalCode || null,
       address_full: String(details.address ?? "") || null,
+      address_line1: String(details.addressLine1 ?? "") || null,
       lat: typeof details.lat === "number" && Number.isFinite(details.lat) ? details.lat : null,
       lng: typeof details.lon === "number" && Number.isFinite(details.lon) ? details.lon : null,
       currency: (countryCode === "CA" ? "CAD" : "USD") as any,
@@ -110,6 +132,25 @@ export async function POST(req: Request) {
       updated_at: now,
       price_median_cents: Number(data?.appraisal?.median ?? 0) * 100 || null,
     });
+
+    const photoUrls = Array.isArray(details.photos)
+      ? details.photos
+          .map((x: unknown) => String(x ?? "").trim())
+          .filter((x: string) => x.length > 0)
+          .slice(0, 5)
+      : [];
+    if (photoUrls.length) {
+      await db.insert(jobPhotos).values(
+        photoUrls.map((url: string) => ({
+          id: randomUUID(),
+          jobId,
+          kind: "CUSTOMER_SCOPE",
+          actor: "CUSTOMER",
+          url,
+          createdAt: now,
+        }))
+      );
+    }
 
     await db
       .update(jobDraft)

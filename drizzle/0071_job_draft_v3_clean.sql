@@ -3,7 +3,7 @@
 
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS "JobDraft_v3" (
+CREATE TABLE "JobDraft_v3" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "userId" text NOT NULL,
   status "JobDraftStatus" NOT NULL DEFAULT 'ACTIVE',
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS "JobDraft_v3" (
   "updatedAt" timestamp NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "JobDraft_v3_one_active_per_user"
+CREATE UNIQUE INDEX "JobDraft_v3_one_active_per_user"
 ON "JobDraft_v3" ("userId")
 WHERE status = 'ACTIVE';
 

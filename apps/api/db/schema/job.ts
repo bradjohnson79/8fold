@@ -46,6 +46,7 @@ export const jobs = dbSchema.table(
     city: text("city"),
     postal_code: text("postal_code"),
     address_full: text("address_full"),
+    address_line1: text("address_line1"),
 
     ai_appraisal_status: aiAppraisalStatusEnum("ai_appraisal_status").notNull().default("PENDING"),
     ai_appraised_at: timestamp("ai_appraised_at", { mode: "date" }),

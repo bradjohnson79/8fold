@@ -16,16 +16,27 @@ type AppraisalPayload = {
   median: number;
   max: number;
   step: number;
-  blurb: string;
-  model?: string;
+  rationale: string;
 };
 
 function parseError(json: any, fallback: string) {
   return String(json?.message ?? json?.error ?? fallback);
 }
 
+function normalizeAppraisal(raw: any): AppraisalPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const min = Number(raw.min);
+  const median = Number(raw.median);
+  const max = Number(raw.max);
+  const step = Number(raw.step ?? 5);
+  const rationale = String(raw.rationale ?? raw.blurb ?? "").trim();
+  if (!Number.isFinite(min) || !Number.isFinite(median) || !Number.isFinite(max) || !rationale) return null;
+  return { min, median, max, step: Number.isFinite(step) ? step : 5, rationale };
+}
+
 export function useJobDraftV3() {
   const [draft, setDraft] = React.useState<Draft | null>(null);
+  const [appraisal, setAppraisal] = React.useState<AppraisalPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -38,7 +49,9 @@ export function useJobDraftV3() {
       const resp = await fetch("/api/job-draft", { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(parseError(json, "Failed to load draft."));
-      setDraft(json?.draft ?? null);
+      const nextDraft = (json?.draft ?? null) as Draft | null;
+      setDraft(nextDraft);
+      setAppraisal(normalizeAppraisal(nextDraft?.data?.appraisal));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load draft.");
     } finally {
@@ -66,8 +79,10 @@ export function useJobDraftV3() {
         });
         const json = await resp.json().catch(() => null);
         if (!resp.ok) throw new Error(parseError(json, "Failed to save draft."));
-        setDraft(json?.draft ?? null);
-        return json?.draft as Draft;
+        const nextDraft = (json?.draft ?? null) as Draft | null;
+        setDraft(nextDraft);
+        setAppraisal(normalizeAppraisal(nextDraft?.data?.appraisal));
+        return nextDraft as Draft;
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to save draft.");
         throw e;
@@ -80,6 +95,12 @@ export function useJobDraftV3() {
 
   const autosavePatch = React.useCallback(
     (dataPatch: Record<string, unknown>, step?: JobDraftStep) => {
+      // Optimistic update: merge into draft immediately so controlled inputs update on keystroke
+      setDraft((prev) => {
+        if (!prev) return null;
+        const nextData = { ...prev.data, ...dataPatch };
+        return { ...prev, data: nextData };
+      });
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         void patchDraft({ dataPatch, step });
@@ -98,16 +119,17 @@ export function useJobDraftV3() {
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(parseError(json, "Failed to appraise."));
-      const appraisal = json?.appraisal as AppraisalPayload;
-      await patchDraft({ dataPatch: { appraisal }, step: "PRICING" });
-      return appraisal;
+      const next = normalizeAppraisal(json?.appraisal);
+      if (!next) throw new Error("Invalid appraisal response.");
+      setAppraisal(next);
+      return next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to appraise.");
       throw e;
     } finally {
       setSaving(false);
     }
-  }, [patchDraft]);
+  }, []);
 
   const createPaymentIntent = React.useCallback(
     async (selectedPriceCents: number, isRegional: boolean) => {
@@ -168,12 +190,14 @@ export function useJobDraftV3() {
 
   return {
     draft,
+    appraisal,
     loading,
     saving,
     error,
     loadDraft,
     patchDraft,
     autosavePatch,
+    setAppraisal,
     appraise,
     createPaymentIntent,
     submit,

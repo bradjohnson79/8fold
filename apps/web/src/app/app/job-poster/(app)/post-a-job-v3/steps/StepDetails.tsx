@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { TradeCategorySchema, TradeCategoryLabel } from "@8fold/shared";
 import type { useJobDraftV3 } from "../useJobDraftV3";
+import { PhotoUpload } from "@/components/PhotoUpload";
+import { AppraisalModal } from "./AppraisalModal";
 
 type DraftHook = ReturnType<typeof useJobDraftV3>;
 
@@ -21,6 +23,9 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
   const photos = Array.isArray(details.photos) ? (details.photos as string[]) : [];
   const [addressQuery, setAddressQuery] = useState("");
   const [nominatimResults, setNominatimResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+  const [profileProvince, setProfileProvince] = useState("");
+  const [profileData, setProfileData] = useState<Record<string, any> | null>(null);
+  const [appraising, setAppraising] = useState(false);
 
   // Local state for title ensures immediate display on keystroke (avoids async/optimistic update lag)
   const [titleValue, setTitleValue] = useState("");
@@ -72,8 +77,6 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
   const isRegional = Boolean(details.isRegional);
 
   useEffect(() => {
-    if (addressSource !== "profile") return;
-    if (details.address && details.lat != null && details.lon != null) return;
     let alive = true;
     (async () => {
       try {
@@ -81,30 +84,85 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
         const json = await resp.json().catch(() => null);
         if (!alive || !json?.profile) return;
         const p = json.profile as Record<string, any>;
-        const addr = String(p?.mapDisplayName ?? p?.address ?? p?.defaultJobLocation ?? "").trim();
-        const lat = typeof p?.lat === "number" ? p.lat : null;
-        const lng = typeof p?.lng === "number" ? p.lng : null;
-        if (!addr && lat == null && lng == null) return;
-        draft.autosavePatch({
-          details: {
-            ...details,
-            address: addr || details.address,
-            lat: lat ?? details.lat,
-            lon: lng ?? details.lon,
-            city: p?.city ?? details.city,
-            region: p?.stateProvince ?? details.region,
-            countryCode: p?.country ?? details.countryCode ?? "US",
-          },
-        });
+        setProfileData(p);
+        const province = String(p?.stateProvince ?? p?.legalProvince ?? "").trim().toUpperCase();
+        if (province) setProfileProvince(province);
       } catch {
         /* ignore */
       }
     })();
     return () => { alive = false; };
-  }, [addressSource, details.address, details.lat, details.lon, draft]);
+  }, []);
+
+  useEffect(() => {
+    if (addressSource !== "profile") return;
+    if (!profileData) return;
+    if (details.address && details.lat != null && details.lon != null) return;
+    const province = String(profileData?.stateProvince ?? profileData?.legalProvince ?? profileProvince).trim().toUpperCase();
+    const addr = String(profileData?.mapDisplayName ?? profileData?.address ?? profileData?.defaultJobLocation ?? "").trim();
+    const lat = typeof profileData?.lat === "number" ? profileData.lat : null;
+    const lng = typeof profileData?.lng === "number" ? profileData.lng : null;
+    if (!addr && lat == null && lng == null) return;
+    draft.autosavePatch({
+      details: {
+        ...details,
+        address: addr || details.address,
+        lat: lat ?? details.lat,
+        lon: lng ?? details.lon,
+        addressLine1: profileData?.address ?? details.addressLine1,
+        city: profileData?.city ?? details.city,
+        postalCode: profileData?.postalCode ?? details.postalCode,
+        province: province || details.province,
+        stateCode: province || details.stateCode,
+        region: province || details.region,
+        countryCode: profileData?.country ?? details.countryCode ?? "US",
+      },
+    });
+  }, [addressSource, profileData, profileProvince, details.address, details.lat, details.lon, draft, details]);
+
+  useEffect(() => {
+    const province = String(profileProvince || details.province || "").trim().toUpperCase();
+    if (!province || addressSource !== "new") return;
+    if (
+      String(details.province ?? "").trim().toUpperCase() === province &&
+      String(details.stateCode ?? "").trim().toUpperCase() === province &&
+      String(details.region ?? "").trim().toUpperCase() === province
+    ) {
+      return;
+    }
+    draft.autosavePatch({
+      details: {
+        ...details,
+        province,
+        stateCode: province,
+        region: province,
+      },
+    });
+  }, [profileProvince, addressSource, draft, details, details.province, details.stateCode, details.region]);
+
+  const beginAppraisal = useCallback(async () => {
+    setAppraising(true);
+    try {
+      const province = String(profileProvince || details.province || details.stateCode || details.region || "")
+        .trim()
+        .toUpperCase();
+      const normalizedDetails = {
+        ...details,
+        province,
+        stateCode: province || details.stateCode,
+        region: province || details.region,
+      };
+      await draft.patchDraft({ dataPatch: { details: normalizedDetails } });
+      await draft.appraise();
+      await draft.patchDraft({ step: "PRICING" });
+    } finally {
+      setAppraising(false);
+    }
+  }, [details, draft, profileProvince]);
 
   return (
     <div className="space-y-4">
+      <AppraisalModal open={appraising} />
       <h2 className="text-lg font-bold text-gray-900">Details</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <input
@@ -134,18 +192,6 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
             ))}
           </select>
         </div>
-        <input
-          value={String(details.region ?? "")}
-          onChange={(e) => setField("region", e.target.value)}
-          placeholder="Region / State"
-          className="border border-gray-300 rounded-lg px-3 py-2"
-        />
-        <input
-          value={String(details.city ?? "")}
-          onChange={(e) => setField("city", e.target.value)}
-          placeholder="City"
-          className="border border-gray-300 rounded-lg px-3 py-2"
-        />
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Country</label>
           <select
@@ -200,7 +246,7 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
           </label>
         </div>
         {addressSource === "new" && (
-          <div className="mt-2">
+          <div className="mt-2 space-y-3">
             <input
               value={addressQuery}
               onChange={(e) => {
@@ -236,11 +282,72 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
                 ))}
               </ul>
             )}
-            {(details.lat != null && details.lon != null) && (
-              <p className="text-xs text-green-600 mt-1">Location: {details.lat?.toFixed(4)}, {details.lon?.toFixed(4)}</p>
-            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address (Address Line 1)</label>
+              <input
+                value={String(details.addressLine1 ?? "")}
+                onChange={(e) => setField("addressLine1", e.target.value)}
+                placeholder="Address line 1"
+                className="border border-gray-300 rounded-lg px-3 py-2 w-full"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <input
+                value={String(details.city ?? "")}
+                onChange={(e) => setField("city", e.target.value)}
+                placeholder="City"
+                className="border border-gray-300 rounded-lg px-3 py-2 w-full"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+              <input
+                value={String(details.postalCode ?? "")}
+                onChange={(e) => setField("postalCode", e.target.value)}
+                placeholder="Postal code"
+                className="border border-gray-300 rounded-lg px-3 py-2 w-full"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Province/State</label>
+              <input
+                value={String(profileProvince || details.province || "")}
+                disabled
+                className="border border-gray-300 rounded-lg px-3 py-2 w-full bg-gray-50 text-gray-700"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Map Location (OpenStreetMap)</label>
+              <input
+                value={String(details.address ?? "")}
+                readOnly
+                className="border border-gray-300 rounded-lg px-3 py-2 w-full bg-gray-50 text-gray-700"
+              />
+            </div>
+
+            <input type="hidden" value={String(details.lat ?? "")} />
+            <input type="hidden" value={String(details.lon ?? "")} />
           </div>
         )}
+        {addressSource === "profile" ? (
+          <div className="mt-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Map Location (OpenStreetMap)</label>
+            <input
+              value={String(details.address ?? "")}
+              readOnly
+              className="border border-gray-300 rounded-lg px-3 py-2 w-full bg-gray-50 text-gray-700"
+            />
+          </div>
+        ) : null}
       </div>
       <textarea
         value={String(details.description ?? "")}
@@ -249,46 +356,15 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
         className="w-full border border-gray-300 rounded-lg px-3 py-2 min-h-32"
       />
 
-      <div>
-        <div className="text-sm font-semibold text-gray-700">Photos (max 5 URL entries)</div>
-        <div className="mt-2 space-y-2">
-          {photos.map((p, idx) => (
-            <div key={`${idx}-${p}`} className="flex gap-2">
-              <input
-                value={p}
-                onChange={(e) => {
-                  const next = [...photos];
-                  next[idx] = e.target.value;
-                  setPhotos(next);
-                }}
-                placeholder="https://..."
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
-              />
-              <button
-                onClick={() => setPhotos(photos.filter((_, i) => i !== idx))}
-                className="border border-gray-300 rounded-lg px-3 py-2"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          {photos.length < 5 ? (
-            <button
-              onClick={() => setPhotos([...photos, ""])}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              Add Photo URL
-            </button>
-          ) : null}
-        </div>
-      </div>
+      <PhotoUpload urls={photos} onChange={setPhotos} />
 
       <div className="pt-2">
         <button
-          onClick={() => void draft.patchDraft({ step: "PRICING" })}
+          onClick={() => void beginAppraisal()}
           className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg"
+          disabled={appraising}
         >
-          Continue to AI + Pricing
+          Begin Appraisal
         </button>
       </div>
     </div>
