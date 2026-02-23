@@ -22,6 +22,20 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
   const [addressQuery, setAddressQuery] = useState("");
   const [nominatimResults, setNominatimResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
 
+  // Local state for title ensures immediate display on keystroke (avoids async/optimistic update lag)
+  const [titleValue, setTitleValue] = useState("");
+  const prevDraftId = useRef<string | null>(null);
+  useEffect(() => {
+    if (draft.loading) return;
+    const draftId = draft.draft?.id ?? null;
+    const fromDraft = String(details.title ?? "");
+    // Sync from draft when draft loads or when we return to this step (new mount)
+    if (draftId !== prevDraftId.current || prevDraftId.current === null) {
+      prevDraftId.current = draftId;
+      setTitleValue(fromDraft);
+    }
+  }, [draft.loading, draft.draft?.id, details.title]);
+
   function setField(key: string, value: unknown) {
     draft.autosavePatch({ details: { ...details, [key]: value } });
   }
@@ -94,10 +108,16 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
       <h2 className="text-lg font-bold text-gray-900">Details</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <input
-          value={String(details.title ?? "")}
-          onChange={(e) => setField("title", e.target.value)}
+          type="text"
+          value={titleValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            setTitleValue(v);
+            setField("title", v);
+          }}
           placeholder="Job title"
           className="border border-gray-300 rounded-lg px-3 py-2"
+          aria-label="Job title"
         />
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
