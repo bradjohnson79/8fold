@@ -37,15 +37,19 @@ export async function GET(req: Request) {
 
     const photosByJobId = new Map<string, Array<{ id: string; kind: string; url: string | null }>>();
     if (ids.length) {
-      const rows = await db
-        .select({ jobId: jobPhotos.jobId, id: jobPhotos.id, kind: jobPhotos.kind, url: jobPhotos.url })
-        .from(jobPhotos)
-        .where(inArray(jobPhotos.jobId, ids))
-        .orderBy(asc(jobPhotos.createdAt));
-      for (const r of rows) {
-        const arr = photosByJobId.get(r.jobId) ?? [];
-        arr.push({ id: r.id, kind: r.kind, url: (r as { url?: string | null }).url ?? null });
-        photosByJobId.set(r.jobId, arr);
+      try {
+        const rows = await db
+          .select({ jobId: jobPhotos.jobId, id: jobPhotos.id, kind: jobPhotos.kind, url: jobPhotos.url })
+          .from(jobPhotos)
+          .where(inArray(jobPhotos.jobId, ids))
+          .orderBy(asc(jobPhotos.createdAt));
+        for (const r of rows) {
+          const arr = photosByJobId.get(r.jobId) ?? [];
+          arr.push({ id: r.id, kind: r.kind, url: (r as { url?: string | null }).url ?? null });
+          photosByJobId.set(r.jobId, arr);
+        }
+      } catch {
+        // job_photos table may not exist in some DBs; return jobs with empty photos
       }
     }
 
