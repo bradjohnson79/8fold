@@ -1,4 +1,5 @@
-import { jsonb, pgEnum, pgTable, text, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import { jsonb, pgEnum, pgTable, text, timestamp, uuid, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const jobDraftStatusEnum = pgEnum("JobDraftStatus", ["ACTIVE", "ARCHIVED"]);
 export const jobDraftStepEnum = pgEnum("JobDraftStep", [
@@ -21,6 +22,8 @@ export const jobDraft = pgTable(
     updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => ({
-    userIdStatusIdx: index("JobDraft_userId_status_idx").on(t.userId, t.status),
+    oneActivePerUser: uniqueIndex("JobDraft_v3_one_active_per_user")
+      .on(t.userId)
+      .where(sql`"status" = 'ACTIVE'`),
   })
 );
