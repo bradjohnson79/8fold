@@ -17,23 +17,26 @@ export function ok<T>(data: T, init?: ResponseInit): NextResponse {
   return resp;
 }
 
+export type FailInit = Omit<ResponseInit, "status"> & { message?: string };
+
 /**
  * Failure response: { ok: false, error }
  */
-export function fail(status: number, code: string, init?: Omit<ResponseInit, "status">): NextResponse {
+export function fail(status: number, code: string, init?: FailInit): NextResponse {
   const headers = init?.headers;
   const message =
-    status === 401
-      ? "Unauthorized"
-      : status === 403
-        ? "Forbidden"
-        : status === 404
-          ? "Not Found"
-          : status === 400
-            ? "Bad Request"
-            : status >= 400 && status < 500
-              ? "Request failed"
-              : "Server error";
+    init?.message ??
+    (status === 401
+        ? "Unauthorized"
+        : status === 403
+          ? "Forbidden"
+          : status === 404
+            ? "Not Found"
+            : status === 400
+              ? "Bad Request"
+              : status >= 400 && status < 500
+                ? "Request failed"
+                : "Server error");
   const resp = NextResponse.json({ ok: false, error: message, code }, { status });
   if (headers) {
     const h = new Headers(resp.headers);

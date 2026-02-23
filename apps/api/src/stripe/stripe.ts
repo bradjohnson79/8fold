@@ -17,11 +17,14 @@ if (!stripeSecretKey) {
 
 const stripeMode = getStripeModeFromEnv();
 logStripeModeOnce(stripeMode);
-assertStripeKeysMatchMode({
-  mode: stripeMode,
-  secretKey: stripeSecretKey ?? null,
-  publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null,
-});
+// Skip key validation during Next.js build (Collecting page data); env may differ from runtime.
+if (process.env.NEXT_PHASE !== "phase-production-build") {
+  assertStripeKeysMatchMode({
+    mode: stripeMode,
+    secretKey: stripeSecretKey ?? null,
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null,
+  });
+}
 
 export const stripe = stripeSecretKey
   ? new Stripe(stripeSecretKey, {
