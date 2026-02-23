@@ -3,8 +3,15 @@ import Stripe from "stripe";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logEvent } from "@/src/server/observability/log";
-import { stripe } from "@/src/stripe/stripe";
 import { db } from "@/db/drizzle";
+
+/** Minimal Stripe client for webhook verification only. Bypasses main stripe module
+ * so webhooks always return JSON even when mode assertion fails at load time. */
+function getWebhookStripe(): Stripe | null {
+  const key = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+  if (!key) return null;
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
+}
 import { jobs } from "@/db/schema/job";
 import { stripeWebhookEvents } from "@/db/schema/stripeWebhookEvent";
 import { contractors } from "@/db/schema/contractor";
@@ -33,14 +40,40 @@ export const config = {
   api: { bodyParser: false },
 };
 
-const HANDLED_EVENTS = new Set<Stripe.Event.Type>([
+/** Events we process. Unknown types return 200 { ok: true, ignored: true }. */
+const SUPPORTED_EVENTS = new Set<Stripe.Event.Type>([
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
+  "transfer.created",
   "account.updated",
   "payout.paid",
-  "transfer.created",
 ]);
+
+function json400(code: string, message: string) {
+  return NextResponse.json({ ok: false, error: { code, message } }, { status: 400 });
+}
+
+function json500(code: string, message: string, ref?: string) {
+  const body: { ok: false; error: { code: string; message: string }; ref?: string } = {
+    ok: false,
+    error: { code, message },
+  };
+  if (ref) body.ref = ref;
+  return NextResponse.json(body, { status: 500 });
+}
+
+function webhookLog(type: string, meta?: Record<string, unknown>) {
+  // eslint-disable-next-line no-console
+  console.info(
+    JSON.stringify({
+      source: "stripe_webhook",
+      type,
+      meta: meta ?? {},
+      ts: new Date().toISOString(),
+    }),
+  );
+}
 
 function isTestMode() {
   return process.env.STRIPE_MODE === "test" || String(process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_test_");
@@ -77,48 +110,79 @@ function requireJobEscrowMetadata(metadata: Stripe.MetadataParam | null | undefi
 }
 
 export async function POST(req: Request) {
-  if (!stripe) {
-    return NextResponse.json(
-      { ok: false, error: { code: "AUTH_STRIPE_CONFIG_MISSING", message: "STRIPE_SECRET_KEY not configured" } },
-      { status: 500 },
-    );
+  try {
+    return await handleWebhook(req);
+  } catch (err) {
+    const ref = `stripe_wh_${randomUUID()}`;
+    webhookLog("FAILED", { ref, code: "STRIPE_WEBHOOK_ERROR" });
+    try {
+      logEvent({
+        level: "error",
+        event: "STRIPE_WEBHOOK:uncaught",
+        route: "/api/webhooks/stripe",
+        method: "POST",
+        status: 500,
+        code: "STRIPE_WEBHOOK_ERROR",
+        context: { ref, message: err instanceof Error ? err.message : "unknown" },
+      });
+    } catch {
+      /* logEvent must not break response */
+    }
+    return json500("STRIPE_WEBHOOK_ERROR", "Internal server error", ref);
   }
-  const s = stripe;
+}
 
+async function handleWebhook(req: Request) {
+  // Task 1: Environment hard guard — fail clearly if env incomplete
+  const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+  if (!secretKey) {
+    webhookLog("FAILED", { code: "STRIPE_SECRET_MISSING" });
+    return json500("STRIPE_SECRET_MISSING", "Stripe secret key not configured");
+  }
   const secretPrimary = String(process.env.STRIPE_WEBHOOK_SECRET ?? "").trim();
   if (!secretPrimary) {
-    return NextResponse.json(
-      { ok: false, error: { code: "AUTH_STRIPE_CONFIG_MISSING", message: "STRIPE_WEBHOOK_SECRET not configured" } },
-      { status: 500 },
-    );
+    webhookLog("FAILED", { code: "STRIPE_WEBHOOK_SECRET_MISSING" });
+    return json500("STRIPE_WEBHOOK_SECRET_MISSING", "Webhook secret not configured");
+  }
+
+  const s = getWebhookStripe();
+  if (!s) {
+    webhookLog("FAILED", { code: "STRIPE_SECRET_MISSING" });
+    return json500("STRIPE_SECRET_MISSING", "Stripe secret key not configured");
   }
 
   const secretConnect = String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET ?? "").trim() || null;
-  const signature = req.headers.get("stripe-signature");
-  if (!signature) {
-    return NextResponse.json({ ok: false, error: "Missing stripe-signature header" }, { status: 400 });
+
+  // Task 2: Signature validation hardening
+  const sig = req.headers.get("stripe-signature");
+  if (!sig) {
+    webhookLog("FAILED", { code: "STRIPE_SIGNATURE_MISSING" });
+    return json400("STRIPE_SIGNATURE_MISSING", "Missing stripe-signature header");
   }
 
-  // Must stay raw for Stripe signature verification.
   const rawBody = Buffer.from(await req.arrayBuffer());
 
   let event: Stripe.Event;
   try {
     if (secretConnect) {
       try {
-        event = s.webhooks.constructEvent(rawBody, signature, secretConnect);
+        event = s.webhooks.constructEvent(rawBody, sig, secretConnect);
       } catch {
-        event = s.webhooks.constructEvent(rawBody, signature, secretPrimary);
+        event = s.webhooks.constructEvent(rawBody, sig, secretPrimary);
       }
     } else {
-      event = s.webhooks.constructEvent(rawBody, signature, secretPrimary);
+      event = s.webhooks.constructEvent(rawBody, sig, secretPrimary);
     }
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 400 });
+    webhookLog("FAILED", { code: "STRIPE_SIGNATURE_INVALID" });
+    return json400("STRIPE_SIGNATURE_INVALID", "Invalid signature");
   }
+
+  webhookLog("VERIFIED", { eventId: event.id, eventType: event.type });
 
   const now = new Date();
   let duplicateEvent = false;
+  let ignoredEvent = false;
 
   try {
     await db.transaction(async (tx) => {
@@ -140,11 +204,14 @@ export async function POST(req: Request) {
 
       if (!lock[0]?.id) {
         duplicateEvent = true;
+        webhookLog("DUPLICATE", { eventId: event.id });
         return;
       }
 
-      if (!HANDLED_EVENTS.has(event.type)) {
-        testLog({ eventType: event.type });
+      // Task 5: Event type whitelist — unknown types return 200 { ok: true, ignored: true }
+      if (!SUPPORTED_EVENTS.has(event.type)) {
+        ignoredEvent = true;
+        webhookLog("PROCESSED", { eventId: event.id, eventType: event.type, ignored: true });
         return;
       }
 
@@ -387,24 +454,49 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const ref = `stripe_wh_${randomUUID()}`;
-    logEvent({
-      level: "error",
-      event: "stripe.webhook_error",
-      route: "/api/webhooks/stripe",
-      method: "POST",
-      status: 500,
+    webhookLog("FAILED", {
+      ref,
+      eventId: event?.id,
+      eventType: event?.type,
       code: "STRIPE_WEBHOOK_ERROR",
-      context: {
-        ref,
-        type: event?.type,
-        id: event?.id,
-        message: err instanceof Error ? err.message : "unknown",
-      },
     });
-    return NextResponse.json({ ok: false, error: "Internal server error", ref }, { status: 500 });
+    try {
+      logEvent({
+        level: "error",
+        event: "STRIPE_WEBHOOK:handler_error",
+        route: "/api/webhooks/stripe",
+        method: "POST",
+        status: 500,
+        code: "STRIPE_WEBHOOK_ERROR",
+        context: {
+          ref,
+          eventId: event?.id,
+          eventType: event?.type,
+          message: err instanceof Error ? err.message : "unknown",
+        },
+      });
+    } catch {
+      /* logEvent must not break response */
+    }
+    return json500("STRIPE_WEBHOOK_ERROR", "Internal server error", ref);
   }
 
   if (duplicateEvent) return NextResponse.json({ ok: true, duplicate: true });
+  if (ignoredEvent) return NextResponse.json({ ok: true, ignored: true });
+  webhookLog("PROCESSED", { eventId: event.id, eventType: event.type });
   return NextResponse.json({ ok: true });
 }
+
+/**
+ * LOCAL REPLAY TEST:
+ *   stripe listen --forward-to localhost:3003/api/webhooks/stripe
+ *   stripe trigger payment_intent.succeeded
+ *
+ * Expected outputs:
+ *   Success        → 200 {"ok":true}
+ *   Duplicate replay → 200 {"ok":true,"duplicate":true}
+ *   Invalid signature → 400 {"ok":false,"error":{"code":"STRIPE_SIGNATURE_INVALID","message":"Invalid signature"}}
+ *   Missing secret → 500 {"ok":false,"error":{"code":"STRIPE_WEBHOOK_SECRET_MISSING","message":"Webhook secret not configured"}}
+ *   Missing stripe-signature header → 400 {"ok":false,"error":{"code":"STRIPE_SIGNATURE_MISSING","message":"Missing stripe-signature header"}}
+ */
 
