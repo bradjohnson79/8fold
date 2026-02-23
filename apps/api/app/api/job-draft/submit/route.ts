@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const draftRows = await db
       .select()
       .from(jobDraft)
-      .where(and(eq(jobDraft.user_id, user.userId), eq(jobDraft.status, "ACTIVE")))
+      .where(and(eq(jobDraft.userId, user.userId), eq(jobDraft.status, "ACTIVE")))
       .limit(1);
     const draft = draftRows[0] ?? null;
     if (!draft) return NextResponse.json({ success: false, message: "Draft not found." }, { status: 404 });
@@ -113,8 +113,8 @@ export async function POST(req: Request) {
 
     await db
       .update(jobDraft)
-      .set({ status: "ARCHIVED", step: "CONFIRMED", updated_at: now })
-      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.user_id, user.userId)));
+      .set({ status: "ARCHIVED", step: "CONFIRMED", updatedAt: now })
+      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
 
     return NextResponse.json({ success: true, jobId });
   } catch (err) {
