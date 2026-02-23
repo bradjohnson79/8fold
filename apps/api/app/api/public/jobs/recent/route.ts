@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { z } from "zod";
 import { asc, inArray } from "drizzle-orm";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
@@ -14,14 +15,18 @@ const QuerySchema = z.object({
       const n = v ? Number(v) : 9;
       if (!Number.isFinite(n)) return 9;
       return Math.max(1, Math.min(50, Math.trunc(n)));
-    })
+    }),
+  debug: z.string().optional(),
 });
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const debug = url.searchParams.get("debug") === "1";
+
   try {
-    const url = new URL(req.url);
     const parsed = QuerySchema.safeParse({
-      limit: url.searchParams.get("limit") ?? undefined
+      limit: url.searchParams.get("limit") ?? undefined,
+      debug: url.searchParams.get("debug") ?? undefined,
     });
     if (!parsed.success) return badRequest("invalid_query");
 
@@ -75,11 +80,19 @@ export async function GET(req: Request) {
 
     const out = jobs.map((j) => ({
       ...j,
-      createdAt: j.createdAt.toISOString(),
+      createdAt: (j.createdAt instanceof Date ? j.createdAt : new Date(j.createdAt ?? 0)).toISOString(),
     }));
 
     return ok({ jobs: out });
   } catch (err) {
+    if (debug) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      return NextResponse.json(
+        { ok: false, error: msg, code: "internal_error", debug: { message: msg, stack } },
+        { status: 500 },
+      );
+    }
     return handleApiError(err, "GET /api/public/jobs/recent", { route: "/api/public/jobs/recent" });
   }
 }
