@@ -42,48 +42,48 @@ async function main() {
   const existing = await db
     .select({ id: jobs.id })
     .from(jobs)
-    .where(eq(jobs.jobPosterUserId, posterUserId))
+    .where(eq(jobs.job_poster_user_id, posterUserId))
     .limit(20);
   const existingId = existing.map((r) => r.id).find(Boolean) ?? null;
 
   const jobId = existingId || crypto.randomUUID();
 
-  // Minimal-but-routable: router/apply-routing requires contractorPayoutCents > 0 and coords present.
+  // Minimal-but-routable: router/apply-routing requires contractor_payout_cents > 0 and coords present.
   const insertRow: Record<string, unknown> = {
     id: jobId,
     archived: false,
     status: "OPEN_FOR_ROUTING",
-    routingStatus: "UNROUTED",
-    jobSource: "REAL",
-    isMock: false,
+    routing_status: "UNROUTED",
+    job_source: "REAL",
+    is_mock: false,
 
     title: "AUDIT (BC): Furniture assembly in Langley",
     scope: "Assemble one IKEA cabinet and mount to wall. Bring basic tools. Verify wall studs and level alignment.",
     region: "langley-bc",
     country: "CA",
     currency: "CAD",
-    regionCode: "BC",
-    regionName: "British Columbia",
+    region_code: "BC",
+    region_name: "British Columbia",
     city: "Langley",
-    jobType: "urban",
-    tradeCategory: "FURNITURE_ASSEMBLY",
+    job_type: "urban",
+    trade_category: "FURNITURE_ASSEMBLY",
 
     lat,
     lng,
 
     // Pricing: must be non-zero for routing.
-    laborTotalCents: 25000,
-    materialsTotalCents: 0,
-    transactionFeeCents: 2500,
-    contractorPayoutCents: 20000,
-    routerEarningsCents: 1500,
-    brokerFeeCents: 6000,
+    labor_total_cents: 25000,
+    materials_total_cents: 0,
+    transaction_fee_cents: 2500,
+    contractor_payout_cents: 20000,
+    router_earnings_cents: 1500,
+    broker_fee_cents: 6000,
 
-    jobPosterUserId: posterUserId,
-    postedAt: now,
-    publishedAt: now,
-    createdAt: now,
-    updatedAt: now,
+    job_poster_user_id: posterUserId,
+    posted_at: now,
+    published_at: now,
+    created_at: now,
+    updated_at: now,
   };
 
   // Upsert via primary key.

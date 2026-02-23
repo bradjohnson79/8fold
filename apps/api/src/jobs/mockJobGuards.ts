@@ -180,32 +180,32 @@ export async function cleanupInvalidMockJobs(
   const invalidJobs = await dbLike
     .select({
       id: jobs.id,
-      isMock: jobs.isMock,
-      jobSource: jobs.jobSource,
-      publicStatus: jobs.publicStatus,
-      routerId: jobs.claimedByUserId,
-      laborTotalCents: jobs.laborTotalCents,
-      contractorPayoutCents: jobs.contractorPayoutCents,
-      routerEarningsCents: jobs.routerEarningsCents,
-      brokerFeeCents: jobs.brokerFeeCents,
+      isMock: jobs.is_mock,
+      jobSource: jobs.job_source,
+      publicStatus: jobs.public_status,
+      routerId: jobs.claimed_by_user_id,
+      laborTotalCents: jobs.labor_total_cents,
+      contractorPayoutCents: jobs.contractor_payout_cents,
+      routerEarningsCents: jobs.router_earnings_cents,
+      brokerFeeCents: jobs.broker_fee_cents,
       city: jobs.city,
-      regionCode: jobs.regionCode,
+      regionCode: jobs.region_code,
     })
     .from(jobs)
     .where(
       or(
         // Mock job with OPEN status
-        and(eq(jobs.isMock, true), eq(jobs.publicStatus, "OPEN" as any)),
+        and(eq(jobs.is_mock, true), eq(jobs.public_status, "OPEN" as any)),
         // Mock job that's claimed
-        and(eq(jobs.isMock, true), isNotNull(jobs.claimedByUserId)),
+        and(eq(jobs.is_mock, true), isNotNull(jobs.claimed_by_user_id)),
         // Mock job with invalid pricing
-        and(eq(jobs.isMock, true), lte(jobs.laborTotalCents, 0)),
-        and(eq(jobs.isMock, true), lte(jobs.contractorPayoutCents, 0)),
-        and(eq(jobs.isMock, true), lte(jobs.routerEarningsCents, 0)),
-        and(eq(jobs.isMock, true), lte(jobs.brokerFeeCents, 0)),
+        and(eq(jobs.is_mock, true), lte(jobs.labor_total_cents, 0)),
+        and(eq(jobs.is_mock, true), lte(jobs.contractor_payout_cents, 0)),
+        and(eq(jobs.is_mock, true), lte(jobs.router_earnings_cents, 0)),
+        and(eq(jobs.is_mock, true), lte(jobs.broker_fee_cents, 0)),
         // Inconsistent isMock/jobSource
-        and(eq(jobs.isMock, true), eq(jobs.jobSource, "REAL" as any)),
-        and(eq(jobs.isMock, false), eq(jobs.jobSource, "MOCK" as any)),
+        and(eq(jobs.is_mock, true), eq(jobs.job_source, "REAL" as any)),
+        and(eq(jobs.is_mock, false), eq(jobs.job_source, "MOCK" as any)),
       ),
     )
     .limit(limit);

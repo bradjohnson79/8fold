@@ -40,7 +40,7 @@ export async function POST(req: Request) {
         id: jobs.id,
         title: jobs.title,
         scope: jobs.scope,
-        tradeCategory: jobs.tradeCategory,
+        tradeCategory: jobs.trade_category,
         archived: jobs.archived,
       })
       .from(jobs)
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
           continue;
         }
 
-        await tx.update(jobs).set({ scope: p.to, updatedAt: now } as any).where(eq(jobs.id, p.id));
+        await tx.update(jobs).set({ scope: p.to, updated_at: now }).where(eq(jobs.id, p.id));
         updated++;
         updatedIds.push(p.id);
 

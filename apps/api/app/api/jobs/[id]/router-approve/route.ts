@@ -44,15 +44,15 @@ export async function POST(req: Request) {
             .select({
               id: jobs.id,
               status: jobs.status,
-              isMock: jobs.isMock,
-              routerId: jobs.claimedByUserId,
-              routerEarningsCents: jobs.routerEarningsCents,
-              brokerFeeCents: jobs.brokerFeeCents,
-              jobPosterUserId: jobs.jobPosterUserId,
-              contractorUserId: jobs.contractorUserId,
-              payoutStatus: jobs.payoutStatus,
-              paymentStatus: jobs.paymentStatus,
-              completionDeadlineAt: jobs.completionDeadlineAt,
+              isMock: jobs.is_mock,
+              routerId: jobs.claimed_by_user_id,
+              routerEarningsCents: jobs.router_earnings_cents,
+              brokerFeeCents: jobs.broker_fee_cents,
+              jobPosterUserId: jobs.job_poster_user_id,
+              contractorUserId: jobs.contractor_user_id,
+              payoutStatus: jobs.payout_status,
+              paymentStatus: jobs.payment_status,
+              completionDeadlineAt: jobs.completion_deadline_at,
             })
             .from(jobs)
             .where(eq(jobs.id, id))
@@ -75,10 +75,10 @@ export async function POST(req: Request) {
           .update(jobs)
           .set({
             status: "COMPLETION_FLAGGED" as any,
-            completionFlaggedAt: now,
-            completionFlagReason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
-            updatedAt: now,
-          } as any)
+            completion_flagged_at: now,
+            completion_flag_reason: "COMPLETION_DEADLINE_EXCEEDED_MANUAL_REVIEW",
+            updated_at: now,
+          })
           .where(eq(jobs.id, id));
         return { kind: "deadline_exceeded" as const };
       }
@@ -111,10 +111,10 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "COMPLETED_APPROVED" as any,
-          routerApprovedAt: approvedAt,
-          routerApprovalNotes: body.data.notes?.trim() || null,
+          router_approved_at: approvedAt,
+          router_approval_notes: body.data.notes?.trim() || null,
         })
-        .where(and(eq(jobs.id, id), eq(jobs.claimedByUserId, user.userId)))
+        .where(and(eq(jobs.id, id), eq(jobs.claimed_by_user_id, user.userId)))
         .returning({ id: jobs.id });
 
       // Concurrency guard: if admin rerouted (or router unclaimed) mid-flight, do not proceed.
@@ -129,7 +129,15 @@ export async function POST(req: Request) {
       const updated =
         (
           await tx
-            .select()
+            .select({
+              id: jobs.id,
+              status: jobs.status,
+              payoutStatus: jobs.payout_status,
+              paymentStatus: jobs.payment_status,
+              createdAt: jobs.created_at,
+              updatedAt: jobs.updated_at,
+              publishedAt: jobs.published_at,
+            })
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1)

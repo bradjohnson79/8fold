@@ -49,9 +49,9 @@ export async function GET(req: Request) {
           id: jobs.id,
           title: jobs.title,
           city: jobs.city,
-          regionCode: jobs.regionCode,
+          regionCode: jobs.region_code,
           status: jobs.status,
-          laborTotalCents: jobs.laborTotalCents,
+          laborTotalCents: jobs.labor_total_cents,
         },
       })
       .from(repeatContractorRequests)

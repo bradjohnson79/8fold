@@ -1,0 +1,33 @@
+# Phase A Schema Guard — Fail CI on schema drift or Tier 1 query failure
+# Triggers: push, pull_request
+# Requires: DATABASE_URL secret for schema validation + query tests
+name: Schema Guard
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  schema-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run hygiene guard
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm -C apps/api hygiene:guard

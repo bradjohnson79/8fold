@@ -53,12 +53,12 @@ export async function POST(req: Request) {
         id: jobs.id,
         title: jobs.title,
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
-        payoutStatus: jobs.payoutStatus,
-        amountCents: jobs.amountCents,
-        paymentCurrency: jobs.paymentCurrency,
-        contractorCompletionSummary: jobs.contractorCompletionSummary,
-        customerCompletionSummary: jobs.customerCompletionSummary,
+        paymentStatus: jobs.payment_status,
+        payoutStatus: jobs.payout_status,
+        amountCents: jobs.amount_cents,
+        paymentCurrency: jobs.payment_currency,
+        contractorCompletionSummary: jobs.contractor_completion_summary,
+        customerCompletionSummary: jobs.customer_completion_summary,
       })
       .from(jobs)
       .where(eq(jobs.id, dispute.jobId))

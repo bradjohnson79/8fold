@@ -55,11 +55,11 @@ export async function GET(req: Request) {
     const where = and(
       eq(monitoringEvents.type, "JOB_OVERDUE_UNROUTED"),
       ...(country ? ([eq(jobs.country, country as any)] as any[]) : ([] as any[])),
-      ...(tradeCategory ? ([eq(jobs.tradeCategory, tradeCategory as any)] as any[]) : ([] as any[])),
+      ...(tradeCategory ? ([eq(jobs.trade_category, tradeCategory as any)] as any[]) : ([] as any[])),
       ...(regionUpper
         ? ([
             regionIsCode
-              ? or(eq(jobs.regionCode, regionUpper), ilike(jobs.region, `%${regionUpper.toLowerCase()}%`))
+              ? or(eq(jobs.region_code, regionUpper), ilike(jobs.region, `%${regionUpper.toLowerCase()}%`))
               : ilike(jobs.region, `%${regionUpper.toLowerCase()}%`),
           ] as any[])
         : ([] as any[])),
@@ -87,12 +87,12 @@ export async function GET(req: Request) {
           status: jobs.status,
           country: jobs.country,
           region: jobs.region,
-          regionCode: jobs.regionCode,
-          tradeCategory: jobs.tradeCategory,
-          postedAt: jobs.postedAt,
-          routingDueAt: jobs.routingDueAt,
-          routingStatus: jobs.routingStatus,
-          firstRoutedAt: jobs.firstRoutedAt,
+          regionCode: jobs.region_code,
+          tradeCategory: jobs.trade_category,
+          postedAt: jobs.posted_at,
+          routingDueAt: jobs.routing_due_at,
+          routingStatus: jobs.routing_status,
+          firstRoutedAt: jobs.first_routed_at,
         },
       })
       .from(monitoringEvents)

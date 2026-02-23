@@ -28,7 +28,7 @@ async function main() {
     const rows = await db
       .select({ id: jobs.id, status: jobs.status, archived: jobs.archived })
       .from(jobs)
-      .orderBy(desc(jobs.createdAt))
+      .orderBy(desc(jobs.created_at))
       .limit(5);
     console.log("[productionDbCheck] Sample (newest 5):");
     for (const r of rows) {

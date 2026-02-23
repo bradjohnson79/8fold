@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       const job =
         (
           await tx
-            .select({ id: jobs.id, status: jobs.status, routerId: jobs.claimedByUserId })
+            .select({ id: jobs.id, status: jobs.status, routerId: jobs.claimed_by_user_id })
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1)
@@ -55,15 +55,23 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "COMPLETION_FLAGGED" as any,
-          completionFlaggedAt: new Date(),
-          completionFlagReason: body.data.reason,
+          completion_flagged_at: new Date(),
+          completion_flag_reason: body.data.reason,
         })
         .where(eq(jobs.id, id));
 
       const updated =
         (
           await tx
-            .select()
+            .select({
+              id: jobs.id,
+              status: jobs.status,
+              payoutStatus: jobs.payout_status,
+              paymentStatus: jobs.payment_status,
+              createdAt: jobs.created_at,
+              updatedAt: jobs.updated_at,
+              publishedAt: jobs.published_at,
+            })
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1)

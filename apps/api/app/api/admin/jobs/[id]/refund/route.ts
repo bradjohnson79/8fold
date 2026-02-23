@@ -32,14 +32,14 @@ export async function POST(req: Request) {
       const jobRows = await db
         .select({
           id: jobs.id,
-          amountCents: jobs.amountCents,
-          paymentStatus: jobs.paymentStatus,
-          payoutStatus: jobs.payoutStatus,
-          fundedAt: jobs.fundedAt,
-          releasedAt: jobs.releasedAt,
-          refundedAt: jobs.refundedAt,
-          stripeChargeId: jobs.stripeChargeId,
-          stripePaymentIntentId: jobs.stripePaymentIntentId,
+          amountCents: jobs.amount_cents,
+          paymentStatus: jobs.payment_status,
+          payoutStatus: jobs.payout_status,
+          fundedAt: jobs.funded_at,
+          releasedAt: jobs.released_at,
+          refundedAt: jobs.refunded_at,
+          stripeChargeId: jobs.stripe_charge_id,
+          stripePaymentIntentId: jobs.stripe_payment_intent_id,
           status: jobs.status,
         })
         .from(jobs)

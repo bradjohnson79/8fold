@@ -8,7 +8,7 @@ async function getOrCreateActiveDraft(userId: string) {
   const rows = await db
     .select()
     .from(jobDraft)
-    .where(and(eq(jobDraft.userId, userId), eq(jobDraft.status, "ACTIVE")))
+    .where(and(eq(jobDraft.user_id, userId), eq(jobDraft.status, "ACTIVE")))
     .limit(1);
   const existing = rows[0] ?? null;
   if (existing) return existing;
@@ -17,7 +17,7 @@ async function getOrCreateActiveDraft(userId: string) {
     .insert(jobDraft)
     .values({
       id: crypto.randomUUID(),
-      userId,
+      user_id: userId,
       status: "ACTIVE",
       step: "DETAILS",
       data: {},
@@ -61,14 +61,14 @@ export async function PATCH(req: Request) {
 
     const updates: Partial<typeof jobDraft.$inferInsert> = {
       data: mergedData,
-      updatedAt: new Date(),
+      updated_at: new Date(),
     };
     if (body?.step) updates.step = body.step;
 
     const updatedRows = await db
       .update(jobDraft)
       .set(updates)
-      .where(and(eq(jobDraft.id, current.id), eq(jobDraft.userId, user.userId)))
+      .where(and(eq(jobDraft.id, current.id), eq(jobDraft.user_id, user.userId)))
       .returning();
 
     return NextResponse.json({ success: true, draft: updatedRows[0] ?? current });

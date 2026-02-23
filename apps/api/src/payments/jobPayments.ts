@@ -77,10 +77,10 @@ export async function createJobPaymentIntent(jobId: string) {
   const jobRows = await db
     .select({
       id: jobs.id,
-      laborTotalCents: jobs.laborTotalCents,
-      materialsTotalCents: jobs.materialsTotalCents,
-      escrowLockedAt: jobs.escrowLockedAt,
-      jobPosterUserId: jobs.jobPosterUserId,
+      laborTotalCents: jobs.labor_total_cents,
+      materialsTotalCents: jobs.materials_total_cents,
+      escrowLockedAt: jobs.escrow_locked_at,
+      jobPosterUserId: jobs.job_poster_user_id,
     })
     .from(jobs)
     .where(and(eq(jobs.id, jobId), eq(jobs.archived, false)))

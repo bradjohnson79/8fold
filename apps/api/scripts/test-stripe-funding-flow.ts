@@ -87,14 +87,14 @@ async function main() {
       await tx
         .update(jobs)
         .set({
-          paymentStatus: "FUNDED",
-          fundedAt: now,
-          stripePaymentIntentId: pi.paymentIntentId,
+          payment_status: "FUNDED",
+          funded_at: now,
+          stripe_payment_intent_id: pi.paymentIntentId,
           status: "OPEN_FOR_ROUTING",
-          escrowLockedAt: now,
-          paymentCapturedAt: now,
-          updatedAt: now,
-        } as any)
+          escrow_locked_at: now,
+          payment_captured_at: now,
+          updated_at: now,
+        })
         .where(eq(jobs.id, jobId));
 
       const existingEscrow = await tx
@@ -120,7 +120,7 @@ async function main() {
     const fundedJob = await db
       .select({
         status: jobs.status,
-        paymentStatus: jobs.paymentStatus,
+        paymentStatus: jobs.payment_status,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))

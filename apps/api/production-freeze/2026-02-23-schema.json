@@ -1,0 +1,7100 @@
+{
+  "generated": "2026-02-23T02:17:27.071Z",
+  "note": "Schema snapshot for production freeze. Run with production DATABASE_URL for prod snapshot.",
+  "tables": {
+    "AdminInvite": [
+      {
+        "table_name": "AdminInvite",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "AdminInvite",
+        "column_name": "email",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AdminInvite",
+        "column_name": "tokenHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AdminInvite",
+        "column_name": "expiresAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AdminInvite",
+        "column_name": "usedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "AdminInvite",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "AdminUser": [
+      {
+        "table_name": "AdminUser",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "AdminUser",
+        "column_name": "email",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AdminUser",
+        "column_name": "passwordHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AdminUser",
+        "column_name": "role",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'ADMIN'::text"
+      },
+      {
+        "table_name": "AdminUser",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "AuditLog": [
+      {
+        "table_name": "AuditLog",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "actorUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "action",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "entityType",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "entityId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "AuditLog",
+        "column_name": "actorAdminUserId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "AuthToken": [
+      {
+        "table_name": "AuthToken",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuthToken",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "AuthToken",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuthToken",
+        "column_name": "tokenHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuthToken",
+        "column_name": "expiresAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "AuthToken",
+        "column_name": "usedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "Contractor": [
+      {
+        "table_name": "Contractor",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "ContractorStatus",
+        "is_nullable": "NO",
+        "column_default": "'PENDING'::\"ContractorStatus\""
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "businessName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "phone",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "email",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "categories",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "regions",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "approvedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "lat",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "lng",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "regionCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "trade",
+        "data_type": "USER-DEFINED",
+        "udt_name": "ContractorTrade",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "automotiveEnabled",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "contactName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "tradeCategories",
+        "data_type": "ARRAY",
+        "udt_name": "_TradeCategory",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Contractor",
+        "column_name": "yearsExperience",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "3"
+      }
+    ],
+    "ContractorLedgerEntry": [
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "contractorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "ContractorLedgerEntryType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "bucket",
+        "data_type": "USER-DEFINED",
+        "udt_name": "ContractorLedgerBucket",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorLedgerEntry",
+        "column_name": "memo",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "ContractorPayout": [
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "contractorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "scheduledFor",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "ContractorPayoutStatus",
+        "is_nullable": "NO",
+        "column_default": "'PENDING'::\"ContractorPayoutStatus\""
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "paidAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "externalReference",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "failureReason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "ContractorPayout",
+        "column_name": "pmRequestId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "JobAssignment": [
+      {
+        "table_name": "JobAssignment",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobAssignment",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobAssignmentStatus",
+        "is_nullable": "NO",
+        "column_default": "'ASSIGNED'::\"JobAssignmentStatus\""
+      },
+      {
+        "table_name": "JobAssignment",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobAssignment",
+        "column_name": "contractorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobAssignment",
+        "column_name": "assignedByAdminUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobAssignment",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobAssignment",
+        "column_name": "completedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "JobDispatch": [
+      {
+        "table_name": "JobDispatch",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobDispatchStatus",
+        "is_nullable": "NO",
+        "column_default": "'PENDING'::\"JobDispatchStatus\""
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "expiresAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "respondedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "tokenHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "contractorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDispatch",
+        "column_name": "routerUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "JobDraft": [
+      {
+        "table_name": "JobDraft",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobDraftStatus",
+        "is_nullable": "NO",
+        "column_default": "'DRAFT'::\"JobDraftStatus\""
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "title",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "scope",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "region",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "serviceType",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "timeWindow",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "routerEarningsCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "brokerFeeCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "notesInternal",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "createdByAdminUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "publishedJobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "jobType",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "lat",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "lng",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "contractorPayoutCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "laborTotalCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "materialsTotalCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "transactionFeeCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "step",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobDraftStep",
+        "is_nullable": "NO",
+        "column_default": "'DETAILS'::\"JobDraftStep\""
+      },
+      {
+        "table_name": "JobDraft",
+        "column_name": "data",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      }
+    ],
+    "JobDraftV2": [
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "countryCode",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "stateCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "currentStep",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobDraftV2Step",
+        "is_nullable": "NO",
+        "column_default": "'PROFILE'::\"JobDraftV2Step\""
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "data",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "validation",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "lastSavedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "version",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "1"
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "archivedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "paymentIntentId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "paymentIntentCreatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      {
+        "table_name": "JobDraftV2",
+        "column_name": "updatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    ],
+    "JobDraftV2FieldState": [
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "draftId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "fieldKey",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "valueHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobDraftV2FieldStateStatus",
+        "is_nullable": "NO",
+        "column_default": "'idle'::\"JobDraftV2FieldStateStatus\""
+      },
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "savedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "lastErrorCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobDraftV2FieldState",
+        "column_name": "lastErrorMessage",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "JobHold": [
+      {
+        "table_name": "JobHold",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobHoldStatus",
+        "is_nullable": "NO",
+        "column_default": "'ACTIVE'::\"JobHoldStatus\""
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "reason",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobHoldReason",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "notes",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "appliedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "releasedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "appliedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "appliedByAdminUserId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "releasedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobHold",
+        "column_name": "releasedByAdminUserId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "JobPayment": [
+      {
+        "table_name": "JobPayment",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "stripePaymentIntentId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "stripePaymentIntentStatus",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "stripeChargeId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "status",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'PENDING'::text"
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "escrowLockedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "paymentCapturedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "paymentReleasedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "refundedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "refundAmountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "refundIssuedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobPayment",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "JobPosterProfile": [
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "updatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "email",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "phone",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "address",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "city",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "stateProvince",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "postalCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "lat",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "lng",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "defaultJobLocation",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "payoutMethod",
+        "data_type": "USER-DEFINED",
+        "udt_name": "RolePayoutMethod",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "payoutStatus",
+        "data_type": "USER-DEFINED",
+        "udt_name": "RolePayoutStatus",
+        "is_nullable": "NO",
+        "column_default": "'UNSET'::\"RolePayoutStatus\""
+      },
+      {
+        "table_name": "JobPosterProfile",
+        "column_name": "stripeAccountId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "LedgerEntry": [
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "LedgerEntryType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "direction",
+        "data_type": "USER-DEFINED",
+        "udt_name": "LedgerDirection",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "bucket",
+        "data_type": "USER-DEFINED",
+        "udt_name": "LedgerBucket",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "LedgerEntry",
+        "column_name": "memo",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "MaterialsEscrow": [
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "MaterialsEscrowStatus",
+        "is_nullable": "NO",
+        "column_default": "'HELD'::\"MaterialsEscrowStatus\""
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "requestId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "NO",
+        "column_default": "'USD'::\"CurrencyCode\""
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "releaseDueAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrow",
+        "column_name": "releasedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "MaterialsEscrowLedgerEntry": [
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "escrowId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "MaterialsEscrowLedgerEntryType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "NO",
+        "column_default": "'USD'::\"CurrencyCode\""
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "memo",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsEscrowLedgerEntry",
+        "column_name": "actorUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "MaterialsItem": [
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "requestId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "quantity",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "unitPriceCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "priceUrl",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsItem",
+        "column_name": "category",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "MaterialsRequest": [
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "MaterialsRequestStatus",
+        "is_nullable": "NO",
+        "column_default": "'SUBMITTED'::\"MaterialsRequestStatus\""
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "contractorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "jobPosterUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "routerUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "submittedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "approvedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "declinedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "approvedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "declinedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "NO",
+        "column_default": "'USD'::\"CurrencyCode\""
+      },
+      {
+        "table_name": "MaterialsRequest",
+        "column_name": "totalAmountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "Payout": [
+      {
+        "table_name": "Payout",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "paidAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "externalReference",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "notesInternal",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PayoutStatus",
+        "is_nullable": "NO",
+        "column_default": "'PENDING'::\"PayoutStatus\""
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "provider",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PayoutProvider",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "scheduledFor",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "Payout",
+        "column_name": "failureReason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "PayoutMethod": [
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "provider",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PayoutProvider",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "isActive",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      {
+        "table_name": "PayoutMethod",
+        "column_name": "details",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "PayoutRequest": [
+      {
+        "table_name": "PayoutRequest",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutRequest",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "PayoutRequest",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PayoutRequestStatus",
+        "is_nullable": "NO",
+        "column_default": "'REQUESTED'::\"PayoutRequestStatus\""
+      },
+      {
+        "table_name": "PayoutRequest",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutRequest",
+        "column_name": "amountCents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PayoutRequest",
+        "column_name": "payoutId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "PmLineItem": [
+      {
+        "table_name": "PmLineItem",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "PmLineItem",
+        "column_name": "pmRequestId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmLineItem",
+        "column_name": "description",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmLineItem",
+        "column_name": "quantity",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmLineItem",
+        "column_name": "unitPrice",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmLineItem",
+        "column_name": "url",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmLineItem",
+        "column_name": "lineTotal",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "PmReceipt": [
+      {
+        "table_name": "PmReceipt",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "PmReceipt",
+        "column_name": "pmRequestId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmReceipt",
+        "column_name": "fileBase64",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmReceipt",
+        "column_name": "extractedTotal",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmReceipt",
+        "column_name": "verified",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "PmReceipt",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    ],
+    "PmRequest": [
+      {
+        "table_name": "PmRequest",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "contractorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "jobPosterUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "initiatedBy",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PMRequestStatus",
+        "is_nullable": "NO",
+        "column_default": "'DRAFT'::\"PMRequestStatus\""
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "autoTotal",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "manualTotal",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "approvedTotal",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "taxAmount",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "currency",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'USD'::text"
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "stripePaymentIntentId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "escrowId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "amendReason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "proposedBudget",
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      {
+        "table_name": "PmRequest",
+        "column_name": "updatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    ],
+    "RouterProfile": [
+      {
+        "table_name": "RouterProfile",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "state",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "lat",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "lng",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "RouterOnboardingStatus",
+        "is_nullable": "NO",
+        "column_default": "'INCOMPLETE'::\"RouterOnboardingStatus\""
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "notifyViaEmail",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "notifyViaSms",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "RouterProfile",
+        "column_name": "phone",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "Session": [
+      {
+        "table_name": "Session",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Session",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "Session",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Session",
+        "column_name": "sessionTokenHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Session",
+        "column_name": "expiresAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "Session",
+        "column_name": "revokedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "StripeWebhookEvent": [
+      {
+        "table_name": "StripeWebhookEvent",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "StripeWebhookEvent",
+        "column_name": "type",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "StripeWebhookEvent",
+        "column_name": "objectId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "StripeWebhookEvent",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      {
+        "table_name": "StripeWebhookEvent",
+        "column_name": "processedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "User": [
+      {
+        "table_name": "User",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "(gen_random_uuid())::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "authUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "role",
+        "data_type": "USER-DEFINED",
+        "udt_name": "UserRole",
+        "is_nullable": "NO",
+        "column_default": "'USER'::\"UserRole\""
+      },
+      {
+        "table_name": "User",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "User",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "User",
+        "column_name": "email",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "phoneNumber",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "status",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "'ACTIVE'::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "clerkUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "updatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "accountStatus",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "'ACTIVE'::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "suspendedUntil",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "archivedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "deletionReason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "suspensionReason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "archivedReason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "updatedByAdminId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "referredByRouterId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "formattedAddress",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "latitude",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "longitude",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "User",
+        "column_name": "legalStreet",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "legalCity",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "legalProvince",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "legalPostalCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "legalCountry",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": "'US'::text"
+      },
+      {
+        "table_name": "User",
+        "column_name": "countryCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "User",
+        "column_name": "stateCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "''::text"
+      }
+    ],
+    "_prisma_migrations": [
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "id",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "checksum",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "finished_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "migration_name",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "logs",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "rolled_back_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "started_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      {
+        "table_name": "_prisma_migrations",
+        "column_name": "applied_steps_count",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      }
+    ],
+    "admin_sessions": [
+      {
+        "table_name": "admin_sessions",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "admin_sessions",
+        "column_name": "adminUserId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "admin_sessions",
+        "column_name": "sessionTokenHash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "admin_sessions",
+        "column_name": "expiresAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "admin_sessions",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    ],
+    "agent_mission_templates": [
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "platform",
+        "data_type": "USER-DEFINED",
+        "udt_name": "AgentPlatform",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "intent",
+        "data_type": "USER-DEFINED",
+        "udt_name": "AgentIntent",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "categoryPaths",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "keywordFilters",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "excludeKeywords",
+        "data_type": "ARRAY",
+        "udt_name": "_text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "maxResults",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "defaultTimeWindowHours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "requiresHumanSession",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "enabled",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "agent_mission_templates",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "agent_schedule_plans": [
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "startDate",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "endDate",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "generatedBy",
+        "data_type": "USER-DEFINED",
+        "udt_name": "AgentScheduleGeneratedBy",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "AgentSchedulePlanStatus",
+        "is_nullable": "NO",
+        "column_default": "'DRAFT'::\"AgentSchedulePlanStatus\""
+      },
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "agent_schedule_plans",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "agent_scheduled_runs": [
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "schedulePlanId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "runAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "templateId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "regionLabel",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "requiresHumanSession",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "AgentScheduledRunStatus",
+        "is_nullable": "NO",
+        "column_default": "'SCHEDULED'::\"AgentScheduledRunStatus\""
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "agent_scheduled_runs",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "campaign_regions": [
+      {
+        "table_name": "campaign_regions",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "regionCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "regionName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "campaignWeek",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CampaignWeek",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "phase",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CampaignPhase",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "active",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "paused",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "campaign_regions",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "contacts": [
+      {
+        "table_name": "contacts",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "email",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "jobType",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "sourcePlatform",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "sourceUrl",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "regionId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "phase",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CampaignPhase",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "ContactStatus",
+        "is_nullable": "NO",
+        "column_default": "'NEW'::\"ContactStatus\""
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "contacts",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "contractor_accounts": [
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "createdByAdmin",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "isActive",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": "true"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "isMock",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "isTest",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "status",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "wizardCompleted",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "waiverAccepted",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "waiverAcceptedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "firstName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "lastName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "businessName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "businessNumber",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "addressMode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "addressSearchDisplayName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "address1",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "address2",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "apt",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "postalCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "tradeCategory",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "serviceRadiusKm",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": "25"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "YES",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "regionCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "city",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "tradeStartYear",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "tradeStartMonth",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "payoutMethod",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "payoutStatus",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "stripeAccountId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "isApproved",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "jobsCompleted",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": "0"
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "rating",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "contractor_accounts",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "conversations": [
+      {
+        "table_name": "conversations",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "conversations",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "conversations",
+        "column_name": "contractorUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "conversations",
+        "column_name": "jobPosterUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "conversations",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "conversations",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "discovery_batches": [
+      {
+        "table_name": "discovery_batches",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "discovery_batches",
+        "column_name": "scheduledRunId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_batches",
+        "column_name": "templateId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_batches",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "discovery_batches",
+        "column_name": "expiresAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "discovery_items": [
+      {
+        "table_name": "discovery_items",
+        "column_name": "id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": "gen_random_uuid()"
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "batchId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "title",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "descriptionSnippet",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "locationText",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "contactEmail",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "sourceUrl",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "relevanceScore",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "promoted",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "discovery_items",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "dispute_alerts": [
+      {
+        "table_name": "dispute_alerts",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_alerts",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "dispute_alerts",
+        "column_name": "disputeCaseId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_alerts",
+        "column_name": "type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeAlertType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_alerts",
+        "column_name": "handledAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "dispute_cases": [
+      {
+        "table_name": "dispute_cases",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "updatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "ticketId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "jobId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "filedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "againstUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "againstRole",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeAgainstRole",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "disputeReason",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeReason",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "description",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeStatus",
+        "is_nullable": "NO",
+        "column_default": "'SUBMITTED'::\"DisputeStatus\""
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "decision",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeDecision",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "decisionSummary",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "decisionAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_cases",
+        "column_name": "deadlineAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "dispute_enforcement_actions": [
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "disputeCaseId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeEnforcementActionType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "DisputeEnforcementActionStatus",
+        "is_nullable": "NO",
+        "column_default": "'PENDING'::\"DisputeEnforcementActionStatus\""
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "payload",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "requestedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "executedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "executedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_enforcement_actions",
+        "column_name": "error",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "dispute_evidence": [
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "disputeCaseId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "submittedByUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "kind",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "summary",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "url",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_evidence",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "dispute_votes": [
+      {
+        "table_name": "dispute_votes",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "disputeCaseId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "voterType",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "voterUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "status",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'ACTIVE'::text"
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "vote",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "rationale",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "model",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "confidence",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "dispute_votes",
+        "column_name": "payload",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "drizzle_sql_migrations": [
+      {
+        "table_name": "drizzle_sql_migrations",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "drizzle_sql_migrations",
+        "column_name": "applied_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    ],
+    "email_drafts": [
+      {
+        "table_name": "email_drafts",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "contactId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "subject",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "body",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "generatedBy",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'gpt-5.1-mini'::text"
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "suggestedIdentityId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "approved",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "approvedByAdminUserId",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "approvedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "isPlaceholder",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "email_drafts",
+        "column_name": "emailLabel",
+        "data_type": "USER-DEFINED",
+        "udt_name": "EmailLabel",
+        "is_nullable": "NO",
+        "column_default": "'JOB_POSTER_OUTREACH'::\"EmailLabel\""
+      }
+    ],
+    "email_identities": [
+      {
+        "table_name": "email_identities",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "address",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "displayName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "dailyLimit",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "900"
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "intervalLimit",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "120"
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "warmupFactor",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "NO",
+        "column_default": "1.0"
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "active",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "paused",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "email_identities",
+        "column_name": "key",
+        "data_type": "USER-DEFINED",
+        "udt_name": "EmailIdentityKey",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "job_photos": [
+      {
+        "table_name": "job_photos",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "created_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "job_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "kind",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobPhotoKind",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "actor",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobPhotoActor",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "url",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "storage_key",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "job_photos",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "job_poster_accounts": [
+      {
+        "table_name": "job_poster_accounts",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "job_poster_accounts",
+        "column_name": "wizardCompleted",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "job_poster_accounts",
+        "column_name": "termsAccepted",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "job_poster_accounts",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      {
+        "table_name": "job_poster_accounts",
+        "column_name": "fullName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "job_poster_accounts",
+        "column_name": "phone",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "jobs": [
+      {
+        "table_name": "jobs",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobStatus",
+        "is_nullable": "NO",
+        "column_default": "'PUBLISHED'::\"JobStatus\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "title",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "scope",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "region",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "service_type",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "'handyman'::text"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "time_window",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "router_earnings_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "broker_fee_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "published_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "claimed_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "claimed_by_user_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "routed_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contractor_completed_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contractor_completion_summary",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_approved_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_rejected_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_reject_reason",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CustomerRejectReason",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_reject_notes",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_feedback",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "router_approved_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "router_approval_notes",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "completion_flagged_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "completion_flag_reason",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contractor_action_token_hash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_action_token_hash",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "job_type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobType",
+        "is_nullable": "NO",
+        "column_default": "'urban'::\"JobType\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "lat",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "lng",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contractor_payout_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "job_poster_user_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "trade_category",
+        "data_type": "USER-DEFINED",
+        "udt_name": "TradeCategory",
+        "is_nullable": "NO",
+        "column_default": "'HANDYMAN'::\"TradeCategory\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "estimated_completion_date",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "estimate_set_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "estimate_updated_at",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "estimate_update_reason",
+        "data_type": "USER-DEFINED",
+        "udt_name": "EcdUpdateReason",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "estimate_update_other_text",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "labor_total_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "materials_total_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "transaction_fee_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "city",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "archived",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "amount_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "payment_status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PaymentStatus",
+        "is_nullable": "NO",
+        "column_default": "'UNPAID'::\"PaymentStatus\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "public_status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "PublicJobStatus",
+        "is_nullable": "NO",
+        "column_default": "'OPEN'::\"PublicJobStatus\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "country_code",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "state_code",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": "''::text"
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "currency",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CurrencyCode",
+        "is_nullable": "YES",
+        "column_default": "'USD'::\"CurrencyCode\""
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "region_code",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "region_name",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "postal_code",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "address_full",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_appraisal_status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "AiAppraisalStatus",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_appraised_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_suggested_total",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_price_range_low",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_price_range_high",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_confidence",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "ai_reasoning",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "pricing_intel",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "pricing_intel_generated_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "pricing_intel_model",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "superseded_by_job_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "is_mock",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "mock_seed_batch",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "job_source",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobSource",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "repeat_contractor_discount_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "payout_status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "JobPayoutStatus",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "payment_currency",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "stripe_payment_intent_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "stripe_charge_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "stripe_customer_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "stripe_payment_method_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "accepted_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "authorization_expires_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "funds_secured_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "completion_deadline_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "funded_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "released_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "refunded_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contractor_transfer_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "router_transfer_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "escrow_locked_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "payment_captured_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "payment_released_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "price_median_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "price_adjustment_cents",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "pricing_version",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "junk_hauling_items",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "availability",
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contacted_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "guarantee_eligible_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "admin_routed_by_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "contractor_user_id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "posted_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "routing_due_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "first_routed_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "routing_status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "RoutingStatus",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "failsafe_routing",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "jobs",
+        "column_name": "customer_completion_summary",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "messages": [
+      {
+        "table_name": "messages",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "messages",
+        "column_name": "conversationId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "messages",
+        "column_name": "senderUserId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "messages",
+        "column_name": "senderRole",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "messages",
+        "column_name": "body",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "messages",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "region_email_logs": [
+      {
+        "table_name": "region_email_logs",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "regionId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "country",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "regionCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "regionName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "emailIdentityId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "emailIdentityAddress",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "emailLabel",
+        "data_type": "USER-DEFINED",
+        "udt_name": "EmailLabel",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "quantity",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "1"
+      },
+      {
+        "table_name": "region_email_logs",
+        "column_name": "sentAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "routers": [
+      {
+        "table_name": "routers",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "routers",
+        "column_name": "createdByAdmin",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "isActive",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "isMock",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "isTest",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "termsAccepted",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "profileComplete",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "homeCountry",
+        "data_type": "USER-DEFINED",
+        "udt_name": "CountryCode",
+        "is_nullable": "NO",
+        "column_default": "'US'::\"CountryCode\""
+      },
+      {
+        "table_name": "routers",
+        "column_name": "homeRegionCode",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "routers",
+        "column_name": "homeCity",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "routers",
+        "column_name": "isSeniorRouter",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "dailyRouteLimit",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "10"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "routesCompleted",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "routesFailed",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "routers",
+        "column_name": "rating",
+        "data_type": "double precision",
+        "udt_name": "float8",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "routers",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "RouterStatus",
+        "is_nullable": "NO",
+        "column_default": "'ACTIVE'::\"RouterStatus\""
+      },
+      {
+        "table_name": "routers",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "send_counters": [
+      {
+        "table_name": "send_counters",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_counters",
+        "column_name": "emailIdentityId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_counters",
+        "column_name": "date",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_counters",
+        "column_name": "sentToday",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "send_counters",
+        "column_name": "sentLast3Hours",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      {
+        "table_name": "send_counters",
+        "column_name": "lastSentAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "send_counters",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "send_queue": [
+      {
+        "table_name": "send_queue",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "emailDraftId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "emailIdentityId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "scheduledFor",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "sentAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SendQueueStatus",
+        "is_nullable": "NO",
+        "column_default": "'QUEUED'::\"SendQueueStatus\""
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "send_queue",
+        "column_name": "blockedReason",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SendBlockedReason",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "sessions": [
+      {
+        "table_name": "sessions",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "sessions",
+        "column_name": "userId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "sessions",
+        "column_name": "role",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "sessions",
+        "column_name": "expiresAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "support_attachments": [
+      {
+        "table_name": "support_attachments",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "ticketId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "uploadedById",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "originalName",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "mimeType",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "sizeBytes",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "storageKey",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_attachments",
+        "column_name": "sha256",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    ],
+    "support_messages": [
+      {
+        "table_name": "support_messages",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_messages",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "support_messages",
+        "column_name": "ticketId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_messages",
+        "column_name": "authorId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_messages",
+        "column_name": "message",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ],
+    "support_tickets": [
+      {
+        "table_name": "support_tickets",
+        "column_name": "id",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "createdAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "updatedAt",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "type",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SupportTicketType",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SupportTicketStatus",
+        "is_nullable": "NO",
+        "column_default": "'OPEN'::\"SupportTicketStatus\""
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "category",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SupportTicketCategory",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "priority",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SupportTicketPriority",
+        "is_nullable": "NO",
+        "column_default": "'NORMAL'::\"SupportTicketPriority\""
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "createdById",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "assignedToId",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "roleContext",
+        "data_type": "USER-DEFINED",
+        "udt_name": "SupportRoleContext",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "support_tickets",
+        "column_name": "subject",
+        "data_type": "text",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      }
+    ]
+  },
+  "enums": {
+    "AddressVerificationStatus": [
+      "PENDING",
+      "VERIFIED",
+      "ADDRESS_MISMATCH"
+    ],
+    "AgentIntent": [
+      "JOB_POSTER",
+      "JOB_POSTER",
+      "JOB_POSTER",
+      "CONTRACTOR",
+      "CONTRACTOR",
+      "CONTRACTOR"
+    ],
+    "AgentPlatform": [
+      "CRAIGSLIST",
+      "CRAIGSLIST",
+      "CRAIGSLIST",
+      "KIJIJI",
+      "KIJIJI",
+      "KIJIJI",
+      "NEXTDOOR",
+      "NEXTDOOR",
+      "NEXTDOOR"
+    ],
+    "AgentScheduleGeneratedBy": [
+      "GPT_5_1_MINI",
+      "GPT_5_1_MINI",
+      "GPT_5_1_MINI",
+      "ADMIN",
+      "ADMIN",
+      "ADMIN"
+    ],
+    "AgentSchedulePlanStatus": [
+      "DRAFT",
+      "DRAFT",
+      "DRAFT",
+      "APPROVED",
+      "APPROVED",
+      "APPROVED",
+      "ACTIVE",
+      "ACTIVE",
+      "ACTIVE",
+      "ARCHIVED",
+      "ARCHIVED",
+      "ARCHIVED"
+    ],
+    "AgentScheduledRunStatus": [
+      "SCHEDULED",
+      "SCHEDULED",
+      "SCHEDULED",
+      "RUNNING",
+      "RUNNING",
+      "RUNNING",
+      "COMPLETE",
+      "COMPLETE",
+      "COMPLETE",
+      "SKIPPED",
+      "SKIPPED",
+      "SKIPPED",
+      "WAITING_FOR_ADMIN",
+      "WAITING_FOR_ADMIN",
+      "WAITING_FOR_ADMIN"
+    ],
+    "AiAppraisalStatus": [
+      "PENDING",
+      "PENDING",
+      "COMPLETED",
+      "COMPLETED",
+      "FAILED",
+      "FAILED",
+      "APPLIED",
+      "APPLIED",
+      "SUPERSEDED",
+      "SUPERSEDED"
+    ],
+    "BulkAiJobStatus": [
+      "PENDING",
+      "RUNNING",
+      "COMPLETED",
+      "FAILED",
+      "CANCELLED"
+    ],
+    "CampaignPhase": [
+      "PHASE_1_JOB_POSTER",
+      "PHASE_1_JOB_POSTER",
+      "PHASE_1_JOB_POSTER"
+    ],
+    "CampaignWeek": [
+      "WEEK_1",
+      "WEEK_1",
+      "WEEK_1",
+      "WEEK_2",
+      "WEEK_2",
+      "WEEK_2"
+    ],
+    "ContactStatus": [
+      "NEW",
+      "NEW",
+      "NEW",
+      "DRAFTED",
+      "DRAFTED",
+      "DRAFTED",
+      "APPROVED",
+      "APPROVED",
+      "APPROVED",
+      "SENT",
+      "SENT",
+      "SENT",
+      "SKIPPED",
+      "SKIPPED",
+      "SKIPPED"
+    ],
+    "ContractorLedgerBucket": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PAID",
+      "PAID",
+      "PAID"
+    ],
+    "ContractorLedgerEntryType": [
+      "CONTRACTOR_EARNING",
+      "CONTRACTOR_EARNING",
+      "CONTRACTOR_EARNING",
+      "CONTRACTOR_PAYOUT",
+      "CONTRACTOR_PAYOUT",
+      "CONTRACTOR_PAYOUT"
+    ],
+    "ContractorOnboardingStatus": [
+      "INCOMPLETE",
+      "ON_HOLD",
+      "ACTIVE"
+    ],
+    "ContractorPayoutStatus": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PAID",
+      "PAID",
+      "PAID",
+      "FAILED",
+      "FAILED",
+      "FAILED"
+    ],
+    "ContractorStatus": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "APPROVED",
+      "APPROVED",
+      "APPROVED",
+      "REJECTED",
+      "REJECTED",
+      "REJECTED"
+    ],
+    "ContractorTrade": [
+      "JUNK_REMOVAL",
+      "JUNK_REMOVAL",
+      "JUNK_REMOVAL",
+      "YARDWORK_GROUNDSKEEPING",
+      "YARDWORK_GROUNDSKEEPING",
+      "YARDWORK_GROUNDSKEEPING",
+      "CARPENTRY",
+      "CARPENTRY",
+      "CARPENTRY",
+      "DRYWALL",
+      "DRYWALL",
+      "DRYWALL",
+      "ROOFING",
+      "ROOFING",
+      "ROOFING",
+      "PLUMBING",
+      "PLUMBING",
+      "PLUMBING",
+      "ELECTRICAL",
+      "ELECTRICAL",
+      "ELECTRICAL",
+      "WELDING",
+      "WELDING",
+      "WELDING"
+    ],
+    "ContractorWizardStep": [
+      "WAIVER",
+      "PROFILE",
+      "ADDRESS_VERIFICATION",
+      "TRADE_EXPERIENCE",
+      "PAYOUT_SETUP",
+      "STATUS_RESOLUTION"
+    ],
+    "CountryCode": [
+      "CA",
+      "CA",
+      "CA",
+      "US",
+      "US",
+      "US"
+    ],
+    "CurrencyCode": [
+      "CAD",
+      "CAD",
+      "CAD",
+      "USD",
+      "USD",
+      "USD"
+    ],
+    "CustomerRejectReason": [
+      "QUALITY_ISSUE",
+      "QUALITY_ISSUE",
+      "QUALITY_ISSUE",
+      "INCOMPLETE_WORK",
+      "INCOMPLETE_WORK",
+      "INCOMPLETE_WORK",
+      "DAMAGE",
+      "DAMAGE",
+      "DAMAGE",
+      "NO_SHOW",
+      "NO_SHOW",
+      "NO_SHOW",
+      "OTHER",
+      "OTHER",
+      "OTHER"
+    ],
+    "DisputeAgainstRole": [
+      "JOB_POSTER",
+      "JOB_POSTER",
+      "CONTRACTOR",
+      "CONTRACTOR"
+    ],
+    "DisputeAlertType": [
+      "DEADLINE_BREACHED",
+      "DEADLINE_BREACHED"
+    ],
+    "DisputeDecision": [
+      "FAVOR_POSTER",
+      "REFUND_CUSTOMER",
+      "PAY_CONTRACTOR",
+      "FAVOR_CONTRACTOR",
+      "PARTIAL",
+      "PARTIAL_REFUND",
+      "DENY_CLAIM",
+      "NO_ACTION",
+      "FAVOR_JOB_POSTER",
+      "FAVOR_POSTER",
+      "FAVOR_CONTRACTOR",
+      "PARTIAL",
+      "NO_ACTION",
+      "FAVOR_JOB_POSTER"
+    ],
+    "DisputeEnforcementActionStatus": [
+      "PENDING",
+      "PENDING",
+      "EXECUTED",
+      "EXECUTED",
+      "FAILED",
+      "FAILED",
+      "CANCELLED",
+      "CANCELLED"
+    ],
+    "DisputeEnforcementActionType": [
+      "RELEASE_ESCROW_FULL",
+      "RELEASE_ESCROW_FULL",
+      "WITHHOLD_FUNDS",
+      "WITHHOLD_FUNDS",
+      "RELEASE_ESCROW_PARTIAL",
+      "RELEASE_ESCROW_PARTIAL",
+      "FLAG_ACCOUNT_INTERNAL",
+      "FLAG_ACCOUNT_INTERNAL"
+    ],
+    "DisputeReason": [
+      "PRICING",
+      "PRICING",
+      "WORK_QUALITY",
+      "SCOPE_MISMATCH",
+      "NO_SHOW",
+      "NO_SHOW",
+      "PAYMENT",
+      "UNPROFESSIONAL_CONDUCT",
+      "OTHER",
+      "SAFETY_INCIDENT",
+      "PROPERTY_DAMAGE",
+      "INCOMPLETE_WORK",
+      "OTHER",
+      "WORK_QUALITY",
+      "PAYMENT"
+    ],
+    "DisputeStatus": [
+      "SUBMITTED",
+      "SUBMITTED",
+      "UNDER_REVIEW",
+      "UNDER_REVIEW",
+      "NEEDS_INFO",
+      "NEEDS_INFO",
+      "DECIDED",
+      "DECIDED",
+      "CLOSED",
+      "CLOSED"
+    ],
+    "EcdUpdateReason": [
+      "AWAITING_PARTS_MATERIALS",
+      "AWAITING_PARTS_MATERIALS",
+      "AWAITING_PARTS_MATERIALS",
+      "SCOPE_EXPANDED",
+      "SCOPE_EXPANDED",
+      "SCOPE_EXPANDED",
+      "SCHEDULING_DELAY",
+      "SCHEDULING_DELAY",
+      "SCHEDULING_DELAY",
+      "OTHER",
+      "OTHER",
+      "OTHER"
+    ],
+    "EmailIdentityKey": [
+      "HELLO",
+      "HELLO",
+      "HELLO",
+      "OUTREACH",
+      "OUTREACH",
+      "OUTREACH",
+      "LOCAL",
+      "LOCAL",
+      "LOCAL",
+      "CONNECT",
+      "CONNECT",
+      "CONNECT",
+      "SUPPORT",
+      "SUPPORT",
+      "SUPPORT",
+      "PARTNERSHIPS",
+      "PARTNERSHIPS",
+      "PARTNERSHIPS"
+    ],
+    "EmailLabel": [
+      "JOB_POSTER_OUTREACH",
+      "JOB_POSTER_OUTREACH",
+      "JOB_POSTER_OUTREACH",
+      "CONTRACTOR_OUTREACH",
+      "CONTRACTOR_OUTREACH",
+      "CONTRACTOR_OUTREACH",
+      "ROUTER_OUTREACH",
+      "ROUTER_OUTREACH",
+      "ROUTER_OUTREACH"
+    ],
+    "EscrowKind": [
+      "JOB_ESCROW",
+      "PARTS_MATERIALS"
+    ],
+    "EscrowStatus": [
+      "PENDING",
+      "FUNDED",
+      "RELEASED",
+      "REFUNDED",
+      "FAILED"
+    ],
+    "InternalAccountFlagType": [
+      "DISPUTE_RISK",
+      "FRAUD_REVIEW",
+      "MANUAL_REVIEW"
+    ],
+    "JobAssignmentStatus": [
+      "ASSIGNED",
+      "ASSIGNED",
+      "ASSIGNED",
+      "COMPLETED",
+      "COMPLETED",
+      "COMPLETED",
+      "CANCELLED",
+      "CANCELLED",
+      "CANCELLED"
+    ],
+    "JobDispatchStatus": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "ACCEPTED",
+      "ACCEPTED",
+      "ACCEPTED",
+      "DECLINED",
+      "DECLINED",
+      "DECLINED",
+      "EXPIRED",
+      "EXPIRED",
+      "EXPIRED"
+    ],
+    "JobDraftStatus": [
+      "DRAFT",
+      "DRAFT",
+      "DRAFT",
+      "IN_REVIEW",
+      "IN_REVIEW",
+      "IN_REVIEW",
+      "NEEDS_CLARIFICATION",
+      "NEEDS_CLARIFICATION",
+      "NEEDS_CLARIFICATION",
+      "REJECTED",
+      "REJECTED",
+      "REJECTED",
+      "APPROVED",
+      "APPROVED",
+      "APPROVED",
+      "APPRAISING",
+      "APPRAISING",
+      "APPRAISING",
+      "PRICED",
+      "PRICED",
+      "PRICED",
+      "PAYMENT_PENDING",
+      "PAYMENT_PENDING",
+      "PAYMENT_PENDING",
+      "PAYMENT_FAILED",
+      "PAYMENT_FAILED",
+      "PAYMENT_FAILED",
+      "CANCELLED",
+      "CANCELLED",
+      "CANCELLED",
+      "ACTIVE",
+      "ARCHIVED"
+    ],
+    "JobDraftStep": [
+      "DETAILS",
+      "PRICING",
+      "AVAILABILITY",
+      "PAYMENT",
+      "CONFIRMED"
+    ],
+    "JobDraftV2FieldStateStatus": [
+      "idle",
+      "idle",
+      "saving",
+      "saving",
+      "saved",
+      "saved",
+      "error",
+      "error"
+    ],
+    "JobDraftV2Step": [
+      "PROFILE",
+      "PROFILE",
+      "DETAILS",
+      "DETAILS",
+      "PRICING",
+      "PRICING",
+      "PAYMENT",
+      "PAYMENT",
+      "CONFIRMED",
+      "CONFIRMED"
+    ],
+    "JobHoldReason": [
+      "DISPUTE",
+      "DISPUTE",
+      "DISPUTE",
+      "QUALITY_ISSUE",
+      "QUALITY_ISSUE",
+      "QUALITY_ISSUE",
+      "FRAUD_REVIEW",
+      "FRAUD_REVIEW",
+      "FRAUD_REVIEW",
+      "MANUAL_REVIEW",
+      "MANUAL_REVIEW",
+      "MANUAL_REVIEW"
+    ],
+    "JobHoldStatus": [
+      "ACTIVE",
+      "ACTIVE",
+      "ACTIVE",
+      "RELEASED",
+      "RELEASED",
+      "RELEASED"
+    ],
+    "JobPayoutStatus": [
+      "NOT_READY",
+      "NOT_READY",
+      "READY",
+      "READY",
+      "RELEASED",
+      "RELEASED",
+      "FAILED",
+      "FAILED"
+    ],
+    "JobPhotoActor": [
+      "CUSTOMER",
+      "CUSTOMER",
+      "CUSTOMER",
+      "CONTRACTOR",
+      "CONTRACTOR",
+      "CONTRACTOR"
+    ],
+    "JobPhotoKind": [
+      "CUSTOMER_SCOPE",
+      "CUSTOMER_SCOPE",
+      "CUSTOMER_SCOPE",
+      "CONTRACTOR_COMPLETION",
+      "CONTRACTOR_COMPLETION",
+      "CONTRACTOR_COMPLETION"
+    ],
+    "JobSource": [
+      "MOCK",
+      "MOCK",
+      "REAL",
+      "REAL",
+      "AI_REGENERATED",
+      "AI_REGENERATED"
+    ],
+    "JobStatus": [
+      "DRAFT",
+      "DRAFT",
+      "DRAFT",
+      "PUBLISHED",
+      "PUBLISHED",
+      "PUBLISHED",
+      "ASSIGNED",
+      "ASSIGNED",
+      "ASSIGNED",
+      "IN_PROGRESS",
+      "IN_PROGRESS",
+      "IN_PROGRESS",
+      "CONTRACTOR_COMPLETED",
+      "CONTRACTOR_COMPLETED",
+      "CONTRACTOR_COMPLETED",
+      "CUSTOMER_APPROVED",
+      "CUSTOMER_APPROVED",
+      "CUSTOMER_APPROVED",
+      "CUSTOMER_REJECTED",
+      "CUSTOMER_REJECTED",
+      "CUSTOMER_REJECTED",
+      "COMPLETION_FLAGGED",
+      "COMPLETION_FLAGGED",
+      "COMPLETION_FLAGGED",
+      "COMPLETED_APPROVED",
+      "COMPLETED_APPROVED",
+      "COMPLETED_APPROVED",
+      "OPEN_FOR_ROUTING",
+      "OPEN_FOR_ROUTING",
+      "OPEN_FOR_ROUTING",
+      "COMPLETED",
+      "COMPLETED",
+      "DISPUTED",
+      "DISPUTED"
+    ],
+    "JobType": [
+      "urban",
+      "urban",
+      "urban",
+      "regional",
+      "regional",
+      "regional"
+    ],
+    "LedgerBucket": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "AVAILABLE",
+      "AVAILABLE",
+      "AVAILABLE",
+      "PAID",
+      "PAID",
+      "PAID",
+      "HELD",
+      "HELD",
+      "HELD"
+    ],
+    "LedgerDirection": [
+      "CREDIT",
+      "CREDIT",
+      "CREDIT",
+      "DEBIT",
+      "DEBIT",
+      "DEBIT"
+    ],
+    "LedgerEntryType": [
+      "ROUTER_EARNING",
+      "ROUTER_EARNING",
+      "ROUTER_EARNING",
+      "BROKER_FEE",
+      "BROKER_FEE",
+      "BROKER_FEE",
+      "PAYOUT",
+      "PAYOUT",
+      "PAYOUT",
+      "ADJUSTMENT",
+      "ADJUSTMENT",
+      "ADJUSTMENT",
+      "ESCROW_FUND",
+      "ESCROW_FUND",
+      "PNM_FUND",
+      "PNM_FUND",
+      "ESCROW_RELEASE",
+      "ESCROW_RELEASE",
+      "ESCROW_REFUND",
+      "ESCROW_REFUND",
+      "PLATFORM_FEE",
+      "PLATFORM_FEE",
+      "ROUTER_EARN",
+      "ROUTER_EARN",
+      "CONTRACTOR_EARN",
+      "CONTRACTOR_EARN",
+      "PM_ESCROW_FUNDED",
+      "PM_RELEASE",
+      "PM_REFUND",
+      "PM_CREDIT"
+    ],
+    "MaterialsEscrowLedgerEntryType": [
+      "DEPOSIT",
+      "DEPOSIT",
+      "DEPOSIT",
+      "RELEASE",
+      "RELEASE",
+      "RELEASE",
+      "POSTER_CREDIT",
+      "POSTER_CREDIT",
+      "POSTER_REFUND",
+      "POSTER_REFUND"
+    ],
+    "MaterialsEscrowStatus": [
+      "HELD",
+      "HELD",
+      "HELD",
+      "RELEASED",
+      "RELEASED",
+      "RELEASED"
+    ],
+    "MaterialsPaymentStatus": [
+      "PENDING",
+      "CAPTURED",
+      "FAILED",
+      "REFUNDED"
+    ],
+    "MaterialsReceiptStatus": [
+      "DRAFT",
+      "SUBMITTED"
+    ],
+    "MaterialsRequestStatus": [
+      "SUBMITTED",
+      "SUBMITTED",
+      "SUBMITTED",
+      "APPROVED",
+      "APPROVED",
+      "APPROVED",
+      "DECLINED",
+      "DECLINED",
+      "DECLINED",
+      "ESCROWED",
+      "ESCROWED",
+      "RECEIPTS_SUBMITTED",
+      "RECEIPTS_SUBMITTED",
+      "REIMBURSED",
+      "REIMBURSED"
+    ],
+    "MonitoringActorRole": [
+      "ADMIN",
+      "ROUTER",
+      "CONTRACTOR",
+      "JOB_POSTER"
+    ],
+    "MonitoringEventType": [
+      "JOB_APPROACHING_24H",
+      "JOB_OVERDUE_UNROUTED",
+      "JOB_ROUTED",
+      "JOB_COMPLETED"
+    ],
+    "OnboardingRole": [
+      "JOB_POSTER",
+      "ROUTER",
+      "CONTRACTOR"
+    ],
+    "PMRequestStatus": [
+      "DRAFT",
+      "SUBMITTED",
+      "AMENDMENT_REQUESTED",
+      "APPROVED",
+      "PAYMENT_PENDING",
+      "FUNDED",
+      "RECEIPTS_SUBMITTED",
+      "VERIFIED",
+      "RELEASED",
+      "CLOSED",
+      "REJECTED"
+    ],
+    "PartsMaterialReleaseStatus": [
+      "NOT_READY",
+      "READY",
+      "RELEASED",
+      "FAILED"
+    ],
+    "PartsMaterialStatus": [
+      "REQUESTED",
+      "APPROVED",
+      "PAID",
+      "REJECTED",
+      "CANCELLED"
+    ],
+    "PaymentStatus": [
+      "UNPAID",
+      "UNPAID",
+      "REQUIRES_ACTION",
+      "REQUIRES_ACTION",
+      "FUNDED",
+      "FUNDED",
+      "FAILED",
+      "FAILED",
+      "REFUNDED",
+      "REFUNDED",
+      "AUTHORIZED",
+      "FUNDS_SECURED",
+      "EXPIRED_UNFUNDED"
+    ],
+    "PayoutProvider": [
+      "STRIPE",
+      "STRIPE",
+      "STRIPE",
+      "PAYPAL",
+      "PAYPAL",
+      "PAYPAL",
+      "WISE",
+      "WISE",
+      "WISE"
+    ],
+    "PayoutRequestStatus": [
+      "REQUESTED",
+      "REQUESTED",
+      "REQUESTED",
+      "REJECTED",
+      "REJECTED",
+      "REJECTED",
+      "PAID",
+      "PAID",
+      "PAID",
+      "CANCELLED",
+      "CANCELLED",
+      "CANCELLED"
+    ],
+    "PayoutStatus": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PAID",
+      "PAID",
+      "PAID",
+      "FAILED",
+      "FAILED",
+      "FAILED"
+    ],
+    "PublicJobStatus": [
+      "OPEN",
+      "OPEN",
+      "IN_PROGRESS",
+      "IN_PROGRESS"
+    ],
+    "RepeatContractorRequestStatus": [
+      "REQUESTED",
+      "ACCEPTED",
+      "DECLINED",
+      "CANCELLED",
+      "EXPIRED"
+    ],
+    "RolePayoutMethod": [
+      "STRIPE",
+      "STRIPE",
+      "PAYPAL",
+      "PAYPAL"
+    ],
+    "RolePayoutStatus": [
+      "UNSET",
+      "UNSET",
+      "PENDING",
+      "PENDING",
+      "ACTIVE",
+      "ACTIVE"
+    ],
+    "RoleProjectionStatus": [
+      "ADMIN_PROJECTED"
+    ],
+    "RouterOnboardingStatus": [
+      "INCOMPLETE",
+      "INCOMPLETE",
+      "INCOMPLETE",
+      "SUBMITTED",
+      "SUBMITTED",
+      "SUBMITTED",
+      "AI_APPROVED",
+      "AI_APPROVED",
+      "AI_APPROVED",
+      "ACTIVE",
+      "ACTIVE",
+      "ACTIVE"
+    ],
+    "RouterStatus": [
+      "ACTIVE",
+      "ACTIVE",
+      "SUSPENDED",
+      "SUSPENDED"
+    ],
+    "RoutingStatus": [
+      "UNROUTED",
+      "UNROUTED",
+      "ROUTED_BY_ROUTER",
+      "ROUTED_BY_ROUTER",
+      "ROUTED_BY_ADMIN",
+      "ROUTED_BY_ADMIN"
+    ],
+    "SendBlockedReason": [
+      "REGION_PAUSED",
+      "REGION_PAUSED",
+      "REGION_PAUSED",
+      "IDENTITY_PAUSED",
+      "IDENTITY_PAUSED",
+      "IDENTITY_PAUSED",
+      "DAILY_LIMIT_EXCEEDED",
+      "DAILY_LIMIT_EXCEEDED",
+      "DAILY_LIMIT_EXCEEDED",
+      "INTERVAL_LIMIT_EXCEEDED",
+      "INTERVAL_LIMIT_EXCEEDED",
+      "INTERVAL_LIMIT_EXCEEDED"
+    ],
+    "SendQueueStatus": [
+      "QUEUED",
+      "QUEUED",
+      "QUEUED",
+      "SENT",
+      "SENT",
+      "SENT",
+      "FAILED",
+      "FAILED",
+      "FAILED",
+      "BLOCKED",
+      "BLOCKED",
+      "BLOCKED"
+    ],
+    "SupportRoleContext": [
+      "JOB_POSTER",
+      "JOB_POSTER",
+      "ROUTER",
+      "ROUTER",
+      "CONTRACTOR",
+      "CONTRACTOR",
+      "ADMIN"
+    ],
+    "SupportTicketCategory": [
+      "PRICING",
+      "GENERAL",
+      "TECHNICAL",
+      "JOB_POSTING",
+      "BILLING",
+      "ROUTING",
+      "CONTRACTOR",
+      "PAYMENT",
+      "PAYOUTS",
+      "DISPUTE",
+      "OTHER",
+      "ACCOUNT",
+      "BOOKING",
+      "INCIDENT",
+      "OTHER",
+      "PRICING",
+      "JOB_POSTING",
+      "ROUTING",
+      "CONTRACTOR",
+      "PAYOUTS",
+      "AI_APPRAISAL_FAILURE"
+    ],
+    "SupportTicketPriority": [
+      "LOW",
+      "LOW",
+      "NORMAL",
+      "NORMAL",
+      "HIGH",
+      "HIGH"
+    ],
+    "SupportTicketStatus": [
+      "OPEN",
+      "OPEN",
+      "IN_PROGRESS",
+      "IN_PROGRESS",
+      "RESOLVED",
+      "RESOLVED",
+      "CLOSED",
+      "CLOSED"
+    ],
+    "SupportTicketType": [
+      "HELP",
+      "HELP",
+      "DISPUTE",
+      "DISPUTE"
+    ],
+    "TradeCategory": [
+      "PLUMBING",
+      "PLUMBING",
+      "PLUMBING",
+      "ELECTRICAL",
+      "ELECTRICAL",
+      "ELECTRICAL",
+      "HVAC",
+      "HVAC",
+      "HVAC",
+      "APPLIANCE",
+      "APPLIANCE",
+      "APPLIANCE",
+      "HANDYMAN",
+      "HANDYMAN",
+      "HANDYMAN",
+      "PAINTING",
+      "PAINTING",
+      "PAINTING",
+      "CARPENTRY",
+      "CARPENTRY",
+      "CARPENTRY",
+      "DRYWALL",
+      "DRYWALL",
+      "DRYWALL",
+      "ROOFING",
+      "ROOFING",
+      "ROOFING",
+      "JANITORIAL_CLEANING",
+      "JANITORIAL_CLEANING",
+      "JANITORIAL_CLEANING",
+      "LANDSCAPING",
+      "LANDSCAPING",
+      "LANDSCAPING",
+      "FENCING",
+      "FENCING",
+      "FENCING",
+      "SNOW_REMOVAL",
+      "SNOW_REMOVAL",
+      "SNOW_REMOVAL",
+      "JUNK_REMOVAL",
+      "JUNK_REMOVAL",
+      "JUNK_REMOVAL",
+      "MOVING",
+      "MOVING",
+      "MOVING",
+      "AUTOMOTIVE",
+      "AUTOMOTIVE",
+      "AUTOMOTIVE",
+      "FURNITURE_ASSEMBLY",
+      "FURNITURE_ASSEMBLY"
+    ],
+    "UserRole": [
+      "USER",
+      "USER",
+      "USER",
+      "ADMIN",
+      "ADMIN",
+      "ADMIN",
+      "CUSTOMER",
+      "CUSTOMER",
+      "CUSTOMER",
+      "CONTRACTOR",
+      "CONTRACTOR",
+      "CONTRACTOR",
+      "ROUTER",
+      "ROUTER",
+      "ROUTER",
+      "JOB_POSTER",
+      "JOB_POSTER"
+    ],
+    "UserStatus": [
+      "ACTIVE",
+      "SUSPENDED",
+      "PENDING",
+      "ARCHIVED"
+    ]
+  },
+  "migrations": [
+    {
+      "id": "0000_messaging_notifications.sql",
+      "applied_at": "2026-02-13T06:43:45.748Z"
+    },
+    {
+      "id": "0001_job_posting_draft_defaults.sql",
+      "applied_at": "2026-02-22T06:52:50.125Z"
+    },
+    {
+      "id": "0002_contractor_accounts_wizard_columns.sql",
+      "applied_at": "2026-02-22T06:52:50.341Z"
+    },
+    {
+      "id": "0003_jobposterprofile_unique_userid.sql",
+      "applied_at": "2026-02-22T06:52:50.584Z"
+    },
+    {
+      "id": "0004_user_account_status_fields.sql",
+      "applied_at": "2026-02-22T06:52:50.639Z"
+    },
+    {
+      "id": "0005_jobposterprofile_updatedat_default.sql",
+      "applied_at": "2026-02-22T06:52:50.801Z"
+    },
+    {
+      "id": "0006_user_role_no_admin.sql",
+      "applied_at": "2026-02-22T06:52:50.970Z"
+    },
+    {
+      "id": "0007_admin_user_profile.sql",
+      "applied_at": "2026-02-22T06:52:51.542Z"
+    },
+    {
+      "id": "0008_financial_ledger_hardening.sql",
+      "applied_at": "2026-02-22T06:52:51.815Z"
+    },
+    {
+      "id": "0009_financial_idempotency_indexes.sql",
+      "applied_at": "2026-02-22T06:52:51.873Z"
+    },
+    {
+      "id": "0010_job_parts_payment_state.sql",
+      "applied_at": "2026-02-22T06:52:52.105Z"
+    },
+    {
+      "id": "0011_stripe_connect_fields.sql",
+      "applied_at": "2026-02-22T06:54:41.296Z"
+    },
+    {
+      "id": "0012_job_refunded_at.sql",
+      "applied_at": "2026-02-22T06:54:41.450Z"
+    },
+    {
+      "id": "0013_user_lifecycle_fields.sql",
+      "applied_at": "2026-02-22T06:54:41.594Z"
+    },
+    {
+      "id": "0014_job_completion_customer_summary.sql",
+      "applied_at": "2026-02-22T06:54:41.745Z"
+    },
+    {
+      "id": "0015_job_status_disputed.sql",
+      "applied_at": "2026-02-22T06:54:41.896Z"
+    },
+    {
+      "id": "0016_dispute_evidence_votes.sql",
+      "applied_at": "2026-02-22T06:54:42.043Z"
+    },
+    {
+      "id": "0017_dispute_votes_status.sql",
+      "applied_at": "2026-02-22T06:54:42.192Z"
+    },
+    {
+      "id": "0018_dispute_votes_status_check.sql",
+      "applied_at": "2026-02-22T06:54:42.329Z"
+    },
+    {
+      "id": "0019_job_customer_completion_summary.sql",
+      "applied_at": "2026-02-22T06:54:42.467Z"
+    },
+    {
+      "id": "0020_sessions_table.sql",
+      "applied_at": "2026-02-22T06:54:42.617Z"
+    },
+    {
+      "id": "0021_contractor_accounts_nullable_wizard_fields.sql",
+      "applied_at": "2026-02-22T06:54:42.772Z"
+    },
+    {
+      "id": "0022_job_poster_accounts.sql",
+      "applied_at": "2026-02-22T06:54:42.916Z"
+    },
+    {
+      "id": "0024_job_updated_at.sql",
+      "applied_at": "2026-02-22T06:54:43.069Z"
+    },
+    {
+      "id": "0025_admin_sessions.sql",
+      "applied_at": "2026-02-22T06:54:43.310Z"
+    },
+    {
+      "id": "0026_directory_engine.sql",
+      "applied_at": "2026-02-22T06:54:43.465Z"
+    },
+    {
+      "id": "0027_directory_engine_scope.sql",
+      "applied_at": "2026-02-22T06:54:43.612Z"
+    },
+    {
+      "id": "0028_directory_engine_directories_updated_at.sql",
+      "applied_at": "2026-02-22T06:54:43.756Z"
+    },
+    {
+      "id": "0029_user_clerk_user_id.sql",
+      "applied_at": "2026-02-22T06:54:43.902Z"
+    },
+    {
+      "id": "0030_clerk_webhook_events.sql",
+      "applied_at": "2026-02-22T06:54:44.051Z"
+    },
+    {
+      "id": "0031_user_role_immutable.sql",
+      "applied_at": "2026-02-22T06:54:44.242Z"
+    },
+    {
+      "id": "0032_user_referred_by_router_id.sql",
+      "applied_at": "2026-02-22T06:54:44.304Z"
+    },
+    {
+      "id": "0033_user_location_coords.sql",
+      "applied_at": "2026-02-22T06:54:44.449Z"
+    },
+    {
+      "id": "0034_job_updated_at.sql",
+      "applied_at": "2026-02-22T06:54:44.593Z"
+    },
+    {
+      "id": "0035_structured_geocode_profile_fields.sql",
+      "applied_at": "2026-02-17T06:40:26.506Z"
+    },
+    {
+      "id": "0036_user_legal_address.sql",
+      "applied_at": "2026-02-17T07:01:46.123Z"
+    },
+    {
+      "id": "0037_mock_jobs_north_america_v1.sql",
+      "applied_at": "2026-02-22T06:54:44.803Z"
+    },
+    {
+      "id": "0038_job_status_archived_idx.sql",
+      "applied_at": "2026-02-22T06:54:44.957Z"
+    },
+    {
+      "id": "0039_job_selector_filter_idx.sql",
+      "applied_at": "2026-02-22T06:54:45.107Z"
+    },
+    {
+      "id": "0040_admin_overview_idx.sql",
+      "applied_at": "2026-02-22T06:54:45.257Z"
+    },
+    {
+      "id": "0041_job_flags.sql",
+      "applied_at": "2026-02-22T06:54:45.405Z"
+    },
+    {
+      "id": "0042_transfer_records.sql",
+      "applied_at": "2026-02-22T06:54:45.550Z"
+    },
+    {
+      "id": "0043_escrow_released_at.sql",
+      "applied_at": "2026-02-22T06:54:45.698Z"
+    },
+    {
+      "id": "0044_stripe_only_payouts.sql",
+      "applied_at": "2026-02-22T06:55:45.424Z"
+    },
+    {
+      "id": "0045_support_ticket_category_ai_appraisal_failure.sql",
+      "applied_at": "2026-02-22T06:55:45.482Z"
+    },
+    {
+      "id": "0046_user_geo_nullable_no_default.sql",
+      "applied_at": "2026-02-22T06:55:45.629Z"
+    },
+    {
+      "id": "0047_jurisdiction_country_state_codes.sql",
+      "applied_at": "2026-02-22T07:04:08.054Z"
+    },
+    {
+      "id": "0048_job_draft_v2.sql",
+      "applied_at": "2026-02-22T07:04:08.157Z"
+    },
+    {
+      "id": "0049_parts_materials.sql",
+      "applied_at": "2026-02-22T07:04:22.485Z"
+    },
+    {
+      "id": "0050_job_draft_v2_production_parity.sql",
+      "applied_at": "2026-02-22T07:04:22.584Z"
+    },
+    {
+      "id": "0050_pm_hardening.sql",
+      "applied_at": "2026-02-22T07:04:22.673Z"
+    },
+    {
+      "id": "0051_job_draft_v2_schema_alignment.sql",
+      "applied_at": "2026-02-22T07:04:22.750Z"
+    },
+    {
+      "id": "0052_job_draft_v3.sql",
+      "applied_at": "2026-02-22T07:04:56.104Z"
+    },
+    {
+      "id": "0053_v3_financial_policy_refinement.sql",
+      "applied_at": "2026-02-22T07:04:56.200Z"
+    },
+    {
+      "id": "0054_jobs_schema_normalization.sql",
+      "applied_at": "2026-02-22T07:04:56.261Z"
+    },
+    {
+      "id": "0055_add_phoneNumber_to_user.sql",
+      "applied_at": "2026-02-22T07:04:56.456Z"
+    },
+    {
+      "id": "0056_public_user_canonical_shape.sql",
+      "applied_at": "2026-02-22T07:04:56.608Z"
+    },
+    {
+      "id": "0057_canonicalize_public_job.sql",
+      "applied_at": "2026-02-22T07:05:34.058Z"
+    },
+    {
+      "id": "0058_public_admin_domain_missing_tables.sql",
+      "applied_at": "2026-02-22T07:05:34.167Z"
+    },
+    {
+      "id": "0059_job_draft_v3_alter_legacy.sql",
+      "applied_at": "2026-02-22T07:31:34.158Z"
+    },
+    {
+      "id": "0060_jobs_reconciliation.sql",
+      "applied_at": "2026-02-23T01:41:24.834Z"
+    },
+    {
+      "id": "0061_canonicalize_jobs_table.sql",
+      "applied_at": "2026-02-23T01:41:24.949Z"
+    },
+    {
+      "id": "0063_jobs_legacy_cleanup.sql",
+      "applied_at": "2026-02-23T01:41:25.035Z"
+    },
+    {
+      "id": "0064_stripe_webhook_event.sql",
+      "applied_at": "2026-02-23T01:41:25.082Z"
+    },
+    {
+      "id": "1000_dev_baseline.sql",
+      "applied_at": "2026-02-22T07:05:34.264Z"
+    },
+    {
+      "id": "1001_job_poster_profile_fields.sql",
+      "applied_at": "2026-02-22T07:05:34.355Z"
+    },
+    {
+      "id": "1002_contractor_waiver_fields.sql",
+      "applied_at": "2026-02-22T07:05:34.444Z"
+    },
+    {
+      "id": "1003_contractor_accounts_waiverAccepted.sql",
+      "applied_at": "2026-02-22T07:05:34.528Z"
+    }
+  ]
+}

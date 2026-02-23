@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 import { auditLogs } from "../../db/schema/auditLog";
 import { disputeAlerts } from "../../db/schema/disputeAlert";
 import { disputeCases } from "../../db/schema/disputeCase";
@@ -17,6 +18,8 @@ import { supportTickets } from "../../db/schema/supportTicket";
 export async function runDisputeSlaBreachMonitor(opts?: { take?: number }) {
   const now = new Date();
   const take = Math.min(500, Math.max(1, opts?.take ?? 200));
+  const schema = getResolvedSchema();
+  const disputeAlertsT = sql.raw(`"${schema}"."dispute_alerts"`);
 
   const overdue = await db
     .select({
@@ -31,9 +34,9 @@ export async function runDisputeSlaBreachMonitor(opts?: { take?: number }) {
       and(
         inArray(disputeCases.status, ["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFO"] as any),
         lt(disputeCases.deadlineAt, now),
-        eq(jobs.isMock, false),
+        eq(jobs.is_mock, false),
         sql`not exists (
-          select 1 from "8fold_test".dispute_alerts da
+          select 1 from ${disputeAlertsT} da
           where da."disputeCaseId" = ${disputeCases.id}
             and da."type" = ${"DEADLINE_BREACHED"}::"DisputeAlertType"
         )`,

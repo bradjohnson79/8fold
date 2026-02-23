@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const draftRows = await db
       .select()
       .from(jobDraft)
-      .where(and(eq(jobDraft.userId, user.userId), eq(jobDraft.status, "ACTIVE")))
+      .where(and(eq(jobDraft.user_id, user.userId), eq(jobDraft.status, "ACTIVE")))
       .limit(1);
     const draft = draftRows[0] ?? null;
     if (!draft) return NextResponse.json({ success: false, message: "Draft not found." }, { status: 404 });
@@ -83,38 +83,38 @@ export async function POST(req: Request) {
       scope,
       region,
       country: countryCode as any,
-      countryCode: countryCode as any,
-      stateCode,
-      regionCode: stateCode,
+      country_code: countryCode as any,
+      state_code: stateCode,
+      region_code: stateCode,
       city: String(details.city ?? "") || null,
-      addressFull: String(details.address ?? "") || null,
+      address_full: String(details.address ?? "") || null,
       lat: typeof details.lat === "number" && Number.isFinite(details.lat) ? details.lat : null,
       lng: typeof details.lon === "number" && Number.isFinite(details.lon) ? details.lon : null,
       currency: (countryCode === "CA" ? "CAD" : "USD") as any,
-      paymentCurrency: countryCode === "CA" ? "cad" : "usd",
-      amountCents: totalCents,
-      laborTotalCents: Number.isInteger(selectedPriceCents) ? selectedPriceCents : totalCents,
-      materialsTotalCents: isRegional ? 2000 : 0,
-      stripePaymentIntentId: paymentIntentId,
-      paymentStatus: "AUTHORIZED" as any,
-      escrowLockedAt: now,
-      authorizationExpiresAt,
-      jobPosterUserId: user.userId,
-      jobType: (isRegional ? "regional" : "urban") as any,
-      tradeCategory: String(details.category ?? details.tradeCategory ?? "HANDYMAN") as any,
-      serviceType: "handyman",
+      payment_currency: countryCode === "CA" ? "cad" : "usd",
+      amount_cents: totalCents,
+      labor_total_cents: Number.isInteger(selectedPriceCents) ? selectedPriceCents : totalCents,
+      materials_total_cents: isRegional ? 2000 : 0,
+      stripe_payment_intent_id: paymentIntentId,
+      payment_status: "AUTHORIZED" as any,
+      escrow_locked_at: now,
+      authorization_expires_at: authorizationExpiresAt,
+      job_poster_user_id: user.userId,
+      job_type: (isRegional ? "regional" : "urban") as any,
+      trade_category: String(details.category ?? details.tradeCategory ?? "HANDYMAN") as any,
+      service_type: "handyman",
       availability: data.availability ?? null,
-      postedAt: now,
-      publishedAt: now,
-      createdAt: now,
-      updatedAt: now,
-      priceMedianCents: Number(data?.appraisal?.median ?? 0) * 100 || null,
+      posted_at: now,
+      published_at: now,
+      created_at: now,
+      updated_at: now,
+      price_median_cents: Number(data?.appraisal?.median ?? 0) * 100 || null,
     });
 
     await db
       .update(jobDraft)
-      .set({ status: "ARCHIVED", step: "CONFIRMED", updatedAt: now })
-      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
+      .set({ status: "ARCHIVED", step: "CONFIRMED", updated_at: now })
+      .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.user_id, user.userId)));
 
     return NextResponse.json({ success: true, jobId });
   } catch (err) {

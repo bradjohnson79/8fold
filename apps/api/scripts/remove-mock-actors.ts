@@ -49,12 +49,12 @@ async function main() {
     const orphaned = await db
       .select({ id: jobs.id })
       .from(jobs)
-      .where(inArray(jobs.contractorUserId, mockUserIds));
+      .where(inArray(jobs.contractor_user_id, mockUserIds));
     if (orphaned.length > 0) {
       await db
         .update(jobs)
-        .set({ contractorUserId: null, status: "PUBLISHED" } as any)
-        .where(inArray(jobs.contractorUserId, mockUserIds));
+        .set({ contractor_user_id: null, status: "PUBLISHED" })
+        .where(inArray(jobs.contractor_user_id, mockUserIds));
       console.log(`  Nulled contractorUserId + reverted status to PUBLISHED for ${orphaned.length} job(s).`);
     }
   }
@@ -91,7 +91,7 @@ async function main() {
           if (jobIds.length > 0) {
             await db
               .update(jobs)
-              .set({ contractorUserId: null, status: "PUBLISHED" } as any)
+              .set({ contractor_user_id: null, status: "PUBLISHED" })
               .where(inArray(jobs.id, jobIds));
           }
           await db.delete(materialsRequests).where(inArray(materialsRequests.contractorId, contractorIds));
@@ -144,9 +144,9 @@ async function main() {
 
   // 3. Final verification: any jobs still with contractorUserId?
   const remaining = await db
-    .select({ id: jobs.id, contractorUserId: jobs.contractorUserId })
+    .select({ id: jobs.id, contractorUserId: jobs.contractor_user_id })
     .from(jobs)
-    .where(isNotNull(jobs.contractorUserId));
+    .where(isNotNull(jobs.contractor_user_id));
   if (remaining.length > 0 && !DRY_RUN) {
     console.log(`\nWARNING: ${remaining.length} job(s) still have contractorUserId. Run again or investigate.`);
   }

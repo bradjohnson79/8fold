@@ -35,15 +35,15 @@ export async function GET(req: Request) {
         title: jobs.title,
         region: jobs.region,
         status: jobs.status,
-        routingStatus: jobs.routingStatus,
-        routerId: jobs.claimedByUserId,
-        adminRoutedById: jobs.adminRoutedById,
-        routedAt: jobs.routedAt,
-        firstRoutedAt: jobs.firstRoutedAt,
-        claimedAt: jobs.claimedAt,
-        guaranteeEligibleAt: jobs.guaranteeEligibleAt,
-        contactedAt: jobs.contactedAt,
-        publishedAt: jobs.publishedAt,
+        routingStatus: jobs.routing_status,
+        routerId: jobs.claimed_by_user_id,
+        adminRoutedById: jobs.admin_routed_by_id,
+        routedAt: jobs.routed_at,
+        firstRoutedAt: jobs.first_routed_at,
+        claimedAt: jobs.claimed_at,
+        guaranteeEligibleAt: jobs.guarantee_eligible_at,
+        contactedAt: jobs.contacted_at,
+        publishedAt: jobs.published_at,
 
         routerEmail: routerUsers.email,
         routerName: routerProfiles.name,
@@ -51,15 +51,15 @@ export async function GET(req: Request) {
         dispatchedCount: dispatchCounts.c,
       })
       .from(jobs)
-      .leftJoin(routerUsers, eq(routerUsers.id, jobs.claimedByUserId))
-      .leftJoin(routerProfiles, eq(routerProfiles.userId, jobs.claimedByUserId))
-      .leftJoin(adminUsers, eq(adminUsers.id, jobs.adminRoutedById))
+      .leftJoin(routerUsers, eq(routerUsers.id, jobs.claimed_by_user_id))
+      .leftJoin(routerProfiles, eq(routerProfiles.userId, jobs.claimed_by_user_id))
+      .leftJoin(adminUsers, eq(adminUsers.id, jobs.admin_routed_by_id))
       .leftJoin(dispatchCounts, eq(dispatchCounts.jobId, jobs.id))
       .where(
         or(
-          ne(jobs.routingStatus, "UNROUTED"),
-          isNotNull(jobs.claimedByUserId),
-          isNotNull(jobs.routedAt),
+          ne(jobs.routing_status, "UNROUTED"),
+          isNotNull(jobs.claimed_by_user_id),
+          isNotNull(jobs.routed_at),
           inArray(jobs.status, [
             "PUBLISHED",
             "OPEN_FOR_ROUTING",
@@ -73,7 +73,7 @@ export async function GET(req: Request) {
           ] as any),
         ),
       )
-      .orderBy(desc(jobs.routedAt), desc(jobs.publishedAt))
+      .orderBy(desc(jobs.routed_at), desc(jobs.published_at))
       .limit(200);
 
     // Transform to API response shape

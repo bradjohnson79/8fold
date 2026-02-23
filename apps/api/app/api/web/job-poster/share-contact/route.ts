@@ -38,8 +38,8 @@ export async function POST(req: Request) {
       .select({
         id: jobs.id,
         status: jobs.status,
-        jobPosterUserId: jobs.jobPosterUserId,
-        estimatedCompletionDate: jobs.estimatedCompletionDate,
+        jobPosterUserId: jobs.job_poster_user_id,
+        estimatedCompletionDate: jobs.estimated_completion_date,
         assignmentContractorId: jobAssignments.contractorId,
       })
       .from(jobs)
@@ -99,7 +99,7 @@ export async function POST(req: Request) {
         } as any,
       });
 
-      await tx.update(jobs).set({ status: "IN_PROGRESS", publicStatus: "IN_PROGRESS" } as any).where(eq(jobs.id, job.id));
+      await tx.update(jobs).set({ status: "IN_PROGRESS", public_status: "IN_PROGRESS" } as any).where(eq(jobs.id, job.id));
     });
 
     return NextResponse.json({ ok: true });

@@ -55,7 +55,7 @@ async function safeFindPriorCompletedJob(opts: {
     const rows = await db
       .select({
         id: jobs.id,
-        publishedAt: jobs.publishedAt,
+        publishedAt: jobs.published_at,
         region: jobs.region,
         contractor_id: contractors.id,
         contractor_businessName: contractors.businessName,
@@ -67,13 +67,13 @@ async function safeFindPriorCompletedJob(opts: {
       .innerJoin(contractors, eq(contractors.id, jobAssignments.contractorId))
       .where(
         and(
-          eq(jobs.jobPosterUserId, opts.userId),
-          eq(jobs.tradeCategory, opts.tradeCategory),
+          eq(jobs.job_poster_user_id, opts.userId),
+          eq(jobs.trade_category, opts.tradeCategory),
           eq(jobs.status, "COMPLETED_APPROVED"),
           isNotNull(jobAssignments.id),
         ),
       )
-      .orderBy(desc(jobs.publishedAt), desc(jobs.id))
+      .orderBy(desc(jobs.published_at), desc(jobs.id))
       .limit(1);
     return rows[0] ?? null;
   } catch (err: any) {
@@ -100,7 +100,7 @@ export async function GET(req: Request) {
     if (!jobId) return NextResponse.json({ error: "Missing jobId" }, { status: 400 });
 
     const jobRows = await db
-      .select({ id: jobs.id, status: jobs.status, jobPosterUserId: jobs.jobPosterUserId, tradeCategory: jobs.tradeCategory })
+      .select({ id: jobs.id, status: jobs.status, jobPosterUserId: jobs.job_poster_user_id, tradeCategory: jobs.trade_category })
       .from(jobs)
       .where(eq(jobs.id, jobId))
       .limit(1);

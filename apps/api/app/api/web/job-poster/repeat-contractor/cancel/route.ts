@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
     const jobId = body.data.jobId;
     const jobRows = await db
-      .select({ id: jobs.id, jobPosterUserId: jobs.jobPosterUserId })
+      .select({ id: jobs.id, jobPosterUserId: jobs.job_poster_user_id })
       .from(jobs)
       .where(eq(jobs.id, jobId))
       .limit(1);

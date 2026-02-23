@@ -47,16 +47,16 @@ export async function POST(req: Request) {
           archived: jobs.archived,
           status: jobs.status,
           country: jobs.country,
-          countryCode: jobs.countryCode,
+          countryCode: jobs.country_code,
           region: jobs.region,
-          regionCode: jobs.regionCode,
-          stateCode: jobs.stateCode,
-          jobType: jobs.jobType,
+          regionCode: jobs.region_code,
+          stateCode: jobs.state_code,
+          jobType: jobs.job_type,
           lat: jobs.lat,
           lng: jobs.lng,
-          routerUserId: jobs.claimedByUserId,
-          contractorActionTokenHash: jobs.contractorActionTokenHash,
-          customerActionTokenHash: jobs.customerActionTokenHash,
+          routerUserId: jobs.claimed_by_user_id,
+          contractorActionTokenHash: jobs.contractor_action_token_hash,
+          customerActionTokenHash: jobs.customer_action_token_hash,
         })
         .from(jobs)
         .where(eq(jobs.id, jobId))
@@ -170,9 +170,9 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "ASSIGNED",
-          contractorActionTokenHash: contractorToken ? hashActionToken(contractorToken) : (job.contractorActionTokenHash as any),
-          customerActionTokenHash: customerToken ? hashActionToken(customerToken) : (job.customerActionTokenHash as any),
-        } as any)
+          contractor_action_token_hash: contractorToken ? hashActionToken(contractorToken) : (job.contractorActionTokenHash as any),
+          customer_action_token_hash: customerToken ? hashActionToken(customerToken) : (job.customerActionTokenHash as any),
+        })
         .where(eq(jobs.id, jobId))
         .returning();
       const updatedJob = updatedJobRows[0] as any;

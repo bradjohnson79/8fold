@@ -23,19 +23,19 @@ export async function GET(req: Request) {
         title: jobs.title,
         region: jobs.region,
         status: jobs.status,
-        estimatedCompletionDate: jobs.estimatedCompletionDate,
+        estimatedCompletionDate: jobs.estimated_completion_date,
       })
       .from(jobs)
       .where(
         and(
-          eq(jobs.jobPosterUserId, u.userId),
-          isNotNull(jobs.estimatedCompletionDate),
-          lt(jobs.estimatedCompletionDate, cutoff),
-          isNull(jobs.estimateUpdatedAt),
+          eq(jobs.job_poster_user_id, u.userId),
+          isNotNull(jobs.estimated_completion_date),
+          lt(jobs.estimated_completion_date, cutoff),
+          isNull(jobs.estimate_updated_at),
           inArray(jobs.status, ["ASSIGNED", "IN_PROGRESS"]),
         ),
       )
-      .orderBy(desc(jobs.publishedAt))
+      .orderBy(desc(jobs.published_at))
       .limit(25);
 
     const out: Array<{

@@ -77,12 +77,12 @@ export async function GET(req: Request) {
         job_title: jobs.title,
         job_region: jobs.region,
         job_status: jobs.status,
-        job_paymentStatus: jobs.paymentStatus,
-        job_payoutStatus: jobs.payoutStatus,
-        job_contractorCompletedAt: jobs.contractorCompletedAt,
-        job_customerApprovedAt: jobs.customerApprovedAt,
-        job_routerApprovedAt: jobs.routerApprovedAt,
-        job_jobPosterUserId: jobs.jobPosterUserId,
+        job_paymentStatus: jobs.payment_status,
+        job_payoutStatus: jobs.payout_status,
+        job_contractorCompletedAt: jobs.contractor_completed_at,
+        job_customerApprovedAt: jobs.customer_approved_at,
+        job_routerApprovedAt: jobs.router_approved_at,
+        job_jobPosterUserId: jobs.job_poster_user_id,
         job_availability: jobs.availability,
       })
       .from(jobAssignments)
@@ -224,7 +224,7 @@ export async function POST(req: Request) {
         contractorId: jobAssignments.contractorId,
         job_id: jobs.id,
         job_status: jobs.status,
-        job_jobPosterUserId: jobs.jobPosterUserId,
+        job_jobPosterUserId: jobs.job_poster_user_id,
       })
       .from(jobAssignments)
       .innerJoin(jobs, eq(jobAssignments.jobId, jobs.id))

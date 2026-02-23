@@ -77,15 +77,15 @@ export async function POST(req: Request) {
 
           job_status: jobs.status,
           job_archived: jobs.archived,
-          job_paymentStatus: jobs.paymentStatus,
-          job_stripePaymentIntentId: jobs.stripePaymentIntentId,
-          job_authorizationExpiresAt: jobs.authorizationExpiresAt,
-          job_claimedByUserId: jobs.claimedByUserId,
-          job_jobPosterUserId: jobs.jobPosterUserId,
-          job_contractorActionTokenHash: jobs.contractorActionTokenHash,
-          job_customerActionTokenHash: jobs.customerActionTokenHash,
-          job_estimatedCompletionDate: jobs.estimatedCompletionDate,
-          job_estimateSetAt: jobs.estimateSetAt,
+          job_paymentStatus: jobs.payment_status,
+          job_stripePaymentIntentId: jobs.stripe_payment_intent_id,
+          job_authorizationExpiresAt: jobs.authorization_expires_at,
+          job_claimedByUserId: jobs.claimed_by_user_id,
+          job_jobPosterUserId: jobs.job_poster_user_id,
+          job_contractorActionTokenHash: jobs.contractor_action_token_hash,
+          job_customerActionTokenHash: jobs.customer_action_token_hash,
+          job_estimatedCompletionDate: jobs.estimated_completion_date,
+          job_estimateSetAt: jobs.estimate_set_at,
         })
         .from(jobDispatches)
         .innerJoin(jobs, eq(jobDispatches.jobId, jobs.id))
@@ -126,11 +126,11 @@ export async function POST(req: Request) {
         await tx
           .update(jobs)
           .set({
-            paymentStatus: "EXPIRED_UNFUNDED" as any,
+            payment_status: "EXPIRED_UNFUNDED" as any,
             archived: true,
-            completionFlagReason: "AUTHORIZATION_EXPIRED_NO_ACCEPTANCE",
-            updatedAt: now,
-          } as any)
+            completion_flag_reason: "AUTHORIZATION_EXPIRED_NO_ACCEPTANCE",
+            updated_at: now,
+          })
           .where(eq(jobs.id, dispatch.jobId));
         return { kind: "authorization_expired" as const };
       }
@@ -163,15 +163,15 @@ export async function POST(req: Request) {
         .update(jobs)
         .set({
           status: "ASSIGNED",
-          contractorActionTokenHash: contractorHash,
-          customerActionTokenHash: customerHash,
-          paymentStatus: "FUNDS_SECURED" as any,
-          fundsSecuredAt: now,
-          fundedAt: now,
-          paymentCapturedAt: now,
-          acceptedAt: now,
-          completionDeadlineAt: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
-        } as any)
+          contractor_action_token_hash: contractorHash,
+          customer_action_token_hash: customerHash,
+          payment_status: "FUNDS_SECURED" as any,
+          funds_secured_at: now,
+          funded_at: now,
+          payment_captured_at: now,
+          accepted_at: now,
+          completion_deadline_at: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
+        })
         .where(and(eq(jobs.id, dispatch.jobId), eq(jobs.status, "OPEN_FOR_ROUTING" as any)))
         .returning({ id: jobs.id });
       if (updated.length !== 1) return { kind: "job_not_available" as const };
@@ -180,11 +180,11 @@ export async function POST(req: Request) {
         await tx
           .update(jobs)
           .set({
-            estimatedCompletionDate: toUtcDateOnly(body.data.estimatedCompletionDate),
-            estimateSetAt: dispatch.job_estimateSetAt ?? now,
-            estimateUpdatedAt: null,
-            estimateUpdateReason: null,
-            estimateUpdateOtherText: null,
+            estimated_completion_date: toUtcDateOnly(body.data.estimatedCompletionDate),
+            estimate_set_at: dispatch.job_estimateSetAt ?? now,
+            estimate_updated_at: null,
+            estimate_update_reason: null,
+            estimate_update_other_text: null,
           } as any)
           .where(eq(jobs.id, dispatch.jobId));
       }

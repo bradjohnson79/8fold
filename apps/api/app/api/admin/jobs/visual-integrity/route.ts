@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     base.push(
       or(
         eq(jobs.status, "ASSIGNED" as any),
-        and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.routerApprovedAt)),
+        and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
       ),
     );
     const baseWhere = base.length ? and(...base) : undefined;
@@ -46,11 +46,11 @@ export async function GET(req: Request) {
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(baseWhere, lt(jobs.createdAt, cutoff))),
+        .where(and(baseWhere, lt(jobs.created_at, cutoff))),
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(baseWhere, eq(jobs.routingStatus, "UNROUTED"))),
+        .where(and(baseWhere, eq(jobs.routing_status, "UNROUTED"))),
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)
@@ -58,7 +58,7 @@ export async function GET(req: Request) {
       db
         .select({ c: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(baseWhere, or(sql`${jobs.tradeCategory} is null`, sql`length(trim(${jobs.tradeCategory})) = 0`) as any)),
+        .where(and(baseWhere, or(sql`${jobs.trade_category} is null`, sql`length(trim(${jobs.trade_category})) = 0`) as any)),
       db
         .select({ c: sql<number>`count(distinct ${jobPhotos.jobId})` })
         .from(jobPhotos)

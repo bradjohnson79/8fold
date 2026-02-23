@@ -60,11 +60,11 @@ export async function GET(req: Request) {
         job_title: jobs.title,
         job_region: jobs.region,
         job_status: jobs.status,
-        job_estimatedCompletionDate: jobs.estimatedCompletionDate,
-        job_estimateSetAt: jobs.estimateSetAt,
-        job_estimateUpdatedAt: jobs.estimateUpdatedAt,
-        job_estimateUpdateReason: jobs.estimateUpdateReason,
-        job_estimateUpdateOtherText: jobs.estimateUpdateOtherText,
+        job_estimatedCompletionDate: jobs.estimated_completion_date,
+        job_estimateSetAt: jobs.estimate_set_at,
+        job_estimateUpdatedAt: jobs.estimate_updated_at,
+        job_estimateUpdateReason: jobs.estimate_update_reason,
+        job_estimateUpdateOtherText: jobs.estimate_update_other_text,
       })
       .from(jobAssignments)
       .innerJoin(jobs, eq(jobAssignments.jobId, jobs.id))
@@ -102,7 +102,7 @@ export async function GET(req: Request) {
       active: {
         job: { id: job.id, title: job.title, region: job.region, status: job.status },
         estimate: {
-          estimatedCompletionDate: ecd,
+          estimated_completion_date: ecd,
           setAt: job.estimateSetAt ? job.estimateSetAt.toISOString() : null,
           updatedAt: job.estimateUpdatedAt ? job.estimateUpdatedAt.toISOString() : null,
           updateReason: job.estimateUpdateReason ?? null,
@@ -150,8 +150,8 @@ export async function POST(req: Request) {
             contractorId: jobAssignments.contractorId,
             job_id: jobs.id,
             job_status: jobs.status,
-            job_estimateSetAt: jobs.estimateSetAt,
-            job_estimateUpdatedAt: jobs.estimateUpdatedAt,
+            job_estimateSetAt: jobs.estimate_set_at,
+            job_estimateUpdatedAt: jobs.estimate_updated_at,
           })
           .from(jobAssignments)
           .innerJoin(jobs, eq(jobAssignments.jobId, jobs.id))
@@ -170,10 +170,10 @@ export async function POST(req: Request) {
         await tx
           .update(jobs)
           .set({
-            estimatedCompletionDate: nextDate,
-            estimateUpdatedAt: now,
-            estimateUpdateReason: body.data.reason as any,
-            estimateUpdateOtherText: body.data.reason === "OTHER" ? (body.data.otherText ?? null) : null,
+            estimated_completion_date: nextDate,
+            estimate_updated_at: now,
+            estimate_update_reason: body.data.reason as any,
+            estimate_update_other_text: body.data.reason === "OTHER" ? (body.data.otherText ?? null) : null,
           })
           .where(eq(jobs.id, assignment.job_id));
 
@@ -208,7 +208,7 @@ export async function POST(req: Request) {
         .select({
           contractorId: jobAssignments.contractorId,
           job_id: jobs.id,
-          job_estimateSetAt: jobs.estimateSetAt,
+          job_estimateSetAt: jobs.estimate_set_at,
         })
         .from(jobAssignments)
         .innerJoin(jobs, eq(jobAssignments.jobId, jobs.id))
@@ -226,11 +226,11 @@ export async function POST(req: Request) {
       await tx
         .update(jobs)
         .set({
-          estimatedCompletionDate: ecd,
-          estimateSetAt: now,
-          estimateUpdatedAt: null,
-          estimateUpdateReason: null,
-          estimateUpdateOtherText: null,
+          estimated_completion_date: ecd,
+          estimate_set_at: now,
+          estimate_updated_at: null,
+          estimate_update_reason: null,
+          estimate_update_other_text: null,
         })
         .where(eq(jobs.id, assignment.job_id));
 

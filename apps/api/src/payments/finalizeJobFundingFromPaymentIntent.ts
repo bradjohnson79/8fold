@@ -65,12 +65,12 @@ export async function finalizeJobFundingFromPaymentIntent(
     const rows = await tx
       .select({
         id: jobs.id,
-        jobPosterUserId: jobs.jobPosterUserId,
-        paymentStatus: jobs.paymentStatus,
-        amountCents: jobs.amountCents,
-        paymentCurrency: jobs.paymentCurrency,
-        stripePaymentIntentId: jobs.stripePaymentIntentId,
-        fundedAt: jobs.fundedAt,
+        jobPosterUserId: jobs.job_poster_user_id,
+        paymentStatus: jobs.payment_status,
+        amountCents: jobs.amount_cents,
+        paymentCurrency: jobs.payment_currency,
+        stripePaymentIntentId: jobs.stripe_payment_intent_id,
+        fundedAt: jobs.funded_at,
       })
       .from(jobs)
       .where(and(eq(jobs.id, meta.jobId), eq(jobs.archived, false)))
@@ -187,15 +187,15 @@ export async function finalizeJobFundingFromPaymentIntent(
     await tx
       .update(jobs)
       .set({
-        paymentStatus: "FUNDS_SECURED" as any,
-        fundsSecuredAt: now,
-        fundedAt: now,
-        stripePaymentIntentId: pi.id,
-        stripeChargeId: typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null,
+        payment_status: "FUNDS_SECURED" as any,
+        funds_secured_at: now,
+        funded_at: now,
+        stripe_payment_intent_id: pi.id,
+        stripe_charge_id: typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null,
         status: String(job.status ?? "").toUpperCase() === "DRAFT" ? ("OPEN_FOR_ROUTING" as any) : (job.status as any),
-        escrowLockedAt: now,
-        paymentCapturedAt: now,
-      } as any)
+        escrow_locked_at: now,
+        payment_captured_at: now,
+      })
       .where(eq(jobs.id, job.id));
 
     const escrowRows = await tx

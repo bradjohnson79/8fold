@@ -37,9 +37,9 @@ export async function POST(req: Request) {
         currency: partsMaterialRequests.currency,
         paymentStatus: partsMaterialRequests.paymentStatus,
         stripePaymentIntentId: partsMaterialRequests.stripePaymentIntentId,
-        jobPosterUserId: jobs.jobPosterUserId,
+        jobPosterUserId: jobs.job_poster_user_id,
         jobStatus: jobs.status,
-        jobPaymentStatus: jobs.paymentStatus,
+        jobPaymentStatus: jobs.payment_status,
       })
       .from(partsMaterialRequests)
       .innerJoin(jobs, eq(jobs.id, partsMaterialRequests.jobId))

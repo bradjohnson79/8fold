@@ -15,9 +15,9 @@ export async function scheduleContractorPayoutForJob(jobId: string) {
       .select({
         id: jobs.id,
         status: jobs.status,
-        isMock: jobs.isMock,
-        contractorPayoutCents: jobs.contractorPayoutCents,
-        paymentReleasedAt: jobs.paymentReleasedAt,
+        isMock: jobs.is_mock,
+        contractorPayoutCents: jobs.contractor_payout_cents,
+        paymentReleasedAt: jobs.payment_released_at,
         contractorId: jobAssignments.contractorId,
       })
       .from(jobs)

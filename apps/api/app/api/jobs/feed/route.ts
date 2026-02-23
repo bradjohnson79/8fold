@@ -12,34 +12,34 @@ export async function GET() {
         title: jobs.title,
         scope: jobs.scope,
         region: jobs.region,
-        serviceType: jobs.serviceType,
-        tradeCategory: jobs.tradeCategory,
-        timeWindow: jobs.timeWindow,
-        routerEarningsCents: jobs.routerEarningsCents,
-        brokerFeeCents: jobs.brokerFeeCents,
-        contractorPayoutCents: jobs.contractorPayoutCents,
-        laborTotalCents: jobs.laborTotalCents,
-        materialsTotalCents: jobs.materialsTotalCents,
-        transactionFeeCents: jobs.transactionFeeCents,
-        publishedAt: jobs.publishedAt,
+        serviceType: jobs.service_type,
+        tradeCategory: jobs.trade_category,
+        timeWindow: jobs.time_window,
+        routerEarningsCents: jobs.router_earnings_cents,
+        brokerFeeCents: jobs.broker_fee_cents,
+        contractorPayoutCents: jobs.contractor_payout_cents,
+        laborTotalCents: jobs.labor_total_cents,
+        materialsTotalCents: jobs.materials_total_cents,
+        transactionFeeCents: jobs.transaction_fee_cents,
+        publishedAt: jobs.published_at,
       })
       .from(jobs)
       .where(
         and(
           eq(jobs.archived, false),
           inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"]),
-          eq(jobs.routingStatus, "UNROUTED"),
-          isNull(jobs.claimedByUserId),
-          eq(jobs.isMock, false),
-          eq(jobs.jobSource, "REAL"), // Only real jobs in feed
+          eq(jobs.routing_status, "UNROUTED"),
+          isNull(jobs.claimed_by_user_id),
+          eq(jobs.is_mock, false),
+          eq(jobs.job_source, "REAL"), // Only real jobs in feed
           // Integrity guard: never emit zero-dollar jobs to the UI.
-          gt(jobs.laborTotalCents, 0),
-          gt(jobs.contractorPayoutCents, 0),
-          gt(jobs.routerEarningsCents, 0),
-          gt(jobs.brokerFeeCents, 0),
+          gt(jobs.labor_total_cents, 0),
+          gt(jobs.contractor_payout_cents, 0),
+          gt(jobs.router_earnings_cents, 0),
+          gt(jobs.broker_fee_cents, 0),
         ),
       )
-      .orderBy(desc(jobs.publishedAt))
+      .orderBy(desc(jobs.published_at))
       .limit(50);
 
     return ok({ jobs: result });

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
         .select({
           id: jobs.id,
           status: jobs.status,
-          routerId: jobs.claimedByUserId, // Prisma `routerId` is mapped to DB column `claimedByUserId`
+          routerId: jobs.claimed_by_user_id, // Prisma `routerId` is mapped to DB column `claimedByUserId`
         })
         .from(jobs)
         .where(eq(jobs.id, id))
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
       const updated = await tx
         .update(jobs)
-        .set({ routedAt: new Date() })
+        .set({ routed_at: new Date() })
         .where(eq(jobs.id, id))
         .returning({
           id: jobs.id,
@@ -47,11 +47,11 @@ export async function POST(req: Request) {
           title: jobs.title,
           scope: jobs.scope,
           region: jobs.region,
-          serviceType: jobs.serviceType,
-          timeWindow: jobs.timeWindow,
-          routerEarningsCents: jobs.routerEarningsCents,
-          claimedAt: jobs.claimedAt,
-          routedAt: jobs.routedAt,
+          serviceType: jobs.service_type,
+          timeWindow: jobs.time_window,
+          routerEarningsCents: jobs.router_earnings_cents,
+          claimedAt: jobs.claimed_at,
+          routedAt: jobs.routed_at,
         });
       const job = updated[0] as any;
 
