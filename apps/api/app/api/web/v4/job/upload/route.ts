@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { requireRole } from "@/src/auth/requireRole";
+import { getV4Readiness } from "@/src/services/v4/readinessService";
 import { uploadV4JobPhoto } from "@/src/services/v4/jobUploadService";
 import { rateLimitOrThrow } from "@/src/services/v4/rateLimitService";
-import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
+import { badRequest, forbidden, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 export async function POST(req: Request) {
   let requestId: string | undefined;
@@ -13,6 +14,11 @@ export async function POST(req: Request) {
     requestId = authed.requestId;
     const role = await requireRole(req, "JOB_POSTER");
     if (role instanceof Response) return role;
+
+    const readiness = await getV4Readiness(role.internalUser.id);
+    if (!readiness.jobPosterReady) {
+      throw forbidden("V4_SETUP_REQUIRED", "Complete job poster setup before accessing the dashboard");
+    }
 
     await rateLimitOrThrow({
       key: `v4:upload:${role.internalUser.id}`,
