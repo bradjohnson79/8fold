@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { stripe } from "@/src/stripe/stripe";
 import { db } from "@/server/db/drizzle";
@@ -9,6 +8,8 @@ import { transferRecords } from "@/db/schema/transferRecord";
 import { desiredTransferRecordStatusFromStripeTransfer, buildTransferRecordReconcilePlan } from "@/src/payouts/stripeTransferReconcile";
 import { type TransferRecordStatus } from "@/src/payouts/transferStatusTransitions";
 import { logEvent } from "@/src/server/observability/log";
+import { adminAuditLog } from "@/src/audit/adminAudit";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 import type Stripe from "stripe";
 
 function requireStripe() {
@@ -24,8 +25,10 @@ function getTransferIdFromUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_SUPER");
+  if (forbidden) return forbidden;
 
   const transferId = getTransferIdFromUrl(req);
   if (!transferId) return NextResponse.json({ ok: false, error: "invalid_transfer_id" }, { status: 400 });
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
         route: "/api/admin/finance/transfers/[transferId]/reconcile",
         method: "POST",
         status: 409,
-        userId: auth.userId,
+        userId: identity.userId,
         code: "TRANSFER_STATUS_TRANSITION_ILLEGAL",
         context: { transferId, jobId: String(row.jobId ?? ""), fromStatus, toStatus: desired },
       });
@@ -141,6 +144,29 @@ export async function POST(req: Request) {
         .limit(1);
       return { status: current, row: rows[0] ?? null };
     });
+    await adminAuditLog(
+      req,
+      {
+        userId: identity.userId,
+        role: "ADMIN",
+        authSource: identity.authSource,
+      },
+      {
+        action: "ADMIN_TRANSFER_RECONCILE",
+        entityType: "TransferRecord",
+        entityId: String(row.id),
+        metadata: {
+          transferId,
+          jobId: String(row.jobId ?? ""),
+          fromStatus,
+          toStatus: String((after.row as any)?.status ?? after.status),
+          desired,
+          changed: String((after.row as any)?.status ?? after.status) !== fromStatus,
+          amountCents: Number(row.amountCents ?? 0),
+          currency: String(row.currency ?? ""),
+        },
+      },
+    );
 
     return NextResponse.json(
       {
@@ -157,7 +183,7 @@ export async function POST(req: Request) {
       { status: 200 },
     );
   } catch (err) {
-    return handleApiError(err, "POST /api/admin/finance/transfers/:transferId/reconcile", { userId: auth.userId });
+    return handleApiError(err, "POST /api/admin/finance/transfers/:transferId/reconcile", { userId: identity.userId });
   }
 }
 

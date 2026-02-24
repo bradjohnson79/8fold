@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const { email, otpCode, secret } = parsed.data;
-    const expected = process.env.ADMIN_SIGNUP_SECRET ?? "";
+    const expected = process.env.ADMIN_BOOTSTRAP_SECRET ?? "";
     if (!expected || secret !== expected) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     // Basic memory throttle: 5 attempts / minute per IP+email.

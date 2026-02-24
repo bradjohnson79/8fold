@@ -10,6 +10,7 @@ export type AdminAuditEntityType =
   | "DisputeCase"
   | "PayoutRequest"
   | "LedgerEntry"
+  | "TransferRecord"
   | "RouterContext"
   | "Unknown";
 
@@ -18,6 +19,11 @@ export type AdminAuditWrite = {
   entityType: AdminAuditEntityType;
   entityId: string;
   metadata?: Record<string, unknown>;
+};
+
+export type AdminAuditAuth = RequireAdminOk & {
+  actorAdminUserId?: string | null;
+  authSource?: "admin_session" | "clerk";
 };
 
 function safeHeaders(req: Request) {
@@ -52,14 +58,17 @@ function safePath(url: string): string {
  */
 export async function adminAuditLog(
   req: Request,
-  auth: RequireAdminOk,
+  auth: AdminAuditAuth,
   entry: AdminAuditWrite & { outcome?: "OK" | "ERROR"; error?: string },
 ): Promise<void> {
   try {
     const hdr = safeHeaders(req);
+    const actorAdminUserId =
+      auth.actorAdminUserId ?? (auth.authSource === "admin_session" ? auth.userId : null);
     await db.insert(auditLogs).values({
       id: crypto.randomUUID(),
       actorUserId: auth.userId,
+      actorAdminUserId,
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId,

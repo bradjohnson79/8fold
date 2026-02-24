@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { executePendingDisputeEnforcementActions } from "@/src/support/disputeEnforcement";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../../../_lib/adminTier";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -11,22 +11,24 @@ function getIdFromUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_SUPER");
+  if (forbidden) return forbidden;
 
   try {
     const disputeId = getIdFromUrl(req);
 
     const result = await executePendingDisputeEnforcementActions({
       disputeCaseId: disputeId,
-      actorUserId: auth.userId,
+      actorUserId: identity.userId,
     });
 
     return NextResponse.json({ ok: true, data: result });
   } catch (err) {
     return handleApiError(err, "POST /api/admin/support/disputes/[id]/enforcement/execute", {
       route: "/api/admin/support/disputes/[id]/enforcement/execute",
-      userId: auth.userId,
+      userId: identity.userId,
     });
   }
 }

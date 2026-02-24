@@ -42,7 +42,7 @@ export async function PATCH(req: Request) {
     const updated = updatedRows[0] ?? null;
     if (!updated) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
-    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN", authSource: identity.authSource }, {
       action: "ADMIN_JOB_ARCHIVE",
       entityType: "Job",
       entityId: jobId,

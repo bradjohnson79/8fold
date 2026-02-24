@@ -296,7 +296,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "conflict" }, { status: 409 });
     }
 
-    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN", authSource: identity.authSource }, {
       action: "ADMIN_MANUAL_ROUTING",
       entityType: "Job",
       entityId: jobId,

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { getWalletTotals } from "../../../../../../src/wallet/totals";
 import { z } from "zod";
@@ -12,6 +11,7 @@ import { payoutRequests } from "../../../../../../db/schema/payoutRequest";
 import { payouts } from "../../../../../../db/schema/payout";
 import { adminAuditLog } from "@/src/audit/adminAudit";
 import { readJsonBody } from "@/src/lib/api/readJsonBody";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../_lib/adminTier";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -26,8 +26,10 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_SUPER");
+  if (forbidden) return forbidden;
 
   try {
     const payoutRequestId = getIdFromUrl(req);
@@ -104,7 +106,7 @@ export async function POST(req: Request) {
 
       await tx.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "PAYOUT_REQUEST_MARK_PAID",
         entityType: "PayoutRequest",
         entityId: payoutRequestId,
@@ -130,7 +132,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, data: { payoutRequest: result.payoutRequest, payout: result.payout } });
   } catch (err) {
-    await adminAuditLog(req, auth, {
+    await adminAuditLog(req, {
+      userId: identity.userId,
+      role: "ADMIN",
+      authSource: identity.authSource,
+    }, {
       action: "PAYOUT_REQUEST_MARK_PAID_ERROR",
       entityType: "PayoutRequest",
       entityId: getIdFromUrl(req) || "unknown",

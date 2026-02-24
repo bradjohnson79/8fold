@@ -37,7 +37,8 @@
     "hygiene:phaseA:check": "DOTENV_CONFIG_PATH=.env.local tsx scripts/hygienePhaseACheck.ts",
     "hygiene:guard": "DOTENV_CONFIG_PATH=.env.local pnpm validate:jobs-schema && DOTENV_CONFIG_PATH=.env.local pnpm hygiene:phaseA:check",
     "predeploy": "pnpm hygiene:guard",
-    "smoke:test": "tsx scripts/runtimeSmokeTest.ts"
+    "smoke:test": "tsx scripts/runtimeSmokeTest.ts",
+    "smoke:admin-tier-lockdown": "tsx scripts/smoke-admin-tier-lockdown.ts"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
