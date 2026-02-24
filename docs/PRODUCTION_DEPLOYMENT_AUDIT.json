@@ -1,0 +1,19 @@
+{
+  "PRODUCTION_DEPLOYMENT_AUDIT": {
+    "diagnosticCodePresent": {
+      "api": false,
+      "web": false
+    },
+    "routeDuplication": [
+      "apps/api/app/api/public/jobs/recent/route.ts",
+      "apps/web/src/app/api/public/jobs/recent/route.ts"
+    ],
+    "monorepoStructureConfirmed": true,
+    "vercelConfigSummary": "No vercel.json in repo. Root package.json build targets apps/web only. .vercel/project.json links to 8fold-api. Each Vercel project (api.8fold.app, 8fold.app) must have Root Directory configured in dashboard (apps/api, apps/web).",
+    "routeExportValid": {
+      "api": true,
+      "web": true
+    },
+    "suspectedFailureLayer": "apps/api route handler or upstream (jobPublicRepo.drizzle listNewestJobs). Web route is a proxy; 8fold.app 500 is a consequence of api.8fold.app 500. Root cause likely: schema resolution (public vs 8fold_test), Job table/column mismatch, or status enum filter (ASSIGNED/CUSTOMER_APPROVED) not matching production data. Schema lock (#34) enforces ?schema=public at boot but runtime diagnostics were removed in #32, so headers cannot confirm schema at request time."
+  }
+}

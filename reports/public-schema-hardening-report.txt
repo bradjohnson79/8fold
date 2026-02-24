@@ -1,0 +1,52 @@
+# Public Schema Hardening Report — 2026-02-23
+
+## PHASE 0 — Confirm production DB
+- DATABASE_URL host: ep-purple-dawn-afo04gbg-pooler.c-2.us-west-2.aws.neon.tech
+- current_database(): neondb
+- current_schema(): public
+- search_path: "$user", public
+- **Status: PASS**
+
+## PHASE 1 — Backup / snapshot
+- Backup file: apps/api/reports/prod-backup-before-0067-20260223T170457.sql
+- Size: 2214 bytes
+- **Status: PASS**
+
+## PHASE 2 — Add stripeRef column
+- ALTER TABLE public."LedgerEntry" ADD COLUMN IF NOT EXISTS "stripeRef" text
+- Verified: stripeRef exists
+- **Status: PASS**
+
+## PHASE 3 — Duplicate audit
+- Query: SELECT jobId, type, stripeRef, COUNT(*) ... HAVING COUNT(*) > 1
+- Duplicate groups: 0
+- **Status: PASS**
+
+## PHASE 4 — Create public.TransferRecord
+- Table created with UUID PK, FKs to public.jobs and public."User"
+- UNIQUE (jobId, role) index: TransferRecord_job_role_uniq
+- Supporting indexes: jobId, userId, status, method, role, createdAt
+- **Status: PASS**
+
+## PHASE 5 — Partial unique index on LedgerEntry
+- Index: LedgerEntry_job_type_stripeRef_uniq
+- Definition: UNIQUE (jobId, type, stripeRef) WHERE jobId IS NOT NULL AND stripeRef IS NOT NULL
+- **Status: PASS**
+
+## PHASE 6 — Smoke checks
+1. GET https://api.8fold.app/api/public/jobs/recent?limit=1 → 200 OK
+2. POST /api/webhooks/stripe (no signature) → 400 OK
+3. verify-uniqueness-constraints.ts → PASS
+- **Status: PASS**
+
+## Indexes created
+| Name | Definition |
+|------|------------|
+| TransferRecord_job_role_uniq | UNIQUE (jobId, role) on public."TransferRecord" |
+| LedgerEntry_job_type_stripeRef_uniq | UNIQUE (jobId, type, stripeRef) WHERE jobId IS NOT NULL AND stripeRef IS NOT NULL |
+
+## Warnings
+- None
+
+## Final status
+**SAFE**

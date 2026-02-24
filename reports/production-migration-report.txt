@@ -1,0 +1,37 @@
+--- PHASE 1: Production DB Confirmation ---
+DATABASE_URL host: neondb_owner:****@ep-purple-dawn-afo04gbg-pooler.c-2.us-west-2.aws.neon.tech
+DB name: neondb
+search_path: public
+Neon pooler: YES
+
+--- PHASE 2: Apply Migration 0065 ---
+Migration 0065 executed.
+Table exists: YES
+idempotencyKey unique constraint: PRESENT
+
+--- PHASE 3: Apply Migration 0066 ---
+  Schema 8fold_test: TransferRecord index created
+  Schema 8fold_test: LedgerEntry index created
+  Schema public: LedgerEntry skipped (no stripeRef column)
+Migration 0066 executed.
+Index verification:
+  8fold_test.LedgerEntry: LedgerEntry_job_type_stripeRef_uniq
+  8fold_test.TransferRecord: TransferRecord_job_role_uniq
+TransferRecord unique (jobId, role): YES
+LedgerEntry partial unique (jobId, type, stripeRef): YES
+
+--- PHASE 4: Row Count Verification ---
+  8fold_test.TransferRecord: 0
+TransferRecord total: 0
+  public.LedgerEntry: 3
+  8fold_test.LedgerEntry: 7
+LedgerEntry total: 10
+
+--- PHASE 4b: Endpoint Smoke ---
+GET https://api.8fold.app/api/public/jobs/recent?limit=1: 200
+ok: true
+
+--- PHASE 5: Webhook Invalid Signature ---
+POST /api/webhooks/stripe (no signature): 400 (expected 400)
+
+--- FINAL STATUS: SAFE ---

@@ -1,0 +1,5068 @@
+{
+  "generatedAt": "2026-02-23T22:30:47.451Z",
+  "tables": [
+    {
+      "schema": "public",
+      "name": "admin_router_contexts",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "adminId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "regionCode",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "routingHubId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "activatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "deactivatedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "AuditLog",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "actorUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "actorAdminUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "action",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "entityType",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "entityId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "metadata",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "directory_engine",
+      "name": "backlinks",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "directory_id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "listing_url",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "verified",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "last_checked",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "created_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "clerk_webhook_events",
+      "columns": [
+        {
+          "name": "eventId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp with time zone"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "contractor_accounts",
+      "columns": [
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdByAdmin",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isActive",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isMock",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isTest",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "status",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "wizardCompleted",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "waiverAccepted",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "waiverAcceptedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp with time zone"
+        },
+        {
+          "name": "firstName",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "lastName",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "businessName",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "businessNumber",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "addressMode",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "addressSearchDisplayName",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "address1",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "address2",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "apt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "postalCode",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "tradeCategory",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "serviceRadiusKm",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "country",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "regionCode",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "city",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "tradeStartYear",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "tradeStartMonth",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "payoutMethod",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "payoutStatus",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripeAccountId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "isApproved",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "jobsCompleted",
+          "notNull": false,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "rating",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "ContractorLedgerEntry",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "ContractorLedgerEntryType"
+        },
+        {
+          "name": "bucket",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "ContractorLedgerBucket"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "memo",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "ContractorPayout",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "materialsRequestId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "pmRequestId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "scheduledFor",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "ContractorPayoutStatus"
+        },
+        {
+          "name": "paidAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "externalReference",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "failureReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "Contractor",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "ContractorStatus"
+        },
+        {
+          "name": "businessName",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contactName",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "yearsExperience",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "phone",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "email",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "approvedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "regionCode",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "trade",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "ContractorTrade"
+        },
+        {
+          "name": "categories",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text[]"
+        },
+        {
+          "name": "tradeCategories",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "TradeCategory[]"
+        },
+        {
+          "name": "automotiveEnabled",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "lat",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "lng",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "regions",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text[]"
+        },
+        {
+          "name": "stripeAccountId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripePayoutsEnabled",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "conversations",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractorUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobPosterUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "directory_engine",
+      "name": "country_context",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "key_industries",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "workforce_trends",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "trade_demand",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "updated_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "directory_engine",
+      "name": "directories",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "name",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "homepage_url",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "submission_url",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contact_email",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "region",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "category",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "scope",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "target_url_override",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "free",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "requires_approval",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "authority_score",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "notes",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "created_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "dispute_alerts",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "disputeCaseId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "DisputeAlertType"
+        },
+        {
+          "name": "handledAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "dispute_cases",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "ticketId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "filedByUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "againstUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "againstRole",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "DisputeAgainstRole"
+        },
+        {
+          "name": "disputeReason",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "DisputeReason"
+        },
+        {
+          "name": "description",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "DisputeStatus"
+        },
+        {
+          "name": "decision",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "DisputeDecision"
+        },
+        {
+          "name": "decisionSummary",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "decisionAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "deadlineAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "dispute_enforcement_actions",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "disputeCaseId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "DisputeEnforcementActionType"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "DisputeEnforcementActionStatus"
+        },
+        {
+          "name": "payload",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "requestedByUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "executedByUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "executedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "error",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "internal_account_flags",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "InternalAccountFlagType"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "reason",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "disputeCaseId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdByUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "resolvedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "resolvedByUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobAssignment",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "assignedByAdminUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "completedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobDispatch",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "expiresAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "respondedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "tokenHash",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "routerUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobDraft",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "JobDraftStatus"
+        },
+        {
+          "name": "step",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "JobDraftStep"
+        },
+        {
+          "name": "data",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobFlag",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "userId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "reason",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp with time zone"
+        },
+        {
+          "name": "resolved",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobHold",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "JobHoldStatus"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "reason",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "JobHoldReason"
+        },
+        {
+          "name": "notes",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "amountCents",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "currency",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "appliedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "releasedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "appliedByUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "appliedByAdminUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "releasedByUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "releasedByAdminUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "sourceDisputeCaseId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobPayment",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripePaymentIntentId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripePaymentIntentStatus",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripeChargeId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "escrowLockedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "paymentCapturedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "paymentReleasedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "refundedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "refundAmountCents",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "refundIssuedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "job_photos",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "job_id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "kind",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "actor",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "url",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "storage_key",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "metadata",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "created_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobPosterCredit",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "escrowId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "memo",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "JobPosterProfile",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "name",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "email",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "phone",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "address",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "city",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stateProvince",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "postalCode",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "lat",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "lng",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "defaultJobLocation",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "payoutMethod",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "RolePayoutMethod"
+        },
+        {
+          "name": "payoutStatus",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "RolePayoutStatus"
+        },
+        {
+          "name": "stripeAccountId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "job_posters",
+      "columns": [
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdByAdmin",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isActive",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isMock",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isTest",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "defaultRegion",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "totalJobsPosted",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "lastJobPostedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "jobs",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "JobStatus"
+        },
+        {
+          "name": "archived",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "title",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "scope",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "region",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "country_code",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "state_code",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "region_code",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "region_name",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "city",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "postal_code",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "address_full",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "ai_appraisal_status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "AiAppraisalStatus"
+        },
+        {
+          "name": "ai_appraised_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "ai_suggested_total",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "ai_price_range_low",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "ai_price_range_high",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "ai_confidence",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "ai_reasoning",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "pricing_intel",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "pricing_intel_generated_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "pricing_intel_model",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "superseded_by_job_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "is_mock",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "mock_seed_batch",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "public_status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "PublicJobStatus"
+        },
+        {
+          "name": "job_source",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "JobSource"
+        },
+        {
+          "name": "repeat_contractor_discount_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "service_type",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "trade_category",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "TradeCategory"
+        },
+        {
+          "name": "time_window",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "router_earnings_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "broker_fee_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "contractor_payout_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "labor_total_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "materials_total_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "transaction_fee_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "payment_status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "PaymentStatus"
+        },
+        {
+          "name": "payout_status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "JobPayoutStatus"
+        },
+        {
+          "name": "amount_cents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "payment_currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripe_payment_intent_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripe_charge_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripe_customer_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripe_payment_method_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "accepted_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "authorization_expires_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "funds_secured_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "completion_deadline_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "funded_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "released_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "refunded_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "contractor_transfer_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "router_transfer_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "escrow_locked_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "payment_captured_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "payment_released_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "price_median_cents",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "price_adjustment_cents",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "pricing_version",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "junk_hauling_items",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "availability",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "job_type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "JobType"
+        },
+        {
+          "name": "lat",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "lng",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "created_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "published_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "job_poster_user_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contacted_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "guarantee_eligible_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "claimed_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "claimed_by_user_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "admin_routed_by_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractor_user_id",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "posted_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "routing_due_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "first_routed_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "routing_status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "RoutingStatus"
+        },
+        {
+          "name": "failsafe_routing",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "routed_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "contractor_completed_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "contractor_completion_summary",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "customer_approved_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "customer_rejected_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "customer_reject_reason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "CustomerRejectReason"
+        },
+        {
+          "name": "customer_reject_notes",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "customer_feedback",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "customer_completion_summary",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "router_approved_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "router_approval_notes",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "completion_flagged_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "completion_flag_reason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractor_action_token_hash",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "customer_action_token_hash",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "estimated_completion_date",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "estimate_set_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "estimate_updated_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "estimate_update_reason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "EcdUpdateReason"
+        },
+        {
+          "name": "estimate_update_other_text",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "LedgerEntry",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "escrowId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "LedgerEntryType"
+        },
+        {
+          "name": "direction",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "LedgerDirection"
+        },
+        {
+          "name": "bucket",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "LedgerBucket"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "stripeRef",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "memo",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsEscrowLedgerEntry",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "escrowId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "MaterialsEscrowLedgerEntryType"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "memo",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "actorUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsEscrow",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "MaterialsEscrowStatus"
+        },
+        {
+          "name": "requestId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "releaseDueAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "releasedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "overageCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "posterCreditCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "posterRefundCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "receiptTotalCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "reimbursedAmountCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "remainderCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsItem",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "requestId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "name",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "quantity",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "unitPriceCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "priceUrl",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "category",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsPayment",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "requestId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripePaymentIntentId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripePaymentIntentStatus",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripeChargeId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "MaterialsPaymentStatus"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "capturedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "refundAmountCents",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "refundedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "stripeRefundId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsReceiptFile",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "submissionId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "originalName",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "mimeType",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "sizeBytes",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "storageKey",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "sha256",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsReceiptSubmission",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "MaterialsReceiptStatus"
+        },
+        {
+          "name": "requestId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "receiptSubtotalCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "receiptTaxCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "receiptTotalCents",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "merchantName",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "purchaseDate",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "extractionModel",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "extractionRaw",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "submittedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "MaterialsRequest",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "MaterialsRequestStatus"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobPosterUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "routerUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "submittedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "approvedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "declinedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "approvedByUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "declinedByUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "totalAmountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "messages",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "conversationId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "senderUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "senderRole",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "body",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "monitoring_events",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "MonitoringEventType"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "role",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "MonitoringActorRole"
+        },
+        {
+          "name": "userId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "handledAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "notification_deliveries",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "title",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "body",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "readAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "createdByAdminUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "PayoutMethod",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "provider",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "PayoutProvider"
+        },
+        {
+          "name": "isActive",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "details",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "PayoutRequest",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "PayoutRequestStatus"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "payoutId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "Payout",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "paidAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "externalReference",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "notesInternal",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "userId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "PayoutStatus"
+        },
+        {
+          "name": "currency",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "CurrencyCode"
+        },
+        {
+          "name": "provider",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "PayoutProvider"
+        },
+        {
+          "name": "amountCents",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "scheduledFor",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "failureReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "PmLineItem",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "pmRequestId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "description",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "quantity",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "unitPrice",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "url",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "lineTotal",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "PmReceipt",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "pmRequestId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "fileBase64",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "extractedTotal",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "verified",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "PmRequest",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobPosterUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "initiatedBy",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "PMRequestStatus"
+        },
+        {
+          "name": "autoTotal",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "manualTotal",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "approvedTotal",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "taxAmount",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripePaymentIntentId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "escrowId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "amendReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "proposedBudget",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "numeric(12, 2)"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "directory_engine",
+      "name": "regional_context",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "region",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "key_industries",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "top_trades",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "service_demand",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "population_traits",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "updated_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "RepeatContractorRequest",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "contractorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "tradeCategory",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "TradeCategory"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "requestedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "respondedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "priorJobId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "RouterProfile",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "name",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "address",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "city",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stateProvince",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "postalCode",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "lat",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "lng",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "createdAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "RouterReward",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "routerUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "referredUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "amount",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "paidAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "routers",
+      "columns": [
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdByAdmin",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isActive",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isMock",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "isTest",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "termsAccepted",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "profileComplete",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "homeCountry",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "homeRegionCode",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "homeCity",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "isSeniorRouter",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        },
+        {
+          "name": "dailyRouteLimit",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "routesCompleted",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "routesFailed",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "integer"
+        },
+        {
+          "name": "rating",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "RouterStatus"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "routing_hubs",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "regionCode",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "hubCity",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "lat",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "lng",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "isAdminOnly",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "boolean"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "StripeWebhookEvent",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "objectId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "processedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "directory_engine",
+      "name": "submissions",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "directory_id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "region",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "generated_variants",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "jsonb"
+        },
+        {
+          "name": "selected_variant",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "listing_url",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "target_url_override",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "submitted_at",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "notes",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "created_at",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "support_attachments",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "ticketId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "uploadedById",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "originalName",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "mimeType",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "sizeBytes",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "storageKey",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "sha256",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "support_messages",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "ticketId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "authorId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "message",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "support_tickets",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "type",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "SupportTicketType"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "SupportTicketStatus"
+        },
+        {
+          "name": "category",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "SupportTicketCategory"
+        },
+        {
+          "name": "priority",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "SupportTicketPriority"
+        },
+        {
+          "name": "createdById",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "assignedToId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "roleContext",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "SupportRoleContext"
+        },
+        {
+          "name": "subject",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "TransferRecord",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "uuid"
+        },
+        {
+          "name": "jobId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "role",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "userId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "amountCents",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "integer"
+        },
+        {
+          "name": "currency",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "method",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "stripeTransferId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "externalRef",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp with time zone"
+        },
+        {
+          "name": "releasedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp with time zone"
+        },
+        {
+          "name": "failureReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        }
+      ],
+      "primaryKey": []
+    },
+    {
+      "schema": "public",
+      "name": "User",
+      "columns": [
+        {
+          "name": "id",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "clerkUserId",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "authUserId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "email",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "phoneNumber",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "name",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "role",
+          "notNull": true,
+          "hasDefault": false,
+          "sqlType": "UserRole"
+        },
+        {
+          "name": "status",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "UserStatus"
+        },
+        {
+          "name": "referredByRouterId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "formattedAddress",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "latitude",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "longitude",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "double precision"
+        },
+        {
+          "name": "legalStreet",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "legalCity",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "legalProvince",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "legalPostalCode",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "legalCountry",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "accountStatus",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "suspendedUntil",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "suspensionReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "archivedAt",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "archivedReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "deletionReason",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "updatedByAdminId",
+          "notNull": false,
+          "hasDefault": false,
+          "sqlType": "text"
+        },
+        {
+          "name": "country",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "countryCode",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "CountryCode"
+        },
+        {
+          "name": "stateCode",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "text"
+        },
+        {
+          "name": "createdAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        },
+        {
+          "name": "updatedAt",
+          "notNull": true,
+          "hasDefault": true,
+          "sqlType": "timestamp"
+        }
+      ],
+      "primaryKey": []
+    }
+  ],
+  "enums": [
+    {
+      "name": "AiAppraisalStatus",
+      "values": [
+        "PENDING",
+        "COMPLETED",
+        "FAILED",
+        "APPLIED",
+        "SUPERSEDED"
+      ]
+    },
+    {
+      "name": "ContractorLedgerBucket",
+      "values": [
+        "PENDING",
+        "PAID"
+      ]
+    },
+    {
+      "name": "ContractorLedgerEntryType",
+      "values": [
+        "CONTRACTOR_EARNING",
+        "CONTRACTOR_PAYOUT"
+      ]
+    },
+    {
+      "name": "ContractorPayoutStatus",
+      "values": [
+        "PENDING",
+        "PAID",
+        "FAILED"
+      ]
+    },
+    {
+      "name": "ContractorStatus",
+      "values": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED"
+      ]
+    },
+    {
+      "name": "ContractorTrade",
+      "values": [
+        "JUNK_REMOVAL",
+        "YARDWORK_GROUNDSKEEPING",
+        "CARPENTRY",
+        "DRYWALL",
+        "ROOFING",
+        "PLUMBING",
+        "ELECTRICAL",
+        "WELDING"
+      ]
+    },
+    {
+      "name": "CountryCode",
+      "values": [
+        "CA",
+        "US"
+      ]
+    },
+    {
+      "name": "CurrencyCode",
+      "values": [
+        "CAD",
+        "USD"
+      ]
+    },
+    {
+      "name": "CustomerRejectReason",
+      "values": [
+        "QUALITY_ISSUE",
+        "INCOMPLETE_WORK",
+        "DAMAGE",
+        "NO_SHOW",
+        "OTHER"
+      ]
+    },
+    {
+      "name": "DisputeAgainstRole",
+      "values": [
+        "JOB_POSTER",
+        "CONTRACTOR"
+      ]
+    },
+    {
+      "name": "DisputeAlertType",
+      "values": [
+        "DEADLINE_BREACHED"
+      ]
+    },
+    {
+      "name": "DisputeDecision",
+      "values": [
+        "FAVOR_POSTER",
+        "FAVOR_CONTRACTOR",
+        "PARTIAL",
+        "NO_ACTION",
+        "FAVOR_JOB_POSTER"
+      ]
+    },
+    {
+      "name": "DisputeEnforcementActionStatus",
+      "values": [
+        "PENDING",
+        "EXECUTED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    {
+      "name": "DisputeEnforcementActionType",
+      "values": [
+        "RELEASE_ESCROW_FULL",
+        "WITHHOLD_FUNDS",
+        "RELEASE_ESCROW_PARTIAL",
+        "FLAG_ACCOUNT_INTERNAL"
+      ]
+    },
+    {
+      "name": "DisputeReason",
+      "values": [
+        "PRICING",
+        "WORK_QUALITY",
+        "NO_SHOW",
+        "PAYMENT",
+        "OTHER"
+      ]
+    },
+    {
+      "name": "DisputeStatus",
+      "values": [
+        "SUBMITTED",
+        "UNDER_REVIEW",
+        "NEEDS_INFO",
+        "DECIDED",
+        "CLOSED"
+      ]
+    },
+    {
+      "name": "EcdUpdateReason",
+      "values": [
+        "AWAITING_PARTS_MATERIALS",
+        "SCOPE_EXPANDED",
+        "SCHEDULING_DELAY",
+        "OTHER"
+      ]
+    },
+    {
+      "name": "EscrowKind",
+      "values": [
+        "JOB_ESCROW",
+        "PARTS_MATERIALS"
+      ]
+    },
+    {
+      "name": "EscrowStatus",
+      "values": [
+        "PENDING",
+        "FUNDED",
+        "RELEASED",
+        "REFUNDED",
+        "FAILED"
+      ]
+    },
+    {
+      "name": "InternalAccountFlagType",
+      "values": [
+        "DISPUTE_RISK",
+        "FRAUD_REVIEW",
+        "MANUAL_REVIEW"
+      ]
+    },
+    {
+      "name": "JobDraftStatus",
+      "values": [
+        "ACTIVE",
+        "ARCHIVED"
+      ]
+    },
+    {
+      "name": "JobDraftStep",
+      "values": [
+        "DETAILS",
+        "PRICING",
+        "AVAILABILITY",
+        "PAYMENT",
+        "CONFIRMED"
+      ]
+    },
+    {
+      "name": "JobHoldReason",
+      "values": [
+        "DISPUTE",
+        "QUALITY_ISSUE",
+        "FRAUD_REVIEW",
+        "MANUAL_REVIEW"
+      ]
+    },
+    {
+      "name": "JobHoldStatus",
+      "values": [
+        "ACTIVE",
+        "RELEASED"
+      ]
+    },
+    {
+      "name": "JobPayoutStatus",
+      "values": [
+        "NOT_READY",
+        "READY",
+        "RELEASED",
+        "FAILED"
+      ]
+    },
+    {
+      "name": "JobSource",
+      "values": [
+        "MOCK",
+        "REAL",
+        "AI_REGENERATED"
+      ]
+    },
+    {
+      "name": "JobStatus",
+      "values": [
+        "DRAFT",
+        "PUBLISHED",
+        "ASSIGNED",
+        "IN_PROGRESS",
+        "CONTRACTOR_COMPLETED",
+        "CUSTOMER_APPROVED",
+        "CUSTOMER_REJECTED",
+        "COMPLETION_FLAGGED",
+        "COMPLETED_APPROVED",
+        "OPEN_FOR_ROUTING",
+        "COMPLETED",
+        "DISPUTED"
+      ]
+    },
+    {
+      "name": "JobType",
+      "values": [
+        "urban",
+        "regional"
+      ]
+    },
+    {
+      "name": "LedgerBucket",
+      "values": [
+        "PENDING",
+        "AVAILABLE",
+        "PAID",
+        "HELD"
+      ]
+    },
+    {
+      "name": "LedgerDirection",
+      "values": [
+        "CREDIT",
+        "DEBIT"
+      ]
+    },
+    {
+      "name": "LedgerEntryType",
+      "values": [
+        "ROUTER_EARNING",
+        "BROKER_FEE",
+        "PAYOUT",
+        "ADJUSTMENT",
+        "ESCROW_FUND",
+        "PNM_FUND",
+        "ESCROW_RELEASE",
+        "ESCROW_REFUND",
+        "PLATFORM_FEE",
+        "ROUTER_EARN",
+        "CONTRACTOR_EARN",
+        "PM_ESCROW_FUNDED",
+        "PM_RELEASE",
+        "PM_REFUND",
+        "PM_CREDIT"
+      ]
+    },
+    {
+      "name": "MaterialsEscrowLedgerEntryType",
+      "values": [
+        "DEPOSIT",
+        "RELEASE",
+        "POSTER_CREDIT",
+        "POSTER_REFUND"
+      ]
+    },
+    {
+      "name": "MaterialsEscrowStatus",
+      "values": [
+        "HELD",
+        "RELEASED"
+      ]
+    },
+    {
+      "name": "MaterialsPaymentStatus",
+      "values": [
+        "PENDING",
+        "CAPTURED",
+        "FAILED",
+        "REFUNDED"
+      ]
+    },
+    {
+      "name": "MaterialsReceiptStatus",
+      "values": [
+        "DRAFT",
+        "SUBMITTED"
+      ]
+    },
+    {
+      "name": "MaterialsRequestStatus",
+      "values": [
+        "SUBMITTED",
+        "APPROVED",
+        "DECLINED",
+        "ESCROWED",
+        "RECEIPTS_SUBMITTED",
+        "REIMBURSED"
+      ]
+    },
+    {
+      "name": "MonitoringActorRole",
+      "values": [
+        "ADMIN",
+        "ROUTER",
+        "CONTRACTOR",
+        "JOB_POSTER"
+      ]
+    },
+    {
+      "name": "MonitoringEventType",
+      "values": [
+        "JOB_APPROACHING_24H",
+        "JOB_OVERDUE_UNROUTED",
+        "JOB_ROUTED",
+        "JOB_COMPLETED"
+      ]
+    },
+    {
+      "name": "PartsMaterialReleaseStatus",
+      "values": [
+        "NOT_READY",
+        "READY",
+        "RELEASED",
+        "FAILED"
+      ]
+    },
+    {
+      "name": "PartsMaterialStatus",
+      "values": [
+        "REQUESTED",
+        "APPROVED",
+        "PAID",
+        "REJECTED",
+        "CANCELLED"
+      ]
+    },
+    {
+      "name": "PaymentStatus",
+      "values": [
+        "UNPAID",
+        "REQUIRES_ACTION",
+        "FUNDED",
+        "FAILED",
+        "REFUNDED",
+        "AUTHORIZED",
+        "FUNDS_SECURED",
+        "EXPIRED_UNFUNDED"
+      ]
+    },
+    {
+      "name": "PayoutProvider",
+      "values": [
+        "STRIPE",
+        "WISE"
+      ]
+    },
+    {
+      "name": "PayoutRequestStatus",
+      "values": [
+        "REQUESTED",
+        "REJECTED",
+        "PAID",
+        "CANCELLED"
+      ]
+    },
+    {
+      "name": "PayoutStatus",
+      "values": [
+        "PENDING",
+        "PAID",
+        "FAILED"
+      ]
+    },
+    {
+      "name": "PMRequestStatus",
+      "values": [
+        "DRAFT",
+        "SUBMITTED",
+        "AMENDMENT_REQUESTED",
+        "APPROVED",
+        "PAYMENT_PENDING",
+        "FUNDED",
+        "RECEIPTS_SUBMITTED",
+        "VERIFIED",
+        "RELEASED",
+        "CLOSED",
+        "REJECTED"
+      ]
+    },
+    {
+      "name": "PublicJobStatus",
+      "values": [
+        "OPEN",
+        "IN_PROGRESS"
+      ]
+    },
+    {
+      "name": "RolePayoutMethod",
+      "values": [
+        "STRIPE"
+      ]
+    },
+    {
+      "name": "RolePayoutStatus",
+      "values": [
+        "UNSET",
+        "PENDING",
+        "ACTIVE"
+      ]
+    },
+    {
+      "name": "RouterStatus",
+      "values": [
+        "ACTIVE",
+        "SUSPENDED"
+      ]
+    },
+    {
+      "name": "RoutingStatus",
+      "values": [
+        "UNROUTED",
+        "ROUTED_BY_ROUTER",
+        "ROUTED_BY_ADMIN"
+      ]
+    },
+    {
+      "name": "SendBlockedReason",
+      "values": [
+        "REGION_PAUSED",
+        "IDENTITY_PAUSED",
+        "DAILY_LIMIT_EXCEEDED",
+        "INTERVAL_LIMIT_EXCEEDED"
+      ]
+    },
+    {
+      "name": "SendQueueStatus",
+      "values": [
+        "QUEUED",
+        "SENT",
+        "FAILED",
+        "BLOCKED"
+      ]
+    },
+    {
+      "name": "SupportRoleContext",
+      "values": [
+        "JOB_POSTER",
+        "ROUTER",
+        "CONTRACTOR"
+      ]
+    },
+    {
+      "name": "SupportTicketCategory",
+      "values": [
+        "PRICING",
+        "JOB_POSTING",
+        "ROUTING",
+        "CONTRACTOR",
+        "PAYOUTS",
+        "AI_APPRAISAL_FAILURE",
+        "OTHER"
+      ]
+    },
+    {
+      "name": "SupportTicketPriority",
+      "values": [
+        "LOW",
+        "NORMAL",
+        "HIGH"
+      ]
+    },
+    {
+      "name": "SupportTicketStatus",
+      "values": [
+        "OPEN",
+        "IN_PROGRESS",
+        "RESOLVED",
+        "CLOSED"
+      ]
+    },
+    {
+      "name": "SupportTicketType",
+      "values": [
+        "HELP",
+        "DISPUTE"
+      ]
+    },
+    {
+      "name": "TradeCategory",
+      "values": [
+        "PLUMBING",
+        "ELECTRICAL",
+        "HVAC",
+        "APPLIANCE",
+        "HANDYMAN",
+        "PAINTING",
+        "CARPENTRY",
+        "DRYWALL",
+        "ROOFING",
+        "JANITORIAL_CLEANING",
+        "LANDSCAPING",
+        "FENCING",
+        "SNOW_REMOVAL",
+        "JUNK_REMOVAL",
+        "MOVING",
+        "AUTOMOTIVE",
+        "FURNITURE_ASSEMBLY"
+      ]
+    },
+    {
+      "name": "UserRole",
+      "values": [
+        "ADMIN",
+        "CONTRACTOR",
+        "ROUTER",
+        "JOB_POSTER"
+      ]
+    },
+    {
+      "name": "UserStatus",
+      "values": [
+        "ACTIVE",
+        "SUSPENDED",
+        "ARCHIVED",
+        "PENDING"
+      ]
+    }
+  ]
+}

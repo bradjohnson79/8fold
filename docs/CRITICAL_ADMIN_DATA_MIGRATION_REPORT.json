@@ -1,0 +1,129 @@
+{
+  "ok": true,
+  "mode": "execute",
+  "sourceSchema": "8fold_test",
+  "targetSchema": "public",
+  "timestamp": "2026-02-22T04:50:00.992Z",
+  "database": "neondb",
+  "preflightErrors": [],
+  "tables": [
+    {
+      "table": "JobPosterProfile",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 2,
+      "targetBefore": 1,
+      "candidateInserts": 2,
+      "insertedCount": 2,
+      "targetAfter": 3,
+      "copyColumns": [
+        "id",
+        "createdAt",
+        "updatedAt",
+        "userId",
+        "name",
+        "email",
+        "phone",
+        "address",
+        "city",
+        "stateProvince",
+        "postalCode",
+        "country",
+        "lat",
+        "lng",
+        "defaultJobLocation",
+        "payoutMethod",
+        "payoutStatus",
+        "stripeAccountId"
+      ]
+    },
+    {
+      "table": "support_tickets",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetBefore": 0,
+      "candidateInserts": 0,
+      "insertedCount": 0,
+      "targetAfter": 0,
+      "copyColumns": [
+        "id",
+        "createdAt",
+        "updatedAt",
+        "type",
+        "status",
+        "category",
+        "priority",
+        "createdById",
+        "assignedToId",
+        "roleContext",
+        "subject"
+      ]
+    },
+    {
+      "table": "support_messages",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetBefore": 0,
+      "candidateInserts": 0,
+      "insertedCount": 0,
+      "targetAfter": 0,
+      "copyColumns": [
+        "id",
+        "createdAt",
+        "ticketId",
+        "authorId",
+        "message"
+      ]
+    },
+    {
+      "table": "support_attachments",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetBefore": 0,
+      "candidateInserts": 0,
+      "insertedCount": 0,
+      "targetAfter": 0,
+      "copyColumns": [
+        "id",
+        "createdAt",
+        "ticketId",
+        "uploadedById",
+        "originalName",
+        "mimeType",
+        "sizeBytes",
+        "storageKey",
+        "sha256"
+      ]
+    },
+    {
+      "table": "dispute_cases",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetBefore": 0,
+      "candidateInserts": 0,
+      "insertedCount": 0,
+      "targetAfter": 0,
+      "copyColumns": [
+        "id",
+        "createdAt",
+        "updatedAt",
+        "ticketId",
+        "jobId",
+        "filedByUserId",
+        "againstUserId",
+        "againstRole",
+        "disputeReason",
+        "description",
+        "status",
+        "decision",
+        "decisionSummary",
+        "decisionAt",
+        "deadlineAt"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,800 @@
+{
+  "generatedAt": "2026-02-23T22:30:47.461Z",
+  "issues": [
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "admin_router_contexts",
+      "schema": "public",
+      "detail": "Drizzle table public.admin_router_contexts does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "clerk_webhook_events",
+      "schema": "public",
+      "detail": "Drizzle table public.clerk_webhook_events does not exist in database"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "ContractorPayout",
+      "schema": "public",
+      "column": "materialsRequestId",
+      "detail": "Column materialsRequestId in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "Contractor",
+      "schema": "public",
+      "column": "stripeAccountId",
+      "detail": "Column stripeAccountId in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "Contractor",
+      "schema": "public",
+      "column": "stripePayoutsEnabled",
+      "detail": "Column stripePayoutsEnabled in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "directories",
+      "schema": "directory_engine",
+      "column": "scope",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "internal_account_flags",
+      "schema": "public",
+      "detail": "Drizzle table public.internal_account_flags does not exist in database"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "JobDispatch",
+      "schema": "public",
+      "column": "updatedAt",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "JobFlag",
+      "schema": "public",
+      "detail": "Drizzle table public.JobFlag does not exist in database"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "JobHold",
+      "schema": "public",
+      "column": "sourceDisputeCaseId",
+      "detail": "Column sourceDisputeCaseId in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "JobPosterCredit",
+      "schema": "public",
+      "detail": "Drizzle table public.JobPosterCredit does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "job_posters",
+      "schema": "public",
+      "detail": "Drizzle table public.job_posters does not exist in database"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "currency",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "ai_appraisal_status",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "ai_appraisal_status",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "is_mock",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "is_mock",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "job_source",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "job_source",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "repeat_contractor_discount_cents",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "repeat_contractor_discount_cents",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "payout_status",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "payout_status",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "payment_currency",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "payment_currency",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "pricing_version",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "pricing_version",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "updated_at",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "updated_at",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "posted_at",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "posted_at",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "routing_status",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "routing_status",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "failsafe_routing",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "jobs",
+      "schema": "public",
+      "column": "failsafe_routing",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsEscrow",
+      "schema": "public",
+      "column": "overageCents",
+      "detail": "Column overageCents in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsEscrow",
+      "schema": "public",
+      "column": "posterCreditCents",
+      "detail": "Column posterCreditCents in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsEscrow",
+      "schema": "public",
+      "column": "posterRefundCents",
+      "detail": "Column posterRefundCents in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsEscrow",
+      "schema": "public",
+      "column": "receiptTotalCents",
+      "detail": "Column receiptTotalCents in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsEscrow",
+      "schema": "public",
+      "column": "reimbursedAmountCents",
+      "detail": "Column reimbursedAmountCents in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsEscrow",
+      "schema": "public",
+      "column": "remainderCents",
+      "detail": "Column remainderCents in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsPayment",
+      "schema": "public",
+      "detail": "Drizzle table public.MaterialsPayment does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsReceiptFile",
+      "schema": "public",
+      "detail": "Drizzle table public.MaterialsReceiptFile does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "MaterialsReceiptSubmission",
+      "schema": "public",
+      "detail": "Drizzle table public.MaterialsReceiptSubmission does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "monitoring_events",
+      "schema": "public",
+      "detail": "Drizzle table public.monitoring_events does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "notification_deliveries",
+      "schema": "public",
+      "detail": "Drizzle table public.notification_deliveries does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RepeatContractorRequest",
+      "schema": "public",
+      "detail": "Drizzle table public.RepeatContractorRequest does not exist in database"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "address",
+      "detail": "Column address in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "city",
+      "detail": "Column city in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "stateProvince",
+      "detail": "Column stateProvince in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "postalCode",
+      "detail": "Column postalCode in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "MISSING_COLUMN_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "country",
+      "detail": "Column country in Drizzle does not exist in DB"
+    },
+    {
+      "kind": "EXTRA_COLUMN_IN_DB",
+      "severity": "MEDIUM",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "state",
+      "detail": "DB has column state not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_COLUMN_IN_DB",
+      "severity": "MEDIUM",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "status",
+      "detail": "DB has column status not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_COLUMN_IN_DB",
+      "severity": "MEDIUM",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "notifyViaEmail",
+      "detail": "DB has column notifyViaEmail not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_COLUMN_IN_DB",
+      "severity": "MEDIUM",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "notifyViaSms",
+      "detail": "DB has column notifyViaSms not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_COLUMN_IN_DB",
+      "severity": "MEDIUM",
+      "table": "RouterProfile",
+      "schema": "public",
+      "column": "phone",
+      "detail": "DB has column phone not in Drizzle schema"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "RouterReward",
+      "schema": "public",
+      "detail": "Drizzle table public.RouterReward does not exist in database"
+    },
+    {
+      "kind": "MISSING_TABLE_IN_DB",
+      "severity": "CRITICAL",
+      "table": "routing_hubs",
+      "schema": "public",
+      "detail": "Drizzle table public.routing_hubs does not exist in database"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "clerkUserId",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "status",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "formattedAddress",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "legalStreet",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "legalCity",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "legalProvince",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "legalPostalCode",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "legalCountry",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "accountStatus",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "NULLABLE_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "updatedAt",
+      "detail": "Drizzle NOT NULL, DB allows NULL",
+      "expected": "NOT NULL",
+      "actual": "NULLABLE"
+    },
+    {
+      "kind": "DEFAULT_MISMATCH",
+      "severity": "HIGH",
+      "table": "User",
+      "schema": "public",
+      "column": "updatedAt",
+      "detail": "Drizzle has default, DB has no default for NOT NULL column"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "AdminAdjustmentIdempotency",
+      "schema": "public",
+      "detail": "DB has table public.AdminAdjustmentIdempotency not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "AdminInvite",
+      "schema": "public",
+      "detail": "DB has table public.AdminInvite not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "AdminUser",
+      "schema": "public",
+      "detail": "DB has table public.AdminUser not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "AuthToken",
+      "schema": "public",
+      "detail": "DB has table public.AuthToken not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "Escrow",
+      "schema": "public",
+      "detail": "DB has table public.Escrow not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "JobDraftV2",
+      "schema": "public",
+      "detail": "DB has table public.JobDraftV2 not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "JobDraftV2FieldState",
+      "schema": "public",
+      "detail": "DB has table public.JobDraftV2FieldState not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "JobDraft_legacy_frozen",
+      "schema": "public",
+      "detail": "DB has table public.JobDraft_legacy_frozen not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "PartsMaterialRequest",
+      "schema": "public",
+      "detail": "DB has table public.PartsMaterialRequest not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "Session",
+      "schema": "public",
+      "detail": "DB has table public.Session not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "_prisma_migrations",
+      "schema": "public",
+      "detail": "DB has table public._prisma_migrations not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "admin_sessions",
+      "schema": "public",
+      "detail": "DB has table public.admin_sessions not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "agent_mission_templates",
+      "schema": "public",
+      "detail": "DB has table public.agent_mission_templates not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "agent_schedule_plans",
+      "schema": "public",
+      "detail": "DB has table public.agent_schedule_plans not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "agent_scheduled_runs",
+      "schema": "public",
+      "detail": "DB has table public.agent_scheduled_runs not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "campaign_regions",
+      "schema": "public",
+      "detail": "DB has table public.campaign_regions not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "contacts",
+      "schema": "public",
+      "detail": "DB has table public.contacts not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "discovery_batches",
+      "schema": "public",
+      "detail": "DB has table public.discovery_batches not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "discovery_items",
+      "schema": "public",
+      "detail": "DB has table public.discovery_items not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "dispute_evidence",
+      "schema": "public",
+      "detail": "DB has table public.dispute_evidence not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "dispute_votes",
+      "schema": "public",
+      "detail": "DB has table public.dispute_votes not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "drizzle_sql_migrations",
+      "schema": "public",
+      "detail": "DB has table public.drizzle_sql_migrations not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "email_drafts",
+      "schema": "public",
+      "detail": "DB has table public.email_drafts not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "email_identities",
+      "schema": "public",
+      "detail": "DB has table public.email_identities not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "job_poster_accounts",
+      "schema": "public",
+      "detail": "DB has table public.job_poster_accounts not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "region_email_logs",
+      "schema": "public",
+      "detail": "DB has table public.region_email_logs not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "send_counters",
+      "schema": "public",
+      "detail": "DB has table public.send_counters not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "send_queue",
+      "schema": "public",
+      "detail": "DB has table public.send_queue not in Drizzle schema"
+    },
+    {
+      "kind": "EXTRA_TABLE_IN_DB",
+      "severity": "LOW",
+      "table": "sessions",
+      "schema": "public",
+      "detail": "DB has table public.sessions not in Drizzle schema"
+    }
+  ]
+}

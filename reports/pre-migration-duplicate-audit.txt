@@ -1,0 +1,33 @@
+============================================================
+PRODUCTION PRE-MIGRATION DUPLICATE AUDIT (READ-ONLY)
+============================================================
+
+--- PHASE 1: Connection Confirmation ---
+DB name: neondb
+DB host: ::1/128
+Schema search_path: public
+Connection: ep-purple-dawn-afo04gbg-pooler.c-2.us-west-2.aws.neon.tech / ?
+WARNING: Ensure this is PRODUCTION. Do NOT use local or preview DB.
+
+--- PHASE 2: TransferRecord Duplicates ---
+Constraint: UNIQUE ("jobId", "role")
+Result: PASS (zero duplicate groups)
+
+--- PHASE 3: LedgerEntry Duplicates ---
+Constraint: UNIQUE ("jobId", "type", "stripeRef") WHERE "stripeRef" IS NOT NULL
+Result: PASS (zero duplicate groups)
+
+--- PHASE 5: Pre-Migration Safety Summary ---
+TransferRecord duplicate status: PASS
+  Count: 0 groups, 0 rows
+  Risk level: N/A
+LedgerEntry duplicate status: PASS
+  Count: 0 groups, 0 rows
+  Risk level: N/A
+
+Safe to apply uniqueness migrations? YES
+Reason: No duplicates detected.
+
+============================================================
+AUDIT COMPLETE. NO MUTATIONS PERFORMED.
+============================================================

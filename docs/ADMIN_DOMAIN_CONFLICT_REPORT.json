@@ -1,0 +1,93 @@
+{
+  "ok": true,
+  "sourceSchema": "8fold_test",
+  "targetSchema": "public",
+  "database": "neondb",
+  "timestamp": "2026-02-22T05:03:16.052Z",
+  "summary": {
+    "userConflicts": 4,
+    "adminUserConflicts": 1
+  },
+  "userConflicts": [
+    {
+      "sourceId": "37cc7db9-1506-4ca9-9f0a-58a166e561c7",
+      "sourceEmail": "contractor.audit@8fold.local",
+      "sourceClerkUserId": "seed:audit:contractor.audit@8fold.local",
+      "sourceAuthUserId": null,
+      "collisions": [
+        {
+          "field": "email",
+          "targetId": "2afc17eb-9395-4437-b0bb-29121801fd85",
+          "targetEmail": "contractor.audit@8fold.local",
+          "targetClerkUserId": null,
+          "targetAuthUserId": null
+        }
+      ]
+    },
+    {
+      "sourceId": "54854984-2b41-4188-bb0a-68e05b6328ae",
+      "sourceEmail": null,
+      "sourceClerkUserId": "system:platform",
+      "sourceAuthUserId": "system:platform",
+      "collisions": [
+        {
+          "field": "clerkUserId",
+          "targetId": "cml4eevd0000bonvm2cjbpoh2",
+          "targetEmail": null,
+          "targetClerkUserId": "system:platform",
+          "targetAuthUserId": "system:platform"
+        },
+        {
+          "field": "authUserId",
+          "targetId": "cml4eevd0000bonvm2cjbpoh2",
+          "targetEmail": null,
+          "targetClerkUserId": "system:platform",
+          "targetAuthUserId": "system:platform"
+        }
+      ]
+    },
+    {
+      "sourceId": "73b12790-fc2e-4aea-a67f-da67fc3148db",
+      "sourceEmail": "router.audit@8fold.local",
+      "sourceClerkUserId": "seed:audit:router.audit@8fold.local",
+      "sourceAuthUserId": null,
+      "collisions": [
+        {
+          "field": "email",
+          "targetId": "3262ab2a-7307-449d-a698-43cb885d45e8",
+          "targetEmail": "router.audit@8fold.local",
+          "targetClerkUserId": null,
+          "targetAuthUserId": null
+        }
+      ]
+    },
+    {
+      "sourceId": "8bc93687-caa9-47ba-aeb0-1e0de2c0ca7e",
+      "sourceEmail": "poster.audit@8fold.local",
+      "sourceClerkUserId": "seed:audit:poster.audit@8fold.local",
+      "sourceAuthUserId": null,
+      "collisions": [
+        {
+          "field": "email",
+          "targetId": "af9b3142-8e06-4bf6-9869-7fe340e95e98",
+          "targetEmail": "poster.audit@8fold.local",
+          "targetClerkUserId": null,
+          "targetAuthUserId": null
+        }
+      ]
+    }
+  ],
+  "adminUserConflicts": [
+    {
+      "sourceId": "8660a8fb-c7d7-4a24-b791-ac8d0e7254a3",
+      "sourceEmail": "bradjohnson79@gmail.com",
+      "collisions": [
+        {
+          "field": "email",
+          "targetId": "65d9db78-24ea-493d-9a64-aa930962d21a",
+          "targetEmail": "bradjohnson79@gmail.com"
+        }
+      ]
+    }
+  ]
+}

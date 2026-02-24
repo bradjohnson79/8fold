@@ -78,23 +78,34 @@ export function useJobDraftV3() {
     []
   );
 
-  const autosavePatch = React.useCallback(
-    (dataPatch: Record<string, unknown>, step?: JobDraftStep) => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        void patchDraft({ dataPatch, step });
-      }, 350);
-    },
-    [patchDraft]
-  );
+  // IMPORTANT:
+  // autosavePatch is intentionally disabled.
+  // Draft persistence must only occur on explicit user actions
+  // (Begin Appraisal, Step transitions, Final Submit).
+  // Do NOT reintroduce reactive autosave or useEffect-based draft writes.
+  const autosavePatch = React.useCallback((_dataPatch?: Record<string, unknown>, _step?: JobDraftStep) => {
+    // Disabled during stabilization to prevent draft overwrite loops
+  }, []);
 
   const appraise = React.useCallback(async () => {
     setSaving(true);
     setError("");
     try {
+      const details = (draft?.data?.details ?? {}) as Record<string, unknown>;
+      const payload = {
+        draftId: draft?.id ?? null,
+        details: {
+          category: String(details.category ?? ""),
+          description: String(details.description ?? ""),
+          region: String(details.region ?? ""),
+          isRegional: Boolean(details.isRegional),
+        },
+      };
       const resp = await fetch("/api/job-draft/appraise", {
         method: "POST",
         credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(parseError(json, "Failed to appraise."));
@@ -107,7 +118,7 @@ export function useJobDraftV3() {
     } finally {
       setSaving(false);
     }
-  }, [patchDraft]);
+  }, [draft, patchDraft]);
 
   const createPaymentIntent = React.useCallback(
     async (selectedPriceCents: number, isRegional: boolean) => {

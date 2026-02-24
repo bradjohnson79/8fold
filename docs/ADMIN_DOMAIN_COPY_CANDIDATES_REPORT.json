@@ -1,0 +1,287 @@
+{
+  "ok": true,
+  "mode": "audit-only",
+  "sourceSchema": "8fold_test",
+  "targetSchema": "public",
+  "database": "neondb",
+  "timestamp": "2026-02-22T05:00:03.272Z",
+  "tables": [
+    {
+      "table": "User",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 33,
+      "targetCount": 39,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 4,
+      "note": null
+    },
+    {
+      "table": "AdminUser",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 2,
+      "targetCount": 2,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 1,
+      "note": null
+    },
+    {
+      "table": "admin_sessions",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 2,
+      "targetCount": 2,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "AuditLog",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 41,
+      "targetCount": 57,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "RouterProfile",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 12,
+      "targetCount": 12,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "routers",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 12,
+      "targetCount": 0,
+      "pkColumns": [
+        "userId"
+      ],
+      "candidateInserts": 12,
+      "note": null
+    },
+    {
+      "table": "Contractor",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 3,
+      "targetCount": 6,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "contractor_accounts",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 2,
+      "targetCount": 0,
+      "pkColumns": [
+        "userId"
+      ],
+      "candidateInserts": 2,
+      "note": null
+    },
+    {
+      "table": "JobPosterProfile",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 2,
+      "targetCount": 3,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "Job",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 8077,
+      "targetCount": 8080,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "JobAssignment",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 3,
+      "targetCount": 3,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "JobDispatch",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "JobPayment",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 4,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 4,
+      "note": null
+    },
+    {
+      "table": "conversations",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "messages",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "support_tickets",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "support_messages",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "support_attachments",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "dispute_cases",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "dispute_evidence",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "dispute_votes",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "dispute_alerts",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    },
+    {
+      "table": "dispute_enforcement_actions",
+      "sourceExists": true,
+      "targetExists": true,
+      "sourceCount": 0,
+      "targetCount": 0,
+      "pkColumns": [
+        "id"
+      ],
+      "candidateInserts": 0,
+      "note": null
+    }
+  ],
+  "warnings": []
+}
