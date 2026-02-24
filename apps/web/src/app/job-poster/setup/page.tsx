@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function JobPosterSetupPage() {
-  redirect("/post-job");
+  redirect("/app/job-poster/profile");
 }

@@ -196,6 +196,7 @@ export function DashboardShell({
     if (loggingOut) return;
     setLoggingOut(true);
     try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       await signOut();
       setBoot({ loading: false, ok: false, code: "UNAUTHENTICATED" });
       router.push("/");
