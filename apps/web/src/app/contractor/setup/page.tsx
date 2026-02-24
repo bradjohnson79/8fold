@@ -1,39 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { TradeCategoryLabel, TradeCategorySchema } from "@8fold/shared";
 
-const TRADE_OPTIONS = TradeCategorySchema.options;
-const INSURANCE_OPTIONS = ["None", "Liability", "Full Coverage"] as const;
-const LEAD_TIME_OPTIONS = ["Same Day", "1-2 Days", "3-5 Days", "1 Week+"] as const;
-
-function experienceYears(startYear: number, startMonth: number, now = new Date()): number {
-  const startMonths = startYear * 12 + (startMonth - 1);
-  const curMonths = now.getUTCFullYear() * 12 + now.getUTCMonth();
-  return Math.max(0, Math.floor((curMonths - startMonths) / 12));
-}
-
-type ProfileResponse = {
-  profile: {
-    email?: string | null;
-    phone?: string | null;
-    contactName?: string | null;
-    businessName?: string | null;
-    tradeCategory?: string | null;
-    serviceRadiusKm?: number | null;
-    tradeStartYear?: number | null;
-    tradeStartMonth?: number | null;
-    stripeAccountId?: string | null;
-    v2Extras?: {
-      secondaryTrades?: string[];
-      offersRegionalJobs?: boolean;
-      licensed?: boolean;
-      insuranceStatus?: string;
-      acceptsAsapJobs?: boolean;
-      typicalLeadTime?: string;
-    } | null;
-  } | null;
+type GeoResult = {
+  latitude: number;
+  longitude: number;
+  provinceState: string;
+  formattedAddress: string;
 };
 
 export default function ContractorSetupPage() {
@@ -42,56 +16,56 @@ export default function ContractorSetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const [businessName, setBusinessName] = useState("");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
-  const [primaryTradeCategory, setPrimaryTradeCategory] = useState("");
-  const [secondaryTrades, setSecondaryTrades] = useState<string[]>([]);
+  const [tradeOptions, setTradeOptions] = useState<string[]>([]);
+  const [tradeCategories, setTradeCategories] = useState<string[]>([]);
   const [serviceRadiusKm, setServiceRadiusKm] = useState(25);
-  const [offersRegionalJobs, setOffersRegionalJobs] = useState(false);
-  const [yearsInTrade, setYearsInTrade] = useState(0);
-  const [licensed, setLicensed] = useState(false);
-  const [insuranceStatus, setInsuranceStatus] = useState<string>("None");
-  const [acceptsAsapJobs, setAcceptsAsapJobs] = useState(false);
-  const [typicalLeadTime, setTypicalLeadTime] = useState("1-2 Days");
-  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [geoQuery, setGeoQuery] = useState("");
+  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
+  const [selectedGeo, setSelectedGeo] = useState<GeoResult | null>(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/app/contractor/profile-v2", { cache: "no-store", credentials: "include" });
-        const json = (await resp.json().catch(() => null)) as ProfileResponse;
+        const [metaResp, profileResp] = await Promise.all([
+          fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
+          fetch("/api/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
+        ]);
+        const meta = (await metaResp.json().catch(() => ({}))) as { uiOrder?: string[] };
+        const json = (await profileResp.json().catch(() => null)) as any;
         if (!alive) return;
-        if (resp.status === 401) {
+        if (profileResp.status === 401) {
           window.location.href = "/login?next=/contractor/setup";
           return;
         }
-        if (resp.status === 403) {
+        if (profileResp.status === 403) {
           setError("Access denied. Contractors only.");
           setLoading(false);
           return;
         }
+        setTradeOptions(Array.isArray(meta.uiOrder) ? meta.uiOrder : []);
         const p = json?.profile;
         if (p) {
-          setBusinessName(String(p.businessName ?? "").trim());
           setContactName(String(p.contactName ?? "").trim());
           setPhone(String(p.phone ?? "").trim());
+          setBusinessName(String(p.businessName ?? "").trim());
           setEmail(String(p.email ?? "").trim());
-          setPrimaryTradeCategory(String(p.tradeCategory ?? "").trim());
-          setSecondaryTrades(Array.isArray(p.v2Extras?.secondaryTrades) ? p.v2Extras.secondaryTrades : []);
+          setTradeCategories(Array.isArray(p.tradeCategories) ? p.tradeCategories : []);
           setServiceRadiusKm(Number(p.serviceRadiusKm) || 25);
-          setOffersRegionalJobs(Boolean(p.v2Extras?.offersRegionalJobs));
-          const y = p.tradeStartYear != null && p.tradeStartMonth != null
-            ? experienceYears(p.tradeStartYear, p.tradeStartMonth)
-            : 0;
-          setYearsInTrade(Math.max(0, y));
-          setLicensed(Boolean(p.v2Extras?.licensed));
-          setInsuranceStatus(String(p.v2Extras?.insuranceStatus ?? "None"));
-          setAcceptsAsapJobs(Boolean(p.v2Extras?.acceptsAsapJobs));
-          setTypicalLeadTime(String(p.v2Extras?.typicalLeadTime ?? "1-2 Days"));
-          setStripeAccountId(p.stripeAccountId ?? null);
+          setStripeConnected(Boolean(p.stripeConnected));
+          if (typeof p.homeLatitude === "number" && typeof p.homeLongitude === "number") {
+            setSelectedGeo({
+              latitude: p.homeLatitude,
+              longitude: p.homeLongitude,
+              provinceState: "NA",
+              formattedAddress: "Saved location",
+            });
+          }
         }
       } catch {
         setError("Failed to load profile.");
@@ -104,10 +78,22 @@ export default function ContractorSetupPage() {
     };
   }, []);
 
-  function toggleSecondaryTrade(tc: string) {
-    setSecondaryTrades((prev) =>
-      prev.includes(tc) ? prev.filter((t) => t !== tc) : prev.length < 10 ? [...prev, tc] : prev
-    );
+  useEffect(() => {
+    if (!geoQuery.trim()) return;
+    const t = setTimeout(async () => {
+      const resp = await fetch("/api/v4/geo/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: geoQuery.trim() }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[] };
+      setGeoResults(Array.isArray(data.results) ? data.results : []);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [geoQuery]);
+
+  function toggleTrade(tc: string) {
+    setTradeCategories((prev) => (prev.includes(tc) ? prev.filter((v) => v !== tc) : [...prev, tc]));
   }
 
   async function handleSave() {
@@ -125,38 +111,34 @@ export default function ContractorSetupPage() {
       setError("Phone Number is required.");
       return;
     }
-    if (!primaryTradeCategory) {
-      setError("Primary Trade Category is required.");
+    if (tradeCategories.length === 0) {
+      setError("Select at least one trade category.");
       return;
     }
     if (serviceRadiusKm <= 0) {
       setError("Service Radius must be greater than 0.");
       return;
     }
-    if (yearsInTrade < 0) {
-      setError("Years in Trade must be 0 or greater.");
+    if (!selectedGeo) {
+      setError("Select home location from map search.");
       return;
     }
 
     setSaving(true);
     try {
-      const resp = await fetch("/api/app/contractor/profile-v2", {
+      const resp = await fetch("/api/v4/contractor/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          businessName: businessName.trim(),
           contactName: contactName.trim(),
           phone: phone.trim(),
-          primaryTradeCategory,
-          secondaryTrades,
+          businessName: businessName.trim(),
+          tradeCategories,
           serviceRadiusKm,
-          offersRegionalJobs,
-          yearsInTrade,
-          licensed,
-          insuranceStatus,
-          acceptsAsapJobs,
-          typicalLeadTime,
+          stripeConnected,
+          homeLatitude: selectedGeo.latitude,
+          homeLongitude: selectedGeo.longitude,
         }),
       });
       const json = (await resp.json().catch(() => null)) as { ok?: boolean; error?: string };
@@ -253,35 +235,20 @@ export default function ContractorSetupPage() {
             <h2 className="text-lg font-semibold text-gray-900">Service Details</h2>
             <div className="mt-4 space-y-4">
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">Primary Trade Category *</span>
-                <select
-                  value={primaryTradeCategory}
-                  onChange={(e) => setPrimaryTradeCategory(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                >
-                  <option value="">Select…</option>
-                  {TRADE_OPTIONS.map((tc) => (
-                    <option key={tc} value={tc}>
-                      {TradeCategoryLabel[tc as keyof typeof TradeCategoryLabel] ?? tc}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Secondary Trades (optional)</span>
+                <span className="text-sm font-medium text-gray-700">Trade Categories *</span>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {TRADE_OPTIONS.filter((tc) => tc !== primaryTradeCategory).map((tc) => (
+                  {tradeOptions.map((tc) => (
                     <button
                       key={tc}
                       type="button"
-                      onClick={() => toggleSecondaryTrade(tc)}
+                      onClick={() => toggleTrade(tc)}
                       className={`rounded-full px-3 py-1 text-sm ${
-                        secondaryTrades.includes(tc)
+                        tradeCategories.includes(tc)
                           ? "bg-green-600 text-white"
                           : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                       }`}
                     >
-                      {TradeCategoryLabel[tc as keyof typeof TradeCategoryLabel] ?? tc}
+                      {tc}
                     </button>
                   ))}
                 </div>
@@ -297,97 +264,59 @@ export default function ContractorSetupPage() {
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
                 />
               </label>
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={offersRegionalJobs}
-                  onChange={(e) => setOffersRegionalJobs(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <span className="text-sm font-medium text-gray-700">Offers Regional Jobs?</span>
-              </label>
             </div>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-gray-900">Experience</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Home Location</h2>
             <div className="mt-4 space-y-4">
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">Years in Trade</span>
+                <span className="text-sm font-medium text-gray-700">Search Address *</span>
                 <input
-                  type="number"
-                  min={0}
-                  max={80}
-                  value={yearsInTrade}
-                  onChange={(e) => setYearsInTrade(Number(e.target.value) || 0)}
+                  type="text"
+                  value={geoQuery}
+                  onChange={(e) => {
+                    setGeoQuery(e.target.value);
+                    setSelectedGeo(null);
+                  }}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                  placeholder="Start typing address..."
                 />
               </label>
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={licensed}
-                  onChange={(e) => setLicensed(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
+              <div className="max-h-40 overflow-auto rounded border border-gray-200">
+                {geoResults.map((r, idx) => (
+                  <button
+                    key={`${r.formattedAddress}-${idx}`}
+                    type="button"
+                    onClick={() => setSelectedGeo(r)}
+                    className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-gray-50"
+                  >
+                    {r.formattedAddress}
+                  </button>
+                ))}
+              </div>
+              {selectedGeo && (
+                <iframe
+                  title="OSM preview"
+                  className="h-64 w-full rounded border"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedGeo.longitude - 0.01}%2C${selectedGeo.latitude - 0.01}%2C${selectedGeo.longitude + 0.01}%2C${selectedGeo.latitude + 0.01}&layer=mapnik&marker=${selectedGeo.latitude}%2C${selectedGeo.longitude}`}
                 />
-                <span className="text-sm font-medium text-gray-700">Licensed?</span>
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Insurance Status</span>
-                <select
-                  value={insuranceStatus}
-                  onChange={(e) => setInsuranceStatus(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                >
-                  {INSURANCE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900">Availability</h2>
-            <div className="mt-4 space-y-4">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={acceptsAsapJobs}
-                  onChange={(e) => setAcceptsAsapJobs(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <span className="text-sm font-medium text-gray-700">Accepts ASAP Jobs?</span>
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Typical Lead Time</span>
-                <select
-                  value={typicalLeadTime}
-                  onChange={(e) => setTypicalLeadTime(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                >
-                  {LEAD_TIME_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              )}
             </div>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900">Payout</h2>
-            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              {stripeAccountId ? (
-                <p className="text-sm text-gray-700">Stripe connected. You can receive payouts.</p>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  Connect Stripe in your dashboard to receive payouts.
-                </p>
-              )}
+            <div className="mt-4 space-y-4">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={stripeConnected}
+                  onChange={(e) => setStripeConnected(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className="text-sm font-medium text-gray-700">Stripe Connected</span>
+              </label>
             </div>
           </section>
 

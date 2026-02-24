@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { apiFetch } from "@/server/api/apiClient";
+import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 
 /**
  * V4 proxy to POST /api/web/v4/job/create (apps/api).
- * No wizard or draft dependency.
+ * Isolated V4 call path only.
  */
 export async function POST(req: Request) {
   try {
+    await requireSession(req);
+    const sessionToken = await requireApiToken();
     const body = await req.json().catch(() => ({}));
     const resp = await apiFetch({
       path: "/api/web/v4/job/create",
       method: "POST",
+      sessionToken,
       body: JSON.stringify(body),
     });
     const text = await resp.text();

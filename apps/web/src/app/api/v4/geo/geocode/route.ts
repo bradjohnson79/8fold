@@ -1,21 +1,18 @@
 import { NextResponse } from "next/server";
-import { apiFetch } from "@/server/api/apiClient";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
+import { apiFetch } from "@/server/api/apiClient";
 
-/**
- * V4 proxy to POST /api/web/v4/job/appraise-preview (apps/api).
- * Isolated V4 call path only.
- */
 export async function POST(req: Request) {
   try {
     await requireSession(req);
     const sessionToken = await requireApiToken();
-    const body = await req.json().catch(() => ({}));
+    const body = await req.text();
     const resp = await apiFetch({
-      path: "/api/web/v4/job/appraise-preview",
+      path: "/api/web/v4/geo/geocode",
       method: "POST",
       sessionToken,
-      body: JSON.stringify(body),
+      headers: { "content-type": req.headers.get("content-type") ?? "application/json" },
+      body,
     });
     const text = await resp.text();
     return new NextResponse(text, {
@@ -23,9 +20,7 @@ export async function POST(req: Request) {
       headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Appraisal preview failed." },
-      { status: 500 }
-    );
+    const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
+    return NextResponse.json({ ok: false, error: "PROXY_FAILED" }, { status });
   }
 }

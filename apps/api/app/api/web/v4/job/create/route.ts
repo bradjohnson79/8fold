@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: msg }, { status: 400 });
     }
 
-    return NextResponse.json(await createV4Job(parsed.data));
+    return NextResponse.json(await createV4Job(parsed.data, roleCheck.internalUser.id));
   } catch (err) {
     const status = typeof (err as { status?: number })?.status === "number" ? (err as { status: number }).status : 500;
     return NextResponse.json(

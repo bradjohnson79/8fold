@@ -37,18 +37,18 @@ export default async function JobPosterLayout({ children }: { children: React.Re
     if (status === 401) redirect("/app");
     throw err;
   }
-  const resp = await apiFetch({ path: "/api/web/onboarding/status", method: "GET", sessionToken: token });
+  const resp = await apiFetch({ path: "/api/web/v4/readiness", method: "GET", sessionToken: token });
   const json = (await resp.json().catch(() => null)) as any;
-  const tos = (resp.ok && json && (json as any).ok === true ? (json as any).steps?.tos : null) as any;
-  const acceptedVersion = typeof tos?.acceptedVersion === "string" ? tos.acceptedVersion : null;
-  const acceptedAt = typeof tos?.acceptedAt === "string" ? tos.acceptedAt : null;
-  const currentVersion = typeof tos?.currentVersion === "string" ? tos.currentVersion : "1.0";
-  const acceptedCurrent = Boolean(tos?.acceptedCurrent ?? tos?.ok);
+  const acceptedVersion = "1.0";
+  const acceptedAt = null;
+  const currentVersion = "1.0";
+  const acceptedCurrent = true;
+  const ready = Boolean(resp.ok && json && (json as any).jobPosterReady === true);
   const status: TosStatus = {
     ok: true,
     agreementType: "JOB_POSTER_TOS",
     currentVersion,
-    accepted: Boolean(acceptedVersion),
+    accepted: true,
     acceptedCurrent,
     acceptedVersion,
     acceptedAt,
@@ -56,7 +56,20 @@ export default async function JobPosterLayout({ children }: { children: React.Re
 
   return (
     <JobPosterTosGate initialStatus={status}>
-      <JobPosterDashboardShell>{children}</JobPosterDashboardShell>
+      <JobPosterDashboardShell>
+        {!ready && (
+          <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-4">
+            <h3 className="text-base font-semibold text-amber-900">Complete Your Job Poster Setup</h3>
+            <a
+              href="/post-job"
+              className="mt-3 inline-flex rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Go to Setup
+            </a>
+          </div>
+        )}
+        {children}
+      </JobPosterDashboardShell>
     </JobPosterTosGate>
   );
 }
