@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { AppraisalTokenClaimsSchema, type AppraisalTokenClaims } from "@/src/validation/v4/jobCreateSchema";
+import { badRequest } from "@/src/services/v4/v4Errors";
 
 export const APPRAISAL_TOKEN_TTL_SECONDS = 15 * 60;
 
@@ -77,17 +78,17 @@ export function verifyAppraisalTokenOrThrow(args: {
   nowEpochSeconds?: number;
 }): AppraisalTokenClaims {
   const claims = verifyAppraisalToken(args.token);
-  if (!claims) throw Object.assign(new Error("Invalid appraisalToken"), { status: 400 });
+  if (!claims) throw badRequest("V4_APPRAISAL_TOKEN_INVALID", "Invalid appraisalToken");
 
   if (claims.userId !== args.expectedUserId) {
-    throw Object.assign(new Error("appraisalToken user mismatch"), { status: 400 });
+    throw badRequest("V4_APPRAISAL_TOKEN_USER_MISMATCH", "appraisalToken user mismatch");
   }
   if (claims.payloadHash !== args.expectedPayloadHash) {
-    throw Object.assign(new Error("appraisalToken payload mismatch"), { status: 400 });
+    throw badRequest("V4_APPRAISAL_TOKEN_PAYLOAD_MISMATCH", "appraisalToken payload mismatch");
   }
   const now = typeof args.nowEpochSeconds === "number" ? args.nowEpochSeconds : Math.floor(Date.now() / 1000);
   if (claims.exp < now) {
-    throw Object.assign(new Error("appraisalToken expired"), { status: 400 });
+    throw badRequest("V4_APPRAISAL_TOKEN_EXPIRED", "appraisalToken expired");
   }
   return claims;
 }

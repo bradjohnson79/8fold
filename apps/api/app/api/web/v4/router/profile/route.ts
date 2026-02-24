@@ -2,35 +2,46 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { requireRole } from "@/src/auth/requireRole";
 import { getV4RouterProfile, saveV4RouterProfile, V4RouterProfileSchema } from "@/src/services/v4/routerProfileService";
+import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 export async function GET(req: Request) {
+  let requestId: string | undefined;
   try {
     const authed = await requireAuth(req);
     if (authed instanceof Response) return authed;
+    requestId = authed.requestId;
     const role = await requireRole(req, "ROUTER");
     if (role instanceof Response) return role;
     return NextResponse.json(await getV4RouterProfile(role.internalUser.id), { status: 200 });
   } catch (err) {
-    const status = typeof (err as { status?: number })?.status === "number" ? (err as { status: number }).status : 500;
-    return NextResponse.json({ ok: false, error: "PROFILE_LOAD_FAILED" }, { status: status || 500 });
+    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ROUTER_PROFILE_LOAD_FAILED");
+    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
   }
 }
 
 async function save(req: Request) {
+  let requestId: string | undefined;
   try {
     const authed = await requireAuth(req);
     if (authed instanceof Response) return authed;
+    requestId = authed.requestId;
     const role = await requireRole(req, "ROUTER");
     if (role instanceof Response) return role;
     const raw = await req.json().catch(() => null);
     const parsed = V4RouterProfileSchema.safeParse(raw);
-    if (!parsed.success) return NextResponse.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+    if (!parsed.success) {
+      throw badRequest(
+        "V4_INVALID_REQUEST_BODY",
+        "Invalid input",
+        { issues: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })) },
+      );
+    }
 
     await saveV4RouterProfile(role.internalUser.id, parsed.data);
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
-    const status = typeof (err as { status?: number })?.status === "number" ? (err as { status: number }).status : 500;
-    return NextResponse.json({ ok: false, error: "PROFILE_SAVE_FAILED" }, { status: status || 500 });
+    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ROUTER_PROFILE_SAVE_FAILED");
+    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
   }
 }
 

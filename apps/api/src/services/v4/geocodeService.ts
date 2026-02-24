@@ -1,8 +1,9 @@
 import { JobGeoSchema } from "@/src/validation/v4/jobGeoSchema";
+import { badRequest, internal } from "@/src/services/v4/v4Errors";
 
 export async function geocodeWithOsm(query: string) {
   const q = String(query ?? "").trim();
-  if (!q) throw Object.assign(new Error("query is required"), { status: 400 });
+  if (!q) throw badRequest("V4_GEO_QUERY_REQUIRED", "query is required");
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", q);
@@ -20,7 +21,7 @@ export async function geocodeWithOsm(query: string) {
   });
 
   if (!response.ok) {
-    throw Object.assign(new Error("OSM geocode failed"), { status: 502 });
+    throw internal("V4_GEO_PROVIDER_FAILED", "OSM geocode failed");
   }
 
   const raw = (await response.json()) as Array<any>;
@@ -66,7 +67,7 @@ export async function reverseGeocodeProvince(latitude: number, longitude: number
     },
     cache: "no-store",
   });
-  if (!response.ok) throw Object.assign(new Error("OSM reverse geocode failed"), { status: 502 });
+  if (!response.ok) throw internal("V4_GEO_PROVIDER_FAILED", "OSM reverse geocode failed");
 
   const raw = (await response.json()) as any;
   const candidate = String(
@@ -74,6 +75,6 @@ export async function reverseGeocodeProvince(latitude: number, longitude: number
   )
     .trim()
     .toUpperCase();
-  if (!candidate) throw Object.assign(new Error("Unable to resolve province from coordinates"), { status: 400 });
+  if (!candidate) throw badRequest("V4_GEO_PROVINCE_RESOLVE_FAILED", "Unable to resolve province from coordinates");
   return candidate;
 }

@@ -38,3 +38,5 @@ GIT_PREFLIGHT_REPORT.md
 # Local-only drizzle-kit config (apps/api uses repo-root config)
 apps/api/drizzle.config.*
 
+.vercel/
+apps/*/.vercel/
