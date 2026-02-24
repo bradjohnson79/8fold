@@ -20,7 +20,7 @@ const JOB_POSTER_TOS_VERSION = "1.0";
 type OnboardingNotReadyState = {
   ok: true;
   ready: false;
-  code: "ONBOARDING_INCOMPLETE";
+  code: "ONBOARDING_INCOMPLETE" | "ONBOARDING_REQUIRED";
   role: "JOB_POSTER" | "ROUTER" | "CONTRACTOR";
   onboardingRoute: string;
   // Job poster specific
@@ -185,9 +185,9 @@ export async function requireContractorReady(
       {
         ok: true,
         ready: false,
-        code: "ONBOARDING_INCOMPLETE",
+        code: "ONBOARDING_REQUIRED",
         role: "CONTRACTOR",
-        onboardingRoute: "/app/contractor/profile",
+        onboardingRoute: "/contractor/setup",
         wizardCompleted,
       },
       {

@@ -107,6 +107,7 @@ export const jobs = dbSchema.table(
 
     junk_hauling_items: jsonb("junk_hauling_items"),
     availability: jsonb("availability"),
+    photo_urls: jsonb("photo_urls"),
 
     job_type: jobTypeEnum("job_type").notNull(),
     lat: doublePrecision("lat"),
