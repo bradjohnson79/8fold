@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS "job_poster_profiles_v4" (
   "id" text PRIMARY KEY,
-  "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id" text NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
   "address_line1" text NOT NULL,
   "address_line2" text,
   "city" text NOT NULL,
@@ -20,7 +20,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "job_poster_profiles_v4_user_id_uidx" ON "job_
 
 CREATE TABLE IF NOT EXISTS "contractor_profiles_v4" (
   "id" text PRIMARY KEY,
-  "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id" text NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
   "contact_name" text NOT NULL,
   "phone" text NOT NULL,
   "business_name" text NOT NULL,
@@ -36,7 +36,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "contractor_profiles_v4_user_id_uidx" ON "cont
 
 CREATE TABLE IF NOT EXISTS "router_profiles_v4" (
   "id" text PRIMARY KEY,
-  "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id" text NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
   "contact_name" text NOT NULL,
   "phone" text NOT NULL,
   "home_region" text NOT NULL,
@@ -51,7 +51,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "router_profiles_v4_user_id_uidx" ON "router_p
 
 CREATE TABLE IF NOT EXISTS "v4_job_uploads" (
   "id" text PRIMARY KEY,
-  "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id" text NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
   "url" text NOT NULL,
   "sha256" text NOT NULL,
   "size_bytes" integer NOT NULL,
@@ -62,7 +62,7 @@ CREATE INDEX IF NOT EXISTS "v4_job_uploads_user_created_idx" ON "v4_job_uploads"
 
 CREATE TABLE IF NOT EXISTS "v4_appraisal_token_consumptions" (
   "id" text PRIMARY KEY,
-  "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id" text NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
   "token" text NOT NULL UNIQUE,
   "consumed_at" timestamp NOT NULL DEFAULT now(),
   "job_id" text NOT NULL REFERENCES "jobs"("id") ON DELETE CASCADE
