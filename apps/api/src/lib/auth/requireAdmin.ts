@@ -30,6 +30,11 @@ function safePath(url: string): string {
   }
 }
 
+function isAdminSessionRole(role: string | null | undefined): boolean {
+  const r = String(role ?? "").trim().toUpperCase();
+  return r === "ADMIN" || r === "ADMIN_SUPER" || r === "ADMIN_OPERATOR" || r === "ADMIN_VIEWER";
+}
+
 /**
  * Centralized admin auth guard for apps/api admin routes.
  *
@@ -43,8 +48,7 @@ export async function requireAdmin(req: Request): Promise<NextResponse | Require
     const sessionToken = adminSessionTokenFromRequest(req);
     if (sessionToken) {
       const admin = await getAdminIdentityBySessionToken(sessionToken).catch(() => null);
-      const role = String(admin?.role ?? "").trim().toUpperCase();
-      if (admin?.id && role === "ADMIN") return { userId: String(admin.id), role: "ADMIN" };
+      if (admin?.id && isAdminSessionRole(admin.role)) return { userId: String(admin.id), role: "ADMIN" };
     }
 
     // Clerk is the sole identity authority. ADMIN role is DB-authoritative.

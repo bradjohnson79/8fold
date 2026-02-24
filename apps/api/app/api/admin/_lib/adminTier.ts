@@ -22,6 +22,14 @@ function parseEmailAllowlist(raw: string | undefined): Set<string> {
 const SUPER_EMAILS = parseEmailAllowlist(process.env.ADMIN_SUPER_EMAILS);
 const VIEWER_EMAILS = parseEmailAllowlist(process.env.ADMIN_VIEWER_EMAILS);
 
+function tierFromAdminRole(role: string | null | undefined): AdminTier | null {
+  const r = String(role ?? "").trim().toUpperCase();
+  if (r === "ADMIN_SUPER") return "ADMIN_SUPER";
+  if (r === "ADMIN_OPERATOR") return "ADMIN_OPERATOR";
+  if (r === "ADMIN_VIEWER") return "ADMIN_VIEWER";
+  return null;
+}
+
 export function tierFromEmail(email: string | null | undefined): AdminTier {
   const e = String(email ?? "").trim().toLowerCase();
   if (e && SUPER_EMAILS.has(e)) return "ADMIN_SUPER";
@@ -47,10 +55,11 @@ export async function requireAdminIdentityWithTier(req: Request): Promise<NextRe
     const admin = await getAdminIdentityBySessionToken(token).catch(() => null);
     if (admin?.id) {
       const email = admin.email ? String(admin.email) : null;
+      const tierFromRole = tierFromAdminRole(admin.role);
       return {
         userId: String(admin.id),
         email,
-        tier: tierFromEmail(email),
+        tier: tierFromRole ?? tierFromEmail(email),
         authSource: "admin_session",
       };
     }

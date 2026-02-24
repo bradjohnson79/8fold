@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       });
     }
 
-    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN", authSource: identity.authSource }, {
       action: "ADMIN_JOB_REFUND",
       entityType: "Job",
       entityId: jobId,

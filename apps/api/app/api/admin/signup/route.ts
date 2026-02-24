@@ -30,7 +30,8 @@ export async function POST(req: Request) {
     await db.insert(adminUsers).values({
       email,
       passwordHash,
-      role: "ADMIN",
+      // Secret-based admin enrollment grants SUPER by policy.
+      role: "ADMIN_SUPER",
     } as any);
 
     return NextResponse.json({ ok: true }, { status: 200 });

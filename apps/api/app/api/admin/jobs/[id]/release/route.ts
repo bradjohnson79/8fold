@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     }
 
     const out = await releaseJobFunds({ jobId, triggeredByUserId: identity.userId });
-    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN" }, {
+    await adminAuditLog(req, { userId: identity.userId, role: "ADMIN", authSource: identity.authSource }, {
       action: "ADMIN_JOB_MANUAL_RELEASE",
       entityType: "Job",
       entityId: jobId,

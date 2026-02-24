@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import { stripe } from "@/src/stripe/stripe";
 import { db } from "@/db/drizzle";
 import { contractors } from "@/db/schema/contractor";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 
 function requireStripe() {
   if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
@@ -24,8 +24,10 @@ function getIdFromUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_OPERATOR");
+  if (forbidden) return forbidden;
 
   try {
     const contractorId = getIdFromUrl(req);

@@ -91,21 +91,29 @@ export async function refundJobFunds(jobId: string): Promise<RefundJobFundsKind>
 
     const amountCents = Number(job.amountCents ?? 0);
     if (!Number.isInteger(amountCents) || amountCents <= 0) return { kind: "bad_amount" as const };
+    const idempotencyTarget = paymentIntentId || chargeId;
+    const idempotencyKey = `job-refund:${jobId}:${idempotencyTarget}`;
 
     const refund =
       paymentIntentId
-        ? await s.refunds.create({
-            payment_intent: paymentIntentId,
-            amount: amountCents,
-            reason: "requested_by_customer",
-            metadata: { jobId, type: "job_refund" },
-          })
-        : await s.refunds.create({
-            charge: chargeId,
-            amount: amountCents,
-            reason: "requested_by_customer",
-            metadata: { jobId, type: "job_refund" },
-          });
+        ? await s.refunds.create(
+            {
+              payment_intent: paymentIntentId,
+              amount: amountCents,
+              reason: "requested_by_customer",
+              metadata: { jobId, type: "job_refund" },
+            },
+            { idempotencyKey },
+          )
+        : await s.refunds.create(
+            {
+              charge: chargeId,
+              amount: amountCents,
+              reason: "requested_by_customer",
+              metadata: { jobId, type: "job_refund" },
+            },
+            { idempotencyKey },
+          );
 
     const now = new Date();
     await tx

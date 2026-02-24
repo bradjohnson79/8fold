@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { db } from "@/db/drizzle";
 import { auditLogs } from "@/db/schema/auditLog";
 import { disputeCases } from "@/db/schema/disputeCase";
 import { disputeEnforcementActions } from "@/db/schema/disputeEnforcementAction";
 import { readJsonBody } from "@/src/lib/api/readJsonBody";
+import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -133,8 +133,10 @@ function normalizeDecisionInput(body: z.infer<typeof BodySchema>): {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof NextResponse) return auth;
+  const identity = await requireAdminIdentityWithTier(req);
+  if (identity instanceof NextResponse) return identity;
+  const forbidden = enforceTier(identity, "ADMIN_SUPER");
+  if (forbidden) return forbidden;
 
   try {
     const id = getIdFromUrl(req);
@@ -199,7 +201,7 @@ export async function POST(req: Request) {
             type: a.type as any,
             status: "PENDING" as any,
             payload: (a as any).payload ?? null,
-            requestedByUserId: auth.userId,
+            requestedByUserId: identity.userId,
             updatedAt: now,
           })) as any,
         );
@@ -207,7 +209,7 @@ export async function POST(req: Request) {
 
       await tx.insert(auditLogs).values({
         id: crypto.randomUUID(),
-        actorUserId: auth.userId,
+        actorUserId: identity.userId,
         action: "DISPUTE_DECISION_SET",
         entityType: "DisputeCase",
         entityId: d.id,
@@ -239,7 +241,7 @@ export async function POST(req: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/admin/support/disputes/[id]/decision", {
       route: "/api/admin/support/disputes/[id]/decision",
-      userId: auth.userId,
+      userId: identity.userId,
     });
   }
 }
