@@ -20,10 +20,15 @@ export function ok<T>(data: T, init?: ResponseInit): NextResponse {
 /**
  * Failure response: { ok: false, error }
  */
-export function fail(status: number, code: string, init?: Omit<ResponseInit, "status">): NextResponse {
+export function fail(
+  status: number,
+  code: string,
+  init?: Omit<ResponseInit, "status"> & { message?: string }
+): NextResponse {
   const headers = init?.headers;
   const message =
-    status === 401
+    init?.message ??
+    (status === 401
       ? "Unauthorized"
       : status === 403
         ? "Forbidden"
@@ -33,7 +38,7 @@ export function fail(status: number, code: string, init?: Omit<ResponseInit, "st
             ? "Bad Request"
             : status >= 400 && status < 500
               ? "Request failed"
-              : "Server error";
+              : "Server error");
   const resp = NextResponse.json({ ok: false, error: message, code }, { status });
   if (headers) {
     const h = new Headers(resp.headers);
