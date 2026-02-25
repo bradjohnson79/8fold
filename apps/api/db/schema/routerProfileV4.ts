@@ -11,6 +11,8 @@ export const routerProfilesV4 = dbSchema.table("router_profiles_v4", {
   contactName: text("contact_name").notNull(),
   phone: text("phone").notNull(),
   homeRegion: text("home_region").notNull(),
+  homeCountryCode: text("home_country_code"),
+  homeRegionCode: text("home_region_code"),
   serviceAreas: jsonb("service_areas").notNull(),
   availability: jsonb("availability").notNull(),
   homeLatitude: doublePrecision("home_latitude").notNull(),

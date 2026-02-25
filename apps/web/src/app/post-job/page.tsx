@@ -48,22 +48,26 @@ export default function PostJobPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentConnected, setPaymentConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [metaResp, profileResp] = await Promise.all([
+        const [metaResp, profileResp, paymentResp] = await Promise.all([
           fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
           fetch("/api/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
         ]);
         const meta = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profile = (await profileResp.json().catch(() => ({}))) as { profile?: Partial<GeoResult> };
+        const payment = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean };
         if (cancelled) return;
         setTradeMeta({
           canonical: Array.isArray(meta.canonical) ? meta.canonical : [],
           uiOrder: Array.isArray(meta.uiOrder) ? meta.uiOrder : [],
         });
+        setPaymentConnected(typeof payment.connected === "boolean" ? payment.connected : null);
         const p = profile?.profile;
         if (
           p &&
@@ -214,6 +218,11 @@ export default function PostJobPage() {
       setIsSubmitting(false);
       return;
     }
+    if (paymentConnected === false) {
+      setSubmitError("Payment method required to activate job. Add a payment method in Payment Setup.");
+      setIsSubmitting(false);
+      return;
+    }
     const laborCents = Math.round((sliderValue ?? suggestedTotal ?? 200) * 100);
     try {
       const resp = await fetch("/api/v4/job/create", {
@@ -244,7 +253,7 @@ export default function PostJobPage() {
       }
       if (data.ok && data.jobId) {
         setSubmitSuccess(true);
-        router.push("/app/job-poster");
+        router.push("/dashboard/job-poster");
       } else {
         setSubmitError("Job created but redirect failed.");
       }
@@ -260,6 +269,18 @@ export default function PostJobPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <h1 className="text-4xl font-bold text-gray-900">Post a Job (v4 Portal)</h1>
         <p className="text-gray-600 mt-3">Stateless Intake Version</p>
+
+        {paymentConnected === false && (
+          <div className="mt-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
+            <p className="font-medium">Payment method required to activate job.</p>
+            <a
+              href="/dashboard/job-poster/payment"
+              className="mt-2 inline-block rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
+            >
+              Go to Payment Setup
+            </a>
+          </div>
+        )}
 
         <div className="mt-8 space-y-4">
           <div>
@@ -425,8 +446,8 @@ export default function PostJobPage() {
             <button
               type="button"
               onClick={handlePostJob}
-              disabled={isSubmitting || !appraisal?.appraisalToken}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+              disabled={isSubmitting || !appraisal?.appraisalToken || paymentConnected === false}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Posting..." : "Post Job"}
             </button>

@@ -169,26 +169,28 @@ export function DashboardSetupClient() {
       try {
         const [meResp, profileResp] = await Promise.all([
           fetch("/api/app/me", { cache: "no-store", credentials: "include" }),
-          fetch("/api/app/job-poster/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
         ]);
         const me = (await meResp.json().catch(() => null)) as any;
-        const profile = (await profileResp.json().catch(() => null)) as any;
+        const profileRes = (await profileResp.json().catch(() => null)) as any;
         if (!alive) return;
 
-        const p = profile?.profile ?? {};
+        const p = profileRes?.profile ?? {};
+        const firstName = p.firstName ?? me?.firstName ?? "";
+        const lastName = p.lastName ?? me?.lastName ?? "";
         setForm((s) => ({
           ...s,
-          name: String(p.name ?? me?.firstName ?? "").trim(),
+          name: [firstName, lastName].filter(Boolean).join(" ").trim() || String(me?.name ?? "").trim(),
           email: String(p.email ?? me?.email ?? "").trim(),
-          phone: String(p.phone ?? "").trim(),
-          legalStreet: String(p.address ?? "").trim(),
+          phone: String(p.phone ?? me?.phone ?? "").trim(),
+          legalStreet: String(p.addressLine1 ?? "").trim(),
           legalCity: String(p.city ?? "").trim(),
-          legalProvince: String(p.stateProvince ?? "").trim(),
+          legalProvince: String(p.provinceState ?? "").trim(),
           legalPostalCode: String(p.postalCode ?? "").trim(),
           legalCountry: (String(p.country ?? "US").toUpperCase() === "CA" ? "CA" : "US") as "US" | "CA",
-          mapDisplayName: String(p.mapDisplayName ?? "").trim(),
-          lat: typeof p.lat === "number" ? p.lat : 0,
-          lng: typeof p.lng === "number" ? p.lng : 0,
+          mapDisplayName: String(p.formattedAddress ?? "").trim(),
+          lat: typeof p.latitude === "number" ? p.latitude : 0,
+          lng: typeof p.longitude === "number" ? p.longitude : 0,
         }));
       } catch {
         if (alive) setError("Failed to load setup data.");
@@ -212,16 +214,27 @@ export function DashboardSetupClient() {
     setSaving(true);
     setError("");
     try {
-      const profileResp = await fetch("/api/app/job-poster/profile", {
-        method: "POST",
+      const profilePayload = {
+        addressLine1: form.legalStreet.trim(),
+        addressLine2: "",
+        city: form.legalCity.trim(),
+        provinceState: form.legalProvince.trim(),
+        postalCode: form.legalPostalCode.trim(),
+        country: form.legalCountry,
+        formattedAddress: form.mapDisplayName.trim() || `${form.legalStreet}, ${form.legalCity}, ${form.legalProvince} ${form.legalPostalCode}`,
+        latitude: form.lat,
+        longitude: form.lng,
+      };
+      const profileResp = await fetch("/api/v4/job-poster/profile", {
+        method: "PUT",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(form),
+        body: JSON.stringify(profilePayload),
       });
       const profileJson = (await profileResp.json().catch(() => null)) as any;
       if (!profileResp.ok) throw new Error(String(profileJson?.error?.message ?? profileJson?.error ?? "Failed to save profile."));
 
-      const tosResp = await fetch("/api/app/job-poster/tos", {
+      const tosResp = await fetch("/api/v4/job-poster/accept-tos", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
