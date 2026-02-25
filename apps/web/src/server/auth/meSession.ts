@@ -14,6 +14,24 @@ export type Session = {
   dbEnrichmentSucceeded: boolean;
 };
 
+function readSessionTokenFromCookieHeader(cookieHeader: string | null | undefined): string | null {
+  const raw = String(cookieHeader ?? "").trim();
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const [key, ...rest] = part.split("=");
+    if (String(key ?? "").trim() !== "__session") continue;
+    const value = rest.join("=").trim();
+    if (!value) return null;
+    try {
+      const decoded = decodeURIComponent(value);
+      return decoded || null;
+    } catch {
+      return value;
+    }
+  }
+  return null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -44,7 +62,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<{ ok: true; va
   }
 }
 
-export async function requireApiToken(): Promise<string> {
+export async function requireApiToken(req?: Request): Promise<string> {
   const tokenStart = Date.now();
   const { getToken, userId } = await auth();
 
@@ -76,6 +94,15 @@ export async function requireApiToken(): Promise<string> {
   }
 
   if (!token) {
+    const cookieToken = readSessionTokenFromCookieHeader(req?.headers.get("cookie"));
+    if (cookieToken) {
+      authDebugLog("token_from_cookie_fallback", {
+        acquired: true,
+        durationMs: Date.now() - tokenStart,
+      });
+      return cookieToken;
+    }
+
     const durationMs = Date.now() - tokenStart;
     authDebugLog("token_acquisition_failed", {
       acquired: false,
@@ -169,4 +196,3 @@ async function loadServerMeSession(): Promise<Session | null> {
 
 // Backwards-compatible exports (legacy files removed; behavior stays the same).
 export { requireMeSession as requireSession, loadServerMeSession as requireServerSession };
-
