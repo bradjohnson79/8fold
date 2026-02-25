@@ -11,7 +11,7 @@ import { z } from "zod";
 
 const ProfileSchema = z.object({
   name: z.string().trim().min(1),
-  email: z.string().trim().email().optional(),
+  email: z.string().email(),
   phone: z.string().trim().optional(),
   // Legal address (manual)
   legalStreet: z.string().trim().min(1),
@@ -75,23 +75,6 @@ export async function POST(req: Request) {
     const { legalStreet, legalCity, legalProvince, legalPostalCode, legalCountry, mapDisplayName, lat, lng, ...rest } =
       parsed.data;
 
-    const userRow = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, user.userId))
-      .limit(1);
-    const emailFromUser = String(userRow[0]?.email ?? "").trim();
-    const resolvedEmail = String(parsed.data.email ?? "").trim() || emailFromUser;
-
-    if (!resolvedEmail) {
-      return NextResponse.json(
-        { error: "Invalid input", details: { fieldErrors: { email: ["Email is required."] }, formErrors: [] } },
-        { status: 400 },
-      );
-    }
-
-    const restWithEmail = { ...rest, email: resolvedEmail };
-
     try {
       validateGeoCoords(lat, lng);
     } catch {
@@ -103,7 +86,7 @@ export async function POST(req: Request) {
     const createValues: Record<string, unknown> = {
       id: randomUUID(),
       userId: user.userId,
-      ...restWithEmail,
+      ...rest,
       city: legalCity,
       stateProvince: legalProvince,
       postalCode: legalPostalCode || null,
@@ -114,7 +97,7 @@ export async function POST(req: Request) {
       defaultJobLocation,
     };
     const updateValues: Record<string, unknown> = {
-      ...restWithEmail,
+      ...rest,
       city: legalCity,
       stateProvince: legalProvince,
       postalCode: legalPostalCode || null,
