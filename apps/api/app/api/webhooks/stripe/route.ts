@@ -458,21 +458,12 @@ async function handleWebhook(req: Request) {
           const si = event.data.object as Stripe.SetupIntent;
           const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id ?? null;
           const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id ?? null;
-          if (!pmId || !customerId) return;
-
-          let userId = typeof si.metadata?.userId === "string" ? String(si.metadata.userId).trim() : "";
-          if (!userId) {
-            const rows = await tx
-              .select({ id: users.id })
-              .from(users)
-              .where(eq(users.stripeCustomerId, customerId))
-              .limit(1);
-            userId = rows[0]?.id ?? "";
-          }
+          const userId = typeof si.metadata?.userId === "string" ? String(si.metadata.userId).trim() : "";
           if (!userId) return;
+          if (!pmId) return;
 
           const s = getWebhookStripe();
-          if (s) {
+          if (s && customerId) {
             await s.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } });
           }
 
@@ -481,7 +472,7 @@ async function handleWebhook(req: Request) {
             .set({
               stripeDefaultPaymentMethodId: pmId,
               stripeStatus: "CONNECTED",
-              stripeCustomerId: customerId,
+              stripeCustomerId: customerId ?? undefined,
               stripeUpdatedAt: now,
               updatedAt: now,
             } as any)
