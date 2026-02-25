@@ -35,8 +35,8 @@ export default function ContractorSetupPage() {
     (async () => {
       try {
         const [metaResp, profileResp] = await Promise.all([
-          fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
-          fetch("/api/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/meta/trade-categories", { cache: "no-store" }),
+          fetch("/api/web/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
         ]);
         const meta = (await metaResp.json().catch(() => ({}))) as { uiOrder?: string[] };
         const json = (await profileResp.json().catch(() => null)) as any;
@@ -86,7 +86,7 @@ export default function ContractorSetupPage() {
   useEffect(() => {
     if (!geoQuery.trim()) return;
     const t = setTimeout(async () => {
-      const resp = await fetch("/api/v4/geo/geocode", {
+      const resp = await fetch("/api/web/v4/geo/geocode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: geoQuery.trim() }),
@@ -134,7 +134,7 @@ export default function ContractorSetupPage() {
 
     setSaving(true);
     try {
-      const resp = await fetch("/api/v4/contractor/profile", {
+      const resp = await fetch("/api/web/v4/contractor/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

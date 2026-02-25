@@ -28,7 +28,7 @@ export default function JobPosterPaymentPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" });
+      const resp = await fetch("/api/web/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" });
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data?.error?.message ?? `Status failed: ${resp.status}`);
@@ -51,7 +51,7 @@ export default function JobPosterPaymentPage() {
     setActionLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/v4/job-poster/payment/create-setup-session", {
+      const resp = await fetch("/api/web/v4/job-poster/payment/create-setup-session", {
         method: "POST",
         credentials: "include",
       });
@@ -72,7 +72,7 @@ export default function JobPosterPaymentPage() {
     setActionLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/v4/job-poster/payment/create-setup-session", {
+      const resp = await fetch("/api/web/v4/job-poster/payment/create-setup-session", {
         method: "POST",
         credentials: "include",
       });
