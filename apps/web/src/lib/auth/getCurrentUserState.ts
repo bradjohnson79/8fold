@@ -55,17 +55,14 @@ export async function getCurrentUserState(): Promise<CurrentUserState | null> {
     const resp = await apiFetch({ path: "/api/web/v4/readiness", method: "GET", sessionToken });
     const json = (await resp.json().catch(() => null)) as any;
     if (resp.ok && json) {
-      if (role === "JOB_POSTER") profileComplete = Boolean(json.jobPosterReady);
-      if (role === "CONTRACTOR") profileComplete = Boolean(json.contractorReady);
-      if (role === "ROUTER") profileComplete = Boolean(json.routerReady);
-    }
-
-    if (role === "JOB_POSTER") {
-      const tosResp = await apiFetch({ path: "/api/web/job-poster-tos", method: "GET", sessionToken });
-      const tosJson = (await tosResp.json().catch(() => null)) as any;
-      acceptedTos = Boolean(tosResp.ok && tosJson?.acceptedCurrent === true);
-    } else {
-      acceptedTos = profileComplete;
+      if (role === "JOB_POSTER") {
+        profileComplete = Boolean(json.jobPosterReady);
+        acceptedTos = Boolean(json.jobPosterAcceptedTos);
+      } else {
+        profileComplete =
+          role === "CONTRACTOR" ? Boolean(json.contractorReady) : role === "ROUTER" ? Boolean(json.routerReady) : false;
+        acceptedTos = profileComplete;
+      }
     }
   } catch {
     profileComplete = false;

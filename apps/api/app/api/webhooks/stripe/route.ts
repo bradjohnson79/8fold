@@ -13,6 +13,7 @@ function getWebhookStripe(): Stripe | null {
   return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
 }
 import { jobs } from "@/db/schema/job";
+import { users } from "@/db/schema/user";
 import { stripeWebhookEvents } from "@/db/schema/stripeWebhookEvent";
 import { contractors } from "@/db/schema/contractor";
 import { payoutMethods } from "@/db/schema/payoutMethod";
@@ -48,6 +49,7 @@ const SUPPORTED_EVENTS = new Set<Stripe.Event.Type>([
   "transfer.created",
   "account.updated",
   "payout.paid",
+  "checkout.session.completed",
 ]);
 
 function json400(code: string, message: string) {
@@ -418,6 +420,36 @@ async function handleWebhook(req: Request) {
                 typeof payout.arrival_date === "number" ? new Date(payout.arrival_date * 1000).toISOString() : null,
             } as any,
           });
+          return;
+        }
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          if (session.mode !== "setup") return;
+          const userId = typeof session.metadata?.userId === "string" ? String(session.metadata.userId).trim() : null;
+          if (!userId) return;
+
+          const setupIntentId =
+            typeof session.setup_intent === "string" ? session.setup_intent : session.setup_intent?.id ?? null;
+          if (!setupIntentId) return;
+
+          const s = getWebhookStripe();
+          if (!s) return;
+          const si = await s.setupIntents.retrieve(setupIntentId);
+          const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id ?? null;
+          if (!pmId || !si.customer) return;
+
+          const customerId = typeof si.customer === "string" ? si.customer : si.customer.id;
+          await s.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } });
+
+          await tx
+            .update(users)
+            .set({
+              stripeDefaultPaymentMethodId: pmId,
+              stripeStatus: "CONNECTED",
+              stripeUpdatedAt: now,
+              updatedAt: now,
+            } as any)
+            .where(eq(users.id, userId));
           return;
         }
         case "account.updated": {

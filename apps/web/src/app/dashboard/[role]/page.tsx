@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUserState } from "@/lib/auth/getCurrentUserState";
 
 function canonicalRolePath(roleSlug: string): string {
-  if (roleSlug === "job-poster") return "/app/job-poster";
+  if (roleSlug === "job-poster") return "/dashboard/job-poster";
   if (roleSlug === "contractor") return "/app/contractor";
-  if (roleSlug === "router") return "/app/router";
+  if (roleSlug === "router") return "/dashboard/router";
   if (roleSlug === "admin") return "/admin";
   return "/dashboard";
 }

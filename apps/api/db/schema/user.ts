@@ -49,6 +49,16 @@ export const users = dbSchema.table("User", {
   countryCode: countryCodeEnum("countryCode").notNull().default("US"),
   stateCode: text("stateCode").notNull().default(""),
 
+  // V4 Job Poster: TOS audit trail (nullable for existing rows)
+  tosVersion: text("tosVersion"),
+  acceptedTosAt: timestamp("acceptedTosAt", { mode: "date" }),
+
+  // V4 Job Poster: Stripe payment (nullable; single source of truth on users)
+  stripeCustomerId: text("stripeCustomerId"),
+  stripeDefaultPaymentMethodId: text("stripeDefaultPaymentMethodId"),
+  stripeStatus: text("stripeStatus"),
+  stripeUpdatedAt: timestamp("stripeUpdatedAt", { mode: "date" }),
+
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
 });

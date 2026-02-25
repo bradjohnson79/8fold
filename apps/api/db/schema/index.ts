@@ -59,4 +59,9 @@ export * from "./jobDraft";
 export * from "./pmRequest";
 export * from "./pmLineItem";
 export * from "./pmReceipt";
+export * from "./v4Message";
+export * from "./v4MessageThread";
+export * from "./v4SupportTicket";
+export * from "./v4PmRequest";
+export * from "./v4PmRequestItem";
 

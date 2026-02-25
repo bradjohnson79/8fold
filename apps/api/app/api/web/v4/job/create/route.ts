@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createV4Job, V4JobCreateBodySchema } from "@/src/services/v4/jobCreateService";
 import { getV4Readiness } from "@/src/services/v4/readinessService";
+import { getJobPosterPaymentStatus } from "@/src/services/v4/jobPosterPaymentService";
 import { rateLimitOrThrow } from "@/src/services/v4/rateLimitService";
 import { badRequest, forbidden, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 import { requireAuth } from "@/src/auth/requireAuth";
@@ -19,6 +20,14 @@ export async function POST(req: Request) {
     const readiness = await getV4Readiness(roleCheck.internalUser.id);
     if (!readiness.jobPosterReady) {
       throw forbidden("V4_SETUP_REQUIRED", "Complete job poster setup before accessing the dashboard");
+    }
+
+    const paymentStatus = await getJobPosterPaymentStatus(roleCheck.internalUser.id);
+    if (!paymentStatus.connected) {
+      throw forbidden(
+        "V4_PAYMENT_REQUIRED",
+        "Payment method required to activate job. Add a payment method in Payment Setup.",
+      );
     }
 
     await rateLimitOrThrow({
