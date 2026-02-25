@@ -6,6 +6,7 @@ import Link from "next/link";
 type PaymentStatus = {
   connected: boolean;
   stripeStatus: "CONNECTED" | "NOT_CONNECTED";
+  currency: "cad" | "usd";
   lastFour?: string;
   stripeUpdatedAt?: string | null;
 };
@@ -105,6 +106,7 @@ export default function JobPosterPaymentPage() {
         day: "numeric",
       })
     : null;
+  const currency = status?.currency ? status.currency.toUpperCase() : null;
 
   return (
     <div className="p-6 max-w-xl">
@@ -133,6 +135,7 @@ export default function JobPosterPaymentPage() {
         {status?.connected ? (
           <>
             <p className="font-medium text-gray-900">Status: Connected</p>
+            {currency && <p className="mt-1 text-gray-600">Currency: {currency}</p>}
             {status.lastFour && (
               <p className="mt-1 text-gray-600">Card: •••• {status.lastFour}</p>
             )}
@@ -151,6 +154,7 @@ export default function JobPosterPaymentPage() {
         ) : (
           <>
             <p className="font-medium text-gray-900">Status: Not Connected</p>
+            {currency && <p className="mt-1 text-gray-600">Currency: {currency}</p>}
             <p className="mt-1 text-gray-600">Add a payment method to activate jobs.</p>
             <button
               type="button"

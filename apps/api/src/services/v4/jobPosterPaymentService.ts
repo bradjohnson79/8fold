@@ -1,25 +1,59 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { users } from "@/db/schema/user";
 import { stripe } from "@/src/payments/stripe";
 
 const WEB_ORIGIN = String(process.env.WEB_ORIGIN ?? "").trim().replace(/\/+$/, "");
+const COUNTRY_TO_CURRENCY: Record<string, "cad" | "usd"> = {
+  CA: "cad",
+  US: "usd",
+};
+
+type SupportedCurrency = "cad" | "usd";
 
 export type PaymentStatus = {
   connected: boolean;
   stripeStatus: "CONNECTED" | "NOT_CONNECTED";
+  currency: SupportedCurrency;
   lastFour?: string;
   stripeUpdatedAt?: string | null;
 };
 
-function setupCurrencyForCountry(country: string | null | undefined): "usd" | "cad" {
-  return String(country ?? "").toUpperCase() === "CA" ? "cad" : "usd";
+function normalizeCountryCode(value: string | null | undefined): string {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function resolveCurrency(countryCode: string): SupportedCurrency {
+  const currency = COUNTRY_TO_CURRENCY[normalizeCountryCode(countryCode)];
+  if (!currency) {
+    throw Object.assign(new Error(`Unsupported country for Stripe: ${countryCode}`), { status: 400 });
+  }
+  return currency;
+}
+
+async function getJobPosterCurrency(userId: string): Promise<SupportedCurrency> {
+  const rows = await db
+    .select({ countryCode: jobPosterProfilesV4.country })
+    .from(jobPosterProfilesV4)
+    .where(eq(jobPosterProfilesV4.userId, userId))
+    .limit(1);
+  const countryCode = normalizeCountryCode(rows[0]?.countryCode);
+  if (!countryCode) {
+    throw Object.assign(new Error("Job Poster countryCode not configured"), { status: 400 });
+  }
+  return resolveCurrency(countryCode);
 }
 
 async function createAndPersistStripeCustomer(userId: string): Promise<string> {
   if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
 
+  const rows = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  const userRow = rows[0] ?? null;
+
   const customer = await stripe.customers.create({
+    email: userRow?.email ?? undefined,
+    name: userRow?.name ?? undefined,
     metadata: { userId },
   });
 
@@ -28,6 +62,7 @@ async function createAndPersistStripeCustomer(userId: string): Promise<string> {
     .update(users)
     .set({
       stripeCustomerId: customer.id,
+      stripeStatus: "NOT_CONNECTED",
       stripeUpdatedAt: now,
       updatedAt: now,
     })
@@ -43,7 +78,19 @@ function isMissingCustomerError(err: unknown): boolean {
   return code === "resource_missing" && param === "customer";
 }
 
+async function customerExistsInCurrentStripeAccount(customerId: string): Promise<boolean> {
+  if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    if ("deleted" in customer && customer.deleted) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getJobPosterPaymentStatus(userId: string): Promise<PaymentStatus> {
+  const currency = await getJobPosterCurrency(userId);
   const rows = await db
     .select({
       stripeCustomerId: users.stripeCustomerId,
@@ -71,6 +118,7 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
   return {
     connected,
     stripeStatus: (u?.stripeStatus as "CONNECTED" | "NOT_CONNECTED") ?? "NOT_CONNECTED",
+    currency,
     lastFour,
     stripeUpdatedAt: u?.stripeUpdatedAt?.toISOString?.() ?? null,
   };
@@ -82,10 +130,20 @@ export async function ensureJobPosterStripeCustomer(userId: string): Promise<{ c
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
+  if (!rows[0]) throw Object.assign(new Error("User not found"), { status: 404 });
 
-  const existing = rows[0]?.stripeCustomerId?.trim();
-  if (existing) return { customerId: existing };
-  return { customerId: await createAndPersistStripeCustomer(userId) };
+  let customerId = rows[0].stripeCustomerId?.trim() || null;
+
+  if (customerId) {
+    const exists = await customerExistsInCurrentStripeAccount(customerId);
+    if (!exists) customerId = null;
+  }
+
+  if (!customerId) {
+    customerId = await createAndPersistStripeCustomer(userId);
+  }
+
+  return { customerId };
 }
 
 export async function createJobPosterSetupSession(userId: string): Promise<{ url: string }> {
@@ -93,17 +151,13 @@ export async function createJobPosterSetupSession(userId: string): Promise<{ url
   if (!stripeClient) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
   if (!WEB_ORIGIN) throw Object.assign(new Error("WEB_ORIGIN not configured"), { status: 500 });
 
-  const [userRow] = await db
-    .select({ country: users.country })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  const currency = setupCurrencyForCountry(userRow?.country);
-
+  const currency = await getJobPosterCurrency(userId);
+  // TODO(v4): reuse deterministic currency resolver for payment intents during job activation.
   const createSession = async (customerId: string) => {
     return await stripeClient.checkout.sessions.create({
       mode: "setup",
       currency,
+      payment_method_types: ["card"],
       customer: customerId,
       metadata: { userId },
       success_url: `${WEB_ORIGIN}/dashboard/job-poster/payment?success=1`,
@@ -113,7 +167,7 @@ export async function createJobPosterSetupSession(userId: string): Promise<{ url
 
   const { customerId } = await ensureJobPosterStripeCustomer(userId);
   try {
-    let session = await createSession(customerId);
+    const session = await createSession(customerId);
     if (!session?.url) throw Object.assign(new Error("Stripe session missing url"), { status: 500 });
     return { url: session.url };
   } catch (err) {
@@ -122,7 +176,6 @@ export async function createJobPosterSetupSession(userId: string): Promise<{ url
       throw Object.assign(new Error(msg), { status: 500 });
     }
 
-    // Customer ID exists in DB but no longer exists in Stripe account; recreate and retry once.
     const replacementCustomerId = await createAndPersistStripeCustomer(userId);
     try {
       const session = await createSession(replacementCustomerId);
