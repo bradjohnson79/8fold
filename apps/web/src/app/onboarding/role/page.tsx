@@ -1,11 +1,5 @@
-import { Suspense } from "react";
-import RoleOnboardingClient from "./roleClient";
+import { redirect } from "next/navigation";
 
 export default function RoleOnboardingPage() {
-  return (
-    <Suspense fallback={<div className="min-h-[40vh]" />}>
-      <RoleOnboardingClient />
-    </Suspense>
-  );
+  redirect("/choose-role");
 }
-
