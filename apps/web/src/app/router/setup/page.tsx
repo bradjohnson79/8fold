@@ -30,7 +30,7 @@ export default function RouterSetupPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive || !resp.ok || !json?.ok) return;
         const p = json?.profile;
@@ -63,7 +63,7 @@ export default function RouterSetupPage() {
   useEffect(() => {
     if (!geoQuery.trim()) return;
     const t = setTimeout(async () => {
-      const resp = await fetch("/api/v4/geo/geocode", {
+      const resp = await fetch("/api/web/v4/geo/geocode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: geoQuery.trim() }),
@@ -93,7 +93,7 @@ export default function RouterSetupPage() {
 
     setSaving(true);
     try {
-      const resp = await fetch("/api/v4/router/profile", {
+      const resp = await fetch("/api/web/v4/router/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

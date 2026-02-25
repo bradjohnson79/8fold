@@ -19,7 +19,7 @@ export default function JobPosterSummaryPage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/api/v4/job-poster/dashboard/summary", {
+        const resp = await fetch("/api/web/v4/job-poster/dashboard/summary", {
           cache: "no-store",
           credentials: "include",
         });

@@ -4,6 +4,12 @@ import { assertStripeKeysMatchMode, getStripeModeFromEnv, logStripeModeOnce } fr
 import { db } from "../../db/drizzle";
 import { stripeWebhookEvents } from "../../db/schema/stripeWebhookEvent";
 
+// Stripe runtime env diagnosis (inspection only)
+// eslint-disable-next-line no-console
+console.log("Stripe initialization check:");
+// eslint-disable-next-line no-console
+console.log("STRIPE_SECRET_KEY present at import:", !!process.env.STRIPE_SECRET_KEY);
+
 let warnedMissingKey = false;
 let envChecked = false;
 let webhookCheckStarted = false;
@@ -44,8 +50,8 @@ export function getStripeClient(): Stripe | null {
   assertStripeEnv();
   if (!stripeClient) {
     stripeClient = new Stripe(stripeSecretKey, {
-      // Pin an API version (do not rely on Stripe dashboard "latest").
-      apiVersion: "2025-02-24.acacia",
+      // Use SDK default API version. Explicit pinning to 2025-02-24.acacia can cause 500s
+      // if the Stripe account has not activated that version. Let the SDK choose.
     });
   }
   if (!webhookCheckStarted) {

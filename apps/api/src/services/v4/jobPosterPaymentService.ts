@@ -75,21 +75,43 @@ export async function ensureJobPosterStripeCustomer(userId: string): Promise<{ c
 }
 
 export async function createJobPosterSetupSession(userId: string): Promise<{ url: string }> {
+  // Temporary diagnostic: confirm stripe client is null at runtime (env not available at module load time)
+  if (!stripe) {
+    throw new Error("Stripe client is null at runtime");
+  }
+
+  // Temporary debug logging for 500 root cause investigation
+  // eslint-disable-next-line no-console
+  console.log("Stripe key exists:", !!process.env.STRIPE_SECRET_KEY);
+  // eslint-disable-next-line no-console
+  console.log("APP_URL:", process.env.APP_URL);
+  // eslint-disable-next-line no-console
+  console.log("WEB_ORIGIN:", process.env.WEB_ORIGIN);
+
   const { customerId } = await ensureJobPosterStripeCustomer(userId);
+  // eslint-disable-next-line no-console
+  console.log("stripeCustomerId:", customerId ?? null);
 
   if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
   if (!WEB_ORIGIN) throw Object.assign(new Error("WEB_ORIGIN not configured"), { status: 500 });
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "setup",
-    customer: customerId,
-    metadata: { userId },
-    success_url: `${WEB_ORIGIN}/dashboard/job-poster/payment?success=1`,
-    cancel_url: `${WEB_ORIGIN}/dashboard/job-poster/payment?canceled=1`,
-  });
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "setup",
+      customer: customerId,
+      metadata: { userId },
+      success_url: `${WEB_ORIGIN}/dashboard/job-poster/payment?success=1`,
+      cancel_url: `${WEB_ORIGIN}/dashboard/job-poster/payment?canceled=1`,
+    });
 
-  const url = session.url;
-  if (!url) throw Object.assign(new Error("Stripe session missing url"), { status: 500 });
+    const url = session.url;
+    if (!url) throw Object.assign(new Error("Stripe session missing url"), { status: 500 });
 
-  return { url };
+    return { url };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Stripe Setup Error:", err);
+    const msg = (err as Error)?.message ?? "Stripe error";
+    throw Object.assign(new Error(msg), { status: 500 });
+  }
 }

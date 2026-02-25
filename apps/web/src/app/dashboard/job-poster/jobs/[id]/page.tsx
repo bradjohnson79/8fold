@@ -26,7 +26,7 @@ export default function JobPosterJobDetailPage() {
     if (!id) return;
     (async () => {
       try {
-        const resp = await fetch(`/api/v4/job-poster/jobs/${id}`, {
+        const resp = await fetch(`/api/web/v4/job-poster/jobs/${id}`, {
           cache: "no-store",
           credentials: "include",
         });
