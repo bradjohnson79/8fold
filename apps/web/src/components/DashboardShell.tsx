@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AuthMenu } from "@/components/AuthMenu";
 
 type Item = { href: string; label: string };
 type Badge = { kind: "dot" } | { kind: "count"; value: number };
@@ -286,7 +285,6 @@ export function DashboardShell({
                 Switch dashboard
               </Link>
             ) : null}
-            <AuthMenu textClassName="text-gray-800" />
           </div>
         </div>
 

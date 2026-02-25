@@ -14,9 +14,9 @@ export function Header() {
 
   const workersRef = useRef<HTMLDivElement | null>(null)
 
-  // Dashboard pages have their own shell; keep the public header off dashboard routes.
+  // Avatar consolidation: show global header on all routes so the single auth avatar is always in the header.
   // IMPORTANT: do not early-return before all hooks run (React hook order must be stable).
-  const hideOnAppRoutes = (pathname ?? "").startsWith("/app")
+  const hideOnAppRoutes = false
 
   const active = useMemo(() => {
     const p = pathname || "/"
