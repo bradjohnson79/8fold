@@ -156,7 +156,7 @@ export function DashboardShell({
     if (!bellOpen) return;
     void loadBell();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bellOpen, bellRole]);
+  }, [bellOpen, bellRole, useV4Endpoints]);
 
   // Bootstrap sequencing: do not mount dashboard children until we know auth/session state.
   // This prevents dependent fetches from firing while session/profile is unknown.
