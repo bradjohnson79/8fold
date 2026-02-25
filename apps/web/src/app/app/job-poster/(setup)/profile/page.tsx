@@ -3,7 +3,7 @@
 import { z } from "zod";
 import React from "react";
 import { PayoutMethodSetup } from "@/components/PayoutMethodSetup";
-import { useClerk } from "@clerk/nextjs";
+import { useClerk, useUser } from "@clerk/nextjs";
 import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 
 const JobPosterProfileSchema = z.object({
@@ -33,6 +33,7 @@ function inferStateProvinceFromLocation(s: unknown): string {
 
 export default function JobPosterProfilePage() {
   const { signOut } = useClerk();
+  const { user, isLoaded } = useUser();
   const [form, setForm] = React.useState<JobPosterProfile>({
     name: "",
     email: "",
@@ -104,6 +105,13 @@ export default function JobPosterProfilePage() {
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!isLoaded || !user) return;
+    const clerkEmail = user.primaryEmailAddress?.emailAddress?.trim() ?? "";
+    if (!clerkEmail) return;
+    setForm((prev) => (prev.email.trim() ? prev : { ...prev, email: clerkEmail }));
+  }, [isLoaded, user]);
+
   async function save() {
     setSaving(true);
     setError("");
@@ -117,7 +125,10 @@ export default function JobPosterProfilePage() {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(parsed.data)
+        body: JSON.stringify({
+          ...parsed.data,
+          email: parsed.data.email.trim() || user?.primaryEmailAddress?.emailAddress?.trim() || "",
+        }),
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) {
@@ -527,4 +538,3 @@ function Select(props: {
     </label>
   );
 }
-
