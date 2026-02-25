@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 import { JOB_POSTER_TOS_SECTIONS, JOB_POSTER_TOS_TITLE, JOB_POSTER_TOS_VERSION } from "@/lib/jobPosterTosV1";
 
@@ -23,11 +24,11 @@ function canSave(form: SetupForm, termsChecked: boolean): boolean {
   return Boolean(
     termsChecked &&
       form.name.trim() &&
-      form.email.trim() &&
       form.legalStreet.trim() &&
       form.legalCity.trim() &&
       form.legalProvince.trim() &&
       form.legalPostalCode.trim() &&
+      form.mapDisplayName.trim() &&
       Number.isFinite(form.lat) &&
       Number.isFinite(form.lng) &&
       !(form.lat === 0 && form.lng === 0),
@@ -83,13 +84,16 @@ function ProfileSection({
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label="Name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} />
-        <Field
-          label="Email"
-          value={form.email}
-          onChange={() => {}}
-          disabled
-          helperText="Managed by your account."
-        />
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Email</span>
+          <input
+            type="email"
+            value={form.email}
+            readOnly
+            className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-200 bg-gray-100 px-3 py-2 text-gray-500"
+          />
+          <span className="mt-1 block text-xs text-gray-500">Managed by your account.</span>
+        </label>
         <Field label="Phone (optional)" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
       </div>
 
@@ -140,6 +144,7 @@ function ProfileSection({
 
 export function DashboardSetupClient() {
   const router = useRouter();
+  const { user, isLoaded } = useUser();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -197,6 +202,11 @@ export function DashboardSetupClient() {
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!isLoaded || !user) return;
+    const clerkEmail = user.primaryEmailAddress?.emailAddress ?? "";
+    setForm((prev) => ({ ...prev, email: clerkEmail }));
+  }, [isLoaded, user]);
   async function onSave() {
     if (!canSave(form, termsChecked)) return;
     setSaving(true);
