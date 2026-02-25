@@ -34,6 +34,7 @@ export function DashboardShell({
   children: React.ReactNode;
 }) {
   const path = usePathname();
+  const useV4Endpoints = path.startsWith("/dashboard/job-poster");
   const [boot, setBoot] = useState<
     | { loading: true }
     | { loading: false; ok: true; superuser: boolean }
@@ -44,7 +45,7 @@ export function DashboardShell({
     ? "job-poster"
     : path.startsWith("/app/contractor")
       ? "contractor"
-      : path.startsWith("/app/router")
+      : path.startsWith("/app/router") || path.startsWith("/dashboard/router")
         ? "router"
         : null;
 
@@ -73,7 +74,7 @@ export function DashboardShell({
           if (delay) await new Promise((r) => setTimeout(r, delay));
           if (cancelled) return;
 
-          const resp = await fetch("/api/app/me", { cache: "no-store", credentials: "include" });
+          const resp = await fetch(useV4Endpoints ? "/api/v4/job-poster/me" : "/api/app/me", { cache: "no-store", credentials: "include" });
           const json = (await resp.json().catch(() => null)) as any;
           if (cancelled) return;
 
@@ -116,7 +117,7 @@ export function DashboardShell({
     setBellLoading(true);
     setBellError("");
     try {
-      const resp = await fetch(`/api/app/${bellRole}/notifications`, { cache: "no-store", credentials: "include" });
+      const resp = await fetch(useV4Endpoints ? "/api/v4/job-poster/notifications" : `/api/app/${bellRole}/notifications`, { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load notifications");
 
@@ -140,7 +141,7 @@ export function DashboardShell({
     if (!bellRole) return;
     if (!ids.length) return;
     try {
-      await fetch(`/api/app/${bellRole}/notifications/mark-read`, {
+      await fetch(useV4Endpoints ? "/api/v4/job-poster/notifications/mark-read" : `/api/app/${bellRole}/notifications/mark-read`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",

@@ -58,9 +58,11 @@ export async function getCurrentUserState(): Promise<CurrentUserState | null> {
       if (role === "JOB_POSTER") {
         profileComplete = Boolean(json.jobPosterReady);
         acceptedTos = Boolean(json.jobPosterAcceptedTos);
+      } else if (role === "ROUTER") {
+        profileComplete = Boolean(json.routerReady);
+        acceptedTos = Boolean(json.routerAcceptedTos);
       } else {
-        profileComplete =
-          role === "CONTRACTOR" ? Boolean(json.contractorReady) : role === "ROUTER" ? Boolean(json.routerReady) : false;
+        profileComplete = Boolean(json.contractorReady);
         acceptedTos = profileComplete;
       }
     }

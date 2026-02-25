@@ -7,7 +7,7 @@ async function proxy(req: Request) {
   const sessionToken = await requireApiToken();
   const body = await req.text();
   const resp = await apiFetch({
-    path: "/api/web/v4/support/ticket",
+    path: "/api/web/v4/router/accept-tos",
     method: "POST",
     sessionToken,
     headers: { "content-type": req.headers.get("content-type") ?? "application/json" },
