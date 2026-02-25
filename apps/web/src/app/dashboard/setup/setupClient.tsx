@@ -207,7 +207,6 @@ export function DashboardSetupClient() {
     const clerkEmail = user.primaryEmailAddress?.emailAddress ?? "";
     setForm((prev) => ({ ...prev, email: clerkEmail }));
   }, [isLoaded, user]);
-
   async function onSave() {
     if (!canSave(form, termsChecked)) return;
     setSaving(true);
