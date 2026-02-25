@@ -40,7 +40,7 @@ export function DashboardShell({
     | { loading: false; ok: false; code: string }
   >({ loading: true });
 
-  const bellRole: BellRole = path.startsWith("/app/job-poster")
+  const bellRole: BellRole = path.startsWith("/app/job-poster") || path.startsWith("/dashboard/job-poster")
     ? "job-poster"
     : path.startsWith("/app/contractor")
       ? "contractor"

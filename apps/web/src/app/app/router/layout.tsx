@@ -13,6 +13,8 @@ export default async function RouterLayout({ children }: { children: React.React
     // Token/session is stabilizing; keep the user in the /app stabilization zone.
     redirect("/app");
   }
+  // V4: ROUTER users must use /dashboard/router; legacy /app/router forwards only.
+  if (session?.role === "ROUTER") redirect("/dashboard/router");
   const root = roleRootPath(session.role);
   if (root !== "/app/router") redirect(root);
 

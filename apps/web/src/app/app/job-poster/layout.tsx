@@ -17,6 +17,9 @@ export default async function JobPosterLayout({ children }: { children: React.Re
   const root = roleRootPath(session.role);
   if (root !== "/app/job-poster") redirect(root);
 
+  // Legacy redirect: /app/job-poster → /dashboard/job-poster (server-side, role-gated)
+  redirect("/dashboard/job-poster");
+
   try {
     const token = await requireApiToken();
     const tosResp = await apiFetch({ path: "/api/web/job-poster-tos", method: "GET", sessionToken: token });

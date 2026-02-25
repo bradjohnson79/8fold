@@ -7,7 +7,7 @@ import { users } from "@/db/schema/user";
 
 export async function getV4Readiness(userId: string) {
   const [userRows, contractorRows, routerRows, posterRows] = await Promise.all([
-    db.select({ role: users.role, phone: users.phone }).from(users).where(eq(users.id, userId)).limit(1),
+    db.select({ role: users.role, phone: users.phone, acceptedTosAt: users.acceptedTosAt }).from(users).where(eq(users.id, userId)).limit(1),
     db.select().from(contractorProfilesV4).where(eq(contractorProfilesV4.userId, userId)).limit(1),
     db.select().from(routerProfilesV4).where(eq(routerProfilesV4.userId, userId)).limit(1),
     db.select().from(jobPosterProfilesV4).where(eq(jobPosterProfilesV4.userId, userId)).limit(1),
@@ -49,9 +49,12 @@ export async function getV4Readiness(userId: string) {
       poster.postalCode
   );
 
+  const jobPosterAcceptedTos = Boolean(user?.acceptedTosAt != null);
+
   return {
     role: String(user?.role ?? "").toUpperCase(),
     jobPosterReady,
+    jobPosterAcceptedTos,
     contractorReady,
     routerReady,
     routes: {
