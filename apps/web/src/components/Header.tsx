@@ -3,13 +3,13 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname } from "next/navigation"
+import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs"
 
 export function Header() {
   const pathname = usePathname()
   const [workersOpen, setWorkersOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileWorkersOpen, setMobileWorkersOpen] = useState(false)
-  const isAuthenticated = false
 
   const workersRef = useRef<HTMLDivElement | null>(null)
 
@@ -145,27 +145,27 @@ export function Header() {
 
           {/* Auth Button */}
           <div className="flex items-center gap-3">
-            {isAuthenticated ? (
-              <div className="flex items-center space-x-4">
-                <div className="w-8 h-8 bg-8fold-green rounded-full"></div>
-              </div>
-            ) : (
-              <>
-                <Link
-                  href="/sign-up"
+            <SignedOut>
+              <SignUpButton mode="modal">
+                <button
+                  type="button"
                   className="hidden md:inline-flex bg-white text-8fold-navy px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
                 >
                   Sign Up
-                </Link>
-
-                <Link 
-                  href="/login"
+                </button>
+              </SignUpButton>
+              <SignInButton mode="modal">
+                <button
+                  type="button"
                   className="bg-white text-8fold-navy px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
                 >
                   Log In
-                </Link>
-              </>
-            )}
+                </button>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
           </div>
 
           {/* Mobile menu button */}
@@ -237,21 +237,31 @@ export function Header() {
                 About 8Fold
               </Link>
 
-              <Link
-                href="/sign-up"
-                onClick={() => setMobileOpen(false)}
-                className="block px-3 py-2 rounded-lg bg-white text-8fold-navy font-semibold"
-              >
-                Sign Up
-              </Link>
-
-              <Link
-                href="/login"
-                onClick={() => setMobileOpen(false)}
-                className="block px-3 py-2 rounded-lg bg-white text-8fold-navy font-semibold"
-              >
-                Log In
-              </Link>
+              <SignedOut>
+                <SignUpButton mode="modal">
+                  <button
+                    type="button"
+                    onClick={() => setMobileOpen(false)}
+                    className="block w-full text-left px-3 py-2 rounded-lg bg-white text-8fold-navy font-semibold"
+                  >
+                    Sign Up
+                  </button>
+                </SignUpButton>
+                <SignInButton mode="modal">
+                  <button
+                    type="button"
+                    onClick={() => setMobileOpen(false)}
+                    className="block w-full text-left px-3 py-2 rounded-lg bg-white text-8fold-navy font-semibold"
+                  >
+                    Log In
+                  </button>
+                </SignInButton>
+              </SignedOut>
+              <SignedIn>
+                <div className="px-3 py-2 rounded-lg">
+                  <UserButton afterSignOutUrl="/" />
+                </div>
+              </SignedIn>
             </div>
           </div>
         ) : null}

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getApiOrigin } from "@/server/api/apiClient";
 
 /**
+ * ⚠ LEGACY AUTH — MOBILE / OTP FLOW ONLY.
+ * Web authentication is handled exclusively by Clerk.
+ * Do NOT use this route in web flows.
+ *
  * Web proxy for POST /api/auth/verify.
  * Proxies to apps/api; forwards Set-Cookie (sid) from API response.
  */

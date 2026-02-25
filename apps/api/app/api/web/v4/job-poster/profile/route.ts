@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { requireRole } from "@/src/auth/requireRole";
+import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
 import { getV4JobPosterProfile, saveV4JobPosterProfile } from "@/src/services/v4/jobPosterProfileService";
 import { V4JobPosterProfileSchema } from "@/src/validation/v4/jobPosterProfileSchema";
 import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
@@ -38,7 +39,8 @@ export async function PUT(req: Request) {
         { issues: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })) },
       );
     }
-    await saveV4JobPosterProfile(role.internalUser.id, parsed.data);
+    const identity = await getClerkIdentity(role.clerkUserId);
+    await saveV4JobPosterProfile(role.internalUser.id, parsed.data, identity);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_JOB_POSTER_PROFILE_SAVE_FAILED");

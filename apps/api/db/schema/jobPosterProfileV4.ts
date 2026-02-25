@@ -4,6 +4,10 @@ import { dbSchema } from "./_dbSchema";
 export const jobPosterProfilesV4 = dbSchema.table("job_poster_profiles_v4", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  email: text("email"),
+  avatarUrl: text("avatar_url"),
   addressLine1: text("address_line1").notNull(),
   addressLine2: text("address_line2"),
   city: text("city").notNull(),

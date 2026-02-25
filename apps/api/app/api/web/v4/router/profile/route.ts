@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { requireRole } from "@/src/auth/requireRole";
+import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
 import { getV4RouterProfile, saveV4RouterProfile, V4RouterProfileSchema } from "@/src/services/v4/routerProfileService";
 import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
@@ -37,7 +38,8 @@ async function save(req: Request) {
       );
     }
 
-    await saveV4RouterProfile(role.internalUser.id, parsed.data);
+    const identity = await getClerkIdentity(role.clerkUserId);
+    await saveV4RouterProfile(role.internalUser.id, parsed.data, identity);
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ROUTER_PROFILE_SAVE_FAILED");

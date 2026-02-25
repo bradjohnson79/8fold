@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { users } from "@/db/schema/user";
 import { type V4ContractorProfileInput } from "@/src/validation/v4/contractorProfileSchema";
+import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
 
 export async function getV4ContractorProfile(userId: string) {
   const [profileRows, userRows] = await Promise.all([
@@ -16,6 +17,8 @@ export async function getV4ContractorProfile(userId: string) {
     ok: true as const,
     profile: profile
       ? {
+          firstName: profile.firstName ?? null,
+          lastName: profile.lastName ?? null,
           contactName: profile.contactName,
           phone: profile.phone,
           businessName: profile.businessName,
@@ -24,13 +27,17 @@ export async function getV4ContractorProfile(userId: string) {
           homeLatitude: profile.homeLatitude,
           homeLongitude: profile.homeLongitude,
           stripeConnected: profile.stripeConnected,
-          email: user?.email ?? null,
+          email: profile.email ?? user?.email ?? null,
         }
-      : { email: user?.email ?? null },
+      : { firstName: null, lastName: null, email: user?.email ?? null },
   };
 }
 
-export async function upsertV4ContractorProfile(userId: string, input: V4ContractorProfileInput) {
+export async function upsertV4ContractorProfile(
+  userId: string,
+  input: V4ContractorProfileInput,
+  identity?: ClerkIdentity | null,
+) {
   const now = new Date();
   await db.transaction(async (tx) => {
     await tx
@@ -43,6 +50,10 @@ export async function upsertV4ContractorProfile(userId: string, input: V4Contrac
       .values({
         id: randomUUID(),
         userId,
+        firstName: identity?.firstName ?? null,
+        lastName: identity?.lastName ?? null,
+        email: identity?.email ?? null,
+        avatarUrl: identity?.avatarUrl ?? null,
         contactName: input.contactName,
         phone: input.phone,
         businessName: input.businessName,
@@ -66,6 +77,7 @@ export async function upsertV4ContractorProfile(userId: string, input: V4Contrac
           homeLongitude: input.homeLongitude,
           stripeConnected: input.stripeConnected,
           updatedAt: now,
+          // Identity: backfill on first save only; do NOT update on conflict
         },
       });
   });

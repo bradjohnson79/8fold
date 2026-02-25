@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 
 type GeoResult = {
   latitude: number;
@@ -11,7 +12,9 @@ type GeoResult = {
 };
 
 export default function RouterSetupPage() {
+  const { user } = useUser();
   const [contactName, setContactName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [homeRegion, setHomeRegion] = useState("");
   const [serviceAreasText, setServiceAreasText] = useState("");
@@ -32,7 +35,11 @@ export default function RouterSetupPage() {
         if (!alive || !resp.ok || !json?.ok) return;
         const p = json?.profile;
         if (p) {
-          setContactName(String(p.contactName ?? "").trim());
+          const name =
+            [p.firstName, p.lastName].filter(Boolean).join(" ").trim() ||
+            String(p.contactName ?? "").trim();
+          setContactName(name || "");
+          setEmail(String(p.email ?? "").trim());
           setPhone(String(p.phone ?? "").trim());
           setHomeRegion(String(p.homeRegion ?? "").trim());
           setServiceAreasText(Array.isArray(p.serviceAreas) ? p.serviceAreas.join(", ") : "");
@@ -74,7 +81,10 @@ export default function RouterSetupPage() {
   async function handleSave() {
     setError(null);
     setNotice(null);
-    if (!contactName.trim()) return setError("Contact Name is required.");
+    const displayName =
+      contactName.trim() ||
+      [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
+    if (!displayName) return setError("Name is required.");
     if (!phone.trim()) return setError("Phone is required.");
     if (!homeRegion.trim()) return setError("Home Region is required.");
     if (!serviceAreasText.trim()) return setError("Service Areas are required.");
@@ -88,7 +98,7 @@ export default function RouterSetupPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          contactName: contactName.trim(),
+          contactName: displayName,
           phone: phone.trim(),
           homeRegion: homeRegion.trim(),
           serviceAreas: serviceAreasText
@@ -118,13 +128,24 @@ export default function RouterSetupPage() {
 
         <div className="mt-8 space-y-4">
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Contact Name *</span>
+            <span className="text-sm font-medium text-gray-700">Name</span>
             <input
               type="text"
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              value={contactName || [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim()}
+              readOnly
+              className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
             />
+            <span className="text-xs text-gray-500">Managed by your account</span>
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Email</span>
+            <input
+              type="text"
+              value={email || (user?.primaryEmailAddress?.emailAddress ?? "")}
+              readOnly
+              className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
+            />
+            <span className="text-xs text-gray-500">Managed by your account</span>
           </label>
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Phone *</span>
@@ -206,7 +227,15 @@ export default function RouterSetupPage() {
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || !contactName.trim() || !phone.trim() || !homeRegion.trim() || !serviceAreasText.trim() || availability.length === 0 || !selectedGeo}
+              disabled={
+              saving ||
+              !(contactName.trim() || [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim()) ||
+              !phone.trim() ||
+              !homeRegion.trim() ||
+              !serviceAreasText.trim() ||
+              availability.length === 0 ||
+              !selectedGeo
+            }
               className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 disabled:bg-gray-200 disabled:text-gray-500"
             >
               {saving ? "Saving…" : "Save"}

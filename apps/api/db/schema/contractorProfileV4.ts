@@ -4,6 +4,10 @@ import { dbSchema } from "./_dbSchema";
 export const contractorProfilesV4 = dbSchema.table("contractor_profiles_v4", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  email: text("email"),
+  avatarUrl: text("avatar_url"),
   contactName: text("contact_name").notNull(),
   phone: text("phone").notNull(),
   businessName: text("business_name").notNull(),

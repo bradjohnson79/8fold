@@ -6,7 +6,7 @@ import { apiFetch } from "@/server/api/apiClient";
 import { requireApiToken } from "@/server/auth/requireSession";
 import { JobPosterDashboardShell } from "@/components/roleShells/JobPosterDashboardShell";
 import { FullScreenSetupGate } from "@/components/FullScreenSetupGate";
-import { TopRightLogout } from "@/components/TopRightLogout";
+import { UserButton } from "@clerk/nextjs";
 
 export default async function JobPosterAppGroupLayout({ children }: { children: React.ReactNode }) {
   const session = await requireServerSession();
@@ -40,7 +40,9 @@ export default async function JobPosterAppGroupLayout({ children }: { children: 
   if (!ready)
     return (
       <>
-        <TopRightLogout />
+        <div className="fixed right-4 top-4 z-[2147483646]">
+          <UserButton afterSignOutUrl="/" />
+        </div>
         <FullScreenSetupGate />
       </>
     );

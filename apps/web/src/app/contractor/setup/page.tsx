@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 
 type GeoResult = {
   latitude: number;
@@ -11,6 +12,7 @@ type GeoResult = {
 };
 
 export default function ContractorSetupPage() {
+  const { user } = useUser();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +53,10 @@ export default function ContractorSetupPage() {
         setTradeOptions(Array.isArray(meta.uiOrder) ? meta.uiOrder : []);
         const p = json?.profile;
         if (p) {
-          setContactName(String(p.contactName ?? "").trim());
+          const name =
+            [p.firstName, p.lastName].filter(Boolean).join(" ").trim() ||
+            String(p.contactName ?? "").trim();
+          setContactName(name || "");
           setPhone(String(p.phone ?? "").trim());
           setBusinessName(String(p.businessName ?? "").trim());
           setEmail(String(p.email ?? "").trim());
@@ -103,8 +108,11 @@ export default function ContractorSetupPage() {
       setError("Business Name is required.");
       return;
     }
-    if (!contactName.trim()) {
-      setError("Contact Name is required.");
+    const displayName =
+      contactName.trim() ||
+      [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
+    if (!displayName) {
+      setError("Name is required.");
       return;
     }
     if (!phone.trim()) {
@@ -131,7 +139,7 @@ export default function ContractorSetupPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          contactName: contactName.trim(),
+          contactName: displayName,
           phone: phone.trim(),
           businessName: businessName.trim(),
           tradeCategories,
@@ -189,6 +197,29 @@ export default function ContractorSetupPage() {
             <h2 className="text-lg font-semibold text-gray-900">Basic Info</h2>
             <div className="mt-4 space-y-4">
               <label className="block">
+                <span className="text-sm font-medium text-gray-700">Name</span>
+                <input
+                  type="text"
+                  value={
+                    contactName ||
+                    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim()
+                  }
+                  readOnly
+                  className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
+                />
+                <span className="text-xs text-gray-500">Managed by your account</span>
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Email</span>
+                <input
+                  type="text"
+                  value={email || (user?.primaryEmailAddress?.emailAddress ?? "")}
+                  readOnly
+                  className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
+                />
+                <span className="text-xs text-gray-500">Managed by your account</span>
+              </label>
+              <label className="block">
                 <span className="text-sm font-medium text-gray-700">Business Name *</span>
                 <input
                   type="text"
@@ -199,16 +230,6 @@ export default function ContractorSetupPage() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">Contact Name *</span>
-                <input
-                  type="text"
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="John Smith"
-                />
-              </label>
-              <label className="block">
                 <span className="text-sm font-medium text-gray-700">Phone Number *</span>
                 <input
                   type="tel"
@@ -216,16 +237,6 @@ export default function ContractorSetupPage() {
                   onChange={(e) => setPhone(e.target.value)}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
                   placeholder="+1 555 123 4567"
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Email</span>
-                <input
-                  type="email"
-                  value={email}
-                  readOnly
-                  disabled
-                  className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
                 />
               </label>
             </div>

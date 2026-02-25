@@ -1,6 +1,5 @@
 import { apiFetch } from "@/server/api/apiClient";
 import { requireApiToken } from "@/server/auth/requireSession";
-import { TopRightLogout } from "@/components/TopRightLogout";
 
 export default async function RouterAppLayout({ children }: { children: React.ReactNode }) {
   let ready = true;
@@ -15,7 +14,6 @@ export default async function RouterAppLayout({ children }: { children: React.Re
 
   return (
     <>
-      <TopRightLogout />
       {!ready && (
         <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-4">
           <h3 className="text-base font-semibold text-amber-900">Complete Your Router Setup</h3>
