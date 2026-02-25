@@ -1,18 +1,9 @@
 import { redirect } from "next/navigation";
-import { JobPosterTosGate } from "./(app)/JobPosterTosGate";
 import { requireServerSession } from "@/server/auth/requireServerSession";
 import { roleRootPath } from "@/server/routing/roleRouting";
 import { auth } from "@clerk/nextjs/server";
-
-type TosStatus = {
-  ok: true;
-  agreementType: "JOB_POSTER_TOS";
-  currentVersion: string;
-  accepted: boolean;
-  acceptedCurrent: boolean;
-  acceptedVersion: string | null;
-  acceptedAt: string | null;
-};
+import { apiFetch } from "@/server/api/apiClient";
+import { requireApiToken } from "@/server/auth/requireSession";
 
 export default async function JobPosterLayout({ children }: { children: React.ReactNode }) {
   const session = await requireServerSession();
@@ -22,25 +13,20 @@ export default async function JobPosterLayout({ children }: { children: React.Re
     if (!clerkUserId) redirect("/login?next=/app/job-poster");
     redirect("/app");
   }
+
   const root = roleRootPath(session.role);
   if (root !== "/app/job-poster") redirect(root);
-  const acceptedVersion = "1.0";
-  const acceptedAt = null;
-  const currentVersion = "1.0";
-  const acceptedCurrent = true;
-  const status: TosStatus = {
-    ok: true,
-    agreementType: "JOB_POSTER_TOS",
-    currentVersion,
-    accepted: true,
-    acceptedCurrent,
-    acceptedVersion,
-    acceptedAt,
-  };
 
-  return (
-    <JobPosterTosGate initialStatus={status}>
-      {children}
-    </JobPosterTosGate>
-  );
+  try {
+    const token = await requireApiToken();
+    const tosResp = await apiFetch({ path: "/api/web/job-poster-tos", method: "GET", sessionToken: token });
+    const tosJson = (await tosResp.json().catch(() => null)) as any;
+    if (!tosResp.ok || tosJson?.acceptedCurrent !== true) {
+      redirect("/dashboard/setup");
+    }
+  } catch {
+    redirect("/dashboard/setup");
+  }
+
+  return <>{children}</>;
 }

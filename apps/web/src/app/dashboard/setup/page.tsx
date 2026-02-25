@@ -1,13 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserState } from "@/lib/auth/getCurrentUserState";
-
-function roleSetupPath(role: string): string {
-  if (role === "JOB_POSTER") return "/job-poster/setup";
-  if (role === "CONTRACTOR") return "/contractor/setup";
-  if (role === "ROUTER") return "/router/setup";
-  if (role === "ADMIN") return "/admin";
-  return "/auth/complete-registration";
-}
+import { DashboardSetupClient } from "./setupClient";
 
 export default async function DashboardSetupPage() {
   const state = await getCurrentUserState();
@@ -18,5 +11,11 @@ export default async function DashboardSetupPage() {
     redirect(`/dashboard/${state.roleSlug}`);
   }
 
-  redirect(roleSetupPath(state.role));
+  if (state.role !== "JOB_POSTER") {
+    if (state.role === "CONTRACTOR") redirect("/contractor/setup");
+    if (state.role === "ROUTER") redirect("/router/setup");
+    if (state.role === "ADMIN") redirect("/admin");
+  }
+
+  return <DashboardSetupClient />;
 }

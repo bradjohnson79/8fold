@@ -49,6 +49,7 @@ export async function getCurrentUserState(): Promise<CurrentUserState | null> {
   }
 
   let profileComplete = false;
+  let acceptedTos = false;
   try {
     const sessionToken = await requireApiToken();
     const resp = await apiFetch({ path: "/api/web/v4/readiness", method: "GET", sessionToken });
@@ -58,12 +59,18 @@ export async function getCurrentUserState(): Promise<CurrentUserState | null> {
       if (role === "CONTRACTOR") profileComplete = Boolean(json.contractorReady);
       if (role === "ROUTER") profileComplete = Boolean(json.routerReady);
     }
+
+    if (role === "JOB_POSTER") {
+      const tosResp = await apiFetch({ path: "/api/web/job-poster-tos", method: "GET", sessionToken });
+      const tosJson = (await tosResp.json().catch(() => null)) as any;
+      acceptedTos = Boolean(tosResp.ok && tosJson?.acceptedCurrent === true);
+    } else {
+      acceptedTos = profileComplete;
+    }
   } catch {
     profileComplete = false;
+    acceptedTos = false;
   }
-
-  // V4 readiness is the operational gate. TOS+profile are treated as complete together.
-  const acceptedTos = profileComplete;
 
   return {
     role,
