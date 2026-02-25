@@ -6,7 +6,7 @@ import { AuthShell } from "../../components/AuthShell";
 
 export default function LoginClient() {
   const sp = useSearchParams();
-  const next = sp.get("next") ?? "/app";
+  const next = sp.get("next") ?? "/dashboard";
 
   return (
     <AuthShell title="Log in" subtitle="Continue with email OTP or a social provider.">
@@ -16,4 +16,3 @@ export default function LoginClient() {
     </AuthShell>
   );
 }
-

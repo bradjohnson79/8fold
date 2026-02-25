@@ -8,7 +8,7 @@ import { requireApiToken } from "@/server/auth/requireSession";
 
 export default async function ContractorAppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireServerSession();
-  if (session?.role === "USER_ROLE_NOT_ASSIGNED" && session?.dbEnrichmentSucceeded === true) redirect("/onboarding/role");
+  if (session?.role === "USER_ROLE_NOT_ASSIGNED" && session?.dbEnrichmentSucceeded === true) redirect("/dashboard");
   if (!session?.userId) {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) redirect("/login?next=/app/contractor");
@@ -66,4 +66,3 @@ export default async function ContractorAppLayout({ children }: { children: Reac
     </ContractorDashboardShell>
   );
 }
-

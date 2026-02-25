@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname } from "next/navigation"
-import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs"
+import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs"
+import { AuthMenu } from "@/components/AuthMenu"
 
 export function Header() {
   const pathname = usePathname()
@@ -146,14 +147,12 @@ export function Header() {
           {/* Auth Button */}
           <div className="flex items-center gap-3">
             <SignedOut>
-              <SignUpButton mode="modal">
-                <button
-                  type="button"
-                  className="hidden md:inline-flex bg-white text-8fold-navy px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-                >
-                  Sign Up
-                </button>
-              </SignUpButton>
+              <Link
+                href="/choose-role"
+                className="hidden md:inline-flex bg-white text-8fold-navy px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+              >
+                Sign Up
+              </Link>
               <SignInButton mode="modal">
                 <button
                   type="button"
@@ -164,7 +163,7 @@ export function Header() {
               </SignInButton>
             </SignedOut>
             <SignedIn>
-              <UserButton afterSignOutUrl="/" />
+              <AuthMenu />
             </SignedIn>
           </div>
 
@@ -238,15 +237,13 @@ export function Header() {
               </Link>
 
               <SignedOut>
-                <SignUpButton mode="modal">
-                  <button
-                    type="button"
-                    onClick={() => setMobileOpen(false)}
-                    className="block w-full text-left px-3 py-2 rounded-lg bg-white text-8fold-navy font-semibold"
-                  >
-                    Sign Up
-                  </button>
-                </SignUpButton>
+                <Link
+                  href="/choose-role"
+                  onClick={() => setMobileOpen(false)}
+                  className="block w-full text-left px-3 py-2 rounded-lg bg-white text-8fold-navy font-semibold"
+                >
+                  Sign Up
+                </Link>
                 <SignInButton mode="modal">
                   <button
                     type="button"
@@ -259,7 +256,7 @@ export function Header() {
               </SignedOut>
               <SignedIn>
                 <div className="px-3 py-2 rounded-lg">
-                  <UserButton afterSignOutUrl="/" />
+                  <AuthMenu />
                 </div>
               </SignedIn>
             </div>

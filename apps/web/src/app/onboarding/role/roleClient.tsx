@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 type Role = "JOB_POSTER" | "CONTRACTOR" | "ROUTER";
 
 function roleToPath(role: Role): string {
-  if (role === "ROUTER") return "/app/router";
-  if (role === "CONTRACTOR") return "/app/contractor";
-  return "/app/job-poster";
+  void role;
+  return "/dashboard";
 }
 
 export default function RoleOnboardingClient() {
@@ -26,14 +25,11 @@ export default function RoleOnboardingClient() {
         const resp = await fetch("/api/app/me", { method: "GET" });
         const json = (await resp.json().catch(() => null)) as any;
         if (resp.status === 401) {
-          router.replace("/login?next=/onboarding/role");
+          router.replace("/login?next=/dashboard");
           return;
         }
         if (resp.ok && json?.ok === true && typeof json?.role === "string") {
-          const r = String(json.role).toUpperCase();
-          if (r === "ROUTER") router.replace("/app/router");
-          if (r === "CONTRACTOR") router.replace("/app/contractor");
-          if (r === "JOB_POSTER") router.replace("/app/job-poster");
+          router.replace("/dashboard");
         }
       } catch {
         // Non-blocking: allow users to continue role selection when pre-check fails.
@@ -62,8 +58,7 @@ export default function RoleOnboardingClient() {
         const msg = String(json?.error?.message ?? json?.error ?? "Failed to assign role");
         throw new Error(msg);
       }
-      const selected = role as Role;
-      router.replace(roleToPath(selected));
+      router.replace(roleToPath(role as Role));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -122,4 +117,3 @@ export default function RoleOnboardingClient() {
     </div>
   );
 }
-

@@ -12,10 +12,9 @@ export default async function ContractorSetupLayout({ children }: { children: Re
     if (!clerkUserId) redirect("/login?next=/app/contractor");
     redirect("/app");
   }
-  if (session.role === "USER_ROLE_NOT_ASSIGNED" && session.dbEnrichmentSucceeded === true) redirect("/onboarding/role");
+  if (session.role === "USER_ROLE_NOT_ASSIGNED" && session.dbEnrichmentSucceeded === true) redirect("/dashboard");
   const root = roleRootPath(session.role);
   if (root !== "/app/contractor") redirect(root);
 
   return <ContractorDashboardShell>{children}</ContractorDashboardShell>;
 }
-

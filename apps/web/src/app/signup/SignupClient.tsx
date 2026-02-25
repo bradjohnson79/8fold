@@ -6,7 +6,7 @@ import { AuthShell } from "../../components/AuthShell";
 
 export default function SignupClient() {
   const sp = useSearchParams();
-  const next = sp.get("next") ?? "/onboarding/role";
+  const next = sp.get("next") ?? "/auth/complete-registration";
 
   return (
     <AuthShell title="Sign up" subtitle="Create your account, then pick your 8Fold role.">
@@ -16,4 +16,3 @@ export default function SignupClient() {
     </AuthShell>
   );
 }
-
