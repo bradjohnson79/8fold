@@ -1,6 +1,10 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
+import { installMockAdminAuth } from "../test-utils/mockAdminAuth";
 
 process.env.DATABASE_URL ||= "postgres://localhost:5432/8fold_test?schema=8fold_test";
+// ADMIN AUTH ASSUMPTION FREEZE:
+// This test injects ADMIN_SUPER identity explicitly.
+// If admin auth changes, update test harness — not production guards.
 
 type RecordedOp =
   | { kind: "insert"; table: unknown; values: unknown }
@@ -69,9 +73,7 @@ describe("admin dispute decision financial safety", () => {
     const db = { transaction: vi.fn(async (fn: (tx: any) => Promise<unknown>) => await fn(tx)) };
 
     vi.doMock("@/db/drizzle", () => ({ db }));
-    vi.doMock("@/src/lib/auth/requireAdmin", () => ({
-      requireAdmin: vi.fn(async () => ({ userId: "admin_1" })),
-    }));
+    installMockAdminAuth({ userId: "admin_1" });
     vi.doMock("@/src/lib/api/readJsonBody", () => ({
       readJsonBody: vi.fn(async () => ({ ok: true, json: { ops: { decision: "RELEASE_ESCROW_FULL", decisionSummary: "x".repeat(20) } } })),
     }));
@@ -100,9 +102,7 @@ describe("admin dispute decision financial safety", () => {
     const db = { transaction: vi.fn(async (fn: (tx: any) => Promise<unknown>) => await fn(tx)) };
 
     vi.doMock("@/db/drizzle", () => ({ db }));
-    vi.doMock("@/src/lib/auth/requireAdmin", () => ({
-      requireAdmin: vi.fn(async () => ({ userId: "admin_1" })),
-    }));
+    installMockAdminAuth({ userId: "admin_1" });
     vi.doMock("@/src/lib/api/readJsonBody", () => ({
       readJsonBody: vi.fn(async () => ({ ok: true, json: { ops: { decision: "CLOSE_NO_ACTION", decisionSummary: "x".repeat(20) } } })),
     }));

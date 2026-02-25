@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useClerk } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 
 type Item = { href: string; label: string };
 type Badge = { kind: "dot" } | { kind: "count"; value: number };
@@ -33,15 +33,12 @@ export function DashboardShell({
   extraUnreadCount?: number;
   children: React.ReactNode;
 }) {
-  const { signOut } = useClerk();
   const path = usePathname();
-  const router = useRouter();
   const [boot, setBoot] = useState<
     | { loading: true }
     | { loading: false; ok: true; superuser: boolean }
     | { loading: false; ok: false; code: string }
   >({ loading: true });
-  const [loggingOut, setLoggingOut] = useState(false);
 
   const bellRole: BellRole = path.startsWith("/app/job-poster")
     ? "job-poster"
@@ -192,19 +189,6 @@ export function DashboardShell({
     );
   }
 
-  async function logout() {
-    if (loggingOut) return;
-    setLoggingOut(true);
-    try {
-      await signOut();
-      setBoot({ loading: false, ok: false, code: "UNAUTHENTICATED" });
-      router.push("/");
-      router.refresh();
-    } finally {
-      setLoggingOut(false);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -302,14 +286,7 @@ export function DashboardShell({
                 Switch dashboard
               </Link>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void logout()}
-              disabled={loggingOut}
-              className="bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 disabled:opacity-60 text-gray-900 font-semibold px-4 py-2 rounded-lg"
-            >
-              {loggingOut ? "Logging out…" : "Log out"}
-            </button>
+            <UserButton afterSignOutUrl="/" />
           </div>
         </div>
 

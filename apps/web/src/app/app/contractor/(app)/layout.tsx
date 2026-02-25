@@ -1,21 +1,10 @@
 import { redirect } from "next/navigation";
-import { ContractorWaiverGate } from "../ContractorWaiverGate";
 import { ContractorDashboardShell } from "../../../../components/roleShells/ContractorDashboardShell";
 import { requireServerSession } from "@/server/auth/requireServerSession";
 import { apiFetch } from "@/server/api/apiClient";
 import { roleRootPath } from "@/server/routing/roleRouting";
 import { auth } from "@clerk/nextjs/server";
 import { requireApiToken } from "@/server/auth/requireSession";
-
-type WaiverStatus = {
-  ok: true;
-  agreementType: "CONTRACTOR_WAIVER";
-  currentVersion: string;
-  accepted: boolean;
-  acceptedCurrent: boolean;
-  acceptedVersion: string | null;
-  acceptedAt: string | null;
-};
 
 export default async function ContractorAppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireServerSession();
@@ -38,9 +27,9 @@ export default async function ContractorAppLayout({ children }: { children: Reac
     throw err;
   }
 
-  const statusResp = await apiFetch({ path: "/api/web/onboarding/status", method: "GET", sessionToken: token });
+  const statusResp = await apiFetch({ path: "/api/web/v4/readiness", method: "GET", sessionToken: token });
   const statusJson = (await statusResp.json().catch(() => null)) as any;
-  if (!statusResp.ok || !statusJson || (statusJson as any).ok !== true) {
+  if (!statusResp.ok || !statusJson) {
     if (statusResp.status === 401) redirect("/app");
     return (
       <ContractorDashboardShell>
@@ -58,33 +47,23 @@ export default async function ContractorAppLayout({ children }: { children: Reac
       </ContractorDashboardShell>
     );
   }
-
-  const steps = (statusJson as any).steps as any;
-  const profileOk = Boolean(steps?.profile?.ok);
-  const verifiedReason = String(steps?.verified?.reason ?? "");
-  const denied = verifiedReason === "DENIED_INSUFFICIENT_EXPERIENCE";
-
-  // Profile completion gate for all contractor app pages.
-  if (!profileOk || denied) {
-    redirect("/app/contractor/profile");
-  }
-
-  const tos = steps?.tos ?? {};
-  const acceptedVersion = typeof tos?.acceptedVersion === "string" ? tos.acceptedVersion : null;
-  const waiverStatus: WaiverStatus = {
-    ok: true,
-    agreementType: "CONTRACTOR_WAIVER",
-    currentVersion: typeof tos?.currentVersion === "string" ? tos.currentVersion : "1.0",
-    accepted: Boolean(acceptedVersion),
-    acceptedCurrent: Boolean(tos?.acceptedCurrent ?? tos?.ok),
-    acceptedVersion,
-    acceptedAt: typeof tos?.acceptedAt === "string" ? tos.acceptedAt : null,
-  };
+  const ready = Boolean(statusJson?.contractorReady);
 
   return (
-    <ContractorWaiverGate initialStatus={waiverStatus}>
-      <ContractorDashboardShell>{children}</ContractorDashboardShell>
-    </ContractorWaiverGate>
+    <ContractorDashboardShell>
+      {!ready && (
+        <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-4">
+          <h3 className="text-base font-semibold text-amber-900">Complete Your Contractor Setup</h3>
+          <a
+            href="/contractor/setup"
+            className="mt-3 inline-flex rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+          >
+            Go to Setup
+          </a>
+        </div>
+      )}
+      {children}
+    </ContractorDashboardShell>
   );
 }
 

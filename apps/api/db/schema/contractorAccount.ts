@@ -1,4 +1,4 @@
-import { boolean, doublePrecision, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, integer, jsonb, text, timestamp } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 import { countryCodeEnum } from "./enums";
 
@@ -39,6 +39,8 @@ export const contractorAccounts = dbSchema.table("contractor_accounts", {
 
   tradeStartYear: integer("tradeStartYear"),
   tradeStartMonth: integer("tradeStartMonth"),
+
+  v2Extras: jsonb("v2_extras"),
 
   payoutMethod: text("payoutMethod"),
   payoutStatus: text("payoutStatus"),

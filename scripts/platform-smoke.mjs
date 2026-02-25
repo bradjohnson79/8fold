@@ -191,13 +191,13 @@ async function main() {
     assert(Array.isArray(r.json?.jobs), `job-poster.jobs missing jobs[]: body=${shortBody(r)}`);
   }
 
-  // 8) Logout (revoke in DB + clear cookie)
+  // 8) Logout (revoke in DB + clear cookie) — OTP flow hits API directly
   {
-    const r = await http(`${WEB_ORIGIN}/api/auth/logout`, {
+    const r = await http(`${API_ORIGIN}/api/auth/logout`, {
       method: "POST",
       headers: { cookie: cookieHeader },
     });
-    assert(r.ok, `web.auth.logout failed: status=${r.status} body=${shortBody(r)}`);
+    assert(r.ok, `api.auth.logout failed: status=${r.status} body=${shortBody(r)}`);
 
     // Update cookie jar if a clearing cookie is returned.
     const setCookies = r.setCookies;

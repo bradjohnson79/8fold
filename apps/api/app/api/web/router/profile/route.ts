@@ -94,7 +94,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function saveProfile(req: Request) {
   try {
     const router = await requireRouter(req);
     const raw = await req.json().catch(() => null);
@@ -171,5 +171,13 @@ export async function POST(req: Request) {
     const { status } = toHttpError(err);
     return NextResponse.json({ ok: false, error: "PROFILE_SAVE_FAILED" }, { status: status || 500 });
   }
+}
+
+export async function POST(req: Request) {
+  return saveProfile(req);
+}
+
+export async function PUT(req: Request) {
+  return saveProfile(req);
 }
 

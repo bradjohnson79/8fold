@@ -1,3 +1,8 @@
+/**
+ * ⚠ LEGACY AUTH — MOBILE / OTP FLOW ONLY.
+ * Web authentication is handled exclusively by Clerk.
+ * Do NOT use this route in web flows.
+ */
 import { NextResponse } from "next/server";
 import { toHttpError } from "../../../../src/http/errors";
 import { z } from "zod";
