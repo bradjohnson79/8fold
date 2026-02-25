@@ -6,7 +6,6 @@ import { apiFetch } from "@/server/api/apiClient";
 import { requireApiToken } from "@/server/auth/requireSession";
 import { JobPosterDashboardShell } from "@/components/roleShells/JobPosterDashboardShell";
 import { FullScreenSetupGate } from "@/components/FullScreenSetupGate";
-import { UserButton } from "@clerk/nextjs";
 
 export default async function JobPosterAppGroupLayout({ children }: { children: React.ReactNode }) {
   const session = await requireServerSession();
@@ -37,15 +36,7 @@ export default async function JobPosterAppGroupLayout({ children }: { children: 
     ready = false;
   }
 
-  if (!ready)
-    return (
-      <>
-        <div className="fixed right-4 top-4 z-[2147483646]">
-          <UserButton afterSignOutUrl="/" />
-        </div>
-        <FullScreenSetupGate />
-      </>
-    );
+  if (!ready) return <FullScreenSetupGate />;
 
   return <JobPosterDashboardShell>{children}</JobPosterDashboardShell>;
 }
