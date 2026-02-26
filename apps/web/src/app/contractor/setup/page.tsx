@@ -3,8 +3,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
+import dynamic from "next/dynamic";
 
 const CONTRACTOR_TOS_VERSION = "v1.0";
+const OSMMap = dynamic(() => import("@/components/shared/v4/OSMMap"), { ssr: false });
 
 type GeoResult = {
   latitude: number;
@@ -97,6 +99,7 @@ export default function ContractorSetupPage() {
   const [geoQuery, setGeoQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
   const [showGeoSuggestions, setShowGeoSuggestions] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const [homeLatitude, setHomeLatitude] = useState<number | null>(null);
   const [homeLongitude, setHomeLongitude] = useState<number | null>(null);
   const [selectedFormattedAddress, setSelectedFormattedAddress] = useState("");
@@ -220,6 +223,7 @@ export default function ContractorSetupPage() {
     if (!geoQuery.trim()) {
       setGeoResults([]);
       setShowGeoSuggestions(false);
+      setGeoError(null);
       return;
     }
 
@@ -234,10 +238,12 @@ export default function ContractorSetupPage() {
         const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[] };
         const results = Array.isArray(data.results) ? data.results : [];
         setGeoResults(results);
-        setShowGeoSuggestions(results.length > 0);
+        setShowGeoSuggestions(true);
+        setGeoError(null);
       } catch {
         setGeoResults([]);
-        setShowGeoSuggestions(false);
+        setShowGeoSuggestions(true);
+        setGeoError("Address lookup failed. Please try again.");
       }
     }, 300);
 
@@ -260,6 +266,7 @@ export default function ContractorSetupPage() {
     setHomeLongitude(normalized.longitude);
     setGeoResults([]);
     setShowGeoSuggestions(false);
+    setGeoError(null);
   }
 
   async function persistProfile() {
@@ -474,24 +481,31 @@ export default function ContractorSetupPage() {
                     setHomeLatitude(null);
                     setHomeLongitude(null);
                     setShowGeoSuggestions(true);
+                    setGeoError(null);
                   }}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
                   placeholder="Search and select address"
                 />
               </label>
 
-              {showGeoSuggestions && geoResults.length > 0 ? (
+              {showGeoSuggestions ? (
                 <div className="md:col-span-2 max-h-48 overflow-auto rounded-md border border-gray-200">
-                  {geoResults.map((result, idx) => (
-                    <button
-                      key={`${result.formattedAddress}-${idx}`}
-                      type="button"
-                      onClick={() => selectGeo(result)}
-                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                    >
-                      {result.formattedAddress}
-                    </button>
-                  ))}
+                  {geoResults.length > 0 ? (
+                    geoResults.map((result, idx) => (
+                      <button
+                        key={`${result.formattedAddress}-${idx}`}
+                        type="button"
+                        onClick={() => selectGeo(result)}
+                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                      >
+                        {result.formattedAddress}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-gray-600">
+                      {geoError ?? "No matching addresses found."}
+                    </div>
+                  )}
                 </div>
               ) : null}
 
@@ -522,17 +536,8 @@ export default function ContractorSetupPage() {
             <div className="mt-4 space-y-3">
               {selectedFormattedAddress ? (
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{selectedFormattedAddress}</div>
-              ) : (
-                <p className="text-sm text-gray-600">Select an address above to pin your map location.</p>
-              )}
-
-              {homeLatitude != null && homeLongitude != null ? (
-                <iframe
-                  title="Address map preview"
-                  className="h-72 w-full rounded border"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${homeLongitude - 0.01}%2C${homeLatitude - 0.01}%2C${homeLongitude + 0.01}%2C${homeLatitude + 0.01}&layer=mapnik&marker=${homeLatitude}%2C${homeLongitude}`}
-                />
               ) : null}
+              <OSMMap latitude={homeLatitude} longitude={homeLongitude} />
             </div>
           </section>
 
