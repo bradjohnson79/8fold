@@ -25,12 +25,14 @@ function hasMinimumThreeYearsExperience(year: number, month: number) {
 
 function normalizeGeoResult(result: GeoResult) {
   const parts = result.formattedAddress.split(",").map((part) => part.trim()).filter(Boolean);
+  const streetAddress = parts[0] ?? result.formattedAddress;
   const fallbackCity = parts.length >= 3 ? parts[parts.length - 3] : "";
   const fallbackPostal = parts.length >= 2 ? parts[parts.length - 2].split(" ").slice(-2).join(" ").trim() : "";
   const fallbackCountry = parts.length >= 1 ? (parts[parts.length - 1].length === 2 ? parts[parts.length - 1].toUpperCase() : "") : "";
 
   return {
     ...result,
+    streetAddress,
     city: String(result.city ?? fallbackCity).trim(),
     postalCode: String(result.postalCode ?? fallbackPostal).trim(),
     countryCode: String(result.countryCode ?? fallbackCountry).trim().toUpperCase(),
@@ -50,16 +52,21 @@ export default function ContractorSetupPage() {
   const [businessName, setBusinessName] = useState("");
   const [businessNumber, setBusinessNumber] = useState("");
   const [email, setEmail] = useState("");
+
+  const [streetAddress, setStreetAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [countryCode, setCountryCode] = useState("");
+
   const [tradeOptions, setTradeOptions] = useState<string[]>([]);
   const [tradeCategories, setTradeCategories] = useState<string[]>([]);
-  const [serviceRadiusKm, setServiceRadiusKm] = useState(25);
   const [startedTradeYear, setStartedTradeYear] = useState(new Date().getUTCFullYear() - 3);
   const [startedTradeMonth, setStartedTradeMonth] = useState(1);
 
   const [geoQuery, setGeoQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
   const [showGeoSuggestions, setShowGeoSuggestions] = useState(false);
-  const [selectedGeo, setSelectedGeo] = useState<GeoResult | null>(null);
+  const [selectedGeo, setSelectedGeo] = useState<(GeoResult & { streetAddress: string }) | null>(null);
 
   const experienceEligible = useMemo(
     () => hasMinimumThreeYearsExperience(startedTradeYear, startedTradeMonth),
@@ -82,6 +89,7 @@ export default function ContractorSetupPage() {
         const meta = (await metaResp.json().catch(() => ({}))) as { uiOrder?: string[] };
         const json = (await profileResp.json().catch(() => null)) as any;
         if (!alive) return;
+
         if (profileResp.status === 401) {
           window.location.href = "/login?next=/contractor/setup";
           return;
@@ -95,28 +103,37 @@ export default function ContractorSetupPage() {
         setTradeOptions(Array.isArray(meta.uiOrder) ? meta.uiOrder : []);
         const p = json?.profile;
         if (p) {
-          const name = [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || String(p.contactName ?? "").trim();
-          const profileEmail = String(p.email ?? "").trim();
-          setContactName(name || "");
+          const displayName = [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || String(p.contactName ?? "").trim();
+          setContactName(displayName || "");
           setPhone(String(p.phone ?? "").trim());
           setBusinessName(String(p.businessName ?? "").trim());
           setBusinessNumber(String(p.businessNumber ?? "").trim());
-          setEmail(profileEmail);
+          setEmail(String(p.email ?? "").trim());
           setTradeCategories(Array.isArray(p.tradeCategories) ? p.tradeCategories : []);
-          setServiceRadiusKm(Number(p.serviceRadiusKm) || 25);
+
           if (Number.isInteger(p.startedTradeYear)) setStartedTradeYear(p.startedTradeYear);
           if (Number.isInteger(p.startedTradeMonth)) setStartedTradeMonth(p.startedTradeMonth);
           if (p.acceptedTosAt && p.tosVersion) setTermsAccepted(true);
+
+          const savedStreet = String(p.streetAddress ?? "").trim();
+          const savedCity = String(p.city ?? "").trim();
+          const savedPostal = String(p.postalCode ?? "").trim();
+          const savedCountry = String(p.countryCode ?? "").trim().toUpperCase();
+          setStreetAddress(savedStreet);
+          setCity(savedCity);
+          setPostalCode(savedPostal);
+          setCountryCode(savedCountry);
 
           if (typeof p.homeLatitude === "number" && typeof p.homeLongitude === "number") {
             const savedGeo = {
               latitude: p.homeLatitude,
               longitude: p.homeLongitude,
               provinceState: "NA",
-              formattedAddress: String(p.formattedAddress ?? "Saved location"),
-              city: String(p.city ?? ""),
-              postalCode: String(p.postalCode ?? ""),
-              countryCode: String(p.countryCode ?? "").toUpperCase(),
+              formattedAddress: String((p.formattedAddress ?? savedStreet) || "Saved location"),
+              streetAddress: savedStreet || String(p.formattedAddress ?? ""),
+              city: savedCity,
+              postalCode: savedPostal,
+              countryCode: savedCountry,
             };
             setSelectedGeo(savedGeo);
             setGeoQuery(savedGeo.formattedAddress);
@@ -128,6 +145,7 @@ export default function ContractorSetupPage() {
         if (alive) setLoading(false);
       }
     })();
+
     return () => {
       alive = false;
     };
@@ -140,7 +158,7 @@ export default function ContractorSetupPage() {
       return;
     }
 
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const resp = await fetch("/api/web/v4/geo/geocode", {
           method: "POST",
@@ -155,34 +173,38 @@ export default function ContractorSetupPage() {
         setGeoResults([]);
         setShowGeoSuggestions(false);
       }
-    }, 350);
+    }, 300);
 
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [geoQuery]);
 
   function toggleTrade(tc: string) {
     setTradeCategories((prev) => (prev.includes(tc) ? prev.filter((v) => v !== tc) : [...prev, tc]));
   }
 
-  function selectGeo(result: GeoResult) {
+  function handleSelectAddress(result: GeoResult) {
     const normalized = normalizeGeoResult(result);
     setSelectedGeo(normalized);
     setGeoQuery(normalized.formattedAddress);
+    setStreetAddress(normalized.streetAddress);
+    setCity(normalized.city);
+    setPostalCode(normalized.postalCode);
+    setCountryCode(normalized.countryCode);
     setGeoResults([]);
     setShowGeoSuggestions(false);
   }
 
   const canSave = Boolean(
     termsAccepted &&
-      contactName.trim() &&
       phone.trim() &&
       businessName.trim() &&
-      tradeCategories.length > 0 &&
-      serviceRadiusKm > 0 &&
-      selectedGeo?.city?.trim() &&
-      selectedGeo?.postalCode?.trim() &&
-      selectedGeo?.countryCode?.trim() &&
-      experienceEligible,
+      experienceEligible &&
+      streetAddress.trim() &&
+      city.trim() &&
+      postalCode.trim() &&
+      selectedGeo &&
+      Number.isFinite(selectedGeo.latitude) &&
+      Number.isFinite(selectedGeo.longitude),
   );
 
   async function handleSave() {
@@ -195,9 +217,9 @@ export default function ContractorSetupPage() {
     if (!phone.trim()) return setError("Phone Number is required.");
     if (!businessName.trim()) return setError("Business Name is required.");
     if (!experienceEligible) return setError("Minimum 3 years of trade experience required.");
-    if (!selectedGeo) return setError("Select your business location from map search.");
-    if (!selectedGeo.city?.trim() || !selectedGeo.postalCode?.trim() || !selectedGeo.countryCode?.trim()) {
-      return setError("Selected address must include city, postal code, and country.");
+    if (!selectedGeo) return setError("Select a valid address from the search results.");
+    if (!streetAddress.trim() || !city.trim() || !postalCode.trim()) {
+      return setError("Street Address, City, and Postal Code are required.");
     }
 
     setSaving(true);
@@ -209,14 +231,14 @@ export default function ContractorSetupPage() {
         businessNumber: businessNumber.trim() ? businessNumber.trim() : null,
         startedTradeYear,
         startedTradeMonth,
+        streetAddress: streetAddress.trim(),
+        city: city.trim(),
+        postalCode: postalCode.trim(),
+        countryCode: countryCode.trim() || "CA",
+        formattedAddress: selectedGeo.formattedAddress,
         tradeCategories,
-        serviceRadiusKm,
         homeLatitude: selectedGeo.latitude,
         homeLongitude: selectedGeo.longitude,
-        formattedAddress: selectedGeo.formattedAddress,
-        city: selectedGeo.city,
-        postalCode: selectedGeo.postalCode,
-        countryCode: selectedGeo.countryCode,
         acceptedTos: true,
         tosVersion: CONTRACTOR_TOS_VERSION,
       };
@@ -272,45 +294,69 @@ export default function ContractorSetupPage() {
         <div className="mt-8 space-y-6">
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900">Contractor Terms &amp; Conditions {CONTRACTOR_TOS_VERSION}</h2>
-            <div className="mt-4 h-64 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-              <p className="font-semibold">1) Service obligations</p>
+            <div className="mt-4 h-72 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+              <p className="font-semibold">1. Professional Standards &amp; Conduct</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Provide services professionally, safely, and within agreed timelines.</li>
-                <li>Maintain valid credentials and trade capability for accepted jobs.</li>
+                <li>Contractor agrees to maintain professional conduct at all times.</li>
+                <li>Contractor shall not engage in harassment, discrimination, abusive language, intimidation, threats, or violence.</li>
+                <li>Any confirmed act of theft, harassment, physical aggression, or criminal misconduct will result in immediate termination and permanent account ban.</li>
+                <li>Terminated accounts remain archived for compliance and record-keeping.</li>
+                <li>Contractor must meet a minimum 3-year trade experience requirement to onboard on the platform.</li>
               </ul>
-              <p className="mt-3 font-semibold">2) Professionalism requirements</p>
+
+              <p className="mt-3 font-semibold">2. Service Obligations</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Maintain respectful conduct with job posters, contractors, and platform staff.</li>
-                <li>Arrive prepared with suitable tools and equipment.</li>
+                <li>Contractor agrees to complete accepted jobs in good faith.</li>
+                <li>Contractor must arrive at scheduled appointments on time.</li>
+                <li>Contractor must maintain clear and timely communication with Job Posters.</li>
+                <li>Contractor is responsible for scheduling agreed appointment times after accepting a job.</li>
               </ul>
-              <p className="mt-3 font-semibold">3) Communication responsibility</p>
+
+              <p className="mt-3 font-semibold">3. No-Show &amp; Scheduling Policy</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Respond promptly to routing, scheduling, and support communications.</li>
-                <li>Provide timely updates for delays or scope changes.</li>
+                <li>Failure to appear at a confirmed job may result in suspension for up to 3 months.</li>
+                <li>Failure to coordinate and confirm appointment scheduling after accepting a job may result in a reprimand.</li>
+                <li>8Fold operates a 3-strike system for scheduling failures.</li>
+                <li>Accumulation of 3 strikes may result in a 1-month suspension.</li>
               </ul>
-              <p className="mt-3 font-semibold">4) No-show expectations</p>
+
+              <p className="mt-3 font-semibold">4. Payout Conditions</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>No-shows and unresponsiveness may result in strikes, suspension, or removal.</li>
+                <li>Contractor payments are processed according to platform payout schedule.</li>
+                <li>Contractor is responsible for maintaining valid payout configuration.</li>
+                <li>Delays caused by incorrect payout information are the Contractor&apos;s responsibility.</li>
+                <li>Fraudulent payout claims may result in permanent termination.</li>
               </ul>
-              <p className="mt-3 font-semibold">5) Dispute cooperation</p>
+
+              <p className="mt-3 font-semibold">5. Parts &amp; Materials (P&amp;M)</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Cooperate with evidence requests and mediation procedures.</li>
+                <li>P&amp;M requests must be submitted through platform.</li>
+                <li>Receipts must reflect actual purchases.</li>
+                <li>Misrepresentation of material costs may result in suspension or termination.</li>
+                <li>Platform may audit receipts.</li>
               </ul>
-              <p className="mt-3 font-semibold">6) Payment compliance</p>
+
+              <p className="mt-3 font-semibold">6. Tax Responsibility</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Follow platform payment and invoice rules. Off-platform payment solicitation is prohibited.</li>
+                <li>Contractor is an independent service provider.</li>
+                <li>Contractor is solely responsible for their own income tax obligations.</li>
+                <li>8Fold does not withhold income tax on Contractor earnings.</li>
               </ul>
-              <p className="mt-3 font-semibold">7) Platform policy adherence</p>
+
+              <p className="mt-3 font-semibold">7. Suspension &amp; Termination</p>
+              <p className="mt-1 font-medium">Immediate termination occurs for:</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Comply with platform terms, privacy, and marketplace rules.</li>
+                <li>Theft</li>
+                <li>Harassment</li>
+                <li>Violence</li>
+                <li>Fraud</li>
+                <li>Material misrepresentation</li>
               </ul>
-              <p className="mt-3 font-semibold">8) Minimum experience</p>
+              <p className="mt-2 font-medium">Suspension may occur for:</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>At least 3 years of trade experience is required for onboarding approval.</li>
-              </ul>
-              <p className="mt-3 font-semibold">9) Grounds for strike/suspension</p>
-              <ul className="ml-5 list-disc space-y-1">
-                <li>Fraud, no-shows, unsafe conduct, harassment, and repeated policy violations may trigger account action.</li>
+                <li>Repeated no-shows</li>
+                <li>Strike accumulation</li>
+                <li>Policy violations</li>
               </ul>
             </div>
             <label className="mt-4 flex items-center gap-3 text-sm font-medium text-gray-800">
@@ -336,6 +382,7 @@ export default function ContractorSetupPage() {
                   className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
                 />
               </label>
+
               <label className="block">
                 <span className="text-sm font-medium text-gray-700">Email</span>
                 <input
@@ -345,6 +392,7 @@ export default function ContractorSetupPage() {
                   className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
                 />
               </label>
+
               <label className="block md:col-span-2">
                 <span className="text-sm font-medium text-gray-700">Phone Number *</span>
                 <input
@@ -355,6 +403,70 @@ export default function ContractorSetupPage() {
                   placeholder="+1 555 123 4567"
                 />
               </label>
+
+              <label className="block md:col-span-2">
+                <span className="text-sm font-medium text-gray-700">Street Address *</span>
+                <input
+                  type="text"
+                  value={geoQuery}
+                  onChange={(e) => {
+                    setGeoQuery(e.target.value);
+                    setStreetAddress(e.target.value);
+                    setShowGeoSuggestions(true);
+                    setSelectedGeo(null);
+                  }}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                  placeholder="Search and select address"
+                />
+              </label>
+
+              {showGeoSuggestions && geoResults.length > 0 ? (
+                <div className="md:col-span-2 max-h-48 overflow-auto rounded-md border border-gray-200">
+                  {geoResults.map((result, idx) => (
+                    <button
+                      key={`${result.formattedAddress}-${idx}`}
+                      type="button"
+                      onClick={() => handleSelectAddress(result)}
+                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      {result.formattedAddress}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">City *</span>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Postal Code *</span>
+                <input
+                  type="text"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              {selectedGeo ? (
+                <div className="md:col-span-2 space-y-3">
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    {selectedGeo.formattedAddress}
+                  </div>
+                  <iframe
+                    title="Address map preview"
+                    className="h-72 w-full rounded border"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedGeo.longitude - 0.01}%2C${selectedGeo.latitude - 0.01}%2C${selectedGeo.longitude + 0.01}%2C${selectedGeo.latitude + 0.01}&layer=mapnik&marker=${selectedGeo.latitude}%2C${selectedGeo.longitude}`}
+                  />
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -371,6 +483,7 @@ export default function ContractorSetupPage() {
                   placeholder="ABC Contracting"
                 />
               </label>
+
               <label className="block">
                 <span className="text-sm font-medium text-gray-700">Business Number (optional)</span>
                 <input
@@ -381,6 +494,7 @@ export default function ContractorSetupPage() {
                   placeholder="123456789"
                 />
               </label>
+
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700">Started Trade Work In: Year *</span>
@@ -396,6 +510,7 @@ export default function ContractorSetupPage() {
                     ))}
                   </select>
                 </label>
+
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700">Month *</span>
                   <select
@@ -419,86 +534,25 @@ export default function ContractorSetupPage() {
 
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900">Service Details</h2>
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Trade Categories *</span>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {tradeOptions.map((tc) => (
-                    <button
-                      key={tc}
-                      type="button"
-                      onClick={() => toggleTrade(tc)}
-                      className={`rounded-full px-3 py-1 text-sm ${
-                        tradeCategories.includes(tc)
-                          ? "bg-green-600 text-white"
-                          : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      {tc}
-                    </button>
-                  ))}
-                </div>
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Service Radius (km) *</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={serviceRadiusKm}
-                  onChange={(e) => setServiceRadiusKm(Number(e.target.value) || 0)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900">Map Location</h2>
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Search Address *</span>
-                <input
-                  type="text"
-                  value={geoQuery}
-                  onChange={(e) => {
-                    setGeoQuery(e.target.value);
-                    setShowGeoSuggestions(true);
-                    setSelectedGeo(null);
-                  }}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Start typing address..."
-                />
-              </label>
-
-              {showGeoSuggestions && geoResults.length > 0 ? (
-                <div className="max-h-48 overflow-auto rounded-md border border-gray-200">
-                  {geoResults.map((r, idx) => (
-                    <button
-                      key={`${r.formattedAddress}-${idx}`}
-                      type="button"
-                      onClick={() => selectGeo(r)}
-                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                    >
-                      {r.formattedAddress}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {selectedGeo ? (
-                <>
-                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    {selectedGeo.formattedAddress}
-                  </div>
-                  <iframe
-                    title="OSM preview"
-                    className="h-72 w-full rounded border"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedGeo.longitude - 0.01}%2C${selectedGeo.latitude - 0.01}%2C${selectedGeo.longitude + 0.01}%2C${selectedGeo.latitude + 0.01}&layer=mapnik&marker=${selectedGeo.latitude}%2C${selectedGeo.longitude}`}
-                  />
-                </>
-              ) : null}
-            </div>
+            <label className="mt-4 block">
+              <span className="text-sm font-medium text-gray-700">Trade Categories *</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tradeOptions.map((trade) => (
+                  <button
+                    key={trade}
+                    type="button"
+                    onClick={() => toggleTrade(trade)}
+                    className={`rounded-full px-3 py-1 text-sm ${
+                      tradeCategories.includes(trade)
+                        ? "bg-green-600 text-white"
+                        : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {trade}
+                  </button>
+                ))}
+              </div>
+            </label>
           </section>
 
           <div className="flex items-center gap-4 pt-4">
