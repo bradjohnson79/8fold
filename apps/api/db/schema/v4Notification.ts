@@ -1,4 +1,4 @@
-import { index, jsonb, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, text, timestamp } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 
 export const v4Notifications = dbSchema.table(
@@ -6,17 +6,20 @@ export const v4Notifications = dbSchema.table(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
-    jobId: text("job_id"),
+    role: text("role").notNull().default("SYSTEM"),
     type: text("type").notNull(),
     title: text("title").notNull(),
-    body: text("body"),
-    metadata: jsonb("metadata"),
+    message: text("message").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    read: boolean("read").notNull().default(false),
+    priority: text("priority").notNull().default("NORMAL"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-    readAt: timestamp("read_at", { mode: "date" }),
   },
   (t) => ({
-    userCreatedIdx: index("v4_notifications_user_created_idx").on(t.userId, t.createdAt),
-    userReadIdx: index("v4_notifications_user_read_idx").on(t.userId, t.readAt),
-    jobTypeIdx: index("v4_notifications_job_type_idx").on(t.jobId, t.type),
+    userIdx: index("v4_notifications_user_idx").on(t.userId),
+    readIdx: index("v4_notifications_read_idx").on(t.read),
+    priorityIdx: index("v4_notifications_priority_idx").on(t.priority),
+    createdIdx: index("v4_notifications_created_idx").on(t.createdAt),
   }),
 );

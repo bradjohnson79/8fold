@@ -90,11 +90,13 @@ export async function acceptInvite(contractorUserId: string, jobId: string) {
       await tx.insert(v4Notifications).values({
         id: randomUUID(),
         userId: contractorUserId,
-        jobId,
+        role: "CONTRACTOR",
         type: "PAYMENT_SETUP_REQUIRED",
         title: "Payment setup required",
-        body: "You must complete Payment Setup before accepting jobs.",
-        metadata: { jobId },
+        message: "You must complete Payment Setup before accepting jobs.",
+        entityType: "JOB",
+        entityId: jobId,
+        priority: "HIGH",
         createdAt: new Date(),
       });
       throw forbidden("V4_PAYMENT_SETUP_REQUIRED", "You must complete Payment Setup before accepting jobs.");
@@ -129,11 +131,13 @@ export async function acceptInvite(contractorUserId: string, jobId: string) {
     await tx.insert(v4Notifications).values({
       id: randomUUID(),
       userId: jobPosterUserId,
-      jobId,
+      role: "JOB_POSTER",
       type: "CONTRACTOR_ASSIGNED",
       title: "Contractor Assigned",
-      body: "A contractor has been assigned to your job.",
-      metadata: { assignmentId, contractorUserId },
+      message: "A contractor has been assigned to your job.",
+      entityType: "JOB",
+      entityId: jobId,
+      priority: "NORMAL",
       createdAt: new Date(),
     });
 

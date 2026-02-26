@@ -21,14 +21,16 @@ export default function AdminSignupClient() {
     setBusy(true);
     setError(null);
     try {
-      const resp = await fetch("/api/admin/signup", {
+      const resp = await fetch("/api/admin/v4/auth/bootstrap", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password, adminSecret }),
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok || !json || json.ok !== true) {
-        setError(resp.status === 403 ? "Invalid admin secret code" : "Signup failed");
+        const msg = String(json?.error?.message ?? "");
+        if (resp.status === 403 && msg) setError(msg);
+        else setError(resp.status === 403 ? "Invalid bootstrap/invite token" : "Signup failed");
         return;
       }
       setSuccess(true);
@@ -179,4 +181,3 @@ export default function AdminSignupClient() {
     </div>
   );
 }
-

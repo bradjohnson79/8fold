@@ -3,7 +3,7 @@ import { getValidatedApiOrigin } from "@/server/env";
 
 export async function POST(req: Request) {
   const apiOrigin = getValidatedApiOrigin();
-  const url = `${apiOrigin}/api/admin/password`;
+  const url = `${apiOrigin}/api/admin/v4/auth/password`;
 
   const body = await req.text();
   const resp = await fetch(url, {
@@ -23,4 +23,3 @@ export async function POST(req: Request) {
   res.headers.set("content-type", resp.headers.get("content-type") ?? "application/json");
   return res;
 }
-

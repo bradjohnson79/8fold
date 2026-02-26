@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 import { redirect } from "next/navigation";
 
 type TradeRow = {
@@ -132,7 +132,7 @@ export default async function ImageAuditPage({
     const dryRun = String(formData.get("dryRun") ?? "false") === "true";
 
     try {
-      const res = await adminApiFetch<{ inserted: number; attempted: number }>(`/api/admin/jobs/image-audit/assign`, {
+      const res = await adminApiFetch<{ inserted: number; attempted: number }>(`/api/admin/v4/jobs/image-audit/assign`, {
         method: "POST",
         body: JSON.stringify({ mockOnly: mockOnly2, includeArchived: includeArchived2, dryRun, take: 2000 }),
       });
@@ -158,7 +158,7 @@ export default async function ImageAuditPage({
   let data: AuditResp | null = null;
   let err: string | null = null;
   try {
-    data = await adminApiFetch<AuditResp>(`/api/admin/jobs/image-audit${qs({ mockOnly, includeArchived })}`);
+    data = await adminApiFetch<AuditResp>(`/api/admin/v4/jobs/image-audit${qs({ mockOnly, includeArchived })}`);
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load";
   }

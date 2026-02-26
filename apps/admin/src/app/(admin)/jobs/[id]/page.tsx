@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 import { JobActionGuards } from "@/components/admin/JobActionGuards";
 import { AdminActionsLogClient } from "@/components/admin/AdminActionsLogClient";
 
@@ -20,7 +20,7 @@ async function act(formData: FormData) {
 
   try {
     if (kind === "archive") {
-      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/archive`, {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(jobId)}/archive`, {
         method: "PATCH",
         body: JSON.stringify({ reason: archiveReason || reason || "Archived by admin" }),
       });
@@ -28,22 +28,22 @@ async function act(formData: FormData) {
       redirect(`/jobs?archived=true&q=${encodeURIComponent(jobId)}&msg=archived`);
     }
     if (kind === "refund") {
-      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/refund`, { method: "POST" });
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(jobId)}/refund`, { method: "POST" });
       redirect(`/jobs/${encodeURIComponent(jobId)}?msg=refund_requested`);
     }
     if (kind === "force_approve") {
-      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/complete`, {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(jobId)}/complete`, {
         method: "POST",
         body: JSON.stringify({ override: true, reason: reason || "Admin override" }),
       });
       redirect(`/jobs/${encodeURIComponent(jobId)}?msg=force_approved`);
     }
     if (kind === "reroute") {
-      await adminApiFetch(`/api/admin/router/jobs/${encodeURIComponent(jobId)}/route`, { method: "POST" });
+      await adminApiFetch(`/api/admin/v4/router/jobs/${encodeURIComponent(jobId)}/route`, { method: "POST" });
       redirect(`/jobs/${encodeURIComponent(jobId)}?msg=rerouted`);
     }
     if (kind === "escalate_dispute") {
-      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/escalate-dispute`, {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(jobId)}/escalate-dispute`, {
         method: "POST",
         body: JSON.stringify({
           againstRole: againstRole || "CONTRACTOR",
@@ -55,7 +55,7 @@ async function act(formData: FormData) {
       redirect(`/jobs/${encodeURIComponent(jobId)}?msg=dispute_escalated`);
     }
     if (kind === "release") {
-      await adminApiFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/release`, { method: "POST" });
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(jobId)}/release`, { method: "POST" });
       redirect(`/jobs/${encodeURIComponent(jobId)}?msg=release_attempted`);
     }
   } catch (e) {
@@ -138,7 +138,7 @@ export default async function JobDetailPage({
   let job: JobDetail | null = null;
   let loadErr: string | null = null;
   try {
-    job = await adminApiFetch<JobDetail>(`/api/admin/jobs/${encodeURIComponent(id)}`);
+    job = await adminApiFetch<JobDetail>(`/api/admin/v4/jobs/${encodeURIComponent(id)}`);
   } catch (e) {
     loadErr = e instanceof Error ? e.message : "Failed to load job";
   }
@@ -158,7 +158,7 @@ export default async function JobDetailPage({
   const j: any = job!;
   let adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" = "ADMIN_OPERATOR";
   try {
-    const me = await adminApiFetch<{ adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" }>(`/api/admin/me`);
+    const me = await adminApiFetch<{ adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" }>(`/api/admin/v4/me`);
     adminTier = (me as any)?.adminTier ?? "ADMIN_OPERATOR";
   } catch {
     adminTier = "ADMIN_OPERATOR";
@@ -166,7 +166,7 @@ export default async function JobDetailPage({
   let auditLogs: AuditLogRow[] = [];
   try {
     const al = await adminApiFetch<{ auditLogs: AuditLogRow[] }>(
-      `/api/admin/audit-logs?entityType=Job&entityId=${encodeURIComponent(String(j.id))}&take=30`,
+      `/api/admin/v4/audit-logs?entityType=Job&entityId=${encodeURIComponent(String(j.id))}&take=30`,
     );
     auditLogs = (al as any)?.auditLogs ?? [];
   } catch {

@@ -1,10 +1,10 @@
-import { index, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, text, timestamp } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 
 export const v4AdminIntegrityAlerts = dbSchema.table(
   "v4_admin_integrity_alerts",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: text("id").primaryKey(),
     type: text("type").notNull(),
     severity: text("severity").notNull().default("MEDIUM"),
     entityType: text("entity_type").notNull(),

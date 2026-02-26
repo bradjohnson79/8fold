@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { validateAdminEnv } from "@/server/env";
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 
 // Phase 16: Fail-fast env validation. Admin must not boot with invalid API origin.
 // Runs once per module load and does not depend on request context.
@@ -12,7 +12,7 @@ export default async function AdminAppLayout({ children }: { children: React.Rea
     const me = await adminApiFetch<{
       admin: { id: string; email: string; role: string };
       adminTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
-    }>("/api/admin/me", { method: "GET" });
+    }>("/api/admin/v4/me", { method: "GET" });
     const admin = (me as any)?.admin ?? null;
     const tier = String((me as any)?.adminTier ?? "ADMIN_OPERATOR").trim().toUpperCase();
 

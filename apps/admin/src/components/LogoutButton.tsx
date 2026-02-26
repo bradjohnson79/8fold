@@ -10,7 +10,7 @@ export function LogoutButton() {
     setLoading(true);
     setError(null);
     try {
-      await fetch("/api/admin/logout", { method: "POST" });
+      await fetch("/api/admin/v4/auth/logout", { method: "POST" });
       window.location.href = "/login";
     } catch (e) {
       console.error("[ADMIN:logout:client:error]", {
@@ -47,4 +47,3 @@ export function LogoutButton() {
     </div>
   );
 }
-
