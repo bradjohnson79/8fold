@@ -55,9 +55,9 @@ export default function PostJobPage() {
     (async () => {
       try {
         const [metaResp, profileResp, paymentResp] = await Promise.all([
-          fetch("/api/web/v4/meta/trade-categories", { cache: "no-store" }),
-          fetch("/api/web/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
-          fetch("/api/web/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
+          fetch("/api/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
         ]);
         const meta = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profile = (await profileResp.json().catch(() => ({}))) as { profile?: Partial<GeoResult> };
