@@ -1,12 +1,32 @@
+const DEFAULT_SERVER_ORIGINS: Record<"API_ORIGIN" | "ADMIN_ORIGIN" | "WEB_ORIGIN", string> = {
+  API_ORIGIN: "https://api.8fold.app",
+  ADMIN_ORIGIN: "https://admin.8fold.app",
+  WEB_ORIGIN: "https://8fold.app",
+};
+
 function resolveOrigin(opts: {
   label: "API_ORIGIN" | "ADMIN_ORIGIN" | "WEB_ORIGIN";
   raw: string | null | undefined;
 }): string {
-  const base = String(opts.raw ?? "").trim().replace(/\/+$/, "");
-  if (!base) {
+  const input = String(opts.raw ?? DEFAULT_SERVER_ORIGINS[opts.label]).trim();
+  if (!input) {
     throw new Error(`${opts.label} is not set`);
   }
-  return base;
+  const candidate = /^https?:\/\//i.test(input) ? input : `https://${input}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error(`${opts.label} must be a valid URL/host, received "${input}"`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    throw new Error(`${opts.label} must be a server-side domain (localhost is not allowed)`);
+  }
+
+  return parsed.origin.replace(/\/+$/, "");
 }
 
 function logBootConfigOnce() {
@@ -162,4 +182,3 @@ export async function adminFetch(reqInit: {
 
 // Trigger one-time boot diagnostics when this module loads.
 logBootConfigOnce();
-

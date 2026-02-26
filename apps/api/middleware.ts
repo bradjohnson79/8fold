@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { logBootConfigOnce } from "./src/server/bootConfig";
+import { getAdminOrigin, logBootConfigOnce } from "./src/server/bootConfig";
 
 logBootConfigOnce();
 
-// Admin UI is served from apps/web (default local dev port 3006).
+// Admin UI is served from the configured admin origin.
 // This middleware only applies to direct /api/admin/* calls to apps/api.
-const ADMIN_ORIGIN = String(process.env.ADMIN_ORIGIN ?? "").trim().replace(/\/+$/, "");
+const ADMIN_ORIGIN = getAdminOrigin();
 
 export function middleware(req: Request) {
   const url = new URL(req.url);
@@ -18,8 +18,7 @@ export function middleware(req: Request) {
 
   // CORS: allow admin origin without credentials (browser should not call API directly,
   // but when it does we still want deterministic preflight + 401 behavior).
-  const origin = req.headers.get("origin") ?? "";
-  const allowOrigin = origin === ADMIN_ORIGIN ? ADMIN_ORIGIN : ADMIN_ORIGIN;
+  const allowOrigin = ADMIN_ORIGIN;
 
   function withCors(resp: Response): Response {
     resp.headers.set("Access-Control-Allow-Origin", allowOrigin);
@@ -97,4 +96,3 @@ export function middleware(req: Request) {
 export const config = {
   matcher: ["/((?!_next|.*\\..*).*)", "/api/(.*)"]
 };
-
