@@ -25,6 +25,13 @@ export type SetupIntentPayload = {
   currency: SupportedCurrency;
 };
 
+type UserPaymentRow = {
+  stripeCustomerId: string | null;
+  stripeDefaultPaymentMethodId: string | null;
+  stripeStatus: string | null;
+  stripeUpdatedAt: Date | null;
+};
+
 function normalizeCountryCode(value: string | null | undefined): string {
   return String(value ?? "").trim().toUpperCase();
 }
@@ -94,8 +101,11 @@ async function customerExistsInCurrentStripeAccount(customerId: string): Promise
   }
 }
 
-export async function getJobPosterPaymentStatus(userId: string): Promise<PaymentStatus> {
-  const currency = await getJobPosterCurrency(userId);
+function isConnectedInDb(row: UserPaymentRow | null): boolean {
+  return Boolean(row?.stripeDefaultPaymentMethodId && row?.stripeStatus === "CONNECTED");
+}
+
+async function readUserPaymentRow(userId: string): Promise<UserPaymentRow | null> {
   const rows = await db
     .select({
       stripeCustomerId: users.stripeCustomerId,
@@ -107,8 +117,66 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
     .where(eq(users.id, userId))
     .limit(1);
 
-  const u = rows[0] ?? null;
-  const connected = Boolean(u?.stripeDefaultPaymentMethodId && u?.stripeStatus === "CONNECTED");
+  return rows[0] ?? null;
+}
+
+async function reconcileConnectionFromStripe(userId: string, row: UserPaymentRow | null): Promise<UserPaymentRow | null> {
+  if (!stripe || !row?.stripeCustomerId || isConnectedInDb(row)) return row;
+
+  try {
+    const customer = await stripe.customers.retrieve(row.stripeCustomerId, {
+      expand: ["invoice_settings.default_payment_method"],
+    });
+    if ("deleted" in customer && customer.deleted) return row;
+
+    const invoiceDefault = customer.invoice_settings?.default_payment_method;
+    let paymentMethodId =
+      typeof invoiceDefault === "string" ? invoiceDefault : (invoiceDefault as any)?.id ?? null;
+
+    if (!paymentMethodId) {
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: row.stripeCustomerId,
+        type: "card",
+        limit: 1,
+      });
+      paymentMethodId = paymentMethods.data[0]?.id ?? null;
+    }
+
+    if (!paymentMethodId) return row;
+
+    if (!invoiceDefault) {
+      await stripe.customers.update(row.stripeCustomerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    }
+
+    const now = new Date();
+    await db
+      .update(users)
+      .set({
+        stripeDefaultPaymentMethodId: paymentMethodId,
+        stripeStatus: "CONNECTED",
+        stripeUpdatedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(users.id, userId));
+
+    return {
+      ...row,
+      stripeDefaultPaymentMethodId: paymentMethodId,
+      stripeStatus: "CONNECTED",
+      stripeUpdatedAt: now,
+    };
+  } catch {
+    return row;
+  }
+}
+
+export async function getJobPosterPaymentStatus(userId: string): Promise<PaymentStatus> {
+  const currency = await getJobPosterCurrency(userId);
+  const baseRow = await readUserPaymentRow(userId);
+  const u = await reconcileConnectionFromStripe(userId, baseRow);
+  const connected = isConnectedInDb(u);
   let lastFour: string | undefined;
 
   if (connected && u?.stripeDefaultPaymentMethodId && stripe) {
