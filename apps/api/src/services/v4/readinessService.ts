@@ -31,8 +31,8 @@ export async function getV4Readiness(userId: string) {
       contractor.tradeCategories.length > 0 &&
       contractor.homeLatitude != null &&
       contractor.homeLongitude != null &&
-      contractor.formattedAddress &&
-      contractor.formattedAddress.trim().length > 0 &&
+      contractor.streetAddress &&
+      contractor.streetAddress.trim().length > 0 &&
       contractor.city &&
       contractor.city.trim().length > 0 &&
       contractor.postalCode &&
