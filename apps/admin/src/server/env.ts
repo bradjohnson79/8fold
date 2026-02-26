@@ -1,11 +1,16 @@
 export function getValidatedApiOrigin(): string {
   // Admin remains DB-free and proxies to apps/api only.
-  // Prefer NEXT_PUBLIC_API_URL for Vercel compatibility; allow API_ORIGIN override.
+  // Server-side API origin is sourced from API_ORIGIN only.
   // Admin never connects to DB directly; it proxies to apps/api only.
-  const raw = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_ORIGIN ?? "https://api.8fold.app";
+  const raw = process.env.API_ORIGIN;
   const value = String(raw ?? "").trim();
   if (!value) {
-    throw new Error("NEXT_PUBLIC_API_URL (or API_ORIGIN) is required for apps/admin");
+    const mode = String(process.env.NODE_ENV ?? "").trim().toLowerCase();
+    const message =
+      mode && mode !== "development"
+        ? "CONFIG_ORIGIN_MISSING:API_ORIGIN"
+        : "API_ORIGIN is not set. Set API_ORIGIN in your environment.";
+    throw Object.assign(new Error(message), { code: "CONFIG_ORIGIN_MISSING", originVar: "API_ORIGIN" });
   }
 
   const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
@@ -13,15 +18,17 @@ export function getValidatedApiOrigin(): string {
   try {
     parsed = new URL(candidate);
   } catch {
-    throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must be a valid URL, received "${value}"`);
+    throw Object.assign(new Error("CONFIG_ORIGIN_INVALID:API_ORIGIN"), {
+      code: "CONFIG_ORIGIN_INVALID",
+      originVar: "API_ORIGIN",
+    });
   }
 
   if (!parsed.protocol || !parsed.host) {
-    throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must include protocol and host, received "${value}"`);
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-    throw new Error("NEXT_PUBLIC_API_URL (or API_ORIGIN) must be a server-side domain (localhost is not allowed)");
+    throw Object.assign(new Error("CONFIG_ORIGIN_INVALID:API_ORIGIN"), {
+      code: "CONFIG_ORIGIN_INVALID",
+      originVar: "API_ORIGIN",
+    });
   }
 
   return parsed.origin.replace(/\/+$/, "");
@@ -35,7 +42,6 @@ function logAdminEnvOnce(): void {
 
   // eslint-disable-next-line no-console
   console.log("[ADMIN ENV]", {
-    NEXT_PUBLIC_API_URL: String(process.env.NEXT_PUBLIC_API_URL ?? "").trim(),
     API_ORIGIN: String(process.env.API_ORIGIN ?? "").trim(),
   });
 
@@ -62,7 +68,7 @@ export function validateAdminEnv(): void {
     void getValidatedApiOrigin();
     logAdminEnvOnce();
   } catch (e) {
-    // Log before rethrow so Vercel logs show the cause (e.g. missing NEXT_PUBLIC_API_URL)
+    // Log before rethrow so Vercel logs show the cause (e.g. missing API_ORIGIN)
     console.error("[ADMIN_ENV_ERROR]", { message: (e as Error)?.message });
     throw e;
   }

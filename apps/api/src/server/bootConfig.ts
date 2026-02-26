@@ -1,10 +1,14 @@
 type OriginEnvName = "API_ORIGIN" | "ADMIN_ORIGIN" | "WEB_ORIGIN";
 
-const DEFAULT_SERVER_ORIGINS: Record<OriginEnvName, string> = {
-  API_ORIGIN: "https://api.8fold.app",
-  ADMIN_ORIGIN: "https://admin.8fold.app",
-  WEB_ORIGIN: "https://8fold.app",
-};
+function missingOriginError(name: OriginEnvName): Error {
+  const mode = String(process.env.NODE_ENV ?? "").trim().toLowerCase();
+  const baseMessage = `${name} is not set`;
+  const message =
+    mode && mode !== "development"
+      ? `CONFIG_ORIGIN_MISSING:${name}`
+      : `${baseMessage}. Set ${name} in your environment.`;
+  return Object.assign(new Error(message), { code: "CONFIG_ORIGIN_MISSING", originVar: name });
+}
 
 function resolve(name: string, raw: string | undefined): string {
   const v = String(raw ?? "").trim().replace(/\/+$/, "");
@@ -15,9 +19,9 @@ function resolve(name: string, raw: string | undefined): string {
 }
 
 function resolveOrigin(name: OriginEnvName, raw: string | undefined): string {
-  const input = String(raw ?? DEFAULT_SERVER_ORIGINS[name]).trim();
+  const input = String(raw ?? "").trim();
   if (!input) {
-    throw new Error(`${name} is not set`);
+    throw missingOriginError(name);
   }
   const candidate = /^https?:\/\//i.test(input) ? input : `https://${input}`;
 
@@ -25,12 +29,7 @@ function resolveOrigin(name: OriginEnvName, raw: string | undefined): string {
   try {
     parsed = new URL(candidate);
   } catch {
-    throw new Error(`${name} must be a valid URL/host, received "${input}"`);
-  }
-
-  const host = parsed.hostname.toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-    throw new Error(`${name} must be a server-side domain (localhost is not allowed)`);
+    throw Object.assign(new Error(`CONFIG_ORIGIN_INVALID:${name}`), { code: "CONFIG_ORIGIN_INVALID", originVar: name });
   }
 
   return parsed.origin.replace(/\/+$/, "");
