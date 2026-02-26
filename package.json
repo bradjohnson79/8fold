@@ -40,6 +40,8 @@
     "db:studio": "node -e \"console.error('❌ No DB studio configured.'); process.exit(1)\"",
     "check:no-legacy-job-wizard": "bash scripts/no-legacy-job-wizard.sh",
     "guard:financial-schema": "bash scripts/financial-schema-guard.sh",
+    "admin:v4:preflight": "node scripts/preflight-admin-v4.mjs",
+    "admin:v4:scan": "node scripts/admin-v4-static-scan.mjs",
     "verify:prod-schema": "pnpm -C apps/api verify:prod-schema",
     "check:prod": "pnpm -C apps/api check:prod",
     "seed:prod": "pnpm -C apps/api seed:prod"

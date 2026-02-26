@@ -5,7 +5,7 @@ export function NotAuthorized(props: { role?: string | null }) {
 
   async function signOut() {
     try {
-      await fetch("/api/admin/logout", { method: "POST" });
+      await fetch("/api/admin/v4/auth/logout", { method: "POST" });
     } catch {
       // best-effort
     }
@@ -54,4 +54,3 @@ export function NotAuthorized(props: { role?: string | null }) {
     </div>
   );
 }
-

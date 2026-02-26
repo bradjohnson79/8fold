@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 import { redirect } from "next/navigation";
 
 type TitleAuditItem = {
@@ -141,7 +141,7 @@ export default async function TitleAuditPage({
         : { jobIds: ids, onlyFlagged: onlyFlagged2, includeArchived: includeArchived2 };
 
     try {
-      const res = await adminApiFetch<{ updated: number }>(`/api/admin/jobs/title-audit/rewrite`, {
+      const res = await adminApiFetch<{ updated: number }>(`/api/admin/v4/jobs/title-audit/rewrite`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -172,7 +172,7 @@ export default async function TitleAuditPage({
   let err: string | null = null;
   try {
     const data = await adminApiFetch<{ items: TitleAuditItem[] }>(
-      `/api/admin/jobs/title-audit${qs({
+      `/api/admin/v4/jobs/title-audit${qs({
         q: q || undefined,
         take,
         onlyFlagged,

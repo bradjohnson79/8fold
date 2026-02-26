@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 
 type UserRow = {
   id: string;
@@ -127,7 +127,7 @@ export default async function UsersPage({
   let data: UsersResp | null = null;
   let err: string | null = null;
   try {
-    data = await adminApiFetch<UsersResp>(`/api/admin/users${apiQuery}`);
+    data = await adminApiFetch<UsersResp>(`/api/admin/v4/users${apiQuery}`);
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load users";
   }

@@ -24,6 +24,14 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Payouts", href: "/payouts", match: "prefix" },
       { label: "Disputes", href: "/disputes", match: "prefix" },
       { label: "Support", href: "/support", match: "prefix" },
+      { label: "Notifications", href: "/notifications", match: "prefix" },
+    ],
+  },
+  {
+    title: "Finance",
+    items: [
+      { label: "Tax Regions", href: "/tax/regions", match: "prefix" },
+      { label: "Tax Settings", href: "/tax/settings", match: "prefix" },
     ],
   },
   {
@@ -97,4 +105,3 @@ export function AdminSidebar({
     </div>
   );
 }
-
