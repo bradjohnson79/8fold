@@ -57,7 +57,7 @@ export async function geocodeWithOsm(query: string): Promise<{ ok: true; results
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: {
-      "User-Agent": "8Fold-App",
+      "User-Agent": "8Fold/1.0 (contact@8fold.app)",
       Accept: "application/json",
     },
     cache: "no-store",
