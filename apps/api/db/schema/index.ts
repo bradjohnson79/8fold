@@ -64,4 +64,4 @@ export * from "./v4MessageThread";
 export * from "./v4SupportTicket";
 export * from "./v4PmRequest";
 export * from "./v4PmRequestItem";
-
+export * from "./v4Notification";
