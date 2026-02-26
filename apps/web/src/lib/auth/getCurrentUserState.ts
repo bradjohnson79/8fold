@@ -52,16 +52,24 @@ export async function getCurrentUserState(): Promise<CurrentUserState | null> {
   let acceptedTos = false;
   try {
     const sessionToken = await requireApiToken();
-    const resp = await apiFetch({ path: "/api/web/v4/readiness", method: "GET", sessionToken });
-    const json = (await resp.json().catch(() => null)) as any;
-    if (resp.ok && json) {
-      if (role === "JOB_POSTER") {
-        profileComplete = Boolean(json.jobPosterReady);
-        acceptedTos = Boolean(json.jobPosterAcceptedTos);
-      } else {
-        profileComplete =
-          role === "CONTRACTOR" ? Boolean(json.contractorReady) : role === "ROUTER" ? Boolean(json.routerReady) : false;
-        acceptedTos = profileComplete;
+    if (role === "JOB_POSTER") {
+      const posterResp = await apiFetch({ path: "/api/web/v4/job-poster/readiness", method: "GET", sessionToken });
+      const posterJson = (await posterResp.json().catch(() => null)) as any;
+      if (posterResp.ok && posterJson) {
+        profileComplete = Boolean(posterJson.profileComplete) && Boolean(posterJson.mapComplete);
+        acceptedTos = Boolean(posterJson.tosAccepted);
+      }
+    } else {
+      const resp = await apiFetch({ path: "/api/web/v4/readiness", method: "GET", sessionToken });
+      const json = (await resp.json().catch(() => null)) as any;
+      if (resp.ok && json) {
+        if (role === "CONTRACTOR") {
+          profileComplete = Boolean(json.contractorReady);
+          acceptedTos = Boolean(json.contractorAcceptedTos);
+        } else if (role === "ROUTER") {
+          profileComplete = Boolean(json.routerReady);
+          acceptedTos = profileComplete;
+        }
       }
     }
   } catch {
