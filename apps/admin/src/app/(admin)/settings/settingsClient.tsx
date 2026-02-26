@@ -63,7 +63,7 @@ export default function SettingsClient() {
     let cancelled = false;
     (async () => {
       setMeError(null);
-      const resp = await fetch("/api/admin/me", { method: "GET" }).catch(() => null);
+      const resp = await fetch("/api/admin/v4/auth/me", { method: "GET" }).catch(() => null);
       if (!resp) {
         if (!cancelled) setMeError("Failed to load admin profile.");
         return;
@@ -93,7 +93,7 @@ export default function SettingsClient() {
     setPwError(null);
     setPwOk(null);
     try {
-      const resp = await fetch("/api/admin/password", {
+      const resp = await fetch("/api/admin/v4/auth/password", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
@@ -261,4 +261,3 @@ export default function SettingsClient() {
     </div>
   );
 }
-

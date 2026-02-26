@@ -1,6 +1,6 @@
 /**
  * Plain HTML form — no fetch, no JS redirect.
- * Browser submits to /api/admin/login, receives 302 + Set-Cookie, follows redirect.
+ * Browser submits to /api/admin/v4/auth/login, receives 302 + Set-Cookie, follows redirect.
  */
 import Link from "next/link";
 
@@ -22,7 +22,7 @@ export function LoginForm({ error, next = "/" }: { error: boolean; next?: string
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#070b14", color: "#e2e8f0" }}>
       <form
         method="POST"
-        action="/api/admin/login"
+        action="/api/admin/v4/auth/login"
         style={{
           width: 420,
           maxWidth: "92vw",

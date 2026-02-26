@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 
 type JobRow = {
   id: string;
@@ -135,7 +135,7 @@ export default async function JobsPage({
   let data: JobsResp | null = null;
   let err: string | null = null;
   try {
-    data = await adminApiFetch<JobsResp>(`/api/admin/jobs${apiQuery}`);
+    data = await adminApiFetch<JobsResp>(`/api/admin/v4/jobs${apiQuery}`);
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load jobs";
   }
