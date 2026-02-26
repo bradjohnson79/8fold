@@ -5,13 +5,11 @@ import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { users } from "@/db/schema/user";
 
+const ROUTER_TOS_VERSION = "v1.0";
+
 export async function getV4Readiness(userId: string) {
   const [userRows, contractorRows, routerRows, posterRows] = await Promise.all([
-    db
-      .select({ role: users.role, phone: users.phone, acceptedTosAt: users.acceptedTosAt, tosVersion: users.tosVersion })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1),
+    db.select({ role: users.role, phone: users.phone, acceptedTosAt: users.acceptedTosAt, tosVersion: users.tosVersion }).from(users).where(eq(users.id, userId)).limit(1),
     db.select().from(contractorProfilesV4).where(eq(contractorProfilesV4.userId, userId)).limit(1),
     db.select().from(routerProfilesV4).where(eq(routerProfilesV4.userId, userId)).limit(1),
     db.select().from(jobPosterProfilesV4).where(eq(jobPosterProfilesV4.userId, userId)).limit(1),
@@ -45,14 +43,18 @@ export async function getV4Readiness(userId: string) {
       contractor.contactName &&
       contractor.businessName
   );
+  const routerAcceptedTos = user?.tosVersion === ROUTER_TOS_VERSION;
   const routerReady = Boolean(
     router &&
+      routerAcceptedTos &&
       Array.isArray(router.serviceAreas) &&
       router.serviceAreas.length > 0 &&
       router.homeLatitude != null &&
       router.homeLongitude != null &&
       router.phone &&
       router.homeRegion &&
+      router.homeCountryCode &&
+      router.homeRegionCode &&
       Array.isArray(router.availability) &&
       router.availability.length > 0
   );
@@ -86,10 +88,11 @@ export async function getV4Readiness(userId: string) {
     contractorAcceptedTos,
     contractorReady,
     routerReady,
+    routerAcceptedTos,
     routes: {
       jobPoster: "/post-job",
       contractor: "/contractor/setup",
-      router: "/router/setup",
+      router: "/dashboard/setup",
     },
   };
 }
