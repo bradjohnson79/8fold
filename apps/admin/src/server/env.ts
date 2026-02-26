@@ -1,22 +1,27 @@
 export function getValidatedApiOrigin(): string {
   // Admin remains DB-free and proxies to apps/api only.
-  // Prefer NEXT_PUBLIC_API_URL for Vercel compatibility; allow API_ORIGIN for local/dev.
+  // Prefer NEXT_PUBLIC_API_URL for Vercel compatibility; allow API_ORIGIN override.
   // Admin never connects to DB directly; it proxies to apps/api only.
-  const raw = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_ORIGIN;
+  const raw = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_ORIGIN ?? "https://api.8fold.app";
   const value = String(raw ?? "").trim();
   if (!value) {
     throw new Error("NEXT_PUBLIC_API_URL (or API_ORIGIN) is required for apps/admin");
   }
 
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
   let parsed: URL;
   try {
-    parsed = new URL(value);
+    parsed = new URL(candidate);
   } catch {
     throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must be a valid URL, received "${value}"`);
   }
 
   if (!parsed.protocol || !parsed.host) {
     throw new Error(`NEXT_PUBLIC_API_URL (or API_ORIGIN) must include protocol and host, received "${value}"`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    throw new Error("NEXT_PUBLIC_API_URL (or API_ORIGIN) must be a server-side domain (localhost is not allowed)");
   }
 
   return parsed.origin.replace(/\/+$/, "");

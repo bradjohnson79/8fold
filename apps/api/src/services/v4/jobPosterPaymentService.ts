@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { users } from "@/db/schema/user";
 import { stripe } from "@/src/payments/stripe";
+import { getWebOrigin } from "@/src/server/bootConfig";
 
-const WEB_ORIGIN = String(process.env.WEB_ORIGIN ?? "").trim().replace(/\/+$/, "");
+const WEB_ORIGIN = getWebOrigin();
 
 export type PaymentStatus = {
   connected: boolean;
@@ -91,7 +92,6 @@ export async function ensureJobPosterStripeCustomer(userId: string): Promise<{ c
 export async function createJobPosterSetupSession(userId: string): Promise<{ url: string }> {
   const stripeClient = stripe;
   if (!stripeClient) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
-  if (!WEB_ORIGIN) throw Object.assign(new Error("WEB_ORIGIN not configured"), { status: 500 });
 
   const [userRow] = await db
     .select({ country: users.country })
