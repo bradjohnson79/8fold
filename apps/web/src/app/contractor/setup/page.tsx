@@ -220,34 +220,54 @@ export default function ContractorSetupPage() {
   }, []);
 
   useEffect(() => {
-    if (!mapQuery.trim()) {
+    const trimmed = mapQuery.trim();
+    if (!trimmed) {
       setMapResults([]);
       setShowMapSuggestions(false);
       setMapError(null);
       return;
     }
 
+    if (trimmed.length < 3) {
+      setMapResults([]);
+      setShowMapSuggestions(false);
+      setMapError(null);
+      return;
+    }
+
+    setMapResults([]);
+    setShowMapSuggestions(false);
+    setMapError(null);
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const resp = await fetch("/api/web/v4/geo/geocode", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: mapQuery.trim() }),
+          body: JSON.stringify({ query: trimmed }),
+          signal: controller.signal,
         });
 
-        const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[] };
+        if (controller.signal.aborted) return;
+
+        const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[]; error?: unknown };
         const results = Array.isArray(data.results) ? data.results : [];
         setMapResults(results);
         setShowMapSuggestions(true);
         setMapError(null);
-      } catch {
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof Error && err.name === "AbortError") return;
         setMapResults([]);
         setShowMapSuggestions(true);
-        setMapError("Map location lookup failed. Please try again.");
+        setMapError("Location service temporarily unavailable. You may continue and edit later.");
       }
-    }, 300);
+    }, 350);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [mapQuery]);
 
   function toggleTrade(tc: string) {
@@ -258,6 +278,10 @@ export default function ContractorSetupPage() {
     const normalized = normalizeGeoResult(result);
     setMapQuery(normalized.formattedAddress);
     setSelectedMapAddress(normalized.formattedAddress);
+    setStreetAddress(normalized.streetAddress);
+    setCity(normalized.city);
+    setPostalCode(normalized.postalCode);
+    if (normalized.countryCode) setCountryCode(normalized.countryCode);
     setHomeLatitude(normalized.latitude);
     setHomeLongitude(normalized.longitude);
     setMapResults([]);
@@ -514,7 +538,7 @@ export default function ContractorSetupPage() {
                     setMapError(null);
                   }}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Search and select map location"
+                  placeholder="Search and select address (min 3 characters)"
                 />
               </label>
 
@@ -533,7 +557,7 @@ export default function ContractorSetupPage() {
                     ))
                   ) : (
                     <div className="px-3 py-2 text-sm text-gray-600">
-                      {mapError ?? "No matching map locations found."}
+                      {mapError ?? "No matching locations found. Try refining address."}
                     </div>
                   )}
                 </div>
@@ -550,6 +574,12 @@ export default function ContractorSetupPage() {
                   setHomeLongitude(lng);
                 }}
               />
+              <p className="text-xs text-gray-500">
+                <span className="font-medium">Location Accuracy Notice</span>
+                <br />
+                The address selected above is used to determine approximate geographic coordinates for routing purposes.
+                Exact positioning may vary slightly. 8Fold uses approximate mapping data and does not guarantee pinpoint accuracy.
+              </p>
             </div>
           </section>
 
