@@ -96,13 +96,13 @@ export default function ContractorSetupPage() {
   const [tradeOptions, setTradeOptions] = useState<string[]>([]);
   const [tradeCategories, setTradeCategories] = useState<string[]>([]);
 
-  const [geoQuery, setGeoQuery] = useState("");
-  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
-  const [showGeoSuggestions, setShowGeoSuggestions] = useState(false);
-  const [geoError, setGeoError] = useState<string | null>(null);
+  const [mapQuery, setMapQuery] = useState("");
+  const [mapResults, setMapResults] = useState<GeoResult[]>([]);
+  const [showMapSuggestions, setShowMapSuggestions] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [homeLatitude, setHomeLatitude] = useState<number | null>(null);
   const [homeLongitude, setHomeLongitude] = useState<number | null>(null);
-  const [selectedFormattedAddress, setSelectedFormattedAddress] = useState("");
+  const [selectedMapAddress, setSelectedMapAddress] = useState("");
 
   const experienceEligible = useMemo(
     () => hasMinimumThreeYearsExperience(startedTradeYear, startedTradeMonth),
@@ -198,8 +198,8 @@ export default function ContractorSetupPage() {
           setCountryCode(savedCountry || "CA");
 
           if (savedFormatted) {
-            setGeoQuery(savedFormatted);
-            setSelectedFormattedAddress(savedFormatted);
+            setMapQuery(savedFormatted);
+            setSelectedMapAddress(savedFormatted);
           }
 
           if (typeof p.homeLatitude === "number" && typeof p.homeLongitude === "number") {
@@ -220,10 +220,10 @@ export default function ContractorSetupPage() {
   }, []);
 
   useEffect(() => {
-    if (!geoQuery.trim()) {
-      setGeoResults([]);
-      setShowGeoSuggestions(false);
-      setGeoError(null);
+    if (!mapQuery.trim()) {
+      setMapResults([]);
+      setShowMapSuggestions(false);
+      setMapError(null);
       return;
     }
 
@@ -232,23 +232,23 @@ export default function ContractorSetupPage() {
         const resp = await fetch("/api/web/v4/geo/geocode", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: geoQuery.trim() }),
+          body: JSON.stringify({ query: mapQuery.trim() }),
         });
 
         const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[] };
         const results = Array.isArray(data.results) ? data.results : [];
-        setGeoResults(results);
-        setShowGeoSuggestions(true);
-        setGeoError(null);
+        setMapResults(results);
+        setShowMapSuggestions(true);
+        setMapError(null);
       } catch {
-        setGeoResults([]);
-        setShowGeoSuggestions(true);
-        setGeoError("Address lookup failed. Please try again.");
+        setMapResults([]);
+        setShowMapSuggestions(true);
+        setMapError("Map location lookup failed. Please try again.");
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [geoQuery]);
+  }, [mapQuery]);
 
   function toggleTrade(tc: string) {
     setTradeCategories((prev) => (prev.includes(tc) ? prev.filter((v) => v !== tc) : [...prev, tc]));
@@ -256,17 +256,13 @@ export default function ContractorSetupPage() {
 
   function selectGeo(result: GeoResult) {
     const normalized = normalizeGeoResult(result);
-    setGeoQuery(normalized.formattedAddress);
-    setSelectedFormattedAddress(normalized.formattedAddress);
-    setStreetAddress(normalized.streetAddress);
-    setCity(normalized.city);
-    setPostalCode(normalized.postalCode);
-    setCountryCode(normalized.countryCode || "CA");
+    setMapQuery(normalized.formattedAddress);
+    setSelectedMapAddress(normalized.formattedAddress);
     setHomeLatitude(normalized.latitude);
     setHomeLongitude(normalized.longitude);
-    setGeoResults([]);
-    setShowGeoSuggestions(false);
-    setGeoError(null);
+    setMapResults([]);
+    setShowMapSuggestions(false);
+    setMapError(null);
   }
 
   async function persistProfile() {
@@ -283,7 +279,7 @@ export default function ContractorSetupPage() {
         city: city.trim(),
         postalCode: postalCode.trim(),
         countryCode: (countryCode || "CA").trim().toUpperCase(),
-        formattedAddress: selectedFormattedAddress || geoQuery.trim(),
+        formattedAddress: selectedMapAddress || mapQuery.trim() || `${streetAddress.trim()}, ${city.trim()}, ${postalCode.trim()}`,
         tradeCategories,
         homeLatitude: homeLatitude as number,
         homeLongitude: homeLongitude as number,
@@ -473,41 +469,11 @@ export default function ContractorSetupPage() {
                 <input
                   type="text"
                   value={streetAddress}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStreetAddress(value);
-                    setGeoQuery(value);
-                    setSelectedFormattedAddress("");
-                    setHomeLatitude(null);
-                    setHomeLongitude(null);
-                    setShowGeoSuggestions(true);
-                    setGeoError(null);
-                  }}
+                  onChange={(e) => setStreetAddress(e.target.value)}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Search and select address"
+                  placeholder="Street address"
                 />
               </label>
-
-              {showGeoSuggestions ? (
-                <div className="md:col-span-2 max-h-48 overflow-auto rounded-md border border-gray-200">
-                  {geoResults.length > 0 ? (
-                    geoResults.map((result, idx) => (
-                      <button
-                        key={`${result.formattedAddress}-${idx}`}
-                        type="button"
-                        onClick={() => selectGeo(result)}
-                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                      >
-                        {result.formattedAddress}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-gray-600">
-                      {geoError ?? "No matching addresses found."}
-                    </div>
-                  )}
-                </div>
-              ) : null}
 
               <label className="block">
                 <span className="text-sm font-medium text-gray-700">City *</span>
@@ -534,10 +500,56 @@ export default function ContractorSetupPage() {
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900">OpenStreetMap Map Location</h2>
             <div className="mt-4 space-y-3">
-              {selectedFormattedAddress ? (
-                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{selectedFormattedAddress}</div>
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Map Location Search *</span>
+                <input
+                  type="text"
+                  value={mapQuery}
+                  onChange={(e) => {
+                    setMapQuery(e.target.value);
+                    setSelectedMapAddress("");
+                    setHomeLatitude(null);
+                    setHomeLongitude(null);
+                    setShowMapSuggestions(true);
+                    setMapError(null);
+                  }}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                  placeholder="Search and select map location"
+                />
+              </label>
+
+              {showMapSuggestions ? (
+                <div className="max-h-48 overflow-auto rounded-md border border-gray-200">
+                  {mapResults.length > 0 ? (
+                    mapResults.map((result, idx) => (
+                      <button
+                        key={`${result.formattedAddress}-${idx}`}
+                        type="button"
+                        onClick={() => selectGeo(result)}
+                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                      >
+                        {result.formattedAddress}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-gray-600">
+                      {mapError ?? "No matching map locations found."}
+                    </div>
+                  )}
+                </div>
               ) : null}
-              <OSMMap latitude={homeLatitude} longitude={homeLongitude} />
+
+              {selectedMapAddress ? (
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{selectedMapAddress}</div>
+              ) : null}
+              <OSMMap
+                latitude={homeLatitude}
+                longitude={homeLongitude}
+                onChange={(lat, lng) => {
+                  setHomeLatitude(lat);
+                  setHomeLongitude(lng);
+                }}
+              />
             </div>
           </section>
 

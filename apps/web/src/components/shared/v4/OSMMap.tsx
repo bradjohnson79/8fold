@@ -56,7 +56,7 @@ export default function OSMMap({ latitude, longitude, onChange }: OSMMapProps) {
   if (latitude == null || longitude == null) {
     return (
       <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-6 text-sm text-gray-600">
-        Select an address above to pin your map location.
+        Select a map location to pin coordinates.
       </div>
     );
   }
