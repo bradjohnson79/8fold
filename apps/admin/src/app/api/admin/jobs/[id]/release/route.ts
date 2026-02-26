@@ -4,7 +4,7 @@ import { getValidatedApiOrigin } from "@/server/env";
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const apiOrigin = getValidatedApiOrigin();
-  const url = new URL(`${apiOrigin}/api/admin/jobs/${encodeURIComponent(id)}/release`);
+  const url = new URL(`${apiOrigin}/api/admin/v4/jobs/${encodeURIComponent(id)}/release`);
   const incoming = new URL(req.url);
   for (const [k, v] of incoming.searchParams.entries()) url.searchParams.set(k, v);
 

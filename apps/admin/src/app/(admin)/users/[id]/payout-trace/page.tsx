@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 
 type TraceItem = {
   id: string;
@@ -66,7 +66,7 @@ export default async function PayoutTracePage({ params }: { params: Promise<{ id
   const p = await params;
   const id = String(p.id ?? "").trim();
 
-  const resp = await adminApiFetch<{ data: any }>(`/api/admin/users/${encodeURIComponent(id)}/payout-trace`).catch(() => null);
+  const resp = await adminApiFetch<{ data: any }>(`/api/admin/v4/users/${encodeURIComponent(id)}/payout-trace`).catch(() => null);
   const data = (resp as any)?.data ?? null;
 
   const user = data?.user ?? null;

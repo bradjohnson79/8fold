@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 import { redirect } from "next/navigation";
 
 type Item = {
@@ -142,7 +142,7 @@ export default async function DescriptionAuditPage({
         : { jobIds: ids, onlyFlagged: onlyFlagged2, includeArchived: includeArchived2 };
 
     try {
-      const res = await adminApiFetch<{ updated: number }>(`/api/admin/jobs/scope-audit/rewrite`, {
+      const res = await adminApiFetch<{ updated: number }>(`/api/admin/v4/jobs/scope-audit/rewrite`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -173,7 +173,7 @@ export default async function DescriptionAuditPage({
   let err: string | null = null;
   try {
     const data = await adminApiFetch<{ items: Item[] }>(
-      `/api/admin/jobs/scope-audit${qs({
+      `/api/admin/v4/jobs/scope-audit${qs({
         q: q || undefined,
         take,
         onlyFlagged,

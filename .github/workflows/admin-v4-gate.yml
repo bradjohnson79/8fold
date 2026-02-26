@@ -1,0 +1,27 @@
+name: admin-v4-gate
+
+on:
+  push:
+    branches:
+      - v4-admin
+  pull_request:
+    branches:
+      - v4-admin
+
+jobs:
+  preflight-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Branch preflight
+        run: node scripts/preflight-admin-v4.mjs
+
+      - name: Admin V4 static scan
+        run: node scripts/admin-v4-static-scan.mjs

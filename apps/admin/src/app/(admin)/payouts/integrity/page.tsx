@@ -1,4 +1,4 @@
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 import { CopyJsonClient } from "./CopyJsonClient";
 
 type IntegrityRow = {
@@ -81,7 +81,7 @@ export default async function IntegrityPage({
   const get = (k: string) => String(Array.isArray((sp as any)[k]) ? (sp as any)[k][0] : (sp as any)[k] ?? "").trim();
   const take = get("take") || "500";
 
-  const payload = await adminApiFetch<{ ok: true; data: IntegrityDetailsPayload }>(`/api/admin/finance/payout-integrity/details${qs({ take })}`)
+  const payload = await adminApiFetch<{ ok: true; data: IntegrityDetailsPayload }>(`/api/admin/v4/finance/payout-integrity/details${qs({ take })}`)
     .then((d: any) => d?.data ?? null)
     .catch(() => null);
 

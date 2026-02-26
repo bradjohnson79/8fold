@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
 
-const ADMIN_SESSION_COOKIE_NAME = "admin_session";
-
 /**
  * Admin login — minimal straight-line auth.
  * Accepts form POST, calls API for validation, sets cookie, returns 302 redirect.
@@ -10,7 +8,7 @@ const ADMIN_SESSION_COOKIE_NAME = "admin_session";
  */
 export async function POST(req: Request) {
   const apiOrigin = getValidatedApiOrigin();
-  const url = `${apiOrigin}/api/admin/login`;
+  const url = `${apiOrigin}/api/admin/v4/auth/login`;
 
   const formData = await req.formData().catch(() => null);
   const email = String(formData?.get("email") ?? "").trim().toLowerCase();
@@ -32,14 +30,10 @@ export async function POST(req: Request) {
     cache: "no-store",
   });
 
-  const json = (await resp.json().catch(() => null)) as {
-    ok?: boolean;
-    data?: { sessionToken?: string; expiresAt?: string };
-  } | null;
-
-  if (resp.status !== 200 || !json?.ok || !json.data?.sessionToken || !json.data?.expiresAt) {
+  const json = (await resp.json().catch(() => null)) as { ok?: boolean } | null;
+  if (resp.status !== 200 || !json?.ok) {
     // eslint-disable-next-line no-console
-    console.log("[ADMIN_LOGIN]", { ok: false, email, apiStatus: resp.status, hasToken: !!json?.data?.sessionToken });
+    console.log("[ADMIN_LOGIN]", { ok: false, email, apiStatus: resp.status });
     const failUrl = new URL("/login", req.url);
     failUrl.searchParams.set("error", "invalid");
     if (redirectPath !== "/") failUrl.searchParams.set("next", redirectPath);
@@ -47,15 +41,8 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.redirect(new URL(redirectPath, req.url), 302);
-  const cookieOpts: Record<string, unknown> = {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    expires: new Date(json.data.expiresAt),
-  };
-  // Omit domain — host-only cookie for admin.8fold.app is more reliable than domain=.8fold.app
-  res.cookies.set(ADMIN_SESSION_COOKIE_NAME, json.data.sessionToken, cookieOpts);
+  const setCookie = resp.headers.get("set-cookie");
+  if (setCookie) res.headers.set("set-cookie", setCookie);
   // eslint-disable-next-line no-console
   console.log("[ADMIN_LOGIN]", { ok: true, email, redirectPath, hasCookie: true });
   return res;
