@@ -129,6 +129,10 @@ function ProfileSection({
               mapDisplayName: data.mapDisplayName,
               lat: data.lat,
               lng: data.lng,
+              legalCity: data.city || s.legalCity,
+              legalProvince: data.regionCode || s.legalProvince,
+              legalPostalCode: data.postalCode || s.legalPostalCode,
+              legalCountry: data.countryCode === "CA" || data.countryCode === "US" ? data.countryCode : s.legalCountry,
             }))
           }
           errorText={

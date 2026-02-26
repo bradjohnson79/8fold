@@ -358,6 +358,10 @@ export default function JobPosterOnboardingPage() {
                 setMapDisplayName(data.mapDisplayName);
                 setMapLat(data.lat);
                 setMapLng(data.lng);
+                if (data.city) setCity(data.city);
+                if (data.regionCode) setStateProvince(data.regionCode);
+                if (data.postalCode) setPostalCode(data.postalCode);
+                if (data.countryCode === "US" || data.countryCode === "CA") setCountry(data.countryCode);
               }}
               errorText={
                 !Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0

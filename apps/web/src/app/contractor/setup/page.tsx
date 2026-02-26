@@ -487,9 +487,8 @@ export default function ContractorSetupPage() {
           </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900">OpenStreetMap Map Location</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Map Location</h2>
             <div className="mt-4 space-y-3">
-              <span className="text-sm font-medium text-gray-700">Map Location Search *</span>
               <GeoSearchMap
                 initialQuery={mapQuery}
                 onSelect={(result) => {
@@ -497,6 +496,9 @@ export default function ContractorSetupPage() {
                   setSelectedMapAddress(result.displayName);
                   setHomeLatitude(result.latitude);
                   setHomeLongitude(result.longitude);
+                  if (result.city) setCity(result.city);
+                  if (result.postalCode) setPostalCode(result.postalCode);
+                  if (result.countryCode === "US" || result.countryCode === "CA") setCountryCode(result.countryCode);
                 }}
               />
 
