@@ -3,20 +3,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import dynamic from "next/dynamic";
+import { GeoSearchMap } from "@/components/maps/GeoSearchMap";
 
 const CONTRACTOR_TOS_VERSION = "v1.0";
-const OSMMap = dynamic(() => import("@/components/shared/v4/OSMMap"), { ssr: false });
-
-type GeoResult = {
-  latitude: number;
-  longitude: number;
-  provinceState: string;
-  formattedAddress: string;
-  city?: string;
-  postalCode?: string;
-  countryCode?: string;
-};
 
 const MONTH_OPTIONS = [
   { value: 1, label: "January" },
@@ -39,22 +28,6 @@ function computeSuspendedUntil(year: number, month: number) {
 
 function hasMinimumThreeYearsExperience(year: number, month: number) {
   return computeSuspendedUntil(year, month).getTime() <= Date.now();
-}
-
-function normalizeGeoResult(result: GeoResult) {
-  const parts = result.formattedAddress.split(",").map((part) => part.trim()).filter(Boolean);
-  const streetAddress = parts[0] ?? result.formattedAddress;
-  const fallbackCity = parts.length >= 3 ? parts[parts.length - 3] : "";
-  const fallbackPostal = parts.length >= 2 ? parts[parts.length - 2].split(" ").slice(-2).join(" ").trim() : "";
-  const fallbackCountry = parts.length >= 1 ? (parts[parts.length - 1].length === 2 ? parts[parts.length - 1].toUpperCase() : "") : "";
-
-  return {
-    ...result,
-    streetAddress,
-    city: String(result.city ?? fallbackCity).trim(),
-    postalCode: String(result.postalCode ?? fallbackPostal).trim(),
-    countryCode: String(result.countryCode ?? fallbackCountry).trim().toUpperCase(),
-  };
 }
 
 function formatExperience(startYear: number, startMonth: number) {
@@ -97,9 +70,6 @@ export default function ContractorSetupPage() {
   const [tradeCategories, setTradeCategories] = useState<string[]>([]);
 
   const [mapQuery, setMapQuery] = useState("");
-  const [mapResults, setMapResults] = useState<GeoResult[]>([]);
-  const [showMapSuggestions, setShowMapSuggestions] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
   const [homeLatitude, setHomeLatitude] = useState<number | null>(null);
   const [homeLongitude, setHomeLongitude] = useState<number | null>(null);
   const [selectedMapAddress, setSelectedMapAddress] = useState("");
@@ -219,74 +189,8 @@ export default function ContractorSetupPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const trimmed = mapQuery.trim();
-    if (!trimmed) {
-      setMapResults([]);
-      setShowMapSuggestions(false);
-      setMapError(null);
-      return;
-    }
-
-    if (trimmed.length < 3) {
-      setMapResults([]);
-      setShowMapSuggestions(false);
-      setMapError(null);
-      return;
-    }
-
-    setMapResults([]);
-    setShowMapSuggestions(false);
-    setMapError(null);
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const resp = await fetch("/api/web/v4/geo/geocode", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: trimmed }),
-          signal: controller.signal,
-        });
-
-        if (controller.signal.aborted) return;
-
-        const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[]; error?: unknown };
-        const results = Array.isArray(data.results) ? data.results : [];
-        setMapResults(results);
-        setShowMapSuggestions(true);
-        setMapError(null);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        if (err instanceof Error && err.name === "AbortError") return;
-        setMapResults([]);
-        setShowMapSuggestions(true);
-        setMapError("Location service temporarily unavailable. You may continue and edit later.");
-      }
-    }, 350);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [mapQuery]);
-
   function toggleTrade(tc: string) {
     setTradeCategories((prev) => (prev.includes(tc) ? prev.filter((v) => v !== tc) : [...prev, tc]));
-  }
-
-  function selectGeo(result: GeoResult) {
-    const normalized = normalizeGeoResult(result);
-    setMapQuery(normalized.formattedAddress);
-    setSelectedMapAddress(normalized.formattedAddress);
-    setStreetAddress(normalized.streetAddress);
-    setCity(normalized.city);
-    setPostalCode(normalized.postalCode);
-    if (normalized.countryCode) setCountryCode(normalized.countryCode);
-    setHomeLatitude(normalized.latitude);
-    setHomeLongitude(normalized.longitude);
-    setMapResults([]);
-    setShowMapSuggestions(false);
-    setMapError(null);
   }
 
   async function persistProfile() {
@@ -524,56 +428,20 @@ export default function ContractorSetupPage() {
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900">OpenStreetMap Map Location</h2>
             <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Map Location Search *</span>
-                <input
-                  type="text"
-                  value={mapQuery}
-                  onChange={(e) => {
-                    setMapQuery(e.target.value);
-                    setSelectedMapAddress("");
-                    setHomeLatitude(null);
-                    setHomeLongitude(null);
-                    setShowMapSuggestions(true);
-                    setMapError(null);
-                  }}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Search and select address (min 3 characters)"
-                />
-              </label>
-
-              {showMapSuggestions ? (
-                <div className="max-h-48 overflow-auto rounded-md border border-gray-200">
-                  {mapResults.length > 0 ? (
-                    mapResults.map((result, idx) => (
-                      <button
-                        key={`${result.formattedAddress}-${idx}`}
-                        type="button"
-                        onClick={() => selectGeo(result)}
-                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                      >
-                        {result.formattedAddress}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-gray-600">
-                      {mapError ?? "No matching locations found. Try refining address."}
-                    </div>
-                  )}
-                </div>
-              ) : null}
+              <span className="text-sm font-medium text-gray-700">Map Location Search *</span>
+              <GeoSearchMap
+                initialQuery={mapQuery}
+                onSelect={(result) => {
+                  setMapQuery(result.displayName);
+                  setSelectedMapAddress(result.displayName);
+                  setHomeLatitude(result.latitude);
+                  setHomeLongitude(result.longitude);
+                }}
+              />
 
               {selectedMapAddress ? (
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{selectedMapAddress}</div>
               ) : null}
-              <OSMMap
-                latitude={homeLatitude}
-                longitude={homeLongitude}
-                onChange={(lat, lng) => {
-                  setHomeLatitude(lat);
-                  setHomeLongitude(lng);
-                }}
-              />
               <p className="text-xs text-gray-500">
                 <span className="font-medium">Location Accuracy Notice</span>
                 <br />
