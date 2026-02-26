@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { users } from "@/db/schema/user";
 import { type V4ContractorProfileInput } from "@/src/validation/v4/contractorProfileSchema";
+import { forbidden } from "@/src/services/v4/v4Errors";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
 
 export async function getV4ContractorProfile(userId: string) {
@@ -42,12 +43,39 @@ export async function getV4ContractorProfile(userId: string) {
   };
 }
 
+function computeSuspendedUntil(startedTradeYear: number, startedTradeMonth: number) {
+  return new Date(Date.UTC(startedTradeYear + 3, startedTradeMonth - 1, 1));
+}
+
+function hasMinimumThreeYearsExperience(startedTradeYear: number, startedTradeMonth: number, now = new Date()) {
+  return computeSuspendedUntil(startedTradeYear, startedTradeMonth).getTime() <= now.getTime();
+}
+
 export async function upsertV4ContractorProfile(
   userId: string,
   input: V4ContractorProfileInput,
   identity?: ClerkIdentity | null,
 ) {
   const now = new Date();
+  if (!hasMinimumThreeYearsExperience(input.startedTradeYear, input.startedTradeMonth, now)) {
+    const suspendedUntil = computeSuspendedUntil(input.startedTradeYear, input.startedTradeMonth);
+    await db
+      .update(users)
+      .set({
+        status: "SUSPENDED" as any,
+        accountStatus: "SUSPENDED",
+        suspendedUntil,
+        suspensionReason: "Minimum 3 years of trade experience required.",
+        updatedAt: now,
+      } as any)
+      .where(eq(users.id, userId));
+
+    throw forbidden(
+      "V4_CONTRACTOR_EXPERIENCE_SUSPENDED",
+      `Minimum 3 years of trade experience is required. Account suspended until ${suspendedUntil.toISOString().slice(0, 10)}.`,
+    );
+  }
+
   await db.transaction(async (tx) => {
     await tx
       .update(users)
@@ -78,6 +106,7 @@ export async function upsertV4ContractorProfile(
         countryCode: input.countryCode,
         yearsExperience: now.getUTCFullYear() - input.startedTradeYear,
         tradeCategories: input.tradeCategories as any,
+        serviceRadiusKm: 25,
         homeLatitude: input.homeLatitude,
         homeLongitude: input.homeLongitude,
         createdAt: now,
@@ -101,6 +130,7 @@ export async function upsertV4ContractorProfile(
           countryCode: input.countryCode,
           yearsExperience: now.getUTCFullYear() - input.startedTradeYear,
           tradeCategories: input.tradeCategories as any,
+          serviceRadiusKm: 25,
           homeLatitude: input.homeLatitude,
           homeLongitude: input.homeLongitude,
           updatedAt: now,
