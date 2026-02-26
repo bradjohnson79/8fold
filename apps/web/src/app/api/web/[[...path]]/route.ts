@@ -23,12 +23,19 @@ async function proxy(req: Request, pathSegments: string[]) {
   const sessionToken = await requireApiToken(req);
   const url = new URL(req.url);
   const query = url.search ? `?${url.searchParams.toString()}` : "";
+  const contentType = req.headers.get("content-type");
+  const body = req.method !== "GET" && req.method !== "HEAD" ? await req.arrayBuffer() : null;
+  const headers: Record<string, string> = {};
+  if (contentType) {
+    headers["content-type"] = contentType;
+  }
   const resp = await apiFetch({
     path: path + query,
     method: req.method,
     sessionToken,
     request: req,
-    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : null,
+    headers,
+    body,
   });
   const text = await resp.text();
   return new NextResponse(text, {

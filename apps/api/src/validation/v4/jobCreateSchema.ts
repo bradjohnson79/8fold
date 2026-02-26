@@ -46,7 +46,15 @@ export const V4JobCreateBodySchema = z.object({
   longitude: JobGeoSchema.shape.longitude,
   isRegionalRequested: z.boolean().default(false),
   uploadIds: z.array(z.string().trim().min(8)).max(25).default([]),
-  availability: z.array(z.string().trim().min(1).max(50)).max(50).default([]),
+  availability: z.object({
+    monday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    tuesday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    wednesday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    thursday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    friday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    saturday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    sunday: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+  }),
 });
 
 export type V4JobAppraiseBody = z.infer<typeof V4JobAppraiseBodySchema>;

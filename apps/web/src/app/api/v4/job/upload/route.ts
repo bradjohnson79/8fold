@@ -5,7 +5,7 @@ import { apiFetch, getApiOrigin } from "@/server/api/apiClient";
 export async function POST(req: Request) {
   try {
     await requireSession(req);
-    const sessionToken = await requireApiToken();
+    const sessionToken = await requireApiToken(req);
     const contentType = req.headers.get("content-type") ?? "multipart/form-data";
     const body = await req.arrayBuffer();
     const resp = await apiFetch({
@@ -15,23 +15,38 @@ export async function POST(req: Request) {
       headers: { "content-type": contentType },
       body,
     });
-    const contentTypeOut = resp.headers.get("content-type") ?? "application/json";
+    const contentTypeOut = resp.headers.get("content-type") ?? "";
     const text = await resp.text();
-    if (resp.ok && contentTypeOut.includes("application/json")) {
-      try {
-        const parsed = JSON.parse(text) as any;
-        const url = typeof parsed?.url === "string" ? parsed.url : null;
-        if (url && url.startsWith("/")) {
-          return NextResponse.json({ ...parsed, url: `${getApiOrigin()}${url}` }, { status: resp.status });
-        }
-      } catch {}
+    const parsed = contentTypeOut.includes("application/json")
+      ? ((JSON.parse(text || "{}") as unknown) ?? {})
+      : {};
+
+    if (!resp.ok) {
+      const code = String((parsed as any)?.error?.code ?? "UPLOAD_FAILED");
+      const message = String((parsed as any)?.error?.message ?? "Upload failed. Please try again.");
+      return NextResponse.json({ ok: false, error: { code, message } }, { status: resp.status });
     }
-    return new NextResponse(text, {
-      status: resp.status,
-      headers: { "Content-Type": contentTypeOut },
+
+    const uploadId = String((parsed as any)?.uploadId ?? "").trim();
+    const rawUrl = String((parsed as any)?.url ?? "").trim();
+    if (!uploadId || !rawUrl) {
+      return NextResponse.json(
+        { ok: false, error: { code: "UPLOAD_FAILED", message: "Upload failed. Please try again." } },
+        { status: 500 },
+      );
+    }
+
+    const url = rawUrl.startsWith("/") ? `${getApiOrigin()}${rawUrl}` : rawUrl;
+    return NextResponse.json({
+      ok: true,
+      uploadId,
+      url,
     });
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json({ ok: false, error: "PROXY_FAILED" }, { status });
+    return NextResponse.json(
+      { ok: false, error: { code: "UPLOAD_FAILED", message: "Upload failed. Please try again." } },
+      { status },
+    );
   }
 }

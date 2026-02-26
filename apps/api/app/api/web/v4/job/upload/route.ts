@@ -34,7 +34,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json(await uploadV4JobPhoto(role.internalUser.id, file), { status: 200 });
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_UPLOAD_FAILED");
+    const wrapped =
+      err instanceof Error && "status" in err
+        ? (err as V4Error)
+        : ({
+            ...internal("UPLOAD_FAILED"),
+            message: "Upload failed.",
+          } as V4Error);
     const retryAfter = Number((wrapped as any)?.details?.retryAfterSeconds ?? 0);
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), {
       status: wrapped.status,
