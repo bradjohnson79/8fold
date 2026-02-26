@@ -50,6 +50,7 @@ const SUPPORTED_EVENTS = new Set<Stripe.Event.Type>([
   "account.updated",
   "payout.paid",
   "checkout.session.completed",
+  "setup_intent.succeeded",
 ]);
 
 function json400(code: string, message: string) {
@@ -446,6 +447,32 @@ async function handleWebhook(req: Request) {
             .set({
               stripeDefaultPaymentMethodId: pmId,
               stripeStatus: "CONNECTED",
+              stripeCustomerId: customerId,
+              stripeUpdatedAt: now,
+              updatedAt: now,
+            } as any)
+            .where(eq(users.id, userId));
+          return;
+        }
+        case "setup_intent.succeeded": {
+          const si = event.data.object as Stripe.SetupIntent;
+          const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id ?? null;
+          const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id ?? null;
+          const userId = typeof si.metadata?.userId === "string" ? String(si.metadata.userId).trim() : "";
+          if (!userId) return;
+          if (!pmId) return;
+
+          const s = getWebhookStripe();
+          if (s && customerId) {
+            await s.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } });
+          }
+
+          await tx
+            .update(users)
+            .set({
+              stripeDefaultPaymentMethodId: pmId,
+              stripeStatus: "CONNECTED",
+              stripeCustomerId: customerId ?? undefined,
               stripeUpdatedAt: now,
               updatedAt: now,
             } as any)
@@ -531,4 +558,3 @@ async function handleWebhook(req: Request) {
  *   Missing secret → 500 {"ok":false,"error":{"code":"STRIPE_WEBHOOK_SECRET_MISSING","message":"Webhook secret not configured"}}
  *   Missing stripe-signature header → 400 {"ok":false,"error":{"code":"STRIPE_SIGNATURE_MISSING","message":"Missing stripe-signature header"}}
  */
-
