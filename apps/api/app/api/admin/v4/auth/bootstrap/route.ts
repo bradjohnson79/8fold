@@ -34,6 +34,7 @@ export async function POST(req: Request) {
   const ip = requestIp(req);
   const ua = req.headers.get("user-agent") ?? "";
   const now = new Date();
+  const isProxyRequest = req.headers.get("x-admin-proxy") === "true";
 
   try {
     await rateLimitOrThrow({
@@ -116,8 +117,13 @@ export async function POST(req: Request) {
       });
 
       console.info("[ADMIN_V4_AUTH_BOOTSTRAP_SUCCESS]", { mode: "INITIAL", adminId: admin.id, email, ip });
-      const res = ok({ admin: { id: admin.id, email: admin.email, role: admin.role }, expiresAt: expiresAt.toISOString(), bootstrapMode: "INITIAL" });
-      appendSessionCookie(res, sessionToken, expiresAt);
+      const res = ok({
+        admin: { id: admin.id, email: admin.email, role: admin.role },
+        expiresAt: expiresAt.toISOString(),
+        bootstrapMode: "INITIAL",
+        ...(isProxyRequest ? { sessionToken } : {}),
+      });
+      if (!isProxyRequest) appendSessionCookie(res, sessionToken, expiresAt);
       return res;
     }
 
@@ -168,8 +174,13 @@ export async function POST(req: Request) {
     });
 
     console.info("[ADMIN_V4_AUTH_BOOTSTRAP_SUCCESS]", { mode: "INVITE", adminId: admin.id, email, ip });
-    const res = ok({ admin: { id: admin.id, email: admin.email, role: admin.role }, expiresAt: expiresAt.toISOString(), bootstrapMode: "INVITE" });
-    appendSessionCookie(res, sessionToken, expiresAt);
+    const res = ok({
+      admin: { id: admin.id, email: admin.email, role: admin.role },
+      expiresAt: expiresAt.toISOString(),
+      bootstrapMode: "INVITE",
+      ...(isProxyRequest ? { sessionToken } : {}),
+    });
+    if (!isProxyRequest) appendSessionCookie(res, sessionToken, expiresAt);
     return res;
   } catch (e) {
     if (e instanceof V4Error && e.status === 429) {

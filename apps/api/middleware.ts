@@ -39,9 +39,16 @@ export function middleware(req: Request) {
     return resp;
   }
 
-  // Public admin auth endpoints: login, logout, signup. No internal headers required.
+  // Public admin auth endpoints: legacy + v4 login/bootstrap/logout.
   // These endpoints handle their own validation and return 401/403 as needed.
-  const publicAdminPaths = ["/api/admin/login", "/api/admin/logout", "/api/admin/signup"];
+  const publicAdminPaths = [
+    "/api/admin/login",
+    "/api/admin/logout",
+    "/api/admin/signup",
+    "/api/admin/v4/auth/login",
+    "/api/admin/v4/auth/bootstrap",
+    "/api/admin/v4/auth/logout",
+  ];
   if (publicAdminPaths.includes(url.pathname)) {
     return withCors(NextResponse.next());
   }

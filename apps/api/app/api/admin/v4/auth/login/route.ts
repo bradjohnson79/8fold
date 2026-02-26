@@ -39,6 +39,7 @@ export async function POST(req: Request) {
   const ip = requestIp(req);
   const ua = req.headers.get("user-agent") ?? "";
   const now = new Date();
+  const isProxyRequest = req.headers.get("x-admin-proxy") === "true";
 
   try {
     await rateLimitOrThrow({
@@ -109,8 +110,12 @@ export async function POST(req: Request) {
     await db.update(v4AdminUsers).set({ lastLoginAt: now }).where(eq(v4AdminUsers.id, admin.id));
 
     console.info("[ADMIN_V4_AUTH_LOGIN_SUCCESS]", { adminId: admin.id, email: admin.email, ip });
-    const res = ok({ admin: { id: admin.id, email: admin.email, role: admin.role }, expiresAt: expiresAt.toISOString() });
-    appendSessionCookie(res, sessionToken, expiresAt);
+    const res = ok({
+      admin: { id: admin.id, email: admin.email, role: admin.role },
+      expiresAt: expiresAt.toISOString(),
+      ...(isProxyRequest ? { sessionToken } : {}),
+    });
+    if (!isProxyRequest) appendSessionCookie(res, sessionToken, expiresAt);
     return res;
   } catch (e) {
     if (e instanceof V4Error && e.status === 429) {
