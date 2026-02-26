@@ -4,7 +4,7 @@ import { apiFetch } from "@/server/api/apiClient";
 
 export async function POST(req: Request) {
   await requireSession(req);
-  const sessionToken = await requireApiToken();
+  const sessionToken = await requireApiToken(req);
   const body = await req.text();
   const resp = await apiFetch({
     path: "/api/web/v4/support/ticket",
