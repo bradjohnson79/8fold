@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+export {};
 /**
  * Runtime smoke test — Tier 1 endpoints must not return 500.
  *

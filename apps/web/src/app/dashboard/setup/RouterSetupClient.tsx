@@ -3,7 +3,6 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 import { ROUTER_TOS_SECTIONS, ROUTER_TOS_TITLE, ROUTER_TOS_VERSION } from "@/lib/routerTosV1";
 
 const US_STATES = [
@@ -20,11 +19,6 @@ type RouterSetupForm = {
   homeRegion: string;
   homeCountryCode: "US" | "CA";
   homeRegionCode: string;
-  serviceAreas: string;
-  availability: string;
-  mapDisplayName: string;
-  lat: number;
-  lng: number;
 };
 
 function canSave(form: RouterSetupForm, termsChecked: boolean): boolean {
@@ -34,12 +28,7 @@ function canSave(form: RouterSetupForm, termsChecked: boolean): boolean {
       form.phone.trim().length >= 7 &&
       form.homeRegion.trim() &&
       form.homeCountryCode &&
-      form.homeRegionCode.trim() &&
-      form.serviceAreas.trim() &&
-      form.availability.trim() &&
-      Number.isFinite(form.lat) &&
-      Number.isFinite(form.lng) &&
-      !(form.lat === 0 && form.lng === 0),
+      form.homeRegionCode.trim(),
   );
 }
 
@@ -53,7 +42,7 @@ function TermsSection({
   return (
     <div className="rounded-xl bg-white p-6 shadow dark:bg-zinc-900 space-y-4">
       <h2 className="text-xl font-semibold">
-        {ROUTER_TOS_TITLE} v{ROUTER_TOS_VERSION}
+        {ROUTER_TOS_TITLE} ({ROUTER_TOS_VERSION})
       </h2>
       <div className="h-64 overflow-y-scroll rounded border p-4 text-sm">
         <div className="space-y-4">
@@ -111,11 +100,6 @@ export function RouterSetupClient() {
     homeRegion: "",
     homeCountryCode: "US",
     homeRegionCode: "",
-    serviceAreas: "",
-    availability: "",
-    mapDisplayName: "",
-    lat: 0,
-    lng: 0,
   });
 
   React.useEffect(() => {
@@ -135,11 +119,6 @@ export function RouterSetupClient() {
           homeRegion: String(p.homeRegion ?? "").trim(),
           homeCountryCode: (String(p.homeCountryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US") as "US" | "CA",
           homeRegionCode: String(p.homeRegionCode ?? "").trim(),
-          serviceAreas: Array.isArray(p.serviceAreas) ? p.serviceAreas.join(", ") : "",
-          availability: Array.isArray(p.availability) ? p.availability.join(", ") : "",
-          mapDisplayName: "",
-          lat: typeof p.homeLatitude === "number" ? p.homeLatitude : 0,
-          lng: typeof p.homeLongitude === "number" ? p.homeLongitude : 0,
         }));
       } catch {
         if (alive) setError("Failed to load setup data.");
@@ -158,22 +137,17 @@ export function RouterSetupClient() {
     setSaving(true);
     setError("");
     try {
-      const serviceAreas = form.serviceAreas.trim().split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-      const availability = form.availability.trim().split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-
-      if (serviceAreas.length === 0) throw new Error("At least one service area is required.");
-      if (availability.length === 0) throw new Error("At least one availability slot is required.");
-
+      const regionCode = form.homeRegionCode.trim();
       const profilePayload = {
         contactName: form.contactName.trim(),
         phone: form.phone.trim(),
         homeRegion: form.homeRegion.trim(),
         homeCountryCode: form.homeCountryCode,
-        homeRegionCode: form.homeRegionCode.trim(),
-        serviceAreas,
-        availability,
-        homeLatitude: form.lat,
-        homeLongitude: form.lng,
+        homeRegionCode: regionCode,
+        serviceAreas: [regionCode],
+        availability: ["STATEWIDE_ROUTING"],
+        homeLatitude: 0,
+        homeLongitude: 0,
       };
 
       const profileResp = await fetch("/api/v4/router/profile", {
@@ -238,40 +212,8 @@ export function RouterSetupClient() {
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs text-gray-500">Required for job filtering</span>
+            <span className="mt-1 block text-xs text-gray-500">Routing is state/province-wide based on this code.</span>
           </label>
-          <Field
-            label="Service Areas"
-            value={form.serviceAreas}
-            onChange={(v) => setForm((s) => ({ ...s, serviceAreas: v }))}
-            helperText="Comma-separated, e.g. Toronto, Mississauga"
-          />
-          <Field
-            label="Availability"
-            value={form.availability}
-            onChange={(v) => setForm((s) => ({ ...s, availability: v }))}
-            helperText="Comma-separated, e.g. Mon-Fri, Weekends"
-          />
-        </div>
-        <div className="rounded-xl border border-gray-200 p-4">
-          <div className="mb-3 text-sm font-semibold text-gray-900">Home Location</div>
-          <MapLocationSelector
-            required
-            value={form.mapDisplayName}
-            onChange={(data) =>
-              setForm((s) => ({
-                ...s,
-                mapDisplayName: data.mapDisplayName,
-                lat: data.lat,
-                lng: data.lng,
-              }))
-            }
-            errorText={
-              !Number.isFinite(form.lat) || !Number.isFinite(form.lng) || (form.lat === 0 && form.lng === 0)
-                ? "Please select a location from map results."
-                : ""
-            }
-          />
         </div>
       </div>
       {error ? <div className="text-sm text-red-700">{error}</div> : null}

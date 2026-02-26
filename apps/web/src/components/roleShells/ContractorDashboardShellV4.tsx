@@ -1,0 +1,25 @@
+"use client";
+
+import React from "react";
+import { DashboardShell } from "../DashboardShell";
+
+export function ContractorDashboardShellV4({ children }: { children: React.ReactNode }) {
+  const items = [
+    { href: "/dashboard/contractor", label: "Overview" },
+    { href: "/dashboard/contractor/invites", label: "Invites" },
+    { href: "/dashboard/contractor/jobs", label: "Jobs" },
+    { href: "/dashboard/contractor/account-status", label: "Account Status" },
+    { href: "/dashboard/contractor/pm", label: "P&M" },
+    { href: "/dashboard/contractor/receipts", label: "Receipts" },
+    { href: "/dashboard/contractor/messages", label: "Messages" },
+    { href: "/dashboard/contractor/profile", label: "Profile" },
+    { href: "/dashboard/contractor/payment", label: "Payment Setup" },
+    { href: "/dashboard/contractor/support", label: "Support" },
+  ];
+
+  return (
+    <DashboardShell title="Contractor Dashboard" items={items}>
+      {children}
+    </DashboardShell>
+  );
+}

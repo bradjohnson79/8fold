@@ -23,6 +23,8 @@
  * Optional:
  * - LOCKDOWN_STRICT_SUPER_200=1  // require ADMIN_SUPER status to be exactly expectedStatus
  */
+export {};
+
 type Role = "VIEWER" | "OPERATOR" | "SUPER";
 
 type RouteCase = {

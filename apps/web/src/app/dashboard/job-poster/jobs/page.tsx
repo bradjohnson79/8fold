@@ -19,7 +19,7 @@ export default function JobPosterJobsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/api/v4/job-poster/jobs", {
+        const resp = await fetch("/api/web/v4/job-poster/jobs", {
           cache: "no-store",
           credentials: "include",
         });

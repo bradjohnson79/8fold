@@ -94,7 +94,7 @@ export default function PostJobPage() {
     if (useProfileAddress || !addressQuery.trim()) return;
     const t = setTimeout(async () => {
       try {
-        const resp = await fetch("/api/v4/geo/geocode", {
+        const resp = await fetch("/api/web/v4/geo/geocode", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: addressQuery.trim() }),
@@ -121,7 +121,7 @@ export default function PostJobPage() {
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.set("file", file);
-        const resp = await fetch("/api/v4/job/upload", { method: "POST", body: form });
+        const resp = await fetch("/api/web/v4/job/upload", { method: "POST", body: form });
         const data = (await resp.json().catch(() => ({}))) as { uploadId?: string; url?: string; error?: string };
         if (!resp.ok || !data.uploadId || !data.url) {
           throw new Error(data.error ?? "Upload failed");
@@ -142,7 +142,7 @@ export default function PostJobPage() {
     try {
       if (!activeGeo) throw new Error("Select a valid address first.");
       const tc = tradeCategory.trim().toUpperCase();
-      const resp = await fetch("/api/v4/job/appraise-preview", {
+      const resp = await fetch("/api/web/v4/job/appraise-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -225,7 +225,7 @@ export default function PostJobPage() {
     }
     const laborCents = Math.round((sliderValue ?? suggestedTotal ?? 200) * 100);
     try {
-      const resp = await fetch("/api/v4/job/create", {
+      const resp = await fetch("/api/web/v4/job/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -387,7 +387,7 @@ export default function PostJobPage() {
                 type="button"
                 onClick={async () => {
                   const parts = activeGeo.formattedAddress.split(",").map((p) => p.trim());
-                  await fetch("/api/v4/job-poster/profile", {
+                  await fetch("/api/web/v4/job-poster/profile", {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

@@ -17,7 +17,7 @@ export default function JobPosterMessagesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/api/v4/messages/threads?role=job_poster", {
+        const resp = await fetch("/api/web/v4/messages/threads?role=job_poster", {
           cache: "no-store",
           credentials: "include",
         });

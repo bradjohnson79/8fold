@@ -19,7 +19,7 @@ export default function JobPosterSupportPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const resp = await fetch("/api/v4/support/ticket", {
+      const resp = await fetch("/api/web/v4/support/ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

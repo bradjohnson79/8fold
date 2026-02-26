@@ -21,7 +21,7 @@ export default function JobPosterPmPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const resp = await fetch("/api/v4/pm/requests?role=job_poster", {
+      const resp = await fetch("/api/web/v4/pm/requests?role=job_poster", {
         cache: "no-store",
         credentials: "include",
       });
@@ -43,7 +43,7 @@ export default function JobPosterPmPage() {
   const handleApprove = async (id: string) => {
     setActioning(id);
     try {
-      const resp = await fetch(`/api/v4/pm/requests/${id}/approve`, {
+      const resp = await fetch(`/api/web/v4/pm/requests/${id}/approve`, {
         method: "POST",
         credentials: "include",
       });
@@ -56,7 +56,7 @@ export default function JobPosterPmPage() {
   const handleReject = async (id: string) => {
     setActioning(id);
     try {
-      const resp = await fetch(`/api/v4/pm/requests/${id}/reject`, {
+      const resp = await fetch(`/api/web/v4/pm/requests/${id}/reject`, {
         method: "POST",
         credentials: "include",
       });

@@ -21,7 +21,7 @@ export default function JobPosterMessageThreadPage() {
 
   const fetchMessages = async () => {
     if (!threadId) return;
-    const resp = await fetch(`/api/v4/messages/thread/${threadId}`, {
+    const resp = await fetch(`/api/web/v4/messages/thread/${threadId}`, {
       cache: "no-store",
       credentials: "include",
     });
@@ -36,7 +36,7 @@ export default function JobPosterMessageThreadPage() {
     const msgBody = body.trim();
     setSending(true);
     try {
-      const resp = await fetch(`/api/v4/messages/thread/${threadId}/send`, {
+      const resp = await fetch(`/api/web/v4/messages/thread/${threadId}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

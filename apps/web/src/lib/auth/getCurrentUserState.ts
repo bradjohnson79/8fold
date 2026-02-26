@@ -63,7 +63,7 @@ export async function getCurrentUserState(): Promise<CurrentUserState | null> {
         acceptedTos = Boolean(json.routerAcceptedTos);
       } else {
         profileComplete = Boolean(json.contractorReady);
-        acceptedTos = profileComplete;
+        acceptedTos = Boolean(json.contractorAcceptedTos);
       }
     }
   } catch {

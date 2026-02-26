@@ -1,12 +1,34 @@
+function missingOriginError(label: "API_ORIGIN" | "ADMIN_ORIGIN" | "WEB_ORIGIN"): Error {
+  const mode = String(process.env.NODE_ENV ?? "").trim().toLowerCase();
+  const baseMessage = `${label} is not set`;
+  const message =
+    mode && mode !== "development"
+      ? `CONFIG_ORIGIN_MISSING:${label}`
+      : `${baseMessage}. Set ${label} in your environment.`;
+  return Object.assign(new Error(message), { code: "CONFIG_ORIGIN_MISSING", originVar: label });
+}
+
 function resolveOrigin(opts: {
   label: "API_ORIGIN" | "ADMIN_ORIGIN" | "WEB_ORIGIN";
   raw: string | null | undefined;
 }): string {
-  const base = String(opts.raw ?? "").trim().replace(/\/+$/, "");
-  if (!base) {
-    throw new Error(`${opts.label} is not set`);
+  const input = String(opts.raw ?? "").trim();
+  if (!input) {
+    throw missingOriginError(opts.label);
   }
-  return base;
+  const candidate = /^https?:\/\//i.test(input) ? input : `https://${input}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw Object.assign(new Error(`CONFIG_ORIGIN_INVALID:${opts.label}`), {
+      code: "CONFIG_ORIGIN_INVALID",
+      originVar: opts.label,
+    });
+  }
+
+  return parsed.origin.replace(/\/+$/, "");
 }
 
 function logBootConfigOnce() {
@@ -162,4 +184,3 @@ export async function adminFetch(reqInit: {
 
 // Trigger one-time boot diagnostics when this module loads.
 logBootConfigOnce();
-
