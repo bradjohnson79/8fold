@@ -74,6 +74,11 @@ export default function PostJobPage() {
             provinceState: p.provinceState,
             formattedAddress: p.formattedAddress,
             displayName: p.formattedAddress,
+            countryCode: "",
+            regionCode: p.provinceState,
+            city: "",
+            postalCode: "",
+            placeId: "",
           });
         }
       } catch {}
@@ -334,15 +339,6 @@ export default function PostJobPage() {
                 </div>
               </div>
             )}
-            {activeGeo && (
-              useProfileAddress ? (
-                <iframe
-                  title="OSM preview"
-                  className="mt-3 h-64 w-full rounded border"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${activeGeo.longitude - 0.01}%2C${activeGeo.latitude - 0.01}%2C${activeGeo.longitude + 0.01}%2C${activeGeo.latitude + 0.01}&layer=mapnik&marker=${activeGeo.latitude}%2C${activeGeo.longitude}`}
-                />
-              ) : null
-            )}
             {!useProfileAddress && selectedGeo && (
               <button
                 type="button"
@@ -361,7 +357,6 @@ export default function PostJobPage() {
                       formattedAddress: selectedGeo.formattedAddress,
                       latitude: selectedGeo.latitude,
                       longitude: selectedGeo.longitude,
-                      geocodeProvider: "OSM",
                     }),
                   });
                   setProfileGeo(selectedGeo);

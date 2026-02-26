@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { TradeCategorySchema, TradeCategoryLabel } from "@8fold/shared";
 import type { useJobDraftV3 } from "../useJobDraftV3";
+import { GoogleAddressAutocomplete } from "@/components/GoogleAddressAutocomplete";
 
 type DraftHook = ReturnType<typeof useJobDraftV3>;
 
@@ -20,7 +21,6 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
   const details = (draft.draft?.data?.details ?? {}) as Record<string, any>;
   const photos = Array.isArray(details.photos) ? (details.photos as string[]) : [];
   const [addressQuery, setAddressQuery] = useState("");
-  const [nominatimResults, setNominatimResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
 
   // Local state for title ensures immediate display on keystroke (avoids async/optimistic update lag)
   const [titleValue, setTitleValue] = useState("");
@@ -44,32 +44,13 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
     draft.autosavePatch({ details: { ...details, photos: next.slice(0, 5) } });
   }
 
-  const nominatimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchNominatim = useCallback(async () => {
-    if (!addressQuery.trim()) return;
-    try {
-      const resp = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressQuery)}&limit=5`,
-        { headers: { "Accept-Language": "en", "User-Agent": "8Fold-Local/1.0" } }
-      );
-      const data = await resp.json();
-      setNominatimResults(Array.isArray(data) ? data : []);
-    } catch {
-      setNominatimResults([]);
-    }
-  }, [addressQuery]);
-
-  const debouncedSearchNominatim = useCallback(() => {
-    if (nominatimTimerRef.current) clearTimeout(nominatimTimerRef.current);
-    if (!addressQuery.trim()) {
-      setNominatimResults([]);
-      return;
-    }
-    nominatimTimerRef.current = setTimeout(() => void searchNominatim(), 400);
-  }, [addressQuery, searchNominatim]);
-
   const addressSource = details.addressSource ?? "profile";
   const isRegional = Boolean(details.isRegional);
+
+  useEffect(() => {
+    if (addressSource !== "new") return;
+    setAddressQuery(String(details.address ?? ""));
+  }, [addressSource, details.address]);
 
   useEffect(() => {
     if (addressSource !== "profile") return;
@@ -201,41 +182,38 @@ export function StepDetails({ draft }: { draft: DraftHook }) {
         </div>
         {addressSource === "new" && (
           <div className="mt-2">
-            <input
+            <GoogleAddressAutocomplete
+              label="Search Address"
               value={addressQuery}
-              onChange={(e) => {
-                setAddressQuery(e.target.value);
-                debouncedSearchNominatim();
+              onChange={(value) => {
+                setAddressQuery(value);
+                draft.autosavePatch({
+                  details: {
+                    ...details,
+                    address: value,
+                    lat: null,
+                    lon: null,
+                  },
+                });
               }}
-              onBlur={() => void searchNominatim()}
-              onKeyDown={(e) => e.key === "Enter" && void searchNominatim()}
-              placeholder="Search address (OpenStreetMap)"
-              className="border border-gray-300 rounded-lg px-3 py-2 w-full"
+              onPick={(result) => {
+                draft.autosavePatch({
+                  details: {
+                    ...details,
+                    address: result.displayName,
+                    lat: result.latitude,
+                    lon: result.longitude,
+                    city: result.city || details.city,
+                    region: result.regionCode || details.region,
+                    countryCode: result.countryCode || details.countryCode || "US",
+                    postalCode: result.postalCode || details.postalCode,
+                  },
+                });
+                setAddressQuery(result.displayName);
+              }}
+              placeholder="Search address"
+              helperText="Select a result to attach coordinates."
             />
-            {nominatimResults.length > 0 && (
-              <ul className="mt-2 border border-gray-200 rounded-lg divide-y">
-                {nominatimResults.map((r, i) => (
-                  <li
-                    key={i}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
-                    onClick={() => {
-                      draft.autosavePatch({
-                        details: {
-                          ...details,
-                          address: r.display_name,
-                          lat: parseFloat(r.lat),
-                          lon: parseFloat(r.lon),
-                        },
-                      });
-                      setNominatimResults([]);
-                      setAddressQuery(r.display_name);
-                    }}
-                  >
-                    {r.display_name}
-                  </li>
-                ))}
-              </ul>
-            )}
             {(details.lat != null && details.lon != null) && (
               <p className="text-xs text-green-600 mt-1">Location: {details.lat?.toFixed(4)}, {details.lon?.toFixed(4)}</p>
             )}
