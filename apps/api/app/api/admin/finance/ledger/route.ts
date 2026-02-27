@@ -23,6 +23,16 @@ const QuerySchema = z.object({
       "PLATFORM_FEE",
       "ROUTER_EARN",
       "CONTRACTOR_EARN",
+      "AUTH_HOLD",
+      "CAPTURE",
+      "ESCROW_AVAILABLE",
+      "CHARGE",
+      "ESCROW_HELD",
+      "PAYABLE_CONTRACTOR",
+      "PAYABLE_ROUTER",
+      "TAX_BUCKET",
+      "AUTH_EXPIRED",
+      "REFUND",
     ])
     .optional(),
 });
@@ -61,6 +71,7 @@ export async function GET(req: Request) {
         currency: ledgerEntries.currency,
         stripeRef: ledgerEntries.stripeRef,
         memo: ledgerEntries.memo,
+        metadata: ledgerEntries.metadata,
       })
       .from(ledgerEntries)
       .where(where)
@@ -72,4 +83,3 @@ export async function GET(req: Request) {
     return handleApiError(err, "GET /api/admin/finance/ledger", { userId: auth.userId });
   }
 }
-

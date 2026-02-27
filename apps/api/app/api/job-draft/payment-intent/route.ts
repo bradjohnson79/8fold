@@ -5,39 +5,23 @@ import { db } from "@/db/drizzle";
 import { jobDraft } from "@/db/schema/jobDraft";
 import { requireJobPoster } from "@/src/auth/rbac";
 import { createPaymentIntent, stripe } from "@/src/payments/stripe";
-import { resolve as resolveTax } from "@/src/services/v4/taxResolver";
+import { computeEscrowPricing } from "@/src/services/escrow/pricing";
 
 type DraftData = Record<string, any>;
-export const runtime = "nodejs";
 
-const CA_PROVINCE_ALIASES: Record<string, string> = {
-  AB: "AB",
-  ALBERTA: "AB",
-  BC: "BC",
-  "BRITISH COLUMBIA": "BC",
-  MB: "MB",
-  MANITOBA: "MB",
-  NB: "NB",
-  "NEW BRUNSWICK": "NB",
-  NL: "NL",
-  "NEWFOUNDLAND AND LABRADOR": "NL",
-  NS: "NS",
-  "NOVA SCOTIA": "NS",
-  NT: "NT",
-  "NORTHWEST TERRITORIES": "NT",
-  NU: "NU",
-  NUNAVUT: "NU",
-  ON: "ON",
-  ONTARIO: "ON",
-  PE: "PE",
-  "PRINCE EDWARD ISLAND": "PE",
-  QC: "QC",
-  QUEBEC: "QC",
-  SK: "SK",
-  SASKATCHEWAN: "SK",
-  YT: "YT",
-  YUKON: "YT",
-};
+function isPreConfirmStatus(status: string): boolean {
+  return status === "requires_payment_method" || status === "requires_confirmation" || status === "requires_action";
+}
+
+function isAcceptableStatus(status: string): boolean {
+  return (
+    status === "requires_payment_method" ||
+    status === "requires_confirmation" ||
+    status === "requires_action" ||
+    status === "processing" ||
+    status === "succeeded"
+  );
+}
 
 function asObject(v: unknown): DraftData {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as DraftData) : {};
@@ -52,16 +36,8 @@ function hasAvailabilitySelection(v: unknown): boolean {
   return false;
 }
 
-function normalizeProvince(countryCode: "US" | "CA", region: string): string {
-  const upper = String(region ?? "").trim().toUpperCase();
-  if (countryCode !== "CA") return upper;
-  return CA_PROVINCE_ALIASES[upper] ?? upper;
-}
-
 export async function POST(req: Request) {
   try {
-    // eslint-disable-next-line no-console
-    console.log("Stripe Key Exists:", !!process.env.STRIPE_SECRET_KEY);
     const user = await requireJobPoster(req);
     const body = (await req.json().catch(() => null)) as {
       selectedPrice?: number;
@@ -96,8 +72,7 @@ export async function POST(req: Request) {
     const description = String(details.description ?? "").trim();
     const address = String(details.address ?? "").trim();
     const countryCode = String(details.countryCode ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US";
-    const regionCodeRaw = String(details.stateCode ?? details.region ?? "").trim();
-    const regionCode = normalizeProvince(countryCode, regionCodeRaw);
+    const regionCode = String(details.stateCode ?? details.region ?? "").trim().toUpperCase();
     const lat = Number(details.lat);
     const lon = Number(details.lon);
 
@@ -111,84 +86,102 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "At least one availability selection is required." }, { status: 400 });
     }
 
-    const regionalFeeCents = isRegional ? 2000 : 0;
-    const baseSubtotalCents = appraisalPriceCents + regionalFeeCents;
-    const tax = countryCode === "CA"
-      ? await resolveTax({ amountCents: baseSubtotalCents, amountKind: "NET", country: "CA", province: regionCode, mode: "EXCLUSIVE" })
-      : { taxCents: 0, grossCents: baseSubtotalCents, netCents: baseSubtotalCents, rate: 0, mode: "EXCLUSIVE" as const };
-    const taxCents = Math.max(0, Number(tax.taxCents ?? 0));
-    const totalCents = baseSubtotalCents + taxCents;
+    const computed = await computeEscrowPricing({
+      appraisalSubtotalCents: appraisalPriceCents,
+      isRegional,
+      country: countryCode,
+      province: regionCode,
+    });
+    const taxCents = computed.taxAmountCents;
+    const totalCents = computed.totalAmountCents;
 
     const existingPiId = String(data?.payment?.paymentIntentId ?? "").trim();
 
     if (existingPiId && stripe) {
-      try {
-        const pi = await stripe.paymentIntents.retrieve(existingPiId);
-        if (pi.amount !== totalCents && (pi.status === "requires_payment_method" || pi.status === "requires_confirmation")) {
-          await stripe.paymentIntents.update(pi.id, {
-            amount: totalCents,
-            payment_method_options: {
-              card: { request_extended_authorization: "if_available" },
-            },
-          });
-        }
-        if (
-          pi.status === "requires_payment_method" ||
-          pi.status === "requires_confirmation" ||
-          pi.status === "requires_capture"
-        ) {
-          const refreshed = await stripe.paymentIntents.retrieve(pi.id);
-          const nextData = {
-            ...data,
-            pricing: {
-              ...(asObject(data.pricing)),
-              appraisalPriceCents,
-              selectedPriceCents: appraisalPriceCents,
-              isRegional,
-              regionalFeeCents,
-              taxCents,
-              subtotalCents: baseSubtotalCents,
-              totalCents,
-              countryCode,
-              regionCode,
-            },
-            payment: { ...(asObject(data.payment)), paymentIntentId: refreshed.id },
-          };
-          await db
-            .update(jobDraft)
-            .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
-            .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
-          return NextResponse.json({
-            success: true,
-            clientSecret: refreshed.client_secret,
-            paymentIntentId: refreshed.id,
+      const pi = await stripe.paymentIntents.retrieve(existingPiId);
+      const nextCurrency = computed.paymentCurrency;
+      const status = String(pi.status ?? "").toLowerCase();
+      const currencyMismatch = String(pi.currency ?? "").toLowerCase() !== nextCurrency;
+      const amountMismatch = pi.amount !== totalCents;
+      const mismatched = currencyMismatch || amountMismatch;
+
+      if (mismatched && isPreConfirmStatus(status)) {
+        await stripe.paymentIntents.update(pi.id, {
+          amount: totalCents,
+          metadata: {
+            ...(pi.metadata ?? {}),
+            scope: "job-draft-v4",
+            draftId: String(draft.id),
+            userId: user.userId,
+            jobPosterId: user.userId,
+            country: computed.country,
+            province: computed.province ?? "",
+            taxRateBps: String(computed.taxRateBps),
+            splitBaseCents: String(computed.splitBaseCents),
+          },
+        });
+      }
+
+      const refreshed = await stripe.paymentIntents.retrieve(pi.id);
+      const refreshedStatus = String(refreshed.status ?? "").toLowerCase();
+      const refreshedMismatched =
+        String(refreshed.currency ?? "").toLowerCase() !== nextCurrency || refreshed.amount !== totalCents;
+
+      if (!refreshedMismatched && isAcceptableStatus(refreshedStatus)) {
+        const nextData = {
+          ...data,
+          pricing: {
+            ...(asObject(data.pricing)),
             appraisalPriceCents,
-            regionalFeeCents,
-            taxCents,
-            totalCents,
-            currency: countryCode === "CA" ? "CAD" : "USD",
-          });
-        }
-      } catch (existingPiErr) {
-        console.warn("[job-draft/payment-intent] existing intent lookup failed; creating a fresh intent", {
-          existingPiId,
-          message: existingPiErr instanceof Error ? existingPiErr.message : String(existingPiErr),
-          code: (existingPiErr as any)?.code,
+            selectedPriceCents: appraisalPriceCents,
+            isRegional,
+            regionalFeeCents: computed.regionalFeeCents,
+            taxRateBps: computed.taxRateBps,
+            taxCents: computed.taxAmountCents,
+            subtotalCents: computed.splitBaseCents,
+            totalCents: computed.totalAmountCents,
+            countryCode: computed.country,
+            regionCode: computed.province,
+          },
+          payment: {
+            ...(asObject(data.payment)),
+            paymentIntentId: refreshed.id,
+            paymentStatus: refreshed.status,
+          },
+        };
+        await db
+          .update(jobDraft)
+          .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
+          .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
+        return NextResponse.json({
+          success: true,
+          clientSecret: refreshed.client_secret,
+          paymentIntentId: refreshed.id,
+          paymentStatus: refreshed.status,
+          appraisalPriceCents,
+          regionalFeeCents: computed.regionalFeeCents,
+          taxRateBps: computed.taxRateBps,
+          taxCents: computed.taxAmountCents,
+          totalCents: computed.totalAmountCents,
+          currency: computed.currency,
         });
       }
     }
 
     const result = await createPaymentIntent(totalCents, {
-      currency: countryCode === "CA" ? "cad" : "usd",
-      captureMethod: "manual",
-      requestExtendedAuthorization: true,
-      idempotencyKey: `job-draft-v4:${draft.id}:${totalCents}:${appraisalPriceCents}:${regionalFeeCents}`,
+      currency: computed.paymentCurrency,
+      idempotencyKey: `job-draft-v4:${draft.id}:${computed.paymentCurrency}:${totalCents}`,
       metadata: {
         scope: "job-draft-v4",
         draftId: String(draft.id),
         userId: user.userId,
+        jobPosterId: user.userId,
+        country: computed.country,
+        province: computed.province ?? "",
+        taxRateBps: String(computed.taxRateBps),
+        splitBaseCents: String(computed.splitBaseCents),
       },
-      description: "8Fold Job Escrow Hold",
+      description: "8Fold Job Poster Charge",
     });
 
     const nextData = {
@@ -198,14 +191,19 @@ export async function POST(req: Request) {
         appraisalPriceCents,
         selectedPriceCents: appraisalPriceCents,
         isRegional,
-        regionalFeeCents,
-        taxCents,
-        subtotalCents: baseSubtotalCents,
-        totalCents,
-        countryCode,
-        regionCode,
+        regionalFeeCents: computed.regionalFeeCents,
+        taxRateBps: computed.taxRateBps,
+        taxCents: computed.taxAmountCents,
+        subtotalCents: computed.splitBaseCents,
+        totalCents: computed.totalAmountCents,
+        countryCode: computed.country,
+        regionCode: computed.province,
       },
-      payment: { ...(asObject(data.payment)), paymentIntentId: result.paymentIntentId },
+      payment: {
+        ...(asObject(data.payment)),
+        paymentIntentId: result.paymentIntentId,
+        paymentStatus: result.status,
+      },
     };
     await db
       .update(jobDraft)
@@ -216,26 +214,19 @@ export async function POST(req: Request) {
       success: true,
       clientSecret: result.clientSecret,
       paymentIntentId: result.paymentIntentId,
+      paymentStatus: result.status,
       appraisalPriceCents,
-      regionalFeeCents,
-      taxCents,
-      totalCents,
-      currency: countryCode === "CA" ? "CAD" : "USD",
+      regionalFeeCents: computed.regionalFeeCents,
+      taxRateBps: computed.taxRateBps,
+      taxCents: computed.taxAmountCents,
+      totalCents: computed.totalAmountCents,
+      currency: computed.currency,
       traceId: randomUUID(),
     });
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    const rawMessage = err instanceof Error ? err.message : "Failed to create payment intent.";
-    console.error("[job-draft/payment-intent] failed", {
-      status,
-      message: rawMessage,
-      code: (err as any)?.code,
-      envKeyPresent: !!process.env.STRIPE_SECRET_KEY,
-      stack: err instanceof Error ? err.stack : undefined,
-    });
-    const message = status >= 500 ? "Unable to confirm total right now. Please try again." : rawMessage;
     return NextResponse.json(
-      { success: false, message },
+      { success: false, message: err instanceof Error ? err.message : "Failed to create payment intent." },
       { status }
     );
   }
