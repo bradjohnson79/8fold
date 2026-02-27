@@ -20,7 +20,6 @@ import { payoutMethods } from "@/db/schema/payoutMethod";
 import { auditLogs } from "@/db/schema/auditLog";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { escrows } from "@/db/schema/escrow";
-import { finalizeJobFundingFromPaymentIntent } from "@/src/payments/finalizeJobFundingFromPaymentIntent";
 import {
   finalizePmFundingFromPaymentIntent,
   requirePmEscrowMetadata,
@@ -46,6 +45,7 @@ const SUPPORTED_EVENTS = new Set<Stripe.Event.Type>([
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
+  "refund.updated",
   "transfer.created",
   "account.updated",
   "payout.paid",
@@ -109,6 +109,15 @@ function requireJobEscrowMetadata(metadata: Stripe.MetadataParam | null | undefi
   const jobPosterUserId = String(metadata?.jobPosterUserId ?? metadata?.posterId ?? "");
   if (type !== "job_escrow" || !jobId || !jobPosterUserId) return null;
   return { jobId, jobPosterUserId };
+}
+
+async function resolveJobIdByPaymentIntent(tx: any, paymentIntentId: string): Promise<string | null> {
+  const rows = await tx
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(eq(jobs.stripe_payment_intent_id, paymentIntentId))
+    .limit(1);
+  return rows[0]?.id ?? null;
 }
 
 export async function POST(req: Request) {
@@ -249,51 +258,57 @@ async function handleWebhook(req: Request) {
           }
 
           const meta = requireJobEscrowMetadata(pi.metadata);
-          if (!meta) {
-            logEvent({
-              level: "warn",
-              event: "stripe.webhook_missing_job_metadata",
-              route: "/api/webhooks/stripe",
-              method: "POST",
-              status: 200,
-              code: "STRIPE_METADATA_INVALID",
-              context: { eventId: event.id, eventType: event.type, paymentIntentId: pi.id },
-            });
-            return;
-          }
+          const jobId = meta?.jobId ?? (await resolveJobIdByPaymentIntent(tx, pi.id));
+          if (!jobId) return;
 
-          testLog({ eventType: event.type, jobId: meta.jobId });
-          const finalized = await finalizeJobFundingFromPaymentIntent(pi, {
-            route: "/api/webhooks/stripe",
-            source: "webhook",
-            webhookEventId: event.id,
-            tx,
-          });
-          if (!finalized.ok) {
-            logEvent({
-              level: "error",
-              event: "stripe.webhook_payment_finalize_failed",
-              route: "/api/webhooks/stripe",
-              method: "POST",
-              status: 200,
-              code: finalized.code,
-              context: {
-                eventId: event.id,
-                paymentIntentId: pi.id,
-                jobId: finalized.jobId,
-                traceId: finalized.traceId,
-                reason: finalized.reason,
-              },
-            });
-          }
+          testLog({ eventType: event.type, jobId });
+          const currentRows = await tx
+            .select({ paymentStatus: jobs.payment_status })
+            .from(jobs)
+            .where(eq(jobs.id, jobId))
+            .limit(1);
+          const currentStatus = String(currentRows[0]?.paymentStatus ?? "").toUpperCase();
+          const shouldMarkPaid = !["FUNDS_SECURED", "FUNDED", "REFUNDED"].includes(currentStatus);
+          const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null;
+
+          await tx
+            .update(jobs)
+            .set({
+              stripe_payment_intent_status: String(pi.status ?? ""),
+              stripe_paid_at: sql`coalesce(${jobs.stripe_paid_at}, ${now})`,
+              stripe_charge_id: chargeId,
+              ...(shouldMarkPaid
+                ? {
+                    payment_status: "FUNDS_SECURED" as any,
+                    funds_secured_at: sql`coalesce(${jobs.funds_secured_at}, ${now})`,
+                    funded_at: sql`coalesce(${jobs.funded_at}, ${now})`,
+                    payment_captured_at: sql`coalesce(${jobs.payment_captured_at}, ${now})`,
+                  }
+                : {}),
+              updated_at: now,
+            } as any)
+            .where(eq(jobs.id, jobId));
+
+          await tx
+            .update(jobPayments)
+            .set({
+              stripePaymentIntentStatus: String(pi.status ?? ""),
+              stripeChargeId: chargeId,
+              status: "CAPTURED" as any,
+              escrowLockedAt: sql`coalesce(${jobPayments.escrowLockedAt}, ${now})`,
+              paymentCapturedAt: sql`coalesce(${jobPayments.paymentCapturedAt}, ${now})`,
+              updatedAt: now,
+            } as any)
+            .where(eq(jobPayments.jobId, jobId));
           return;
         }
         case "payment_intent.payment_failed": {
           const pi = event.data.object as Stripe.PaymentIntent;
           const meta = requireJobEscrowMetadata(pi.metadata);
-          if (!meta) return;
+          const jobId = meta?.jobId ?? (await resolveJobIdByPaymentIntent(tx, pi.id));
+          if (!jobId) return;
 
-          testLog({ eventType: event.type, jobId: meta.jobId });
+          testLog({ eventType: event.type, jobId });
 
           await tx
             .update(jobPayments)
@@ -302,12 +317,16 @@ async function handleWebhook(req: Request) {
               status: "FAILED" as any,
               updatedAt: now,
             } as any)
-            .where(eq(jobPayments.jobId, meta.jobId));
+            .where(eq(jobPayments.jobId, jobId));
 
           await tx
             .update(jobs)
-            .set({ payment_status: "FAILED" as any })
-            .where(eq(jobs.id, meta.jobId));
+            .set({
+              payment_status: "FAILED" as any,
+              stripe_payment_intent_status: String(pi.status ?? ""),
+              updated_at: now,
+            } as any)
+            .where(eq(jobs.id, jobId));
           return;
         }
         case "charge.refunded": {
@@ -322,8 +341,57 @@ async function handleWebhook(req: Request) {
 
           await tx
             .update(jobs)
-            .set({ payment_status: "REFUNDED" as any, refunded_at: now })
+            .set({
+              payment_status: "REFUNDED" as any,
+              stripe_refunded_at: sql`coalesce(${jobs.stripe_refunded_at}, ${now})`,
+              refunded_at: sql`coalesce(${jobs.refunded_at}, ${now})`,
+              archived: true,
+              completion_flag_reason: sql`coalesce(${jobs.completion_flag_reason}, 'REFUNDED_UNASSIGNED_TIMEOUT')`,
+              updated_at: now,
+            })
             .where(eq(jobs.stripe_payment_intent_id, paymentIntentId));
+          await tx
+            .update(jobPayments)
+            .set({
+              status: "REFUNDED" as any,
+              refundedAt: sql`coalesce(${jobPayments.refundedAt}, ${now})`,
+              refundIssuedAt: sql`coalesce(${jobPayments.refundIssuedAt}, ${now})`,
+              updatedAt: now,
+            } as any)
+            .where(eq(jobPayments.stripePaymentIntentId, paymentIntentId));
+          return;
+        }
+        case "refund.updated": {
+          const refund = event.data.object as Stripe.Refund;
+          const paymentIntentId =
+            typeof refund.payment_intent === "string"
+              ? refund.payment_intent
+              : (refund.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
+          if (!paymentIntentId) return;
+
+          testLog({ eventType: event.type });
+
+          await tx
+            .update(jobs)
+            .set({
+              payment_status: "REFUNDED" as any,
+              stripe_refunded_at: sql`coalesce(${jobs.stripe_refunded_at}, ${now})`,
+              refunded_at: sql`coalesce(${jobs.refunded_at}, ${now})`,
+              archived: true,
+              completion_flag_reason: sql`coalesce(${jobs.completion_flag_reason}, 'REFUNDED_UNASSIGNED_TIMEOUT')`,
+              updated_at: now,
+            } as any)
+            .where(eq(jobs.stripe_payment_intent_id, paymentIntentId));
+
+          await tx
+            .update(jobPayments)
+            .set({
+              status: "REFUNDED" as any,
+              refundedAt: sql`coalesce(${jobPayments.refundedAt}, ${now})`,
+              refundIssuedAt: sql`coalesce(${jobPayments.refundIssuedAt}, ${now})`,
+              updatedAt: now,
+            } as any)
+            .where(eq(jobPayments.stripePaymentIntentId, paymentIntentId));
           return;
         }
         case "transfer.created": {
