@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, lt, or, sql } from "drizzle-orm";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { db } from "@/db/drizzle";
@@ -30,13 +30,13 @@ export async function GET(req: Request) {
     const cutoff = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
 
     // Admin overview should match the routing pool (includes mocks in local dev).
-    // ACTIVE_STATUSES: ASSIGNED + CUSTOMER_APPROVED_AWAITING_ROUTER (mapped).
+    // ACTIVE_STATUSES: ASSIGNED + OPEN_FOR_ROUTING (mapped to CUSTOMER_APPROVED_AWAITING_ROUTER in UI).
     const base: any[] = [];
     if (!includeArchived) base.push(eq(jobs.archived, false));
     base.push(
       or(
         eq(jobs.status, "ASSIGNED" as any),
-        and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
+        eq(jobs.status, "OPEN_FOR_ROUTING" as any),
       ),
     );
     const baseWhere = base.length ? and(...base) : undefined;
@@ -108,4 +108,3 @@ export async function GET(req: Request) {
     return handleApiError(err, "GET /api/admin/jobs/visual-integrity", { userId: auth.userId });
   }
 }
-

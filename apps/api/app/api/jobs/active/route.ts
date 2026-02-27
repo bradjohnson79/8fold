@@ -7,7 +7,7 @@ import { requireRouterReady } from "../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../src/http/errors";
 
 const ACTIVE_STATUSES = [
-  "PUBLISHED",
+  "OPEN_FOR_ROUTING",
   "ASSIGNED",
   "IN_PROGRESS",
   "CONTRACTOR_COMPLETED",
@@ -63,4 +63,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

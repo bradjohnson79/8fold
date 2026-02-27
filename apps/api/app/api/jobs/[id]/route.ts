@@ -61,9 +61,10 @@ export async function GET(req: Request) {
     if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const isClaimedByYou = !!user && job.routerId === user.userId;
-    const canClaim = !!user && user.role === "ROUTER" && job.status === "PUBLISHED" && job.routingStatus === "UNROUTED" && !job.routerId;
+    const canClaim =
+      !!user && user.role === "ROUTER" && job.status === "OPEN_FOR_ROUTING" && job.routingStatus === "UNROUTED" && !job.routerId;
     const canRouteConfirm =
-      !!user && isClaimedByYou && user.role === "ROUTER" && job.status === "PUBLISHED" && !job.routedAt;
+      !!user && isClaimedByYou && user.role === "ROUTER" && job.status === "OPEN_FOR_ROUTING" && !job.routedAt;
 
     // Never return user IDs to the mobile app.
     const { routerId: _omit, ...safeJob } = job;
@@ -77,4 +78,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

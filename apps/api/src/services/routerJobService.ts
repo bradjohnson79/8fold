@@ -8,7 +8,7 @@ import { users } from "../../db/schema/user";
 import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "../jurisdiction";
 
 const ACTIVE_STATUSES = [
-  "PUBLISHED",
+  "OPEN_FOR_ROUTING",
   "ASSIGNED",
   "IN_PROGRESS",
   "CONTRACTOR_COMPLETED",
@@ -99,7 +99,7 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
       return { kind: "already_claimed" };
     }
 
-    if (current.status !== "PUBLISHED" && current.status !== "OPEN_FOR_ROUTING") {
+    if (current.status !== "OPEN_FOR_ROUTING") {
       return { kind: "job_not_open" };
     }
     if (current.routingStatus !== "UNROUTED") return { kind: "job_not_open" };
@@ -130,7 +130,7 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
         and(
           eq(jobs.id, jobId),
           eq(jobs.archived, false),
-          inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"] as any),
+          eq(jobs.status, "OPEN_FOR_ROUTING" as any),
           eq(jobs.routing_status, "UNROUTED"),
           sql`${jobs.claimed_by_user_id} is null`,
         ),
@@ -151,4 +151,3 @@ export async function claimJob(userId: string, jobId: string): Promise<ClaimJobR
     return { kind: "ok" };
   });
 }
-
