@@ -1,14 +1,18 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireJobPoster } from "@/src/auth/rbac";
+import { requireAuth } from "@/src/auth/requireAuth";
+import { requireRole } from "@/src/auth/requireRole";
+import { getV4Readiness } from "@/src/services/v4/readinessService";
+import { rateLimitOrThrow } from "@/src/services/v4/rateLimitService";
 import { resolve as resolveTax } from "@/src/services/v4/taxResolver";
+import { badRequest, forbidden, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 export const runtime = "nodejs";
 
 const BodySchema = z.object({
   country: z.enum(["US", "CA"]),
-  province: z.string().trim().max(50).optional().default(""),
+  province: z.string().trim().min(1).max(50),
   tradeCategory: z.string().trim().min(1).max(100),
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().min(1).max(5000),
@@ -16,7 +20,7 @@ const BodySchema = z.object({
 
 type Confidence = "LOW" | "MEDIUM" | "HIGH";
 
-type PricingPreview = {
+type PricingPreviewResponse = {
   low: number;
   median: number;
   high: number;
@@ -28,42 +32,8 @@ type PricingPreview = {
   usedFallback: boolean;
 };
 
-const CANADA_PROVINCE_ALIASES: Record<string, string> = {
-  AB: "AB",
-  ALBERTA: "AB",
-  BC: "BC",
-  "BRITISH COLUMBIA": "BC",
-  MB: "MB",
-  MANITOBA: "MB",
-  NB: "NB",
-  "NEW BRUNSWICK": "NB",
-  NL: "NL",
-  "NEWFOUNDLAND AND LABRADOR": "NL",
-  NS: "NS",
-  "NOVA SCOTIA": "NS",
-  NT: "NT",
-  "NORTHWEST TERRITORIES": "NT",
-  NU: "NU",
-  NUNAVUT: "NU",
-  ON: "ON",
-  ONTARIO: "ON",
-  PE: "PE",
-  "PRINCE EDWARD ISLAND": "PE",
-  QC: "QC",
-  QUEBEC: "QC",
-  SK: "SK",
-  SASKATCHEWAN: "SK",
-  YT: "YT",
-  YUKON: "YT",
-};
-
-function toInt(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.round(n) : NaN;
-}
-
-function roundToNearestFive(n: number): number {
-  return Math.round(n / 5) * 5;
+function roundToNearestFive(v: number): number {
+  return Math.round(v / 5) * 5;
 }
 
 function parseJsonLoose(rawText: string): Record<string, unknown> | null {
@@ -82,18 +52,24 @@ function parseJsonLoose(rawText: string): Record<string, unknown> | null {
 }
 
 function normalizeConfidence(value: unknown): Confidence {
-  const text = String(value ?? "").trim().toUpperCase();
-  if (text === "LOW" || text === "MEDIUM" || text === "HIGH") return text;
+  const v = String(value ?? "").trim().toUpperCase();
+  if (v === "LOW" || v === "MEDIUM" || v === "HIGH") return v;
   return "LOW";
 }
 
-function fallback(currency: "USD" | "CAD", taxRate: number): PricingPreview {
+function toInt(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return NaN;
+  return Math.round(n);
+}
+
+function fallback(currency: "USD" | "CAD"): PricingPreviewResponse {
   return {
     low: 100,
     median: 200,
     high: 300,
     confidence: "LOW",
-    taxRate,
+    taxRate: 0,
     currency,
     appraisalToken: randomUUID(),
     modelUsed: "fallback",
@@ -101,15 +77,22 @@ function fallback(currency: "USD" | "CAD", taxRate: number): PricingPreview {
   };
 }
 
-function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "USD" | "CAD", taxRate: number): PricingPreview {
-  if (!parsed) return fallback(currency, taxRate);
+function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "USD" | "CAD", taxRate: number): PricingPreviewResponse {
+  if (!parsed) {
+    const f = fallback(currency);
+    return { ...f, taxRate };
+  }
 
   let low = roundToNearestFive(toInt(parsed.low));
   let median = roundToNearestFive(toInt(parsed.median));
   let high = roundToNearestFive(toInt(parsed.high));
 
-  if (!Number.isFinite(low) || !Number.isFinite(median) || !Number.isFinite(high)) {
-    return fallback(currency, taxRate);
+  const confidence = normalizeConfidence(parsed.confidence);
+
+  const invalid = !Number.isFinite(low) || !Number.isFinite(median) || !Number.isFinite(high);
+  if (invalid) {
+    const f = fallback(currency);
+    return { ...f, taxRate };
   }
 
   low = Math.max(50, low);
@@ -123,7 +106,7 @@ function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "U
     low,
     median,
     high,
-    confidence: normalizeConfidence(parsed.confidence),
+    confidence,
     taxRate,
     currency,
     appraisalToken: randomUUID(),
@@ -132,62 +115,31 @@ function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "U
   };
 }
 
-function normalizeProvince(country: "US" | "CA", province: string): string {
-  const text = province.trim().toUpperCase();
-  if (!text || country !== "CA") return text;
-  return CANADA_PROVINCE_ALIASES[text] ?? text;
-}
+async function runNano(input: z.infer<typeof BodySchema>): Promise<PricingPreviewResponse> {
+  const apiKey = String(process.env.OPEN_AI_API_KEY ?? "").trim();
+  console.log("OpenAI Key Exists:", Boolean(apiKey));
+  if (!apiKey) throw badRequest("V4_APPRAISAL_KEY_MISSING", "OPEN_AI_API_KEY missing in API runtime");
 
-async function safeTaxRate(country: "US" | "CA", province: string): Promise<number> {
-  if (country !== "CA") return 0;
-  const normalizedProvince = normalizeProvince(country, province);
-  if (!normalizedProvince) return 0;
-  try {
+  const currency: "USD" | "CAD" = input.country === "CA" ? "CAD" : "USD";
+  const province = input.province.trim().toUpperCase();
+
+  let taxRate = 0;
+  if (input.country === "CA") {
     const probe = await resolveTax({
-      amountCents: 10_000,
+      amountCents: 10000,
       amountKind: "NET",
       country: "CA",
-      province: normalizedProvince,
+      province,
       mode: "EXCLUSIVE",
     });
-    return Math.max(0, Number(probe.taxCents ?? 0)) / 10_000;
-  } catch (err) {
-    console.warn("[pricing-preview] tax resolver failed, defaulting to 0%", {
-      country,
-      province: normalizedProvince,
-      message: err instanceof Error ? err.message : String(err),
-    });
-    return 0;
-  }
-}
-
-function extractOutputText(raw: any): string {
-  if (typeof raw?.output_text === "string") return raw.output_text;
-  if (Array.isArray(raw?.output)) {
-    return raw.output
-      .flatMap((o: any) => o?.content ?? [])
-      .map((c: any) => c?.text)
-      .filter((t: any) => typeof t === "string")
-      .join("\n");
-  }
-  return "";
-}
-
-async function runNano(input: z.infer<typeof BodySchema>): Promise<PricingPreview> {
-  const currency: "USD" | "CAD" = input.country === "CA" ? "CAD" : "USD";
-  const taxRate = await safeTaxRate(input.country, input.province);
-  const apiKey = String(process.env.OPEN_AI_API_KEY ?? "").trim();
-
-  if (!apiKey) {
-    console.warn("[pricing-preview] OPEN_AI_API_KEY missing; using fallback appraisal");
-    return fallback(currency, taxRate);
+    taxRate = Math.max(0, Number(probe.taxCents ?? 0)) / 10000;
   }
 
   const prompt = [
     "You are a pricing appraisal engine for local trade jobs.",
     "Return strict JSON only with integer values.",
     `Country: ${input.country}`,
-    `Province/State: ${normalizeProvince(input.country, input.province) || "N/A"}`,
+    `Province/State: ${province}`,
     `Trade Category: ${input.tradeCategory}`,
     `Title: ${input.title}`,
     `Description: ${input.description}`,
@@ -202,9 +154,8 @@ async function runNano(input: z.infer<typeof BodySchema>): Promise<PricingPrevie
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
-
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const resp = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -220,60 +171,70 @@ async function runNano(input: z.infer<typeof BodySchema>): Promise<PricingPrevie
       signal: controller.signal,
     });
 
-    const raw = (await response.json().catch(() => null)) as any;
-    if (!response.ok) {
-      console.warn("[pricing-preview] model request failed; using fallback", {
-        status: response.status,
-        error: raw?.error?.message ?? null,
-      });
-      return fallback(currency, taxRate);
+    const raw = (await resp.json().catch(() => null)) as any;
+    if (!resp.ok) {
+      throw badRequest("V4_APPRAISAL_MODEL_FAILED", String(raw?.error?.message ?? `OpenAI request failed (${resp.status})`));
     }
 
-    const parsed = parseJsonLoose(extractOutputText(raw));
+    const text: string =
+      typeof raw?.output_text === "string"
+        ? raw.output_text
+        : Array.isArray(raw?.output)
+          ? raw.output
+              .flatMap((o: any) => o?.content ?? [])
+              .map((c: any) => c?.text)
+              .filter((t: any) => typeof t === "string")
+              .join("\n")
+          : "";
+
+    const parsed = parseJsonLoose(text);
     return normalizeAppraisal(parsed, currency, taxRate);
-  } catch (err) {
-    console.warn("[pricing-preview] model exception; using fallback", {
-      message: err instanceof Error ? err.message : String(err),
-    });
-    return fallback(currency, taxRate);
+  } catch {
+    const f = fallback(currency);
+    return { ...f, taxRate, modelUsed: "gpt-5-nano" };
   } finally {
     clearTimeout(timeout);
   }
 }
 
 export async function POST(req: Request) {
-  const rawBody = await req.json().catch(() => ({}));
-  const parsed = BodySchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Invalid request body",
-        details: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })),
-      },
-      { status: 400 },
-    );
-  }
-
-  const requestInput = parsed.data;
-  const fallbackCurrency: "USD" | "CAD" = requestInput.country === "CA" ? "CAD" : "USD";
-  const fallbackTaxRate = await safeTaxRate(requestInput.country, requestInput.province);
-
+  let requestId: string | undefined;
   try {
-    await requireJobPoster(req);
-    return NextResponse.json(await runNano(requestInput));
-  } catch (err) {
-    const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    const message = err instanceof Error ? err.message : "Internal server error";
+    const authed = await requireAuth(req);
+    if (authed instanceof Response) return authed;
+    requestId = authed.requestId;
 
-    if (status === 401 || status === 403) {
-      return NextResponse.json({ ok: false, error: message }, { status });
+    const roleCheck = await requireRole(req, "JOB_POSTER");
+    if (roleCheck instanceof Response) return roleCheck;
+
+    const readiness = await getV4Readiness(roleCheck.internalUser.id);
+    if (!readiness.jobPosterReady) {
+      throw forbidden("V4_SETUP_REQUIRED", "Complete job poster setup before accessing the dashboard");
     }
 
-    console.error("[pricing-preview] unexpected failure; returning fallback appraisal", {
-      status,
-      message,
+    await rateLimitOrThrow({
+      key: `v4:pricing-preview:nano:${roleCheck.internalUser.id}`,
+      windowSeconds: 600,
+      max: 20,
     });
-    return NextResponse.json(fallback(fallbackCurrency, fallbackTaxRate), { status: 200 });
+
+    const raw = await req.json().catch(() => ({}));
+    const parsed = BodySchema.safeParse(raw);
+    if (!parsed.success) {
+      throw badRequest(
+        "V4_INVALID_REQUEST_BODY",
+        "Invalid request body",
+        { issues: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })) },
+      );
+    }
+
+    return NextResponse.json(await runNano(parsed.data));
+  } catch (err) {
+    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_PRICING_PREVIEW_FAILED");
+    const retryAfter = Number((wrapped as any)?.details?.retryAfterSeconds ?? 0);
+    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), {
+      status: wrapped.status,
+      headers: retryAfter > 0 ? { "Retry-After": String(retryAfter) } : undefined,
+    });
   }
 }
