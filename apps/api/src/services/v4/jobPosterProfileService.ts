@@ -49,7 +49,6 @@ export async function saveV4JobPosterProfile(
   identity?: ClerkIdentity | null,
 ) {
   const now = new Date();
-  const contactName = [identity?.firstName, identity?.lastName].filter(Boolean).join(" ").trim();
   const contactName = [identity?.firstName, identity?.lastName]
     .filter(Boolean)
     .join(" ")
