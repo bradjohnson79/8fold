@@ -245,4 +245,18 @@ export async function upsertV4ContractorProfile(
   } catch (err) {
     throw mapContractorProfileDbError(err);
   }
+
+  const accountRows = await db
+    .select({
+      id: contractorAccounts.userId,
+      isActive: contractorAccounts.isActive,
+      wizardCompleted: contractorAccounts.wizardCompleted,
+      waiverAccepted: contractorAccounts.waiverAccepted,
+    })
+    .from(contractorAccounts)
+    .where(eq(contractorAccounts.userId, userId))
+    .limit(1);
+  const contractor = accountRows[0] ?? null;
+  console.log("Contractor saved:", contractor?.id ?? userId);
+  return contractor;
 }
