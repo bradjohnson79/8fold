@@ -37,6 +37,8 @@ const STATUS_ALIAS_TO_CANONICAL: Record<string, string> = {
   CUSTOMER_APPROVED_AWAITING_ROUTER: "OPEN_FOR_ROUTING",
 };
 
+// Production note: this handler must update canonical public.jobs status directly.
+
 function toCanonicalStatus(status: string): string {
   const upper = String(status ?? "").trim().toUpperCase();
   return STATUS_ALIAS_TO_CANONICAL[upper] ?? upper;
