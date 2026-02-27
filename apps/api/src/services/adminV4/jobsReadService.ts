@@ -20,6 +20,7 @@ import {
   jobAssignments,
   jobDispatches,
   jobs,
+  ledgerEntries,
   messages,
   pmReceipts,
   pmRequests,
@@ -87,25 +88,18 @@ function parseSort(v: string | null): ListParams["sort"] {
 function buildPaymentState(row: {
   payment_status: string | null;
   payout_status: string | null;
-  funds_secured_at: Date | null;
-  escrow_locked_at: Date | null;
-  payment_captured_at: Date | null;
-  released_at: Date | null;
+  stripe_paid_at: Date | null;
+  stripe_refunded_at: Date | null;
   refunded_at: Date | null;
 }) {
   const paymentStatus = String(row.payment_status ?? "").toUpperCase();
-  const payoutStatus = String(row.payout_status ?? "").toUpperCase();
-  const secured = Boolean(row.funds_secured_at || row.escrow_locked_at || paymentStatus === "AUTHORIZED" || paymentStatus === "FUNDS_SECURED" || paymentStatus === "FUNDED");
-  const captured = Boolean(row.payment_captured_at || paymentStatus === "FUNDED");
-  const paid = Boolean(row.released_at || payoutStatus === "RELEASED");
-  const refunded = Boolean(row.refunded_at || paymentStatus === "REFUNDED");
-
-  const label = refunded ? "REFUNDED" : paid ? "PAID" : captured ? "CAPTURED" : secured ? "SECURED" : "UNPAID";
+  const paid = Boolean(row.stripe_paid_at || paymentStatus === "FUNDS_SECURED" || paymentStatus === "FUNDED");
+  const refunded = Boolean(row.stripe_refunded_at || row.refunded_at || paymentStatus === "REFUNDED");
+  const label = refunded ? "REFUNDED" : paid ? "PAID" : "UNPAID";
 
   return {
-    secured,
-    captured,
     paid,
+    refunded,
     label,
     rawPaymentStatus: row.payment_status,
     rawPayoutStatus: row.payout_status,
@@ -212,10 +206,8 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
         amount_cents: jobs.amount_cents,
         payment_status: jobs.payment_status,
         payout_status: jobs.payout_status,
-        funds_secured_at: jobs.funds_secured_at,
-        escrow_locked_at: jobs.escrow_locked_at,
-        payment_captured_at: jobs.payment_captured_at,
-        released_at: jobs.released_at,
+        stripe_paid_at: jobs.stripe_paid_at,
+        stripe_refunded_at: jobs.stripe_refunded_at,
         refunded_at: jobs.refunded_at,
         routing_status: jobs.routing_status,
         trade_category: jobs.trade_category,
@@ -426,13 +418,24 @@ export async function getAdminJobDetail(jobId: string): Promise<{
       trade_category: jobs.trade_category,
       routing_status: jobs.routing_status,
       amount_cents: jobs.amount_cents,
+      appraisal_subtotal_cents: jobs.appraisal_subtotal_cents,
+      regional_fee_cents: jobs.regional_fee_cents,
+      tax_rate_bps: jobs.tax_rate_bps,
+      tax_amount_cents: jobs.tax_amount_cents,
+      total_amount_cents: jobs.total_amount_cents,
+      province: jobs.province,
       payment_status: jobs.payment_status,
       payout_status: jobs.payout_status,
-      funds_secured_at: jobs.funds_secured_at,
-      escrow_locked_at: jobs.escrow_locked_at,
-      payment_captured_at: jobs.payment_captured_at,
+      stripe_payment_intent_id: jobs.stripe_payment_intent_id,
+      stripe_payment_intent_status: jobs.stripe_payment_intent_status,
+      stripe_paid_at: jobs.stripe_paid_at,
+      stripe_refunded_at: jobs.stripe_refunded_at,
+      stripe_canceled_at: jobs.stripe_canceled_at,
       released_at: jobs.released_at,
       refunded_at: jobs.refunded_at,
+      labor_total_cents: jobs.labor_total_cents,
+      price_adjustment_cents: jobs.price_adjustment_cents,
+      transaction_fee_cents: jobs.transaction_fee_cents,
       router_approved_at: jobs.router_approved_at,
       contractor_user_id: jobs.contractor_user_id,
       job_poster_user_id: jobs.job_poster_user_id,
@@ -457,7 +460,7 @@ export async function getAdminJobDetail(jobId: string): Promise<{
   const row = jobRows[0] ?? null;
   if (!row) return null;
 
-  const [dispatchRows, assignmentRows, contractorUserRows, auditRows, pmRows, receiptRows, messageStats] = await Promise.all([
+  const [dispatchRows, assignmentRows, contractorUserRows, auditRows, pmRows, receiptRows, messageStats, ledgerSummaryRows] = await Promise.all([
     db
       .select({
         id: jobDispatches.id,
@@ -524,6 +527,18 @@ export async function getAdminJobDetail(jobId: string): Promise<{
       .from(conversations)
       .leftJoin(messages, eq(messages.conversationId, conversations.id))
       .where(eq(conversations.jobId, jobId)),
+    db
+      .select({
+        type: ledgerEntries.type,
+        count: count(),
+        creditsCents:
+          sql<number>`coalesce(sum(case when ${ledgerEntries.direction} = 'CREDIT' then ${ledgerEntries.amountCents} else 0 end),0)::int`,
+        debitsCents:
+          sql<number>`coalesce(sum(case when ${ledgerEntries.direction} = 'DEBIT' then ${ledgerEntries.amountCents} else 0 end),0)::int`,
+      })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.jobId, jobId))
+      .groupBy(ledgerEntries.type),
   ]);
 
   const latestDispatch = dispatchRows[0] ?? null;
@@ -584,6 +599,26 @@ export async function getAdminJobDetail(jobId: string): Promise<{
     amountCents: Number(row.amount_cents ?? 0),
     paymentStatus: row.payment_status,
     payoutStatus: row.payout_status,
+    financialSummary: {
+      appraisalSubtotalCents: Number(row.appraisal_subtotal_cents ?? 0) || Number(row.labor_total_cents ?? 0),
+      regionalFeeCents: Number(row.regional_fee_cents ?? 0) || Number(row.price_adjustment_cents ?? 0),
+      taxRateBps: Number(row.tax_rate_bps ?? 0),
+      taxAmountCents: Number(row.tax_amount_cents ?? 0) || Number(row.transaction_fee_cents ?? 0),
+      totalAmountCents: Number(row.total_amount_cents ?? 0) || Number(row.amount_cents ?? 0),
+      country: String(row.country ?? ""),
+      province: row.province ?? row.region_code ?? null,
+      stripePaymentIntentId: row.stripe_payment_intent_id ?? null,
+      stripePaymentIntentStatus: row.stripe_payment_intent_status ?? null,
+      stripePaidAt: toIso(row.stripe_paid_at),
+      stripeRefundedAt: toIso(row.stripe_refunded_at ?? row.refunded_at),
+      stripeCanceledAt: toIso(row.stripe_canceled_at),
+      ledgerByType: ledgerSummaryRows.map((entry) => ({
+        type: String(entry.type ?? ""),
+        count: Number(entry.count ?? 0),
+        creditsCents: Number(entry.creditsCents ?? 0),
+        debitsCents: Number(entry.debitsCents ?? 0),
+      })),
+    },
     jobPoster: row.poster_id
       ? {
           id: row.poster_id,
@@ -600,7 +635,8 @@ export async function getAdminJobDetail(jobId: string): Promise<{
 
   pushTimeline(timeline, row.created_at, "created", "Job created", "job");
   pushTimeline(timeline, row.published_at, "published", "Job published", "job");
-  pushTimeline(timeline, row.accepted_at, "accepted", "Payment authorized", "job");
+  pushTimeline(timeline, row.stripe_paid_at, "payment_paid", "Payment paid", "job");
+  pushTimeline(timeline, row.accepted_at, "accepted", "Contractor accepted", "job");
   pushTimeline(timeline, row.funded_at, "funded", "Funds secured", "job");
   pushTimeline(timeline, row.first_routed_at, "first_routed", "First routed", "job");
   pushTimeline(timeline, row.routed_at, "routed", "Routed", "job");
@@ -610,7 +646,7 @@ export async function getAdminJobDetail(jobId: string): Promise<{
   pushTimeline(timeline, row.router_approved_at, "router_approved", "Router approved", "job");
   pushTimeline(timeline, row.completion_flagged_at, "completion_flagged", "Completion flagged", "job");
   pushTimeline(timeline, row.released_at, "released", "Payout released", "job");
-  pushTimeline(timeline, row.refunded_at, "refunded", "Refunded", "job");
+  pushTimeline(timeline, row.stripe_refunded_at ?? row.refunded_at, "refunded", "Refunded", "job");
 
   for (const dispatch of dispatchRows) {
     pushTimeline(
