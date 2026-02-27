@@ -12,12 +12,19 @@ export async function GET(req: Request) {
   const status = String(searchParams.get("status") ?? "").trim();
   const limit = Math.max(1, Math.min(200, Number(searchParams.get("take") ?? searchParams.get("limit") ?? 100)));
 
-  const rows = await db
-    .select()
-    .from(v4AdminSupportTickets)
-    .where(status ? and(eq(v4AdminSupportTickets.status, status)) : undefined)
-    .orderBy(desc(v4AdminSupportTickets.updatedAt))
-    .limit(limit);
+  try {
+    const rows = await db
+      .select()
+      .from(v4AdminSupportTickets)
+      .where(status ? and(eq(v4AdminSupportTickets.status, status)) : undefined)
+      .orderBy(desc(v4AdminSupportTickets.updatedAt))
+      .limit(limit);
 
-  return ok({ tickets: rows });
+    return ok({ tickets: rows });
+  } catch (error) {
+    console.error("[ADMIN_V4_SUPPORT_TICKETS_FALLBACK]", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return ok({ tickets: [] as Array<Record<string, unknown>> });
+  }
 }
