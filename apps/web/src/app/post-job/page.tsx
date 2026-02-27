@@ -363,10 +363,10 @@ export default function PostJobPage() {
     setError(null);
     setUploading(true);
     try {
+      const authHeader = await getApiAuthHeader();
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.set("file", file);
-        const authHeader = await getApiAuthHeader();
         const resp = await fetch(apiUrl("/api/job/upload"), {
           method: "POST",
           headers: authHeader,
@@ -450,7 +450,6 @@ export default function PostJobPage() {
 
     setIsAppraising(true);
     try {
-      await persistDraft("DETAILS");
       const authHeader = await getApiAuthHeader();
       const resp = await fetch(apiUrl("/api/job-draft/pricing-preview"), {
         method: "POST",
@@ -492,7 +491,8 @@ export default function PostJobPage() {
       setBaseMedianCents(next.median * 100);
       setSliderOffsetDollars(0);
       resetPaymentConfirmationState();
-      await persistDraft("PRICING");
+      // Pricing draft persistence should not block appraisal UX.
+      void persistDraft("PRICING").catch(() => {});
     } catch (e) {
       setError(getErrorMessage(e, "Failed to appraise job."));
     } finally {
