@@ -170,7 +170,8 @@ export async function createV4Job(input: V4JobCreateBody, actorUserId: string, i
 
     await tx.insert(jobs).values({
       id: jobId,
-      status: "PUBLISHED",
+      // Job Poster submitted jobs enter the CUSTOMER_APPROVED bucket for marketplace/admin consistency.
+      status: "CUSTOMER_APPROVED",
       archived: false,
       title: input.title,
       scope: input.scope,
