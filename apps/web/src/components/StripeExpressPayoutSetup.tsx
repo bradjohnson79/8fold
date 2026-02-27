@@ -14,6 +14,8 @@ type ConnectStatus = {
   countryMismatch?: boolean;
   currencyMismatch?: boolean;
   message?: string;
+  simulationEnabled?: boolean;
+  simulatedApproved?: boolean;
 };
 
 export function StripeExpressPayoutSetup() {
@@ -88,6 +90,28 @@ export function StripeExpressPayoutSetup() {
     }
   }
 
+  async function simulateApproval() {
+    setSaving(true);
+    setError("");
+    try {
+      const resp = await fetch("/api/app/stripe/connect/create-account", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ simulateApproved: true }),
+        credentials: "include",
+      });
+      const json = (await resp.json().catch(() => null)) as any;
+      if (!resp.ok || String(json?.ok) !== "true") {
+        throw new Error(String(json?.error ?? "Failed to simulate Stripe approval"));
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to simulate Stripe approval");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const mode = status?.state ?? "NOT_CONNECTED";
   const returnedFromStripe = searchParams?.get("stripe") === "return";
 
@@ -123,14 +147,26 @@ export function StripeExpressPayoutSetup() {
             <option value="COMPANY">Business (Company)</option>
           </select>
           <div className="text-sm text-gray-700">No Stripe account is connected yet.</div>
-          <button
-            type="button"
-            onClick={() => void openStripe()}
-            disabled={saving}
-            className="mt-3 bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
-          >
-            {saving ? "Redirecting…" : "Connect with Stripe"}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void openStripe()}
+              disabled={saving}
+              className="bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+            >
+              {saving ? "Redirecting…" : "Connect with Stripe"}
+            </button>
+            {status?.simulationEnabled ? (
+              <button
+                type="button"
+                onClick={() => void simulateApproval()}
+                disabled={saving}
+                className="bg-slate-700 text-white hover:bg-slate-800 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+              >
+                {saving ? "Simulating…" : "Simulate Approval (Dev)"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

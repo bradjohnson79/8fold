@@ -15,6 +15,8 @@ type StripeConnectStatus = {
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   onboardingComplete: boolean;
+  simulationEnabled?: boolean;
+  simulatedApproved?: boolean;
 };
 
 type RouterSummary = {
@@ -98,6 +100,28 @@ export default function RouterPaymentSetupPage() {
       window.location.href = data.url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start Stripe onboarding");
+      setSaving(false);
+    }
+  }
+
+  async function handleSimulateApproval() {
+    setSaving(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/app/stripe/connect/create-account", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ simulateApproved: true }),
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!resp.ok || data?.ok !== true) {
+        throw new Error(String(data?.error ?? "Failed to simulate Stripe approval"));
+      }
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to simulate Stripe approval");
+    } finally {
       setSaving(false);
     }
   }
@@ -203,6 +227,16 @@ export default function RouterPaymentSetupPage() {
                   ? "Manage Stripe Account"
                   : "Connect Stripe Account"}
           </button>
+          {status?.simulationEnabled ? (
+            <button
+              type="button"
+              onClick={() => void handleSimulateApproval()}
+              disabled={saving || loading}
+              className="mt-4 ml-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? "Simulating…" : "Simulate Approval (Dev)"}
+            </button>
+          ) : null}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
