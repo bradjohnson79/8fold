@@ -35,7 +35,7 @@ export async function GET(req: Request) {
       count(db.select({ c: sql<number>`count(*)` }).from(contractors)),
       count(db.select({ c: sql<number>`count(*)` }).from(contractors).where(eq(contractors.status, "APPROVED"))),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(eq(jobs.is_mock, false))),
-      count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.is_mock, false), eq(jobs.status, "PUBLISHED")))),
+      count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.is_mock, false), eq(jobs.status, "OPEN_FOR_ROUTING")))),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.is_mock, false), eq(jobs.status, "ASSIGNED")))),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.is_mock, false), eq(jobs.status, "IN_PROGRESS")))),
       count(db.select({ c: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.is_mock, false), eq(jobs.status, "CONTRACTOR_COMPLETED")))),
@@ -68,4 +68,3 @@ export async function GET(req: Request) {
     return handleApiError(err, "GET /api/admin/stats");
   }
 }
-

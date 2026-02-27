@@ -62,8 +62,8 @@ export async function POST(req: Request) {
     await db.transaction(async (tx) => {
       await tx.insert(jobs).values({
         id: jobId,
-        // Keep legacy create path aligned with v4 Job Poster marketplace status buckets.
-        status: "CUSTOMER_APPROVED",
+        // Canonical lifecycle origin for real Job Poster submissions.
+        status: "OPEN_FOR_ROUTING",
         archived: false,
         title: input.title,
         scope: input.scope,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { and, desc, eq, gte, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractors } from "@/db/schema/contractor";
 import { jobAssignments } from "@/db/schema/jobAssignment";
@@ -105,8 +105,7 @@ export async function GET(req: Request) {
     else if (status === "CONTRACTOR_COMPLETED") conditions.push(eq(jobs.status, "CONTRACTOR_COMPLETED" as any));
     else if (status === "CUSTOMER_REJECTED") conditions.push(eq(jobs.status, "CUSTOMER_REJECTED" as any));
     else if (status === "CUSTOMER_APPROVED_AWAITING_ROUTER") {
-      conditions.push(eq(jobs.status, "CUSTOMER_APPROVED" as any));
-      conditions.push(isNull(jobs.router_approved_at));
+      conditions.push(eq(jobs.status, "OPEN_FOR_ROUTING" as any));
     } else if (status === "FLAGGED_HOLD") {
       // Active holds are already filtered in the leftJoin condition.
       // Avoid referencing jobHolds.status in WHERE to prevent SQL instability.
@@ -194,4 +193,3 @@ export async function GET(req: Request) {
     });
   }
 }
-

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { and, desc, eq, isNull, or, sql, lt } from "drizzle-orm";
+import { and, desc, eq, or, sql, lt } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
     const activeStatusesWhere = or(
       eq(jobs.status, "ASSIGNED" as any),
-      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
+      eq(jobs.status, "OPEN_FOR_ROUTING" as any),
     );
 
     const [activeJobs, awaitingRouter, unassignedOver24h, adminOwnedJobs, jobRows] = await Promise.all([
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
         db
           .select({ c: sql<number>`count(*)` })
           .from(jobs)
-          .where(and(archivedExcluded, eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)))
+          .where(and(archivedExcluded, eq(jobs.status, "OPEN_FOR_ROUTING" as any)))
       ),
       count(
         db
@@ -46,8 +46,7 @@ export async function GET(req: Request) {
           .where(
             and(
               archivedExcluded,
-              eq(jobs.status, "CUSTOMER_APPROVED" as any),
-              isNull(jobs.router_approved_at),
+              eq(jobs.status, "OPEN_FOR_ROUTING" as any),
               lt(jobs.created_at, cutoff24h),
             )
           )
