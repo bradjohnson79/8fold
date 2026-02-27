@@ -1,6 +1,8 @@
 import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { refundUnassignedJob } from "@/src/services/escrow/refundService";
+import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
 
 export type JobListItem = {
   id: string;
@@ -79,4 +81,103 @@ export async function getJobDetailForJobPoster(jobId: string, userId: string): P
     tradeCategory: String(r.trade_category ?? ""),
     createdAt: r.createdAt?.toISOString?.() ?? "",
   };
+}
+
+export async function releaseCompletedJobForPoster(jobId: string, userId: string): Promise<{ jobId: string; payoutStatus: string }> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      jobPosterUserId: jobs.job_poster_user_id,
+      paymentStatus: jobs.payment_status,
+      payoutStatus: jobs.payout_status,
+      stripePaidAt: jobs.stripe_paid_at,
+      stripeRefundedAt: jobs.stripe_refunded_at,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  const job = rows[0] ?? null;
+  if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  if (job.jobPosterUserId !== userId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  if (String(job.status ?? "").toUpperCase() !== "COMPLETED") {
+    throw conflict("V4_JOB_NOT_COMPLETED", "Job must be completed before release");
+  }
+  const paymentStatus = String(job.paymentStatus ?? "").toUpperCase();
+  if (!["FUNDS_SECURED", "FUNDED"].includes(paymentStatus)) {
+    throw conflict("V4_PAYMENT_NOT_PAID", "Paid funds are required before release");
+  }
+  if (!job.stripePaidAt) {
+    throw conflict("V4_PAYMENT_NOT_PAID", "Paid funds are required before release");
+  }
+  if (job.stripeRefundedAt || paymentStatus === "REFUNDED") {
+    throw conflict("V4_PAYMENT_REFUNDED", "Refunded jobs cannot be released");
+  }
+
+  await db
+    .update(jobs)
+    .set({
+      payout_status: "READY" as any,
+      payment_released_at: new Date(),
+      updated_at: new Date(),
+    })
+    .where(eq(jobs.id, jobId));
+
+  return { jobId, payoutStatus: "READY" };
+}
+
+export async function refundRoutableUnassignedJobForPoster(jobId: string, userId: string): Promise<{
+  jobId: string;
+  refunded: boolean;
+  idempotent: boolean;
+  refundedAt: string | null;
+  paymentStatus: string;
+}> {
+  const result = await refundUnassignedJob(
+    jobId,
+    {
+      actorUserId: userId,
+      actorType: "JOB_POSTER",
+    },
+    { expectedPosterUserId: userId },
+  );
+
+  if (result.ok) {
+    return {
+      jobId,
+      refunded: true,
+      idempotent: result.idempotent,
+      refundedAt: result.refundedAt,
+      paymentStatus: result.paymentStatus,
+    };
+  }
+
+  if (result.reasonCode === "NOT_FOUND") throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  if (result.reasonCode === "FORBIDDEN") throw forbidden("V4_JOB_NOT_FOUND", "Job not found");
+  if (result.reasonCode === "MISSING_PAYMENT_INTENT") {
+    throw conflict("V4_REFUND_MISSING_PAYMENT_INTENT", "Stripe payment intent is missing");
+  }
+  if (result.reasonCode === "REFUND_WINDOW_NOT_REACHED") {
+    throw conflict("V4_REFUND_WINDOW_NOT_REACHED", "Refund is available 7 days after payment when unassigned");
+  }
+  if (result.reasonCode === "ASSIGNED") {
+    throw conflict("V4_REFUND_NOT_ALLOWED_ASSIGNED", "Assigned jobs cannot be refunded");
+  }
+  if (result.reasonCode === "NOT_ROUTABLE") {
+    throw conflict("V4_REFUND_NOT_ALLOWED_STATUS", "Refund is only allowed while the job remains routable");
+  }
+  if (result.reasonCode === "NOT_PAID") {
+    throw conflict("V4_REFUND_NOT_ALLOWED_UNPAID", "Paid funds are required before refund");
+  }
+  if (result.reasonCode === "ALREADY_REFUNDED") {
+    return {
+      jobId,
+      refunded: true,
+      idempotent: true,
+      refundedAt: result.refundedAt,
+      paymentStatus: result.paymentStatus,
+    };
+  }
+
+  throw conflict("V4_REFUND_FAILED", "Refund could not be processed");
 }
