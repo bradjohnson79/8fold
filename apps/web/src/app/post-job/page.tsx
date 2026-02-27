@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { GoogleAddressAutocomplete } from "@/components/GoogleAddressAutocomplete";
@@ -13,39 +14,25 @@ type TradeMeta = {
 
 type AppraisalResult = {
   low: number;
-  high: number;
   median: number;
-  rationale: string;
-  modelUsed: string;
+  high: number;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  taxRate: number;
+  currency: "USD" | "CAD";
   appraisalToken: string;
+  modelUsed: string;
+  usedFallback: boolean;
 };
 
 type PaymentIntentResult = {
   success: boolean;
-  clientSecret?: string | null;
+  clientSecret: string;
   paymentIntentId: string;
-  paymentStatus?: string;
   appraisalPriceCents: number;
   regionalFeeCents: number;
-  taxRateBps?: number;
   taxCents: number;
   totalCents: number;
   currency: "USD" | "CAD";
-  message?: string;
-};
-
-type PricingPreviewResult = {
-  success: boolean;
-  appraisalSubtotalCents: number;
-  regionalFeeCents: number;
-  splitBaseCents: number;
-  taxRateBps: number;
-  taxCents: number;
-  totalCents: number;
-  country: "US" | "CA";
-  province: string | null;
-  currency: "USD" | "CAD";
-  paymentCurrency: "usd" | "cad";
   message?: string;
 };
 
@@ -73,7 +60,29 @@ function formatMoney(cents: number, currency: "USD" | "CAD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
-function PaymentConfirm(props: {
+function getApiErrorMessage(payload: unknown, fallback: string): string {
+  const obj = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const topMessage = typeof obj.message === "string" ? obj.message : "";
+  const topError = obj.error;
+  if (topMessage) return topMessage;
+  if (typeof topError === "string") return topError;
+  if (topError && typeof topError === "object") {
+    const nested = topError as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) return nested.message;
+    if (typeof nested.code === "string" && nested.code.trim()) return nested.code;
+    return JSON.stringify(topError);
+  }
+  return fallback;
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  if (err && typeof err === "object") return getApiErrorMessage(err, fallback);
+  return fallback;
+}
+
+function HoldConfirm(props: {
   onConfirmed: () => void;
   onError: (message: string) => void;
 }) {
@@ -96,9 +105,8 @@ function PaymentConfirm(props: {
                 redirect: "if_required",
               });
               if (result.error) throw new Error(result.error.message || "Payment confirmation failed.");
-              const status = String(result.paymentIntent?.status ?? "").toLowerCase();
-              if (status !== "succeeded") {
-                throw new Error(`Payment charge not completed. Current Stripe status: ${status || "unknown"}.`);
+              if (result.paymentIntent?.status !== "requires_capture") {
+                throw new Error("Payment hold not secured. Status is not requires_capture.");
               }
               props.onConfirmed();
             } catch (e) {
@@ -118,6 +126,7 @@ function PaymentConfirm(props: {
 
 export default function PostJobPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
 
   const [tradeMeta, setTradeMeta] = useState<TradeMeta>({ canonical: [], uiOrder: [] });
   const [loading, setLoading] = useState(true);
@@ -153,22 +162,32 @@ export default function PostJobPage() {
   const [images, setImages] = useState<UploadedImage[]>([]);
 
   const [appraisal, setAppraisal] = useState<AppraisalResult | null>(null);
-  const [appraisalPrice, setAppraisalPrice] = useState(0);
+  const [baseMedianCents, setBaseMedianCents] = useState(0);
+  const [sliderOffsetDollars, setSliderOffsetDollars] = useState(0);
 
   const [paymentConnected, setPaymentConnected] = useState<boolean | null>(null);
+  const [paymentProviderReady, setPaymentProviderReady] = useState<boolean | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentIntentResult | null>(null);
-  const [pricingPreview, setPricingPreview] = useState<PricingPreviewResult | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
-  const [paymentCompleteMessage, setPaymentCompleteMessage] = useState<string | null>(null);
 
   const [working, setWorking] = useState(false);
+  const [isAppraising, setIsAppraising] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const stripePromise = useMemo(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     return pk ? loadStripe(pk) : null;
+  }, []);
+
+  const apiOrigin = useMemo(() => {
+    const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
+    if (explicit) return explicit.replace(/\/+$/, "");
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+      return "http://localhost:3003";
+    }
+    return "https://api.8fold.app";
   }, []);
 
   const activeAddress = useMemo(() => {
@@ -186,6 +205,19 @@ export default function PostJobPage() {
     };
   }, [useSavedAddress, savedAddress, address, city, postalCode, region, country, lat, lon]);
 
+  const minOffsetDollars = appraisal ? appraisal.low - appraisal.median : 0;
+  const maxOffsetDollars = appraisal ? appraisal.high - appraisal.median : 0;
+  const appraisalPriceCents = Math.max(0, baseMedianCents + sliderOffsetDollars * 100);
+
+  const regionalFeeCents = urbanOrRegional === "regional" ? 2000 : 0;
+  const summaryCurrency: "USD" | "CAD" = activeAddress.country === "CA" ? "CAD" : "USD";
+  const taxRate = appraisal ? Number(appraisal.taxRate ?? 0) : 0;
+  const summaryTaxCents = summaryCurrency === "CAD" ? Math.max(0, Math.round((appraisalPriceCents + regionalFeeCents) * taxRate)) : 0;
+  const summaryTotalCents = appraisalPriceCents + regionalFeeCents + summaryTaxCents;
+
+  const isLower = appraisal ? appraisalPriceCents < baseMedianCents : false;
+  const isHigher = appraisal ? appraisalPriceCents > baseMedianCents : false;
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -199,7 +231,7 @@ export default function PostJobPage() {
 
         const metaJson = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profileJson = (await profileResp.json().catch(() => ({}))) as any;
-        const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean };
+        const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean; providerReady?: boolean };
         const draftJson = (await draftResp.json().catch(() => ({}))) as any;
 
         if (cancelled) return;
@@ -209,6 +241,7 @@ export default function PostJobPage() {
           uiOrder: Array.isArray(metaJson.uiOrder) ? metaJson.uiOrder : [],
         });
         setPaymentConnected(typeof paymentJson.connected === "boolean" ? paymentJson.connected : null);
+        setPaymentProviderReady(typeof paymentJson.providerReady === "boolean" ? paymentJson.providerReady : null);
 
         const profile = profileJson?.profile ?? null;
         if (profile && typeof profile.latitude === "number" && typeof profile.longitude === "number") {
@@ -258,10 +291,35 @@ export default function PostJobPage() {
               .filter((img: UploadedImage) => img.uploadId && img.url),
           );
 
-          const draftAppraisal = draftData.appraisal as AppraisalResult | undefined;
-          if (draftAppraisal?.appraisalToken) {
-            setAppraisal(draftAppraisal);
-            setAppraisalPrice(Number(draftData?.pricing?.appraisalPriceCents ?? draftAppraisal.median * 100));
+          const draftAppraisal = draftData.appraisal as Partial<AppraisalResult> | undefined;
+          const pricing = (draftData.pricing ?? {}) as Record<string, unknown>;
+          if (
+            draftAppraisal &&
+            Number.isFinite(Number(draftAppraisal.low)) &&
+            Number.isFinite(Number(draftAppraisal.median)) &&
+            Number.isFinite(Number(draftAppraisal.high))
+          ) {
+            const normalized: AppraisalResult = {
+              low: Number(draftAppraisal.low),
+              median: Number(draftAppraisal.median),
+              high: Number(draftAppraisal.high),
+              confidence: String(draftAppraisal.confidence ?? "LOW").toUpperCase() === "HIGH"
+                ? "HIGH"
+                : String(draftAppraisal.confidence ?? "LOW").toUpperCase() === "MEDIUM"
+                  ? "MEDIUM"
+                  : "LOW",
+              taxRate: Number(draftAppraisal.taxRate ?? 0),
+              currency: String(draftAppraisal.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
+              appraisalToken: String(draftAppraisal.appraisalToken ?? ""),
+              modelUsed: String(draftAppraisal.modelUsed ?? "gpt-5-nano"),
+              usedFallback: Boolean(draftAppraisal.usedFallback),
+            };
+            setAppraisal(normalized);
+            const medianCents = normalized.median * 100;
+            const selected = Number(pricing.appraisalPriceCents ?? pricing.selectedPriceCents ?? medianCents);
+            const offset = Math.round((selected - medianCents) / 100);
+            setBaseMedianCents(medianCents);
+            setSliderOffsetDollars(Math.max(normalized.low - normalized.median, Math.min(normalized.high - normalized.median, offset)));
           }
         }
       } finally {
@@ -283,23 +341,47 @@ export default function PostJobPage() {
     }));
   }
 
+  function resetPaymentConfirmationState() {
+    setPaymentSummary(null);
+    setClientSecret(null);
+    setPaymentIntentId(null);
+    setPaymentConfirmed(false);
+  }
+
+  function apiUrl(path: string): string {
+    return `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+
+  async function getApiAuthHeader(): Promise<Record<string, string>> {
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Unauthorized. Please sign in again.");
+    }
+    return { authorization: `Bearer ${token}` };
+  }
+
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
     setError(null);
     setUploading(true);
     try {
+      const authHeader = await getApiAuthHeader();
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.set("file", file);
-        const resp = await fetch("/api/web/v4/job/upload", { method: "POST", body: form });
+        const resp = await fetch(apiUrl("/api/job/upload"), {
+          method: "POST",
+          headers: authHeader,
+          body: form,
+        });
         const json = (await resp.json().catch(() => ({}))) as { uploadId?: string; url?: string; message?: string; error?: string };
         if (!resp.ok || !json.uploadId || !json.url) {
-          throw new Error(json.message ?? json.error ?? "Image upload failed.");
+          throw new Error(getApiErrorMessage(json, "Image upload failed."));
         }
         setImages((prev) => [...prev, { uploadId: json.uploadId!, url: json.url! }]);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Image upload failed.");
+      setError(getErrorMessage(e, "Image upload failed."));
     } finally {
       setUploading(false);
     }
@@ -332,8 +414,10 @@ export default function PostJobPage() {
         images,
         appraisal,
         pricing: {
-          appraisalPriceCents: appraisalPrice,
-          selectedPriceCents: appraisalPrice,
+          appraisalPriceCents,
+          selectedPriceCents: appraisalPriceCents,
+          appraisalAnchorCents: baseMedianCents,
+          sliderOffsetDollars,
           isRegional: urbanOrRegional === "regional",
         },
       },
@@ -346,7 +430,7 @@ export default function PostJobPage() {
       body: JSON.stringify(payload),
     });
     const json = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error(String(json?.message ?? "Failed to save job draft."));
+    if (!resp.ok) throw new Error(getApiErrorMessage(json, "Failed to save job draft."));
   }
 
   function validateBeforeAppraisal() {
@@ -366,113 +450,69 @@ export default function PostJobPage() {
       return;
     }
 
-    setWorking(true);
+    setIsAppraising(true);
     try {
-      await persistDraft("DETAILS");
-      const resp = await fetch("/api/web/v4/job/appraise-preview", {
+      const authHeader = await getApiAuthHeader();
+      const resp = await fetch(apiUrl("/api/job-draft/pricing-preview"), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          ...authHeader,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
+          country: activeAddress.country,
+          province: activeAddress.region.trim().toUpperCase(),
+          tradeCategory: tradeCategory.trim().toUpperCase(),
           title: title.trim(),
           description: description.trim(),
-          tradeCategory: tradeCategory.trim().toUpperCase(),
-          provinceState: activeAddress.region.trim().toUpperCase(),
-          latitude: Number(activeAddress.lat),
-          longitude: Number(activeAddress.lon),
-          isRegionalRequested: urbanOrRegional === "regional",
         }),
       });
-      const json = (await resp.json().catch(() => ({}))) as AppraisalResult & { error?: string; message?: string };
-      if (!resp.ok || !json.appraisalToken) {
-        throw new Error(json.message ?? json.error ?? "Failed to appraise job.");
+      const json = (await resp.json().catch(() => ({}))) as Partial<AppraisalResult> & { error?: string; message?: string };
+
+      if (!resp.ok || !Number.isFinite(Number(json.low)) || !Number.isFinite(Number(json.median)) || !Number.isFinite(Number(json.high))) {
+        throw new Error(getApiErrorMessage(json, "Failed to appraise job."));
       }
-      setAppraisal(json);
-      setAppraisalPrice(json.median * 100);
-      setPricingPreview(null);
-      setPaymentSummary(null);
-      setClientSecret(null);
-      setPaymentIntentId(null);
-      setPaymentConfirmed(false);
-      setPaymentCompleteMessage(null);
-      await persistDraft("PRICING");
+
+      const next: AppraisalResult = {
+        low: Number(json.low),
+        median: Number(json.median),
+        high: Number(json.high),
+        confidence: String(json.confidence ?? "LOW").toUpperCase() === "HIGH"
+          ? "HIGH"
+          : String(json.confidence ?? "LOW").toUpperCase() === "MEDIUM"
+            ? "MEDIUM"
+            : "LOW",
+        taxRate: Number(json.taxRate ?? 0),
+        currency: String(json.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
+        appraisalToken: String(json.appraisalToken ?? ""),
+        modelUsed: String(json.modelUsed ?? "gpt-5-nano"),
+        usedFallback: Boolean(json.usedFallback),
+      };
+
+      setAppraisal(next);
+      setBaseMedianCents(next.median * 100);
+      setSliderOffsetDollars(0);
+      resetPaymentConfirmationState();
+      // Pricing draft persistence should not block appraisal UX.
+      void persistDraft("PRICING").catch(() => {});
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to appraise job.");
+      setError(getErrorMessage(e, "Failed to appraise job."));
     } finally {
-      setWorking(false);
-    }
-  }
-
-  async function refreshPricingPreview() {
-    if (appraisalPrice <= 0) return null;
-    const resp = await fetch("/api/job-draft/pricing-preview", {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        appraisalSubtotalCents: appraisalPrice,
-        isRegional: urbanOrRegional === "regional",
-        country: activeAddress.country,
-        province: activeAddress.region,
-      }),
-    });
-    const json = (await resp.json().catch(() => ({}))) as PricingPreviewResult;
-    if (!resp.ok || !json.success) {
-      throw new Error(json.message ?? "Failed to compute server pricing.");
-    }
-    setPricingPreview(json);
-    return json;
-  }
-
-  useEffect(() => {
-    if (!appraisal?.appraisalToken || appraisalPrice <= 0) {
-      setPricingPreview(null);
-      return;
-    }
-    void (async () => {
-      try {
-        await refreshPricingPreview();
-      } catch {
-        // Keep last-known preview; payment-intent step will still validate server totals.
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appraisal?.appraisalToken, appraisalPrice, urbanOrRegional, activeAddress.country, activeAddress.region]);
-
-  async function submitJobAfterPayment() {
-    setError(null);
-    if (!paymentIntentId) {
-      setError("Stripe payment intent is required before posting.");
-      return;
-    }
-
-    setWorking(true);
-    try {
-      await persistDraft("PAYMENT");
-      const resp = await fetch("/api/job-draft/submit", {
-        method: "POST",
-        credentials: "include",
-      });
-      const json = (await resp.json().catch(() => ({}))) as { success?: boolean; jobId?: string; message?: string };
-      if (!resp.ok || !json.success || !json.jobId) {
-        throw new Error(json.message ?? "Failed to post job.");
-      }
-      setPaymentCompleteMessage("Payment Complete — Job Posted");
-      router.push(`/dashboard/job-poster/jobs/${encodeURIComponent(json.jobId)}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to post job.");
-    } finally {
-      setWorking(false);
+      setIsAppraising(false);
     }
   }
 
   async function preparePaymentIntent() {
     setError(null);
-    setPaymentCompleteMessage(null);
+    if (paymentProviderReady === false) {
+      setError("Stripe service is currently unavailable. Please try again shortly.");
+      return;
+    }
     if (paymentConnected === false) {
       setError("Payment method required. Add a payment method in Payment Setup.");
       return;
     }
-    if (!appraisal?.appraisalToken) {
+    if (!appraisal) {
       setError("Complete appraisal before payment confirmation.");
       return;
     }
@@ -483,53 +523,60 @@ export default function PostJobPage() {
 
     setWorking(true);
     try {
-      await refreshPricingPreview();
       await persistDraft("PAYMENT");
-      const resp = await fetch("/api/job-draft/payment-intent", {
+      const authHeader = await getApiAuthHeader();
+      const resp = await fetch(apiUrl("/api/job-draft/payment-intent"), {
         method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: {
+          ...authHeader,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
-          selectedPrice: appraisalPrice,
+          selectedPrice: appraisalPriceCents,
           isRegional: urbanOrRegional === "regional",
         }),
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
-      if (!resp.ok || !json.paymentIntentId) {
-        throw new Error(json.message ?? "Failed to prepare Stripe confirmation.");
+      if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
+        throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
       }
       setPaymentSummary(json);
+      setClientSecret(json.clientSecret);
       setPaymentIntentId(json.paymentIntentId);
-      const paymentStatus = String(json.paymentStatus ?? "").toLowerCase();
-      if (paymentStatus === "succeeded") {
-        setClientSecret(null);
-        setPaymentConfirmed(true);
-        await submitJobAfterPayment();
-      } else if (json.clientSecret) {
-        setClientSecret(json.clientSecret);
-        setPaymentConfirmed(false);
-      } else {
-        throw new Error("Stripe client secret missing for an unpaid payment intent.");
-      }
+      setPaymentConfirmed(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to prepare Stripe confirmation.");
+      setError(getErrorMessage(e, "Failed to prepare Stripe confirmation."));
     } finally {
       setWorking(false);
     }
   }
 
-  const sliderMin = appraisal ? appraisal.low * 100 : 0;
-  const sliderMax = appraisal ? appraisal.high * 100 : 0;
-  const sliderStep = 500;
+  async function submitJob() {
+    setError(null);
+    if (!paymentConfirmed) {
+      setError("Stripe payment confirmation is required before submitting.");
+      return;
+    }
 
-  const isLower = appraisal ? appraisalPrice < appraisal.median * 100 : false;
-  const isHigher = appraisal ? appraisalPrice > appraisal.median * 100 : false;
-
-  const summaryCurrency = pricingPreview?.currency ?? paymentSummary?.currency ?? (activeAddress.country === "CA" ? "CAD" : "USD");
-  const summaryAppraisal = pricingPreview?.appraisalSubtotalCents ?? paymentSummary?.appraisalPriceCents ?? 0;
-  const summaryRegional = pricingPreview?.regionalFeeCents ?? paymentSummary?.regionalFeeCents ?? 0;
-  const summaryTax = pricingPreview?.taxCents ?? paymentSummary?.taxCents ?? 0;
-  const summaryTotal = pricingPreview?.totalCents ?? paymentSummary?.totalCents ?? 0;
+    setWorking(true);
+    try {
+      await persistDraft("PAYMENT");
+      const authHeader = await getApiAuthHeader();
+      const resp = await fetch(apiUrl("/api/job-draft/submit"), {
+        method: "POST",
+        headers: authHeader,
+      });
+      const json = (await resp.json().catch(() => ({}))) as { success?: boolean; jobId?: string; message?: string };
+      if (!resp.ok || !json.success || !json.jobId) {
+        throw new Error(getApiErrorMessage(json, "Failed to submit job."));
+      }
+      router.push(`/dashboard/job-poster/jobs/${encodeURIComponent(json.jobId)}`);
+    } catch (e) {
+      setError(getErrorMessage(e, "Failed to submit job."));
+    } finally {
+      setWorking(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -596,11 +643,14 @@ export default function PostJobPage() {
             </div>
             <select
               value={urbanOrRegional}
-              onChange={(e) => setUrbanOrRegional(e.target.value === "regional" ? "regional" : "urban")}
+              onChange={(e) => {
+                setUrbanOrRegional(e.target.value === "regional" ? "regional" : "urban");
+                resetPaymentConfirmationState();
+              }}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
             >
               <option value="urban">Urban</option>
-              <option value="regional">Regional</option>
+              <option value="regional">Regional — $20 Extra Charge</option>
             </select>
           </section>
 
@@ -618,11 +668,11 @@ export default function PostJobPage() {
               <div className="mt-3 text-sm text-gray-700">
                 <p>{savedAddress.address || "No saved profile address found."}</p>
                 {savedAddress.lat != null && savedAddress.lon != null ? (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="mt-1 text-xs text-gray-500">
                     {savedAddress.lat.toFixed(5)}, {savedAddress.lon.toFixed(5)}
                   </p>
                 ) : (
-                  <p className="text-xs text-red-600 mt-1">Saved profile address is missing coordinates. Uncheck to enter manually.</p>
+                  <p className="mt-1 text-xs text-red-600">Saved profile address is missing coordinates. Uncheck to enter manually.</p>
                 )}
               </div>
             ) : (
@@ -678,7 +728,12 @@ export default function PostJobPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 p-4">
-            <h2 className="text-sm font-medium text-gray-700">Availability</h2>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-medium text-gray-700">Availability</h2>
+              <p className="text-xs text-gray-500">
+                These are just time blocks that show when you&apos;re available and help the contractor book a time with you.
+              </p>
+            </div>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -714,12 +769,10 @@ export default function PostJobPage() {
             <input className="mt-2" type="file" accept="image/*" multiple onChange={(e) => void uploadFiles(e.target.files)} />
             {uploading ? <p className="mt-2 text-xs text-gray-600">Uploading images...</p> : null}
             {images.length > 0 ? (
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="mt-4 space-y-4">
                 {images.map((img) => (
-                  <div key={img.uploadId} className="rounded-md border border-gray-200 p-2">
-                    <div className="h-28 w-full overflow-hidden rounded bg-gray-50">
-                      <img src={img.url} alt="Uploaded job photo" className="h-full w-full object-contain" />
-                    </div>
+                  <div key={img.uploadId} className="rounded-md border border-gray-200 p-3">
+                    <img src={img.url} alt="Uploaded job photo" className="h-auto max-h-[28rem] w-full rounded object-contain" />
                     <button type="button" onClick={() => removeImage(img.uploadId)} className="mt-2 text-xs font-medium text-red-600 hover:underline">
                       Remove
                     </button>
@@ -731,26 +784,40 @@ export default function PostJobPage() {
 
           <section className="rounded-lg border border-gray-200 p-6 text-center">
             <h2 className="text-xl font-semibold text-gray-900">Job Appraisal</h2>
-            <button type="button" onClick={() => void beginAppraisal()} disabled={working} className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60">
-              {working ? "Running Appraisal..." : "Begin Appraisal"}
+            <button type="button" onClick={() => void beginAppraisal()} disabled={isAppraising} className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60">
+              {isAppraising ? "Analyzing..." : "Begin Appraisal"}
             </button>
 
             {appraisal ? (
-              <div className="mt-6">
+              <div className="mt-6 space-y-4 text-left">
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                  <div className="rounded border border-gray-200 p-3">Low Estimate: <span className="font-semibold">{formatMoney(appraisal.low * 100, summaryCurrency)}</span></div>
+                  <div className="rounded border border-gray-200 p-3">Suggested Median: <span className="font-semibold">{formatMoney(baseMedianCents, summaryCurrency)}</span></div>
+                  <div className="rounded border border-gray-200 p-3">High Estimate: <span className="font-semibold">{formatMoney(appraisal.high * 100, summaryCurrency)}</span></div>
+                </div>
+
                 <input
                   type="range"
-                  min={sliderMin}
-                  max={sliderMax}
-                  step={sliderStep}
-                  value={appraisalPrice}
-                  onChange={(e) => setAppraisalPrice(Number(e.target.value))}
+                  min={minOffsetDollars}
+                  max={maxOffsetDollars}
+                  step={5}
+                  value={sliderOffsetDollars}
+                  onChange={(e) => {
+                    setSliderOffsetDollars(Number(e.target.value));
+                    resetPaymentConfirmationState();
+                  }}
                   className="w-full"
                 />
-                <p className="mt-2 text-sm font-medium text-gray-800">
-                  Selected Price: {formatMoney(appraisalPrice, activeAddress.country === "CA" ? "CAD" : "USD")}
-                </p>
-                {isLower ? <p className="mt-2 text-sm text-amber-700">Lower pricing may delay contractor acceptance.</p> : null}
-                {isHigher ? <p className="mt-2 text-sm text-green-700">Higher pricing can help expedite routing.</p> : null}
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{minOffsetDollars}</span>
+                  <span>0</span>
+                  <span>{maxOffsetDollars > 0 ? `+${maxOffsetDollars}` : maxOffsetDollars}</span>
+                </div>
+
+                <p className="text-sm font-medium text-gray-800">Selected Price: {formatMoney(appraisalPriceCents, summaryCurrency)}</p>
+                {isLower ? <p className="text-sm text-amber-700">Lower pricing may delay contractor acceptance.</p> : null}
+                {isHigher ? <p className="text-sm text-green-700">Increased pricing may speed up contractor routing.</p> : null}
+                <p className="text-xs text-gray-500">Confidence: {appraisal.confidence}</p>
               </div>
             ) : null}
 
@@ -759,64 +826,84 @@ export default function PostJobPage() {
 
           <section className="rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900">Stripe Confirmation</h2>
-            <p className="mt-2 text-sm text-gray-600">Payment Status</p>
+            <p className="mt-2 text-sm text-gray-600">Stripe Integration Summary</p>
 
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Appraisal Price</span>
-                <span>{formatMoney(summaryAppraisal, summaryCurrency)}</span>
+                <span>{formatMoney(appraisalPriceCents, summaryCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Regional Fee</span>
-                <span>{formatMoney(summaryRegional, summaryCurrency)}</span>
+                <span>{formatMoney(regionalFeeCents, summaryCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Applicable Tax (Canada only)</span>
-                <span>{formatMoney(summaryTax, summaryCurrency)}</span>
+                <span>{formatMoney(summaryTaxCents, summaryCurrency)}</span>
               </div>
-              <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold">
+              <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold">
                 <span>Total Charge</span>
-                <span>{formatMoney(summaryTotal, summaryCurrency)}</span>
-              </div>
-              <div className="border-t border-gray-200 pt-2 flex justify-between">
-                <span>Payment Status</span>
-                <span>{paymentConfirmed ? "Paid" : "Not paid"}</span>
+                <span>{formatMoney(summaryTotalCents, summaryCurrency)}</span>
               </div>
             </div>
 
-            {!clientSecret && !paymentConfirmed ? (
+            {!clientSecret ? (
               <button
                 type="button"
                 onClick={() => void preparePaymentIntent()}
-                disabled={working || appraisalPrice <= 0 || !appraisal?.appraisalToken}
+                disabled={working || appraisalPriceCents <= 0 || !appraisal}
                 className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
               >
                 {working ? "Preparing..." : "Confirm Total"}
               </button>
-            ) : clientSecret && stripePromise ? (
+            ) : stripePromise ? (
               <div className="mt-4">
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
-                  <PaymentConfirm
-                    onConfirmed={() => {
-                      setPaymentConfirmed(true);
-                      void submitJobAfterPayment();
-                    }}
+                  <HoldConfirm
+                    onConfirmed={() => setPaymentConfirmed(true)}
                     onError={(message) => setError(message)}
                   />
                 </Elements>
                 {paymentConfirmed && paymentIntentId ? (
-                  <p className="mt-3 text-sm text-green-700">Paid: {paymentIntentId}</p>
+                  <p className="mt-3 text-sm text-green-700">Stripe confirmation complete: {paymentIntentId}</p>
+                ) : null}
+                {paymentSummary ? (
+                  <p className="mt-2 text-xs text-gray-500">Server total prepared: {formatMoney(paymentSummary.totalCents, paymentSummary.currency)}</p>
                 ) : null}
               </div>
-            ) : paymentConfirmed && paymentIntentId ? (
-              <p className="mt-4 text-sm text-green-700">Paid: {paymentIntentId}</p>
             ) : (
               <p className="mt-4 text-sm text-red-700">Stripe publishable key is missing.</p>
             )}
           </section>
-          {paymentCompleteMessage ? (
-            <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">{paymentCompleteMessage}</div>
-          ) : null}
+
+          <div>
+            <button
+              type="button"
+              onClick={() => void submitJob()}
+              disabled={working || !paymentConfirmed}
+              className="w-full rounded-md bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {working ? "Submitting Job..." : "Submit Job"}
+            </button>
+            <div className="mt-3 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+              <span className="text-gray-700">Stripe Status</span>
+              {paymentConnected === true && paymentProviderReady === true ? (
+                <span className="font-medium text-green-700">Online</span>
+              ) : paymentConnected === false || paymentProviderReady === false ? (
+                <span className="font-medium text-red-700">Offline</span>
+              ) : (
+                <span className="font-medium text-gray-600">Checking...</span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+              <span className="text-gray-700">Payment Charge</span>
+              {paymentConfirmed ? (
+                <span className="font-medium text-green-700">Charged</span>
+              ) : (
+                <span className="font-medium text-gray-600">Not charged</span>
+              )}
+            </div>
+          </div>
 
           {paymentConnected === false ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -827,6 +914,16 @@ export default function PostJobPage() {
           {error ? <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
         </div>
       </div>
+
+      {isAppraising ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-modal="true" role="dialog">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Analyzing Your Job...</h3>
+            <div className="mx-auto mt-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" aria-hidden />
+            <p className="mt-4 text-sm text-gray-600">GPT-5 Nano is evaluating your job details...</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
