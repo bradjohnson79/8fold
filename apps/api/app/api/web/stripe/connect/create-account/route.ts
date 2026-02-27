@@ -7,6 +7,8 @@ import { db } from "../../../../../../db/drizzle";
 import { users } from "../../../../../../db/schema/user";
 import { payoutMethods } from "../../../../../../db/schema/payoutMethod";
 import { contractorAccounts } from "../../../../../../db/schema/contractorAccount";
+import { contractorProfilesV4 } from "../../../../../../db/schema/contractorProfileV4";
+import { routerProfilesV4 } from "../../../../../../db/schema/routerProfileV4";
 import { getBaseUrl } from "../../../../../../src/lib/getBaseUrl";
 
 type UserCountry = "CA" | "US";
@@ -22,14 +24,50 @@ function expectedCurrencyForStripeCountry(country: string): "CAD" | "USD" | null
   return null;
 }
 
-async function getUserCountry(userId: string): Promise<UserCountry> {
-  const row = await db
-    .select({ country: users.country })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  const c = String(row[0]?.country ?? "US").trim().toUpperCase();
+function normalizeUserCountry(raw: string | null | undefined): UserCountry {
+  const c = String(raw ?? "").trim().toUpperCase();
   return c === "CA" ? "CA" : "US";
+}
+
+async function getUserCountry(userId: string, role: "ROUTER" | "CONTRACTOR"): Promise<UserCountry> {
+  const [userRow, roleRow] = await Promise.all([
+    db
+      .select({ country: users.country })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    role === "ROUTER"
+      ? db
+          .select({ countryCode: routerProfilesV4.homeCountryCode })
+          .from(routerProfilesV4)
+          .where(eq(routerProfilesV4.userId, userId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : db
+          .select({ countryCode: contractorProfilesV4.countryCode })
+          .from(contractorProfilesV4)
+          .where(eq(contractorProfilesV4.userId, userId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+  ]);
+
+  // Prefer role profile country first so Stripe account country follows the setup address country.
+  return normalizeUserCountry(roleRow?.countryCode ?? userRow?.country ?? "US");
+}
+
+function requestedCapabilitiesForCountry(country: UserCountry): {
+  transfers: { requested: true };
+  card_payments?: { requested: true };
+} {
+  if (country === "US") {
+    // Stripe requires card_payments + transfers together for US connected accounts.
+    return {
+      transfers: { requested: true },
+      card_payments: { requested: true },
+    };
+  }
+  return { transfers: { requested: true } };
 }
 
 async function getExistingStripeAccountId(userId: string): Promise<string | null> {
@@ -102,8 +140,8 @@ async function persistStripeAccountForUser(args: {
   });
 }
 
-async function buildStatus(args: { userId: string; role: string }) {
-  const country = await getUserCountry(args.userId);
+async function buildStatus(args: { userId: string; role: "ROUTER" | "CONTRACTOR" }) {
+  const country = await getUserCountry(args.userId, args.role);
   const expectedCurrency = expectedCurrencyForCountry(country);
   const stripeAccountId = await getExistingStripeAccountId(args.userId);
   if (!stripeAccountId) {
@@ -161,7 +199,7 @@ export async function GET(req: Request) {
     if (role !== "ROUTER" && role !== "CONTRACTOR") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const status = await buildStatus({ userId: user.userId, role });
+    const status = await buildStatus({ userId: user.userId, role: role as "ROUTER" | "CONTRACTOR" });
     if (status instanceof NextResponse) return status;
     return NextResponse.json(status);
   } catch (err) {
@@ -180,7 +218,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
     }
 
-    const country = await getUserCountry(user.userId);
+    const typedRole = role as "ROUTER" | "CONTRACTOR";
+    const country = await getUserCountry(user.userId, typedRole);
     const expectedCurrency = expectedCurrencyForCountry(country);
     const existing = await getExistingStripeAccountId(user.userId);
 
@@ -189,12 +228,10 @@ export async function POST(req: Request) {
       const account = await stripe.accounts.create({
         type: "express",
         country,
-        capabilities: {
-          transfers: { requested: true },
-        },
+        capabilities: requestedCapabilitiesForCountry(country),
         metadata: {
           userId: user.userId,
-          role,
+          role: typedRole,
           expectedCurrency,
         },
       });
