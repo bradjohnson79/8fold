@@ -23,8 +23,15 @@ function normalizeStatusOptions(statusOptions: string[], currentStatus: string):
   return items;
 }
 
+function statusLabel(status: string): string {
+  const value = String(status ?? "").trim().toUpperCase();
+  if (value === "OPEN_FOR_ROUTING") return "CUSTOMER_APPROVED_AWAITING_ROUTER";
+  return value;
+}
+
 export default function JobStatusEditor({ currentStatus, statusOptions, action, flash }: Props) {
   const normalizedOptions = normalizeStatusOptions(statusOptions, currentStatus);
+  const currentLabel = statusLabel(currentStatus);
 
   return (
     <div
@@ -38,6 +45,12 @@ export default function JobStatusEditor({ currentStatus, statusOptions, action, 
       <div style={{ fontWeight: 950, color: "rgba(226,232,240,0.95)" }}>Manual Status Override</div>
       <div style={{ marginTop: 6, fontSize: 12, color: "rgba(226,232,240,0.70)" }}>
         Current: <code>{currentStatus}</code>
+        {currentLabel !== currentStatus ? (
+          <span>
+            {" "}
+            · Label: <code>{currentLabel}</code>
+          </span>
+        ) : null}
       </div>
 
       <form action={action} style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -57,7 +70,7 @@ export default function JobStatusEditor({ currentStatus, statusOptions, action, 
           >
             {normalizedOptions.map((status) => (
               <option key={status} value={status}>
-                {status}
+                {statusLabel(status) === status ? status : `${statusLabel(status)} (${status})`}
               </option>
             ))}
           </select>

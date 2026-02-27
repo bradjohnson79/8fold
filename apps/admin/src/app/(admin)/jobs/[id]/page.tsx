@@ -56,11 +56,25 @@ type DetailResp = {
   timeline: TimelineEvent[];
   related: Related;
   statusOptions?: string[];
+  mutation?: {
+    kind: "updated" | "noop";
+    previousStatus: string;
+    nextStatus: string;
+    requestedStatus: string;
+    actualStatus: string;
+    changed: boolean;
+  };
 };
 
 function firstQueryValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] ?? "").trim();
   return String(value ?? "").trim();
+}
+
+function toCanonicalStatus(status: string): string {
+  const upper = String(status ?? "").trim().toUpperCase();
+  if (upper === "CUSTOMER_APPROVED_AWAITING_ROUTER") return "OPEN_FOR_ROUTING";
+  return upper;
 }
 
 function money(cents: number) {
@@ -165,7 +179,7 @@ export default async function JobDetailPage({
   const statusMessage = firstQueryValue(query.statusMessage);
   const flash =
     statusUpdate === "ok"
-      ? { tone: "success" as const, message: "Status updated." }
+      ? { tone: "success" as const, message: statusMessage || "Status updated." }
       : statusUpdate === "error"
         ? { tone: "error" as const, message: statusMessage || "Failed to update status." }
         : null;
@@ -173,7 +187,7 @@ export default async function JobDetailPage({
   async function updateStatusAction(formData: FormData) {
     "use server";
 
-    const nextStatus = String(formData.get("status") ?? "").trim().toUpperCase();
+    const nextStatus = toCanonicalStatus(String(formData.get("status") ?? "").trim());
     const noteRaw = String(formData.get("note") ?? "").trim();
     const note = noteRaw ? noteRaw.slice(0, 500) : undefined;
 
@@ -186,11 +200,41 @@ export default async function JobDetailPage({
     }
 
     try {
-      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}`, {
-        method: "PATCH",
+      const updated = await adminApiFetch<DetailResp>(`/api/admin/v4/jobs/${encodeURIComponent(id)}/status`, {
+        method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: nextStatus, note }),
       });
+
+      const mutation = updated.mutation ?? null;
+      if (!mutation) {
+        const qs = new URLSearchParams({
+          statusUpdate: "error",
+          statusMessage: "Missing mutation confirmation from server.",
+        });
+        redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+      }
+      if (!mutation.changed) {
+        const qs = new URLSearchParams({
+          statusUpdate: "error",
+          statusMessage: `No status change (still ${mutation.actualStatus}).`,
+        });
+        redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+      }
+      if (mutation.actualStatus !== nextStatus) {
+        const qs = new URLSearchParams({
+          statusUpdate: "error",
+          statusMessage: `Write verification failed. Expected ${nextStatus}, got ${mutation.actualStatus}.`,
+        });
+        redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+      }
+
+      const qs = new URLSearchParams({
+        statusUpdate: "ok",
+        statusMessage: `Status updated: ${mutation.previousStatus} -> ${mutation.actualStatus}`,
+      });
+      revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
     } catch (e) {
       const raw = e instanceof Error ? e.message : "Failed to update status";
       const message = raw.trim() || "Failed to update status";
@@ -200,9 +244,6 @@ export default async function JobDetailPage({
       });
       redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
     }
-
-    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
-    redirect(`/jobs/${encodeURIComponent(id)}?statusUpdate=ok`);
   }
 
   return (
