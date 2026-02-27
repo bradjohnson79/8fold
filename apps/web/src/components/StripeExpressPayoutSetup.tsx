@@ -20,6 +20,7 @@ export function StripeExpressPayoutSetup() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [accountType, setAccountType] = React.useState<"AUTO" | "INDIVIDUAL" | "COMPANY">("AUTO");
   const [error, setError] = React.useState("");
   const [status, setStatus] = React.useState<ConnectStatus | null>(null);
 
@@ -52,6 +53,10 @@ export function StripeExpressPayoutSetup() {
       const resp = await fetch("/api/app/stripe/connect/create-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accountType:
+            accountType === "INDIVIDUAL" ? "individual" : accountType === "COMPANY" ? "company" : "auto",
+        }),
         credentials: "include",
       });
       const json = (await resp.json().catch(() => null)) as any;
@@ -107,6 +112,16 @@ export function StripeExpressPayoutSetup() {
 
       {!loading && mode === "NOT_CONNECTED" ? (
         <div className="mt-4">
+          <div className="text-sm text-gray-700 mb-2">Account type</div>
+          <select
+            value={accountType}
+            onChange={(e) => setAccountType(e.target.value as "AUTO" | "INDIVIDUAL" | "COMPANY")}
+            className="w-full max-w-sm rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
+          >
+            <option value="AUTO">Let Stripe decide during onboarding</option>
+            <option value="INDIVIDUAL">Personal (Individual)</option>
+            <option value="COMPANY">Business (Company)</option>
+          </select>
           <div className="text-sm text-gray-700">No Stripe account is connected yet.</div>
           <button
             type="button"

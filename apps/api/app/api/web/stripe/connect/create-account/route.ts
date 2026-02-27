@@ -12,6 +12,7 @@ import { routerProfilesV4 } from "../../../../../../db/schema/routerProfileV4";
 import { getBaseUrl } from "../../../../../../src/lib/getBaseUrl";
 
 type UserCountry = "CA" | "US";
+type StripeAccountTypeChoice = "AUTO" | "INDIVIDUAL" | "COMPANY";
 
 function expectedCurrencyForCountry(country: UserCountry): "CAD" | "USD" {
   return country === "CA" ? "CAD" : "USD";
@@ -68,6 +69,13 @@ function requestedCapabilitiesForCountry(country: UserCountry): {
     };
   }
   return { transfers: { requested: true } };
+}
+
+function parseAccountTypeChoice(value: unknown): StripeAccountTypeChoice {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "individual" || raw === "personal") return "INDIVIDUAL";
+  if (raw === "company" || raw === "business") return "COMPANY";
+  return "AUTO";
 }
 
 async function getExistingStripeAccountId(userId: string): Promise<string | null> {
@@ -218,6 +226,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
     }
 
+    const body = (await req.json().catch(() => ({}))) as { accountType?: string };
+    const accountTypeChoice = parseAccountTypeChoice(body?.accountType);
+
     const typedRole = role as "ROUTER" | "CONTRACTOR";
     const country = await getUserCountry(user.userId, typedRole);
     const expectedCurrency = expectedCurrencyForCountry(country);
@@ -228,11 +239,13 @@ export async function POST(req: Request) {
       const account = await stripe.accounts.create({
         type: "express",
         country,
+        ...(accountTypeChoice === "AUTO" ? {} : { business_type: accountTypeChoice.toLowerCase() as "individual" | "company" }),
         capabilities: requestedCapabilitiesForCountry(country),
         metadata: {
           userId: user.userId,
           role: typedRole,
           expectedCurrency,
+          accountTypeChoice,
         },
       });
       stripeAccountId = account.id;

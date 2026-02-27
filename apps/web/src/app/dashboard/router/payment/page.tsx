@@ -32,6 +32,7 @@ export default function RouterPaymentSetupPage() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [accountType, setAccountType] = useState<"AUTO" | "INDIVIDUAL" | "COMPANY">("AUTO");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StripeConnectStatus | null>(null);
   const [summary, setSummary] = useState<RouterSummary | null>(null);
@@ -84,7 +85,10 @@ export default function RouterPaymentSetupPage() {
       const resp = await fetch("/api/app/stripe/connect/create-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({
+          accountType:
+            accountType === "INDIVIDUAL" ? "individual" : accountType === "COMPANY" ? "company" : "auto",
+        }),
         credentials: "include",
       });
       const data = (await resp.json().catch(() => null)) as { url?: string; error?: string } | null;
@@ -171,6 +175,20 @@ export default function RouterPaymentSetupPage() {
           <p className="mt-1 text-sm text-slate-600">
             8Fold does not store your bank details. Stripe handles secure onboarding, tax details, and payout rails.
           </p>
+          {notConnected ? (
+            <div className="mt-3 max-w-sm">
+              <label className="mb-1 block text-sm text-slate-700">Account type</label>
+              <select
+                value={accountType}
+                onChange={(e) => setAccountType(e.target.value as "AUTO" | "INDIVIDUAL" | "COMPANY")}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="AUTO">Let Stripe decide during onboarding</option>
+                <option value="INDIVIDUAL">Personal (Individual)</option>
+                <option value="COMPANY">Business (Company)</option>
+              </select>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => void handleOnboard()}
