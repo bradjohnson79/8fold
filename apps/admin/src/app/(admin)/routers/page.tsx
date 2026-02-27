@@ -1,4 +1,5 @@
 import { adminApiFetch } from "@/server/adminApiV4";
+import { redirect } from "next/navigation";
 
 type UserRow = {
   id: string;
@@ -15,6 +16,36 @@ type UserRow = {
 };
 
 type ListResp = { rows: UserRow[]; totalCount: number; page: number; pageSize: number };
+
+function getCreateErrorMessage(error: unknown): string {
+  const status = typeof (error as any)?.status === "number" ? (error as any).status : null;
+  const message = error instanceof Error ? error.message : "Failed to create router";
+  return `${status ? `HTTP ${status}: ` : ""}${message}`.slice(0, 300);
+}
+
+async function doCreateRouter(formData: FormData) {
+  "use server";
+
+  const payload = {
+    clerkUserId: String(formData.get("clerkUserId") ?? "").trim(),
+    email: String(formData.get("email") ?? "").trim(),
+    name: String(formData.get("name") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim() || undefined,
+    country: String(formData.get("country") ?? "US").trim().toUpperCase(),
+    regionCode: String(formData.get("regionCode") ?? "").trim(),
+    city: String(formData.get("city") ?? "").trim() || undefined,
+  };
+
+  try {
+    await adminApiFetch("/api/admin/v4/routers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    redirect("/routers?created=1");
+  } catch (error) {
+    redirect(`/routers?createError=${encodeURIComponent(getCreateErrorMessage(error))}`);
+  }
+}
 
 function getParam(sp: Record<string, string | string[] | undefined>, key: string, fallback = "") {
   const raw = sp[key];
@@ -42,6 +73,20 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
+function formatBadgeLabel(badge: string): string {
+  const b = String(badge ?? "").trim().toUpperCase();
+  if (!b) return "UNKNOWN";
+  if (b === "STRIPE_VERIFIED") return "Stripe Verified";
+  if (b === "STRIPE_CONNECTED_PENDING_VERIFICATION") return "Stripe Pending Verification";
+  if (b === "STRIPE_NOT_CONNECTED") return "Stripe Not Connected";
+  if (b === "PROFILE_SYNCED") return "Profile Synced";
+  if (b === "PROFILE_CANONICAL_ONLY") return "Profile Canonical Only";
+  if (b === "PROFILE_V4_ONLY") return "Profile V4 Only";
+  if (b === "PROFILE_MISSING") return "Profile Missing";
+  if (b === "SENIOR") return "Senior Router";
+  return b.replace(/_/g, " ");
+}
+
 export default async function RoutersPage({
   searchParams,
 }: {
@@ -50,6 +95,8 @@ export default async function RoutersPage({
   const sp = (await searchParams) ?? {};
   const q = getParam(sp, "q");
   const status = getParam(sp, "status");
+  const created = getParam(sp, "created");
+  const createError = getParam(sp, "createError");
   const page = Math.max(1, Number(getParam(sp, "page", "1") || "1") || 1);
   const pageSize = Math.max(1, Math.min(100, Number(getParam(sp, "pageSize", "25") || "25") || 25));
 
@@ -66,7 +113,9 @@ export default async function RoutersPage({
       })}`,
     );
   } catch (e) {
-    err = e instanceof Error ? e.message : "Failed to load routers";
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : null;
+    const message = e instanceof Error ? e.message : "Failed to load routers";
+    err = `/api/admin/v4/routers failed${status ? ` (HTTP ${status})` : ""}: ${message}`;
   }
 
   const rows = data?.rows ?? [];
@@ -79,6 +128,33 @@ export default async function RoutersPage({
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)" }}>
         Router accounts, availability status context, and route workload indicators.
       </p>
+
+      <div style={{ marginTop: 12, border: "1px solid rgba(148,163,184,0.14)", borderRadius: 16, padding: 12, background: "rgba(2,6,23,0.30)" }}>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>Create Router (ADMIN_OPERATOR)</div>
+        <form action={doCreateRouter} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          <input name="name" placeholder="Full name" required style={inputStyle} />
+          <input name="email" type="email" placeholder="Email" required style={inputStyle} />
+          <input name="clerkUserId" placeholder="Clerk User ID" required style={inputStyle} />
+          <input name="phone" placeholder="Phone (optional)" style={inputStyle} />
+          <select name="country" defaultValue="US" style={inputStyle}>
+            <option value="US">US</option>
+            <option value="CA">CA</option>
+          </select>
+          <input name="regionCode" placeholder="Region code (BC, CA, TX...)" required style={inputStyle} />
+          <input name="city" placeholder="City (optional)" style={inputStyle} />
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+            <button type="submit" style={{ ...inputStyle, cursor: "pointer", fontWeight: 900 }}>
+              Create Router
+            </button>
+          </div>
+        </form>
+        {created === "1" ? (
+          <div style={{ marginTop: 10, color: "rgba(134,239,172,0.95)", fontWeight: 900, fontSize: 12 }}>
+            Router created or updated successfully.
+          </div>
+        ) : null}
+        {createError ? <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900, fontSize: 12 }}>{createError}</div> : null}
+      </div>
 
       <div style={{ marginTop: 12, border: "1px solid rgba(148,163,184,0.14)", borderRadius: 16, padding: 12, background: "rgba(2,6,23,0.30)" }}>
         <form method="GET" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -114,7 +190,13 @@ export default async function RoutersPage({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {err ? (
+              <tr>
+                <td colSpan={7} style={{ padding: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>
+                  {err}
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
                   No routers found.
@@ -137,7 +219,7 @@ export default async function RoutersPage({
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {(r.badges ?? []).map((b) => (
                         <span key={b} style={{ border: "1px solid rgba(148,163,184,0.2)", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 }}>
-                          {b}
+                          {formatBadgeLabel(b)}
                         </span>
                       ))}
                     </div>

@@ -1,10 +1,15 @@
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { routers } from "@/db/schema/router";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { users } from "@/db/schema/user";
 import { type V4RouterProfileInput, V4RouterProfileSchema } from "@/src/validation/v4/routerProfileSchema";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
+
+function normalizeCountryCode(raw: string | null | undefined): "US" | "CA" {
+  return String(raw ?? "").trim().toUpperCase() === "CA" ? "CA" : "US";
+}
 
 export async function getV4RouterProfile(userId: string) {
   const [profileRows, userRows] = await Promise.all([
@@ -40,16 +45,50 @@ export async function saveV4RouterProfile(
   identity?: ClerkIdentity | null,
 ) {
   const now = new Date();
+  const countryCode = normalizeCountryCode(body.homeCountryCode);
   await db.transaction(async (tx) => {
     await tx
       .update(users)
       .set({
+        name: body.contactName,
         phone: body.phone,
+        country: countryCode as any,
+        countryCode: countryCode as any,
+        stateCode: body.homeRegionCode,
+        legalCity: body.homeRegion,
+        legalCountry: countryCode,
+        formattedAddress: body.homeRegion,
         latitude: body.homeLatitude as any,
         longitude: body.homeLongitude as any,
         updatedAt: now,
       } as any)
       .where(eq(users.id, userId));
+
+    await tx
+      .insert(routers)
+      .values({
+        userId,
+        isActive: true,
+        termsAccepted: true,
+        profileComplete: true,
+        homeCountry: countryCode as any,
+        homeRegionCode: body.homeRegionCode,
+        homeCity: body.homeRegion,
+        status: "ACTIVE",
+        createdAt: now,
+      } as any)
+      .onConflictDoUpdate({
+        target: routers.userId,
+        set: {
+          isActive: true,
+          termsAccepted: true,
+          profileComplete: true,
+          homeCountry: countryCode as any,
+          homeRegionCode: body.homeRegionCode,
+          homeCity: body.homeRegion,
+          status: "ACTIVE",
+        } as any,
+      });
 
     await tx
       .insert(routerProfilesV4)

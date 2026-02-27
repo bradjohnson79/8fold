@@ -1,9 +1,11 @@
 import { adminApiFetch } from "@/server/adminApiV4";
+import { redirect } from "next/navigation";
 
 type UserRow = {
   id: string;
   role: "CONTRACTOR";
   name: string | null;
+  businessName?: string | null;
   email: string | null;
   phone: string | null;
   country: string | null;
@@ -17,6 +19,37 @@ type UserRow = {
 };
 
 type ListResp = { rows: UserRow[]; totalCount: number; page: number; pageSize: number };
+
+function getCreateErrorMessage(error: unknown): string {
+  const status = typeof (error as any)?.status === "number" ? (error as any).status : null;
+  const message = error instanceof Error ? error.message : "Failed to create contractor";
+  return `${status ? `HTTP ${status}: ` : ""}${message}`.slice(0, 300);
+}
+
+async function doCreateContractor(formData: FormData) {
+  "use server";
+
+  const payload = {
+    clerkUserId: String(formData.get("clerkUserId") ?? "").trim(),
+    email: String(formData.get("email") ?? "").trim(),
+    name: String(formData.get("name") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim() || undefined,
+    country: String(formData.get("country") ?? "US").trim().toUpperCase(),
+    regionCode: String(formData.get("regionCode") ?? "").trim(),
+    city: String(formData.get("city") ?? "").trim() || undefined,
+    businessName: String(formData.get("businessName") ?? "").trim(),
+  };
+
+  try {
+    await adminApiFetch("/api/admin/v4/contractors", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    redirect("/contractors?created=1");
+  } catch (error) {
+    redirect(`/contractors?createError=${encodeURIComponent(getCreateErrorMessage(error))}`);
+  }
+}
 
 function getParam(sp: Record<string, string | string[] | undefined>, key: string, fallback = "") {
   const raw = sp[key];
@@ -44,6 +77,21 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
+function formatBadgeLabel(badge: string): string {
+  const b = String(badge ?? "").trim().toUpperCase();
+  if (!b) return "UNKNOWN";
+  if (b.startsWith("JOBS:")) return `Jobs ${b.slice(5)}`;
+  if (b === "STRIPE_VERIFIED") return "Stripe Verified";
+  if (b === "STRIPE_CONNECTED_PENDING_VERIFICATION") return "Stripe Pending Verification";
+  if (b === "STRIPE_NOT_CONNECTED") return "Stripe Not Connected";
+  if (b === "PROFILE_SYNCED") return "Profile Synced";
+  if (b === "PROFILE_CANONICAL_ONLY") return "Profile Canonical Only";
+  if (b === "PROFILE_V4_ONLY") return "Profile V4 Only";
+  if (b === "PROFILE_MISSING") return "Profile Missing";
+  if (b === "PENDING_APPROVAL") return "Pending Approval";
+  return b.replace(/_/g, " ");
+}
+
 export default async function ContractorsPage({
   searchParams,
 }: {
@@ -52,6 +100,8 @@ export default async function ContractorsPage({
   const sp = (await searchParams) ?? {};
   const q = getParam(sp, "q");
   const status = getParam(sp, "status");
+  const created = getParam(sp, "created");
+  const createError = getParam(sp, "createError");
   const page = Math.max(1, Number(getParam(sp, "page", "1") || "1") || 1);
   const pageSize = Math.max(1, Math.min(100, Number(getParam(sp, "pageSize", "25") || "25") || 25));
 
@@ -68,7 +118,9 @@ export default async function ContractorsPage({
       })}`,
     );
   } catch (e) {
-    err = e instanceof Error ? e.message : "Failed to load contractors";
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : null;
+    const message = e instanceof Error ? e.message : "Failed to load contractors";
+    err = `/api/admin/v4/contractors failed${status ? ` (HTTP ${status})` : ""}: ${message}`;
   }
 
   const rows = data?.rows ?? [];
@@ -81,6 +133,34 @@ export default async function ContractorsPage({
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)" }}>
         Contractor accounts with status visibility and quick access to profile/job detail.
       </p>
+
+      <div style={{ marginTop: 12, border: "1px solid rgba(148,163,184,0.14)", borderRadius: 16, padding: 12, background: "rgba(2,6,23,0.30)" }}>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>Create Contractor (ADMIN_OPERATOR)</div>
+        <form action={doCreateContractor} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          <input name="name" placeholder="Full name" required style={inputStyle} />
+          <input name="email" type="email" placeholder="Email" required style={inputStyle} />
+          <input name="clerkUserId" placeholder="Clerk User ID" required style={inputStyle} />
+          <input name="phone" placeholder="Phone (optional)" style={inputStyle} />
+          <input name="businessName" placeholder="Business name" required style={inputStyle} />
+          <select name="country" defaultValue="US" style={inputStyle}>
+            <option value="US">US</option>
+            <option value="CA">CA</option>
+          </select>
+          <input name="regionCode" placeholder="Region code (BC, CA, TX...)" required style={inputStyle} />
+          <input name="city" placeholder="City (optional)" style={inputStyle} />
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+            <button type="submit" style={{ ...inputStyle, cursor: "pointer", fontWeight: 900 }}>
+              Create Contractor
+            </button>
+          </div>
+        </form>
+        {created === "1" ? (
+          <div style={{ marginTop: 10, color: "rgba(134,239,172,0.95)", fontWeight: 900, fontSize: 12 }}>
+            Contractor created or updated successfully.
+          </div>
+        ) : null}
+        {createError ? <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900, fontSize: 12 }}>{createError}</div> : null}
+      </div>
 
       <div style={{ marginTop: 12, border: "1px solid rgba(148,163,184,0.14)", borderRadius: 16, padding: 12, background: "rgba(2,6,23,0.30)" }}>
         <form method="GET" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -127,7 +207,13 @@ export default async function ContractorsPage({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {err ? (
+              <tr>
+                <td colSpan={7} style={{ padding: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>
+                  {err}
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
                   No contractors found.
@@ -138,8 +224,11 @@ export default async function ContractorsPage({
                 <tr key={r.id}>
                   <td style={tdStyle}>
                     <a href={`/contractors/${encodeURIComponent(r.id)}`} style={linkStyle}>
-                      {r.name ?? "—"}
+                      {r.name ?? r.businessName ?? "—"}
                     </a>
+                    {r.businessName && r.businessName !== r.name ? (
+                      <div style={{ marginTop: 4, fontSize: 12, color: "rgba(226,232,240,0.65)" }}>{r.businessName}</div>
+                    ) : null}
                   </td>
                   <td style={tdStyle}>{r.email ?? "—"}</td>
                   <td style={tdStyle}>{r.phone ?? "—"}</td>
@@ -150,7 +239,7 @@ export default async function ContractorsPage({
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {(r.badges ?? []).map((b) => (
                         <span key={b} style={{ border: "1px solid rgba(148,163,184,0.2)", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 }}>
-                          {b}
+                          {formatBadgeLabel(b)}
                         </span>
                       ))}
                     </div>

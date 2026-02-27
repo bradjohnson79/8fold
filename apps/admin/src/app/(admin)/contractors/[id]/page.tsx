@@ -1,4 +1,5 @@
 import { adminApiFetch } from "@/server/adminApiV4";
+import { redirect } from "next/navigation";
 
 type JobRef = { id: string; title: string; statusRaw: string; displayStatus: string; createdAt: string; updatedAt: string; amountCents: number };
 type DetailResp = {
@@ -30,6 +31,26 @@ type DetailResp = {
   enforcement: { strikes?: number; flags?: number; suspendedUntil?: string | null; archivedAt?: string | null };
 };
 
+function toActionError(error: unknown): string {
+  const status = typeof (error as any)?.status === "number" ? (error as any).status : null;
+  const msg = error instanceof Error ? error.message : "Action failed";
+  return `${status ? `HTTP ${status}: ` : ""}${msg}`.slice(0, 240);
+}
+
+async function doRefreshStripe(contractorUserId: string) {
+  "use server";
+  try {
+    await adminApiFetch(`/api/admin/v4/contractors/${encodeURIComponent(contractorUserId)}/stripe/refresh`, {
+      method: "POST",
+    });
+    redirect(`/contractors/${encodeURIComponent(contractorUserId)}?stripeRefreshed=1`);
+  } catch (error) {
+    redirect(
+      `/contractors/${encodeURIComponent(contractorUserId)}?stripeRefreshError=${encodeURIComponent(toActionError(error))}`,
+    );
+  }
+}
+
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid rgba(148,163,184,0.14)", borderRadius: 16, padding: 14, background: "rgba(2,6,23,0.35)" }}>
@@ -56,8 +77,19 @@ function money(cents: number) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
 }
 
-export default async function ContractorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContractorDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const stripeRefreshed = String(Array.isArray(sp.stripeRefreshed) ? sp.stripeRefreshed[0] : sp.stripeRefreshed ?? "");
+  const stripeRefreshError = String(
+    Array.isArray(sp.stripeRefreshError) ? sp.stripeRefreshError[0] : sp.stripeRefreshError ?? "",
+  );
 
   let data: DetailResp | null = null;
   let err: string | null = null;
@@ -90,6 +122,16 @@ export default async function ContractorDetailPage({ params }: { params: Promise
           ← Back
         </a>
       </div>
+      {stripeRefreshed === "1" ? (
+        <div style={{ marginTop: 10, color: "rgba(134,239,172,0.95)", fontWeight: 900, fontSize: 12 }}>
+          Stripe status refreshed from Stripe API.
+        </div>
+      ) : null}
+      {stripeRefreshError ? (
+        <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900, fontSize: 12 }}>
+          {stripeRefreshError}
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
         <Card title="Profile">
@@ -120,6 +162,25 @@ export default async function ContractorDetailPage({ params }: { params: Promise
           {kv("Payout method", p.paymentSetup.hasPayoutMethod ? "Configured" : "Missing")}
           {kv("Stripe connected", p.paymentSetup.stripeConnected ? "Yes" : "No")}
           {kv("Payout status", p.paymentSetup.payoutStatus ?? "—")}
+          <div style={{ marginTop: 10 }}>
+            <form action={doRefreshStripe.bind(null, id)}>
+              <button
+                type="submit"
+                style={{
+                  border: "1px solid rgba(148,163,184,0.24)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  background: "rgba(15,23,42,0.45)",
+                  color: "rgba(191,219,254,0.95)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                Refresh Stripe Status
+              </button>
+            </form>
+          </div>
         </Card>
 
         <Card title="Payout Readiness">
@@ -134,7 +195,11 @@ export default async function ContractorDetailPage({ params }: { params: Promise
           {kv("Flags", String(data.enforcement.flags ?? 0))}
           {kv("Suspended until", fmt(data.enforcement.suspendedUntil))}
           {kv("Archived at", fmt(data.enforcement.archivedAt))}
-          <div style={{ marginTop: 8, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>Admin notes: Coming soon</div>
+          <div style={{ marginTop: 10 }}>
+            <a href={`/users/${encodeURIComponent(id)}`} style={{ color: "rgba(191,219,254,0.95)", textDecoration: "none", fontWeight: 900, fontSize: 12 }}>
+              Open Full Enforcement Controls (suspend/archive/delete)
+            </a>
+          </div>
         </Card>
       </div>
 

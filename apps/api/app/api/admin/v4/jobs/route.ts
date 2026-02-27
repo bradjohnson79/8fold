@@ -1,20 +1,22 @@
-import { requireAdminV4 } from "@/src/auth/requireAdminV4";
+import { jobsRepo, mapJobsRowsToAdminJobDTO, requireAdmin } from "@/src/adminBus";
 import { err, ok } from "@/src/lib/api/adminV4Response";
-import { listAdminJobs, parseJobsListParams } from "@/src/services/adminV4/jobsReadService";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const authed = await requireAdminV4(req);
+  const authed = await requireAdmin(req);
   if (authed instanceof Response) return authed;
 
   try {
     const { searchParams } = new URL(req.url);
-    const params = parseJobsListParams(searchParams);
-    const data = await listAdminJobs(params);
+    const params = jobsRepo.parseJobsQuery(searchParams);
+    const data = await jobsRepo.list(params);
+    const rows = mapJobsRowsToAdminJobDTO(data.rows as any[]);
 
-    // Keep backward compatibility for existing pages that still read `jobs`.
     return ok({
       ...data,
-      jobs: data.rows,
+      rows,
+      jobs: rows,
     });
   } catch (error) {
     console.error("[ADMIN_V4_JOBS_LIST_ERROR]", {

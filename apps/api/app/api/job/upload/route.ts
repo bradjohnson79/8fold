@@ -6,6 +6,8 @@ import { uploadV4JobPhoto } from "@/src/services/v4/jobUploadService";
 import { rateLimitOrThrow } from "@/src/services/v4/rateLimitService";
 import { badRequest, forbidden, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   let requestId: string | undefined;
   try {
@@ -21,7 +23,7 @@ export async function POST(req: Request) {
     }
 
     await rateLimitOrThrow({
-      key: `v4:upload:${role.internalUser.id}`,
+      key: `v4:job-upload:${role.internalUser.id}`,
       windowSeconds: 600,
       max: 30,
     });

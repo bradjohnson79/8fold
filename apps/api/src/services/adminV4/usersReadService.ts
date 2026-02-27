@@ -12,12 +12,15 @@ import {
 import { db } from "@/server/db/drizzle";
 import {
   contractorAccounts,
+  contractorProfilesV4,
   conversations,
   internalAccountFlags,
   jobAssignments,
+  jobPosterProfilesV4,
   jobPosters,
   jobs,
   payoutMethods,
+  routerProfilesV4,
   routers,
   users,
   v4ContractorStrikes,
@@ -435,20 +438,45 @@ async function payoutReadinessForUser(userId: string, status: string, stripeConn
 }
 
 async function enforcementForUser(userId: string, includeStrikes: boolean) {
-  const [flagRows, strikeRows] = await Promise.all([
-    db
+  const isMissingRelation = (error: unknown): boolean => {
+    const cause = (error as any)?.cause;
+    const code = String((error as any)?.code ?? cause?.code ?? "");
+    if (code === "42P01") return true;
+    const message = String((error as any)?.message ?? cause?.message ?? "");
+    return message.includes("does not exist");
+  };
+
+  let flags = 0;
+  try {
+    const flagRows = await db
       .select({ total: count() })
       .from(internalAccountFlags)
-      .where(and(eq(internalAccountFlags.userId, userId), or(eq(internalAccountFlags.status, "ACTIVE"), isNotNull(internalAccountFlags.id)))),
-    includeStrikes
-      ? db.select({ total: count() }).from(v4ContractorStrikes).where(eq(v4ContractorStrikes.contractorUserId, userId))
-      : Promise.resolve([{ total: 0 }]),
-  ]);
+      .where(
+        and(
+          eq(internalAccountFlags.userId, userId),
+          or(eq(internalAccountFlags.status, "ACTIVE"), isNotNull(internalAccountFlags.id)),
+        ),
+      );
+    flags = Number(flagRows[0]?.total ?? 0);
+  } catch (error) {
+    if (!isMissingRelation(error)) throw error;
+  }
 
-  return {
-    flags: Number(flagRows[0]?.total ?? 0),
-    strikes: includeStrikes ? Number(strikeRows[0]?.total ?? 0) : undefined,
-  };
+  let strikes: number | undefined = undefined;
+  if (includeStrikes) {
+    try {
+      const strikeRows = await db
+        .select({ total: count() })
+        .from(v4ContractorStrikes)
+        .where(eq(v4ContractorStrikes.contractorUserId, userId));
+      strikes = Number(strikeRows[0]?.total ?? 0);
+    } catch (error) {
+      if (!isMissingRelation(error)) throw error;
+      strikes = 0;
+    }
+  }
+
+  return { flags, strikes };
 }
 
 function accountStatusFromUser(user: {
@@ -470,10 +498,32 @@ function accountStatusFromUser(user: {
   };
 }
 
+async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId: string | null; payoutsEnabled: boolean } | null> {
+  const rows = await db
+    .select({
+      stripeAccountId: sql<string | null>`${payoutMethods.details} ->> 'stripeAccountId'`,
+      payoutsEnabled: sql<boolean>`case
+        when lower(coalesce(${payoutMethods.details} ->> 'stripePayoutsEnabled', 'false')) in ('true','t','1','yes') then true
+        else false
+      end`,
+    })
+    .from(payoutMethods)
+    .where(and(eq(payoutMethods.userId, userId), eq(payoutMethods.provider, "STRIPE" as any), eq(payoutMethods.isActive, true)))
+    .orderBy(desc(payoutMethods.createdAt))
+    .limit(1);
+  const row = rows[0] ?? null;
+  if (!row) return null;
+  return {
+    stripeAccountId: row.stripeAccountId ? String(row.stripeAccountId).trim() : null,
+    payoutsEnabled: Boolean(row.payoutsEnabled),
+  };
+}
+
 export async function getContractorDetail(userId: string): Promise<AdminRoleDetail | null> {
   const rows = await db
     .select({
       id: users.id,
+      role: users.role,
       email: users.email,
       phone: users.phone,
       name: users.name,
@@ -483,6 +533,12 @@ export async function getContractorDetail(userId: string): Promise<AdminRoleDeta
       archivedAt: users.archivedAt,
       archivedReason: users.archivedReason,
       stripeUpdatedAt: users.stripeUpdatedAt,
+      userCountry: users.country,
+      userRegionCode: users.stateCode,
+      userCity: users.legalCity,
+      userFormattedAddress: users.formattedAddress,
+      userLatitude: users.latitude,
+      userLongitude: users.longitude,
       country: contractorAccounts.country,
       regionCode: contractorAccounts.regionCode,
       city: contractorAccounts.city,
@@ -493,22 +549,45 @@ export async function getContractorDetail(userId: string): Promise<AdminRoleDeta
       serviceRadiusKm: contractorAccounts.serviceRadiusKm,
       approved: contractorAccounts.isApproved,
       wizardCompleted: contractorAccounts.wizardCompleted,
+      waiverAccepted: contractorAccounts.waiverAccepted,
       payoutStatus: contractorAccounts.payoutStatus,
       stripeAccountId: contractorAccounts.stripeAccountId,
+      profileContactName: contractorProfilesV4.contactName,
+      profileEmail: contractorProfilesV4.email,
+      profileBusinessName: contractorProfilesV4.businessName,
+      profileCity: contractorProfilesV4.city,
+      profileCountryCode: contractorProfilesV4.countryCode,
+      profileFormattedAddress: contractorProfilesV4.formattedAddress,
+      profileLatitude: contractorProfilesV4.homeLatitude,
+      profileLongitude: contractorProfilesV4.homeLongitude,
+      profileTradeCategories: contractorProfilesV4.tradeCategories,
+      profileServiceRadiusKm: contractorProfilesV4.serviceRadiusKm,
+      profileAcceptedTosAt: contractorProfilesV4.acceptedTosAt,
     })
     .from(users)
-    .innerJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
+    .leftJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
+    .leftJoin(contractorProfilesV4, eq(contractorProfilesV4.userId, users.id))
     .where(eq(users.id, userId))
     .limit(1);
 
   const row = rows[0] ?? null;
   if (!row) return null;
+  if (String(row.role ?? "").toUpperCase() !== "CONTRACTOR") return null;
 
   const fallbackName =
-    [String(row.firstName ?? "").trim(), String(row.lastName ?? "").trim()].filter(Boolean).join(" ") || row.businessName || null;
+    [String(row.firstName ?? "").trim(), String(row.lastName ?? "").trim()].filter(Boolean).join(" ") ||
+    String(row.profileContactName ?? "").trim() ||
+    row.businessName ||
+    row.profileBusinessName ||
+    null;
   const name = row.name ?? fallbackName;
 
-  const stripeConnected = Boolean(row.stripeAccountId);
+  const stripeMethod = await getLatestStripeMethod(userId);
+  const stripeConnected = Boolean(row.stripeAccountId || stripeMethod?.stripeAccountId);
+  const stripeVerified =
+    Boolean(stripeMethod?.payoutsEnabled) ||
+    ["ACTIVE", "VERIFIED", "READY"].includes(String(row.payoutStatus ?? "").toUpperCase());
+
   const [recentJobs, payoutReadiness, enforcement] = await Promise.all([
     recentJobsForContractor(userId),
     payoutReadinessForUser(userId, String(row.status ?? "ACTIVE"), stripeConnected),
@@ -519,26 +598,31 @@ export async function getContractorDetail(userId: string): Promise<AdminRoleDeta
     id: row.id,
     role: "CONTRACTOR",
     name,
-    email: row.email,
+    email: row.email ?? row.profileEmail,
     phone: row.phone,
-    country: row.country,
-    regionCode: row.regionCode,
-    city: row.city,
-    serviceRegion: [row.city, row.regionCode, row.country].filter(Boolean).join(", ") || null,
+    country: row.country ?? row.profileCountryCode ?? row.userCountry,
+    regionCode: row.regionCode ?? row.userRegionCode,
+    city: row.city ?? row.profileCity ?? row.userCity,
+    serviceRegion: [row.city ?? row.profileCity ?? row.userCity, row.regionCode ?? row.userRegionCode, row.country ?? row.profileCountryCode ?? row.userCountry]
+      .filter(Boolean)
+      .join(", ") || null,
     verification: {
-      termsAccepted: row.wizardCompleted,
-      profileComplete: row.wizardCompleted,
+      termsAccepted: row.waiverAccepted ?? row.wizardCompleted ?? Boolean(row.profileAcceptedTosAt),
+      profileComplete: row.wizardCompleted ?? Boolean(row.profileContactName),
       approved: row.approved,
     },
     paymentSetup: {
       hasPayoutMethod: payoutReadiness.hasPayoutMethod,
       stripeConnected,
-      payoutStatus: row.payoutStatus ?? null,
+      payoutStatus: stripeVerified ? "VERIFIED" : (row.payoutStatus ?? null),
     },
     metadata: {
-      businessName: row.businessName,
-      tradeCategory: row.tradeCategory,
-      serviceRadiusKm: row.serviceRadiusKm,
+      businessName: row.businessName ?? row.profileBusinessName,
+      tradeCategory: row.tradeCategory ?? (Array.isArray(row.profileTradeCategories) ? String(row.profileTradeCategories[0] ?? "") || null : null),
+      serviceRadiusKm: row.serviceRadiusKm ?? row.profileServiceRadiusKm,
+      formattedAddress: row.profileFormattedAddress ?? row.userFormattedAddress ?? null,
+      latitude: row.profileLatitude ?? row.userLatitude ?? null,
+      longitude: row.profileLongitude ?? row.userLongitude ?? null,
     },
   };
 
@@ -560,6 +644,7 @@ export async function getJobPosterDetail(userId: string): Promise<AdminRoleDetai
   const rows = await db
     .select({
       id: users.id,
+      role: users.role,
       email: users.email,
       phone: users.phone,
       name: users.name,
@@ -571,23 +656,42 @@ export async function getJobPosterDetail(userId: string): Promise<AdminRoleDetai
       stripeUpdatedAt: users.stripeUpdatedAt,
       stripeStatus: users.stripeStatus,
       stripeCustomerId: users.stripeCustomerId,
+      stripeDefaultPaymentMethodId: users.stripeDefaultPaymentMethodId,
       country: users.country,
       stateCode: users.stateCode,
       city: users.legalCity,
+      userFormattedAddress: users.formattedAddress,
+      userLatitude: users.latitude,
+      userLongitude: users.longitude,
       totalJobsPosted: jobPosters.totalJobsPosted,
       defaultRegion: jobPosters.defaultRegion,
       isActive: jobPosters.isActive,
       lastJobPostedAt: jobPosters.lastJobPostedAt,
+      profileFirstName: jobPosterProfilesV4.firstName,
+      profileLastName: jobPosterProfilesV4.lastName,
+      profileEmail: jobPosterProfilesV4.email,
+      profileCity: jobPosterProfilesV4.city,
+      profileRegionCode: jobPosterProfilesV4.provinceState,
+      profileCountry: jobPosterProfilesV4.country,
+      profileFormattedAddress: jobPosterProfilesV4.formattedAddress,
+      profileLatitude: jobPosterProfilesV4.latitude,
+      profileLongitude: jobPosterProfilesV4.longitude,
     })
     .from(users)
-    .innerJoin(jobPosters, eq(jobPosters.userId, users.id))
+    .leftJoin(jobPosters, eq(jobPosters.userId, users.id))
+    .leftJoin(jobPosterProfilesV4, eq(jobPosterProfilesV4.userId, users.id))
     .where(eq(users.id, userId))
     .limit(1);
 
   const row = rows[0] ?? null;
   if (!row) return null;
+  if (String(row.role ?? "").toUpperCase() !== "JOB_POSTER") return null;
 
-  const stripeConnected = Boolean(row.stripeCustomerId || row.stripeStatus === "ACTIVE");
+  const profileName = [String(row.profileFirstName ?? "").trim(), String(row.profileLastName ?? "").trim()].filter(Boolean).join(" ").trim() || null;
+  const stripeConnected = Boolean(row.stripeCustomerId || row.stripeDefaultPaymentMethodId);
+  const stripeVerified =
+    stripeConnected &&
+    ["CONNECTED", "ACTIVE"].includes(String(row.stripeStatus ?? "").toUpperCase());
   const [recentJobs, payoutReadiness, enforcement] = await Promise.all([
     recentJobsForJobPoster(userId),
     payoutReadinessForUser(userId, String(row.status ?? "ACTIVE"), stripeConnected),
@@ -597,27 +701,30 @@ export async function getJobPosterDetail(userId: string): Promise<AdminRoleDetai
   const profile: AdminUserProfile = {
     id: row.id,
     role: "JOB_POSTER",
-    name: row.name,
-    email: row.email,
+    name: row.name ?? profileName,
+    email: row.email ?? row.profileEmail,
     phone: row.phone,
-    country: row.country,
-    regionCode: row.stateCode,
-    city: row.city,
-    serviceRegion: [row.city, row.defaultRegion, row.country].filter(Boolean).join(", ") || null,
+    country: row.country ?? row.profileCountry,
+    regionCode: row.stateCode ?? row.profileRegionCode,
+    city: row.city ?? row.profileCity,
+    serviceRegion: [row.city ?? row.profileCity, row.defaultRegion ?? row.profileRegionCode, row.country ?? row.profileCountry].filter(Boolean).join(", ") || null,
     verification: {
       termsAccepted: true,
-      profileComplete: true,
-      approved: row.isActive,
+      profileComplete: Boolean(row.profileCity || row.defaultRegion),
+      approved: row.isActive ?? true,
     },
     paymentSetup: {
       hasPayoutMethod: payoutReadiness.hasPayoutMethod,
       stripeConnected,
-      payoutStatus: row.stripeStatus ?? null,
+      payoutStatus: stripeVerified ? "VERIFIED" : (row.stripeStatus ?? null),
     },
     metadata: {
       totalJobsPosted: row.totalJobsPosted,
-      defaultRegion: row.defaultRegion,
+      defaultRegion: row.defaultRegion ?? row.profileRegionCode,
       lastJobPostedAt: asIso(row.lastJobPostedAt),
+      formattedAddress: row.profileFormattedAddress ?? row.userFormattedAddress ?? null,
+      latitude: row.profileLatitude ?? row.userLatitude ?? null,
+      longitude: row.profileLongitude ?? row.userLongitude ?? null,
     },
   };
 
@@ -638,6 +745,7 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
   const rows = await db
     .select({
       id: users.id,
+      role: users.role,
       email: users.email,
       phone: users.phone,
       name: users.name,
@@ -647,6 +755,9 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
       archivedAt: users.archivedAt,
       archivedReason: users.archivedReason,
       stripeUpdatedAt: users.stripeUpdatedAt,
+      userCountry: users.country,
+      userRegionCode: users.stateCode,
+      userCity: users.legalCity,
       country: routers.homeCountry,
       regionCode: routers.homeRegionCode,
       city: routers.homeCity,
@@ -657,16 +768,35 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
       routesCompleted: routers.routesCompleted,
       routesFailed: routers.routesFailed,
       isSeniorRouter: routers.isSeniorRouter,
+      profileFirstName: routerProfilesV4.firstName,
+      profileLastName: routerProfilesV4.lastName,
+      profileEmail: routerProfilesV4.email,
+      profileContactName: routerProfilesV4.contactName,
+      profileHomeRegion: routerProfilesV4.homeRegion,
+      profileCountry: routerProfilesV4.homeCountryCode,
+      profileRegionCode: routerProfilesV4.homeRegionCode,
+      profileLatitude: routerProfilesV4.homeLatitude,
+      profileLongitude: routerProfilesV4.homeLongitude,
+      profileServiceAreas: routerProfilesV4.serviceAreas,
+      profileAvailability: routerProfilesV4.availability,
     })
     .from(users)
-    .innerJoin(routers, eq(routers.userId, users.id))
+    .leftJoin(routers, eq(routers.userId, users.id))
+    .leftJoin(routerProfilesV4, eq(routerProfilesV4.userId, users.id))
     .where(eq(users.id, userId))
     .limit(1);
 
   const row = rows[0] ?? null;
   if (!row) return null;
+  if (String(row.role ?? "").toUpperCase() !== "ROUTER") return null;
 
-  const stripeConnected = false;
+  const profileName =
+    [String(row.profileFirstName ?? "").trim(), String(row.profileLastName ?? "").trim()].filter(Boolean).join(" ").trim() ||
+    String(row.profileContactName ?? "").trim() ||
+    null;
+  const stripeMethod = await getLatestStripeMethod(userId);
+  const stripeConnected = Boolean(stripeMethod?.stripeAccountId);
+  const stripeVerified = Boolean(stripeMethod?.payoutsEnabled);
   const [recentJobs, payoutReadiness, enforcement] = await Promise.all([
     recentJobsForRouter(userId),
     payoutReadinessForUser(userId, String(row.status ?? "ACTIVE"), stripeConnected),
@@ -676,22 +806,22 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
   const profile: AdminUserProfile = {
     id: row.id,
     role: "ROUTER",
-    name: row.name,
-    email: row.email,
+    name: row.name ?? profileName,
+    email: row.email ?? row.profileEmail,
     phone: row.phone,
-    country: row.country,
-    regionCode: row.regionCode,
-    city: row.city,
-    serviceRegion: [row.city, row.regionCode, row.country].filter(Boolean).join(", ") || null,
+    country: row.country ?? row.profileCountry ?? row.userCountry,
+    regionCode: row.regionCode ?? row.profileRegionCode ?? row.userRegionCode,
+    city: row.city ?? row.profileHomeRegion ?? row.userCity,
+    serviceRegion: [row.city ?? row.profileHomeRegion ?? row.userCity, row.regionCode ?? row.profileRegionCode ?? row.userRegionCode, row.country ?? row.profileCountry ?? row.userCountry].filter(Boolean).join(", ") || null,
     verification: {
-      termsAccepted: row.termsAccepted,
-      profileComplete: row.profileComplete,
-      approved: row.statusRouter === "ACTIVE",
+      termsAccepted: row.termsAccepted ?? Boolean(row.profileContactName),
+      profileComplete: row.profileComplete ?? Boolean(row.profileContactName),
+      approved: (row.statusRouter ? row.statusRouter === "ACTIVE" : String(row.status ?? "").toUpperCase() === "ACTIVE"),
     },
     paymentSetup: {
       hasPayoutMethod: payoutReadiness.hasPayoutMethod,
       stripeConnected,
-      payoutStatus: null,
+      payoutStatus: stripeVerified ? "VERIFIED" : null,
     },
     metadata: {
       dailyRouteLimit: row.dailyRouteLimit,
@@ -699,6 +829,10 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
       routesFailed: row.routesFailed,
       isSeniorRouter: row.isSeniorRouter,
       routerStatus: row.statusRouter,
+      latitude: row.profileLatitude ?? null,
+      longitude: row.profileLongitude ?? null,
+      serviceAreas: Array.isArray(row.profileServiceAreas) ? row.profileServiceAreas : [],
+      availability: Array.isArray(row.profileAvailability) ? row.profileAvailability : [],
     },
   };
 
