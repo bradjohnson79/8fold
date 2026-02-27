@@ -8,6 +8,7 @@ const WEB_ORIGIN = getWebOrigin();
 
 export type PaymentStatus = {
   connected: boolean;
+  providerReady: boolean;
   stripeStatus: "CONNECTED" | "NOT_CONNECTED";
   lastFour?: string;
   stripeUpdatedAt?: string | null;
@@ -71,6 +72,7 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
 
   return {
     connected,
+    providerReady: Boolean(stripe),
     stripeStatus: (u?.stripeStatus as "CONNECTED" | "NOT_CONNECTED") ?? "NOT_CONNECTED",
     lastFour,
     stripeUpdatedAt: u?.stripeUpdatedAt?.toISOString?.() ?? null,

@@ -8,6 +8,7 @@ import { createPaymentIntent, stripe } from "@/src/payments/stripe";
 import { resolve as resolveTax } from "@/src/services/v4/taxResolver";
 
 type DraftData = Record<string, any>;
+export const runtime = "nodejs";
 
 const CA_PROVINCE_ALIASES: Record<string, string> = {
   AB: "AB",
@@ -59,6 +60,8 @@ function normalizeProvince(countryCode: "US" | "CA", region: string): string {
 
 export async function POST(req: Request) {
   try {
+    // eslint-disable-next-line no-console
+    console.log("Stripe Key Exists:", !!process.env.STRIPE_SECRET_KEY);
     const user = await requireJobPoster(req);
     const body = (await req.json().catch(() => null)) as {
       selectedPrice?: number;
@@ -119,50 +122,58 @@ export async function POST(req: Request) {
     const existingPiId = String(data?.payment?.paymentIntentId ?? "").trim();
 
     if (existingPiId && stripe) {
-      const pi = await stripe.paymentIntents.retrieve(existingPiId);
-      if (pi.amount !== totalCents && (pi.status === "requires_payment_method" || pi.status === "requires_confirmation")) {
-        await stripe.paymentIntents.update(pi.id, {
-          amount: totalCents,
-          payment_method_options: {
-            card: { request_extended_authorization: "if_available" },
-          },
-        });
-      }
-      if (
-        pi.status === "requires_payment_method" ||
-        pi.status === "requires_confirmation" ||
-        pi.status === "requires_capture"
-      ) {
-        const refreshed = await stripe.paymentIntents.retrieve(pi.id);
-        const nextData = {
-          ...data,
-          pricing: {
-            ...(asObject(data.pricing)),
+      try {
+        const pi = await stripe.paymentIntents.retrieve(existingPiId);
+        if (pi.amount !== totalCents && (pi.status === "requires_payment_method" || pi.status === "requires_confirmation")) {
+          await stripe.paymentIntents.update(pi.id, {
+            amount: totalCents,
+            payment_method_options: {
+              card: { request_extended_authorization: "if_available" },
+            },
+          });
+        }
+        if (
+          pi.status === "requires_payment_method" ||
+          pi.status === "requires_confirmation" ||
+          pi.status === "requires_capture"
+        ) {
+          const refreshed = await stripe.paymentIntents.retrieve(pi.id);
+          const nextData = {
+            ...data,
+            pricing: {
+              ...(asObject(data.pricing)),
+              appraisalPriceCents,
+              selectedPriceCents: appraisalPriceCents,
+              isRegional,
+              regionalFeeCents,
+              taxCents,
+              subtotalCents: baseSubtotalCents,
+              totalCents,
+              countryCode,
+              regionCode,
+            },
+            payment: { ...(asObject(data.payment)), paymentIntentId: refreshed.id },
+          };
+          await db
+            .update(jobDraft)
+            .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
+            .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
+          return NextResponse.json({
+            success: true,
+            clientSecret: refreshed.client_secret,
+            paymentIntentId: refreshed.id,
             appraisalPriceCents,
-            selectedPriceCents: appraisalPriceCents,
-            isRegional,
             regionalFeeCents,
             taxCents,
-            subtotalCents: baseSubtotalCents,
             totalCents,
-            countryCode,
-            regionCode,
-          },
-          payment: { ...(asObject(data.payment)), paymentIntentId: refreshed.id },
-        };
-        await db
-          .update(jobDraft)
-          .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
-          .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
-        return NextResponse.json({
-          success: true,
-          clientSecret: refreshed.client_secret,
-          paymentIntentId: refreshed.id,
-          appraisalPriceCents,
-          regionalFeeCents,
-          taxCents,
-          totalCents,
-          currency: countryCode === "CA" ? "CAD" : "USD",
+            currency: countryCode === "CA" ? "CAD" : "USD",
+          });
+        }
+      } catch (existingPiErr) {
+        console.warn("[job-draft/payment-intent] existing intent lookup failed; creating a fresh intent", {
+          existingPiId,
+          message: existingPiErr instanceof Error ? existingPiErr.message : String(existingPiErr),
+          code: (existingPiErr as any)?.code,
         });
       }
     }
@@ -171,7 +182,7 @@ export async function POST(req: Request) {
       currency: countryCode === "CA" ? "cad" : "usd",
       captureMethod: "manual",
       requestExtendedAuthorization: true,
-      idempotencyKey: `job-draft-v4:${draft.id}`,
+      idempotencyKey: `job-draft-v4:${draft.id}:${totalCents}:${appraisalPriceCents}:${regionalFeeCents}`,
       metadata: {
         scope: "job-draft-v4",
         draftId: String(draft.id),
@@ -219,6 +230,8 @@ export async function POST(req: Request) {
       status,
       message: rawMessage,
       code: (err as any)?.code,
+      envKeyPresent: !!process.env.STRIPE_SECRET_KEY,
+      stack: err instanceof Error ? err.stack : undefined,
     });
     const message = status >= 500 ? "Unable to confirm total right now. Please try again." : rawMessage;
     return NextResponse.json(
