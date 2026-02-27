@@ -364,6 +364,13 @@ export default function ContractorProfilePage() {
               setMapDisplayName(data.mapDisplayName);
               setMapLat(data.lat);
               setMapLng(data.lng);
+              setForm((s) => ({
+                ...s,
+                city: data.city || s.city,
+                stateProvince: data.regionCode || s.stateProvince,
+                postalCode: data.postalCode || s.postalCode,
+                country: data.countryCode === "US" || data.countryCode === "CA" ? data.countryCode : s.country,
+              }));
             }}
             errorText={
               !Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0
@@ -549,4 +556,3 @@ function ConfirmModal(props: {
     </div>
   );
 }
-

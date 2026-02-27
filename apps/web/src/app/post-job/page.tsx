@@ -2,17 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { GeoSearchMap, type GeoResult } from "@/components/maps/GeoSearchMap";
 
 type TradeMeta = {
   canonical: string[];
   uiOrder: string[];
-};
-
-type GeoResult = {
-  latitude: number;
-  longitude: number;
-  provinceState: string;
-  formattedAddress: string;
 };
 
 type AppraisalResult = {
@@ -33,8 +27,6 @@ export default function PostJobPage() {
   const [regionalMode, setRegionalMode] = useState<"urban" | "regional">("urban");
   const [availability, setAvailability] = useState<string[]>([]);
   const [useProfileAddress, setUseProfileAddress] = useState(true);
-  const [addressQuery, setAddressQuery] = useState("");
-  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
   const [selectedGeo, setSelectedGeo] = useState<GeoResult | null>(null);
   const [profileGeo, setProfileGeo] = useState<GeoResult | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -81,6 +73,12 @@ export default function PostJobPage() {
             longitude: p.longitude,
             provinceState: p.provinceState,
             formattedAddress: p.formattedAddress,
+            displayName: p.formattedAddress,
+            countryCode: "",
+            regionCode: p.provinceState,
+            city: "",
+            postalCode: "",
+            placeId: "",
           });
         }
       } catch {}
@@ -89,24 +87,6 @@ export default function PostJobPage() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (useProfileAddress || !addressQuery.trim()) return;
-    const t = setTimeout(async () => {
-      try {
-        const resp = await fetch("/api/web/v4/geo/geocode", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: addressQuery.trim() }),
-        });
-        const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[] };
-        setGeoResults(Array.isArray(data.results) ? data.results : []);
-      } catch {
-        setGeoResults([]);
-      }
-    }, 350);
-    return () => clearTimeout(t);
-  }, [addressQuery, useProfileAddress]);
 
   const activeGeo = useMemo(() => (useProfileAddress ? profileGeo : selectedGeo), [profileGeo, selectedGeo, useProfileAddress]);
 
@@ -343,28 +323,12 @@ export default function PostJobPage() {
             </div>
             {!useProfileAddress && (
               <>
-                <input
-                  type="text"
-                  value={addressQuery}
-                  onChange={(e) => {
-                    setAddressQuery(e.target.value);
-                    setSelectedGeo(null);
+                <GeoSearchMap
+                  initialQuery={selectedGeo?.formattedAddress ?? ""}
+                  onSelect={(result) => {
+                    setSelectedGeo(result);
                   }}
-                  className="mt-3 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Start typing address..."
                 />
-                <div className="mt-2 max-h-40 overflow-auto rounded border border-gray-200">
-                  {geoResults.map((result, idx) => (
-                    <button
-                      key={`${result.formattedAddress}-${idx}`}
-                      type="button"
-                      onClick={() => setSelectedGeo(result)}
-                      className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-gray-50"
-                    >
-                      {result.formattedAddress}
-                    </button>
-                  ))}
-                </div>
               </>
             )}
             {activeGeo && (
@@ -375,35 +339,27 @@ export default function PostJobPage() {
                 </div>
               </div>
             )}
-            {activeGeo && (
-              <iframe
-                title="OSM preview"
-                className="mt-3 h-64 w-full rounded border"
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${activeGeo.longitude - 0.01}%2C${activeGeo.latitude - 0.01}%2C${activeGeo.longitude + 0.01}%2C${activeGeo.latitude + 0.01}&layer=mapnik&marker=${activeGeo.latitude}%2C${activeGeo.longitude}`}
-              />
-            )}
-            {!useProfileAddress && activeGeo && (
+            {!useProfileAddress && selectedGeo && (
               <button
                 type="button"
                 onClick={async () => {
-                  const parts = activeGeo.formattedAddress.split(",").map((p) => p.trim());
+                  const parts = selectedGeo.formattedAddress.split(",").map((p) => p.trim());
                   await fetch("/api/web/v4/job-poster/profile", {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                      addressLine1: parts[0] ?? activeGeo.formattedAddress,
+                      addressLine1: parts[0] ?? selectedGeo.formattedAddress,
                       addressLine2: "",
                       city: parts[1] ?? "Unknown",
-                      provinceState: activeGeo.provinceState,
+                      provinceState: selectedGeo.provinceState,
                       postalCode: parts[2] ?? "N/A",
                       country: "US",
-                      formattedAddress: activeGeo.formattedAddress,
-                      latitude: activeGeo.latitude,
-                      longitude: activeGeo.longitude,
-                      geocodeProvider: "OSM",
+                      formattedAddress: selectedGeo.formattedAddress,
+                      latitude: selectedGeo.latitude,
+                      longitude: selectedGeo.longitude,
                     }),
                   });
-                  setProfileGeo(activeGeo);
+                  setProfileGeo(selectedGeo);
                 }}
                 className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm"
               >

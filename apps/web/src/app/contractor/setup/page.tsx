@@ -3,20 +3,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import dynamic from "next/dynamic";
+import { GeoSearchMap } from "@/components/maps/GeoSearchMap";
 
 const CONTRACTOR_TOS_VERSION = "v1.0";
-const OSMMap = dynamic(() => import("@/components/shared/v4/OSMMap"), { ssr: false });
-
-type GeoResult = {
-  latitude: number;
-  longitude: number;
-  provinceState: string;
-  formattedAddress: string;
-  city?: string;
-  postalCode?: string;
-  countryCode?: string;
-};
 
 const MONTH_OPTIONS = [
   { value: 1, label: "January" },
@@ -39,22 +28,6 @@ function computeSuspendedUntil(year: number, month: number) {
 
 function hasMinimumThreeYearsExperience(year: number, month: number) {
   return computeSuspendedUntil(year, month).getTime() <= Date.now();
-}
-
-function normalizeGeoResult(result: GeoResult) {
-  const parts = result.formattedAddress.split(",").map((part) => part.trim()).filter(Boolean);
-  const streetAddress = parts[0] ?? result.formattedAddress;
-  const fallbackCity = parts.length >= 3 ? parts[parts.length - 3] : "";
-  const fallbackPostal = parts.length >= 2 ? parts[parts.length - 2].split(" ").slice(-2).join(" ").trim() : "";
-  const fallbackCountry = parts.length >= 1 ? (parts[parts.length - 1].length === 2 ? parts[parts.length - 1].toUpperCase() : "") : "";
-
-  return {
-    ...result,
-    streetAddress,
-    city: String(result.city ?? fallbackCity).trim(),
-    postalCode: String(result.postalCode ?? fallbackPostal).trim(),
-    countryCode: String(result.countryCode ?? fallbackCountry).trim().toUpperCase(),
-  };
 }
 
 function formatExperience(startYear: number, startMonth: number) {
@@ -97,9 +70,6 @@ export default function ContractorSetupPage() {
   const [tradeCategories, setTradeCategories] = useState<string[]>([]);
 
   const [mapQuery, setMapQuery] = useState("");
-  const [mapResults, setMapResults] = useState<GeoResult[]>([]);
-  const [showMapSuggestions, setShowMapSuggestions] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
   const [homeLatitude, setHomeLatitude] = useState<number | null>(null);
   const [homeLongitude, setHomeLongitude] = useState<number | null>(null);
   const [selectedMapAddress, setSelectedMapAddress] = useState("");
@@ -151,8 +121,8 @@ export default function ContractorSetupPage() {
     (async () => {
       try {
         const [metaResp, profileResp] = await Promise.all([
-          fetch("/api/web/v4/meta/trade-categories", { cache: "no-store" }),
-          fetch("/api/web/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
+          fetch("/api/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
         ]);
 
         const meta = (await metaResp.json().catch(() => ({}))) as { uiOrder?: string[] };
@@ -219,74 +189,8 @@ export default function ContractorSetupPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const trimmed = mapQuery.trim();
-    if (!trimmed) {
-      setMapResults([]);
-      setShowMapSuggestions(false);
-      setMapError(null);
-      return;
-    }
-
-    if (trimmed.length < 3) {
-      setMapResults([]);
-      setShowMapSuggestions(false);
-      setMapError(null);
-      return;
-    }
-
-    setMapResults([]);
-    setShowMapSuggestions(false);
-    setMapError(null);
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const resp = await fetch("/api/web/v4/geo/geocode", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: trimmed }),
-          signal: controller.signal,
-        });
-
-        if (controller.signal.aborted) return;
-
-        const data = (await resp.json().catch(() => ({}))) as { results?: GeoResult[]; error?: unknown };
-        const results = Array.isArray(data.results) ? data.results : [];
-        setMapResults(results);
-        setShowMapSuggestions(true);
-        setMapError(null);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        if (err instanceof Error && err.name === "AbortError") return;
-        setMapResults([]);
-        setShowMapSuggestions(true);
-        setMapError("Location service temporarily unavailable. You may continue and edit later.");
-      }
-    }, 350);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [mapQuery]);
-
   function toggleTrade(tc: string) {
     setTradeCategories((prev) => (prev.includes(tc) ? prev.filter((v) => v !== tc) : [...prev, tc]));
-  }
-
-  function selectGeo(result: GeoResult) {
-    const normalized = normalizeGeoResult(result);
-    setMapQuery(normalized.formattedAddress);
-    setSelectedMapAddress(normalized.formattedAddress);
-    setStreetAddress(normalized.streetAddress);
-    setCity(normalized.city);
-    setPostalCode(normalized.postalCode);
-    if (normalized.countryCode) setCountryCode(normalized.countryCode);
-    setHomeLatitude(normalized.latitude);
-    setHomeLongitude(normalized.longitude);
-    setMapResults([]);
-    setShowMapSuggestions(false);
-    setMapError(null);
   }
 
   async function persistProfile() {
@@ -311,7 +215,7 @@ export default function ContractorSetupPage() {
         tosVersion: CONTRACTOR_TOS_VERSION,
       };
 
-      const resp = await fetch("/api/web/v4/contractor/profile", {
+      const resp = await fetch("/api/v4/contractor/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -386,61 +290,122 @@ export default function ContractorSetupPage() {
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900">Contractor Terms &amp; Conditions {CONTRACTOR_TOS_VERSION}</h2>
             <div className="mt-4 h-72 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-              <p className="font-semibold">1. Professional Standards &amp; Conduct</p>
+              <p className="font-semibold">Contractor Agreement &amp; Operational Terms ({CONTRACTOR_TOS_VERSION})</p>
+              <p className="mt-3 font-semibold">1. Role &amp; Independent Status</p>
+              <p className="mt-1">
+                As a Contractor on 8Fold, you operate as an independent service provider offering professional trade or service
+                work to Job Posters through the platform.
+              </p>
+              <p className="mt-1">You are not an employee, partner, or agent of 8Fold.</p>
+              <p className="mt-1">You are solely responsible for:</p>
+              <ul className="ml-5 list-disc space-y-1">
+                <li>The quality and execution of your work</li>
+                <li>Compliance with local laws and licensing requirements</li>
+                <li>Your own insurance (where applicable)</li>
+                <li>Your own tax reporting and obligations</li>
+              </ul>
+              <p className="mt-1">
+                8Fold facilitates job matching and payment processing but does not supervise or control your service execution.
+              </p>
+
+              <p className="mt-3 font-semibold">2. Professional Standards &amp; Conduct</p>
               <ul className="ml-5 list-disc space-y-1">
                 <li>Contractor agrees to maintain professional conduct at all times.</li>
-                <li>Contractor shall not engage in harassment, discrimination, abusive language, intimidation, threats, or violence.</li>
-                <li>Any confirmed act of theft, harassment, physical aggression, or criminal misconduct will result in immediate termination and permanent account ban.</li>
-                <li>Terminated accounts remain archived for compliance and record-keeping.</li>
+                <li>Prohibited conduct includes harassment, discrimination, abusive language, intimidation, threats, aggression, theft, fraud, and criminal misconduct.</li>
+                <li>Any confirmed act of theft, violence, harassment, or fraud may result in immediate termination and permanent account removal.</li>
+                <li>Terminated accounts may be retained in archived form for compliance and record-keeping purposes.</li>
               </ul>
-              <p className="mt-3 font-semibold">2. Service Obligations</p>
+
+              <p className="mt-3 font-semibold">3. Service Acceptance &amp; Completion Obligations</p>
               <ul className="ml-5 list-disc space-y-1">
                 <li>Contractor agrees to complete accepted jobs in good faith.</li>
-                <li>Contractor must arrive at scheduled appointments on time.</li>
                 <li>Contractor must maintain clear and timely communication with Job Posters.</li>
                 <li>Contractor is responsible for scheduling agreed appointment times after accepting a job.</li>
+                <li>Contractor must arrive at agreed appointment times as scheduled.</li>
               </ul>
-              <p className="mt-3 font-semibold">3. No-show &amp; Scheduling Policy</p>
+              <p className="mt-1">Failure to uphold accepted commitments may result in strike accumulation, suspension, or termination.</p>
+
+              <p className="mt-3 font-semibold">4. Scheduling &amp; No-Show Policy</p>
+              <p className="mt-1">Professional reliability is critical to platform integrity.</p>
+              <p className="mt-1">The following may result in disciplinary action:</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Failure to appear at a confirmed job may result in suspension for up to 3 months.</li>
-                <li>Failure to coordinate and confirm appointment scheduling after accepting a job may result in a reprimand.</li>
-                <li>8Fold operates a 3-strike system for scheduling failures.</li>
-                <li>Accumulation of 3 strikes may result in a 1-month suspension.</li>
+                <li>Failure to appear at a confirmed appointment (no-show)</li>
+                <li>Repeated failure to coordinate scheduling after job acceptance</li>
+                <li>Last-minute cancellations without reasonable cause</li>
               </ul>
-              <p className="mt-3 font-semibold">4. Payout Conditions</p>
+              <p className="mt-1">8Fold operates a structured compliance system:</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Contractor payments are processed according to platform payout schedule.</li>
-                <li>Contractor is responsible for maintaining valid payout configuration.</li>
-                <li>Delays caused by incorrect payout information are the Contractor&apos;s responsibility.</li>
-                <li>Fraudulent payout claims may result in permanent termination.</li>
+                <li>Strike 1: Warning</li>
+                <li>Strike 2: Temporary suspension</li>
+                <li>Strike 3: Extended suspension or termination</li>
               </ul>
-              <p className="mt-3 font-semibold">5. Parts &amp; Materials (P&amp;M)</p>
+              <p className="mt-1">Severity of action may vary based on the circumstances and pattern of behavior.</p>
+
+              <p className="mt-3 font-semibold">5. Payment &amp; Payout Conditions</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>P&amp;M requests must be submitted through platform.</li>
-                <li>Receipts must reflect actual purchases.</li>
-                <li>Misrepresentation of material costs may result in suspension or termination.</li>
-                <li>Platform may audit receipts.</li>
+                <li>Contractor compensation is processed according to platform payout policies.</li>
+                <li>Maintain accurate and valid payout information.</li>
+                <li>Complete required onboarding steps prior to receiving payment.</li>
+                <li>Submit accurate completion confirmations.</li>
               </ul>
-              <p className="mt-3 font-semibold">6. Tax Responsibility</p>
+              <p className="mt-1">Delays caused by incorrect payout information are the responsibility of the Contractor.</p>
+              <p className="mt-1">Fraudulent payment claims, manipulation of job status, or collusion may result in immediate termination.</p>
+
+              <p className="mt-3 font-semibold">6. Parts &amp; Materials (P&amp;M)</p>
               <ul className="ml-5 list-disc space-y-1">
-                <li>Contractor is an independent service provider.</li>
-                <li>Contractor is solely responsible for their own income tax obligations.</li>
-                <li>8Fold does not withhold income tax on Contractor earnings.</li>
+                <li>Parts &amp; Materials requests must be submitted through the platform system when applicable.</li>
+                <li>Submitted receipts must reflect actual purchases.</li>
+                <li>Misrepresentation of material costs or falsified receipts may result in suspension or termination.</li>
+                <li>The platform reserves the right to audit submitted documentation.</li>
               </ul>
-              <p className="mt-3 font-semibold">7. Suspension &amp; Termination</p>
-              <p className="mt-1 font-medium">Immediate termination occurs for:</p>
+
+              <p className="mt-3 font-semibold">7. Job Completion &amp; Approval Process</p>
+              <p className="mt-1">Payment is contingent upon:</p>
+              <ul className="ml-5 list-disc space-y-1">
+                <li>Job marked complete by Contractor</li>
+                <li>Confirmation or approval by the Router and/or Job Poster as required</li>
+                <li>Compliance with platform procedures</li>
+              </ul>
+              <p className="mt-1">Disputes may delay payment until review is completed.</p>
+
+              <p className="mt-3 font-semibold">8. Platform Integrity &amp; Fraud Prevention</p>
+              <ul className="ml-5 list-disc space-y-1">
+                <li>Creating duplicate accounts is prohibited.</li>
+                <li>Circumventing platform payment systems is prohibited.</li>
+                <li>Coordinating off-platform payment to avoid platform fees is prohibited.</li>
+                <li>Collusion with Routers or Job Posters to manipulate outcomes is prohibited.</li>
+              </ul>
+              <p className="mt-1">Confirmed violations may result in permanent termination.</p>
+
+              <p className="mt-3 font-semibold">9. Suspension &amp; Termination</p>
+              <p className="mt-1 font-medium">Immediate termination may occur for:</p>
               <ul className="ml-5 list-disc space-y-1">
                 <li>Theft</li>
-                <li>Harassment</li>
-                <li>Violence</li>
+                <li>Harassment or violence</li>
                 <li>Fraud</li>
                 <li>Material misrepresentation</li>
+                <li>Criminal conduct</li>
+                <li>Payment manipulation</li>
               </ul>
               <p className="mt-2 font-medium">Suspension may occur for:</p>
               <ul className="ml-5 list-disc space-y-1">
                 <li>Repeated no-shows</li>
                 <li>Strike accumulation</li>
                 <li>Policy violations</li>
+                <li>Failure to maintain professional standards</li>
+              </ul>
+              <p className="mt-1">Platform decisions regarding suspension or termination are final.</p>
+
+              <p className="mt-3 font-semibold">10. Amendments</p>
+              <p className="mt-1">8Fold reserves the right to amend these Terms at any time.</p>
+              <p className="mt-1">Continued use of the platform constitutes acceptance of updated Terms.</p>
+
+              <p className="mt-3 font-semibold">Acceptance</p>
+              <p className="mt-1">By completing Contractor Setup and accepting this Agreement, you acknowledge that:</p>
+              <ul className="ml-5 list-disc space-y-1">
+                <li>You understand your responsibilities.</li>
+                <li>You agree to operate professionally and independently.</li>
+                <li>You accept that platform access is conditional upon ongoing compliance.</li>
               </ul>
             </div>
             <label className="mt-4 flex items-center gap-3 text-sm font-medium text-gray-800">
@@ -522,58 +487,24 @@ export default function ContractorSetupPage() {
           </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900">OpenStreetMap Map Location</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Map Location</h2>
             <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Map Location Search *</span>
-                <input
-                  type="text"
-                  value={mapQuery}
-                  onChange={(e) => {
-                    setMapQuery(e.target.value);
-                    setSelectedMapAddress("");
-                    setHomeLatitude(null);
-                    setHomeLongitude(null);
-                    setShowMapSuggestions(true);
-                    setMapError(null);
-                  }}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Search and select address (min 3 characters)"
-                />
-              </label>
-
-              {showMapSuggestions ? (
-                <div className="max-h-48 overflow-auto rounded-md border border-gray-200">
-                  {mapResults.length > 0 ? (
-                    mapResults.map((result, idx) => (
-                      <button
-                        key={`${result.formattedAddress}-${idx}`}
-                        type="button"
-                        onClick={() => selectGeo(result)}
-                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                      >
-                        {result.formattedAddress}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-gray-600">
-                      {mapError ?? "No matching locations found. Try refining address."}
-                    </div>
-                  )}
-                </div>
-              ) : null}
+              <GeoSearchMap
+                initialQuery={mapQuery}
+                onSelect={(result) => {
+                  setMapQuery(result.displayName);
+                  setSelectedMapAddress(result.displayName);
+                  setHomeLatitude(result.latitude);
+                  setHomeLongitude(result.longitude);
+                  if (result.city) setCity(result.city);
+                  if (result.postalCode) setPostalCode(result.postalCode);
+                  if (result.countryCode === "US" || result.countryCode === "CA") setCountryCode(result.countryCode);
+                }}
+              />
 
               {selectedMapAddress ? (
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{selectedMapAddress}</div>
               ) : null}
-              <OSMMap
-                latitude={homeLatitude}
-                longitude={homeLongitude}
-                onChange={(lat, lng) => {
-                  setHomeLatitude(lat);
-                  setHomeLongitude(lng);
-                }}
-              />
               <p className="text-xs text-gray-500">
                 <span className="font-medium">Location Accuracy Notice</span>
                 <br />

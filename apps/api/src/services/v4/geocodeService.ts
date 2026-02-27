@@ -13,7 +13,7 @@ const STREET_ABBREVS: [RegExp, string][] = [
   [/\bhighway\b/gi, "Hwy"],
 ];
 
-/** Normalize query: trim, abbreviate street terms, title case, append Canada if missing. */
+/** Normalize query: trim, abbreviate street terms, title case. */
 export function normalizeGeocodeQuery(query: string): string {
   let q = String(query ?? "").trim();
   if (!q) return q;
@@ -26,11 +26,6 @@ export function normalizeGeocodeQuery(query: string): string {
     .split(/\s+/)
     .map((w) => (w.length > 0 ? w[0]!.toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(" ");
-
-  const lower = q.toLowerCase();
-  if (!lower.includes("canada") && !lower.includes(", ca")) {
-    q = q ? `${q}, Canada` : q;
-  }
 
   return q.trim();
 }
@@ -48,6 +43,7 @@ export type GeocodeResult = {
 export async function geocodeWithOsm(query: string): Promise<{ ok: true; results: GeocodeResult[] }> {
   const raw = String(query ?? "").trim();
   if (!raw) throw badRequest("V4_GEO_QUERY_REQUIRED", "query is required");
+  if (raw.length < 3) return { ok: true as const, results: [] };
 
   const q = normalizeGeocodeQuery(raw);
 
@@ -56,7 +52,7 @@ export async function geocodeWithOsm(query: string): Promise<{ ok: true; results
   url.searchParams.set("format", "json");
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("limit", "5");
-  url.searchParams.set("countrycodes", "ca");
+  url.searchParams.set("countrycodes", "ca,us");
 
   const response = await fetch(url.toString(), {
     method: "GET",

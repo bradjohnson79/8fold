@@ -4,7 +4,7 @@ import { db } from "@/db/drizzle";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { users } from "@/db/schema/user";
 import { type V4ContractorProfileInput } from "@/src/validation/v4/contractorProfileSchema";
-import { forbidden } from "@/src/services/v4/v4Errors";
+import { badRequest, conflict, forbidden, internal, type V4Error } from "@/src/services/v4/v4Errors";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
 
 export async function getV4ContractorProfile(userId: string) {
@@ -51,6 +51,41 @@ function hasMinimumThreeYearsExperience(startedTradeYear: number, startedTradeMo
   return computeSuspendedUntil(startedTradeYear, startedTradeMonth).getTime() <= now.getTime();
 }
 
+function mapContractorProfileDbError(err: unknown): V4Error {
+  const cause = (err as any)?.cause ?? err;
+  const pgCode = String((cause as any)?.code ?? "");
+
+  if (pgCode === "23502") {
+    return badRequest(
+      "V4_CONTRACTOR_PROFILE_REQUIRED_FIELD_MISSING",
+      "One or more required contractor profile fields are missing.",
+      { column: (cause as any)?.column ?? null },
+    );
+  }
+
+  if (pgCode === "23503") {
+    return conflict(
+      "V4_CONTRACTOR_PROFILE_USER_LINK_INVALID",
+      "Contractor account link is invalid. Please refresh and try again.",
+      { constraint: (cause as any)?.constraint ?? null },
+    );
+  }
+
+  if (pgCode === "23505") {
+    return conflict(
+      "V4_CONTRACTOR_PROFILE_CONFLICT",
+      "A conflicting contractor profile record exists. Please retry.",
+      { constraint: (cause as any)?.constraint ?? null },
+    );
+  }
+
+  if (pgCode === "22P02" || pgCode === "22003") {
+    return badRequest("V4_CONTRACTOR_PROFILE_INVALID_DATA", "Invalid contractor profile values provided.");
+  }
+
+  return internal("V4_CONTRACTOR_PROFILE_SAVE_FAILED");
+}
+
 export async function upsertV4ContractorProfile(
   userId: string,
   input: V4ContractorProfileInput,
@@ -76,45 +111,22 @@ export async function upsertV4ContractorProfile(
     );
   }
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({ phone: input.phone, updatedAt: now } as any)
-      .where(eq(users.id, userId));
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ phone: input.phone, updatedAt: now } as any)
+        .where(eq(users.id, userId));
 
-    await tx
-      .insert(contractorProfilesV4)
-      .values({
-        id: randomUUID(),
-        userId,
-        firstName: identity?.firstName ?? null,
-        lastName: identity?.lastName ?? null,
-        email: identity?.email ?? null,
-        avatarUrl: identity?.avatarUrl ?? null,
-        contactName: input.contactName,
-        phone: input.phone,
-        businessName: input.businessName,
-        businessNumber: input.businessNumber ?? null,
-        startedTradeYear: input.startedTradeYear,
-        startedTradeMonth: input.startedTradeMonth,
-        acceptedTosAt: now,
-        tosVersion: input.tosVersion,
-        streetAddress: input.streetAddress,
-        formattedAddress: input.formattedAddress,
-        city: input.city,
-        postalCode: input.postalCode,
-        countryCode: input.countryCode,
-        yearsExperience: now.getUTCFullYear() - input.startedTradeYear,
-        tradeCategories: input.tradeCategories as any,
-        serviceRadiusKm: 25,
-        homeLatitude: input.homeLatitude,
-        homeLongitude: input.homeLongitude,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: contractorProfilesV4.userId,
-        set: {
+      await tx
+        .insert(contractorProfilesV4)
+        .values({
+          id: randomUUID(),
+          userId,
+          firstName: identity?.firstName ?? null,
+          lastName: identity?.lastName ?? null,
+          email: identity?.email ?? null,
+          avatarUrl: identity?.avatarUrl ?? null,
           contactName: input.contactName,
           phone: input.phone,
           businessName: input.businessName,
@@ -133,9 +145,36 @@ export async function upsertV4ContractorProfile(
           serviceRadiusKm: 25,
           homeLatitude: input.homeLatitude,
           homeLongitude: input.homeLongitude,
+          createdAt: now,
           updatedAt: now,
-          // Identity: backfill on first save only; do NOT update on conflict
-        },
-      });
-  });
+        })
+        .onConflictDoUpdate({
+          target: contractorProfilesV4.userId,
+          set: {
+            contactName: input.contactName,
+            phone: input.phone,
+            businessName: input.businessName,
+            businessNumber: input.businessNumber ?? null,
+            startedTradeYear: input.startedTradeYear,
+            startedTradeMonth: input.startedTradeMonth,
+            acceptedTosAt: now,
+            tosVersion: input.tosVersion,
+            streetAddress: input.streetAddress,
+            formattedAddress: input.formattedAddress,
+            city: input.city,
+            postalCode: input.postalCode,
+            countryCode: input.countryCode,
+            yearsExperience: now.getUTCFullYear() - input.startedTradeYear,
+            tradeCategories: input.tradeCategories as any,
+            serviceRadiusKm: 25,
+            homeLatitude: input.homeLatitude,
+            homeLongitude: input.homeLongitude,
+            updatedAt: now,
+            // Identity: backfill on first save only; do NOT update on conflict
+          },
+        });
+    });
+  } catch (err) {
+    throw mapContractorProfileDbError(err);
+  }
 }
