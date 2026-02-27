@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { routers } from "@/db/schema/router";
-import { adminSessionTokenFromRequest, getAdminIdentityBySessionToken } from "@/src/lib/auth/adminSession";
 import { requireRole } from "../../auth/requireRole";
 import { AuthErrorCodes } from "../../auth/errors/authErrorCodes";
 import { authErrorResponse, getOrCreateRequestId } from "../../auth/errors/authErrorResponse";
+import { requireAdminClerk } from "./requireAdminClerk";
 
 export type RequireAdminOk = {
   userId: string;
@@ -30,11 +30,6 @@ function safePath(url: string): string {
   }
 }
 
-function isAdminSessionRole(role: string | null | undefined): boolean {
-  const r = String(role ?? "").trim().toUpperCase();
-  return r === "ADMIN" || r === "ADMIN_SUPER" || r === "ADMIN_OPERATOR" || r === "ADMIN_VIEWER";
-}
-
 /**
  * Centralized admin auth guard for apps/api admin routes.
  *
@@ -44,17 +39,9 @@ function isAdminSessionRole(role: string | null | undefined): boolean {
  */
 export async function requireAdmin(req: Request): Promise<NextResponse | RequireAdminOk> {
   try {
-    // Preferred: admin_session cookie (AdminUser table), used by apps/admin.
-    const sessionToken = adminSessionTokenFromRequest(req);
-    if (sessionToken) {
-      const admin = await getAdminIdentityBySessionToken(sessionToken).catch(() => null);
-      if (admin?.id && isAdminSessionRole(admin.role)) return { userId: String(admin.id), role: "ADMIN" };
-    }
-
-    // Clerk is the sole identity authority. ADMIN role is DB-authoritative.
-    const authed = await requireRole(req, "ADMIN");
-    if (authed instanceof Response) return authed as NextResponse;
-    return { userId: authed.internalUser.id, role: "ADMIN" };
+    const admin = await requireAdminClerk(req);
+    if (admin instanceof Response) return admin;
+    return { userId: admin.admin.id, role: "ADMIN" };
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[ADMIN_AUTH_GUARD_ERROR]", {
@@ -143,4 +130,3 @@ async function routersToSenior(req: Request, userId: string): Promise<NextRespon
   }
   return true;
 }
-

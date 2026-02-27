@@ -1,23 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useClerk } from "@clerk/nextjs";
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { signOut } = useClerk();
 
   async function handleLogout() {
     setLoading(true);
     setError(null);
     try {
-      await fetch("/api/admin/v4/auth/logout", { method: "POST" });
-      window.location.href = "/login";
+      await signOut({ redirectUrl: "/login" });
     } catch (e) {
       console.error("[ADMIN:logout:client:error]", {
         message: "Logout submission failed",
         cause: e instanceof Error ? e.message : "Unknown error",
       });
       setError("Logout failed. Please try again.");
+      window.location.href = "/login";
     } finally {
       setLoading(false);
     }
