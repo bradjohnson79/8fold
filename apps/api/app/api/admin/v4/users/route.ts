@@ -1,59 +1,75 @@
-import { and, desc, eq, ilike, or } from "drizzle-orm";
-import { db } from "@/server/db/drizzle";
-import { v4AdminUsers } from "@/db/schema/v4AdminUser";
-import { requireAdminV4 } from "@/src/auth/requireAdminV4";
-import { ok } from "@/src/lib/api/adminV4Response";
+import { mapUsersRowsToAdminUserDTO, requireAdmin, usersRepo } from "@/src/adminBus";
+import { err, ok } from "@/src/lib/api/adminV4Response";
+
+export const dynamic = "force-dynamic";
+
+function parseBoolish(v: string | null): boolean {
+  const n = String(v ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(n);
+}
 
 export async function GET(req: Request) {
-  const authed = await requireAdminV4(req);
+  const authed = await requireAdmin(req);
   if (authed instanceof Response) return authed;
 
-  const { searchParams } = new URL(req.url);
-  const role = String(searchParams.get("role") ?? "").trim();
-  const q = String(searchParams.get("q") ?? searchParams.get("query") ?? "").trim();
-  const country = String(searchParams.get("country") ?? "").trim();
-  const province = String(searchParams.get("province") ?? searchParams.get("state") ?? searchParams.get("region") ?? "").trim();
-  const city = String(searchParams.get("city") ?? "").trim();
-  const status = String(searchParams.get("status") ?? "").trim();
-  const limit = Math.max(1, Math.min(200, Number(searchParams.get("limit") ?? 100)));
+  try {
+    const { searchParams } = new URL(req.url);
 
-  const where = [] as any[];
-  if (role) where.push(eq(v4AdminUsers.role, role));
-  if (status) where.push(eq(v4AdminUsers.status, status));
-  if (country) where.push(eq(v4AdminUsers.country, country));
-  if (province) where.push(eq(v4AdminUsers.state, province));
-  if (city) where.push(eq(v4AdminUsers.city, city));
-  if (q) {
-    where.push(
-      or(
-        ilike(v4AdminUsers.email, `%${q}%`),
-        ilike(v4AdminUsers.name, `%${q}%`),
-      ),
-    );
+    const roleRaw = String(searchParams.get("role") ?? "").trim().toUpperCase();
+    const role = roleRaw && roleRaw !== "ALL" ? (roleRaw as any) : undefined;
+    const q = String(searchParams.get("q") ?? searchParams.get("query") ?? "").trim();
+    const country = String(searchParams.get("country") ?? "").trim() || undefined;
+    const region = String(searchParams.get("region") ?? searchParams.get("state") ?? searchParams.get("province") ?? "").trim() || undefined;
+    const city = String(searchParams.get("city") ?? "").trim() || undefined;
+    const statusRaw = String(searchParams.get("status") ?? "").trim().toUpperCase();
+    const status = statusRaw && statusRaw !== "ALL" ? statusRaw : undefined;
+    const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+    const pageSize = Math.max(1, Math.min(100, Number(searchParams.get("pageSize") ?? searchParams.get("limit") ?? "100") || 100));
+    const rangeRaw = String(searchParams.get("range") ?? "ALL").trim().toUpperCase();
+
+    const data = await usersRepo.listUsers({
+      role,
+      q,
+      status,
+      country,
+      region,
+      city,
+      page,
+      pageSize,
+      includeSuspended: parseBoolish(searchParams.get("includeSuspended")),
+      includeArchived: parseBoolish(searchParams.get("includeArchived")),
+      range: ["ALL", "1D", "7D", "30D", "90D"].includes(rangeRaw) ? (rangeRaw as any) : "ALL",
+    });
+
+    const rows = mapUsersRowsToAdminUserDTO(data.rows as any[]);
+    const users = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      firstName: r.firstName ?? null,
+      lastName: r.lastName ?? null,
+      email: r.email,
+      role: r.role,
+      country: r.country,
+      state: r.regionCode,
+      city: r.city,
+      createdAt: r.createdAt,
+      status: r.status,
+      suspendedUntil: r.suspendedUntil,
+      archivedAt: r.archivedAt,
+    }));
+
+    return ok({
+      rows,
+      totalCount: data.totalCount,
+      page: data.page,
+      pageSize: data.pageSize,
+      users,
+      nextCursor: null,
+    });
+  } catch (error) {
+    console.error("[ADMIN_V4_USERS_LIST_ERROR]", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return err(500, "ADMIN_V4_USERS_LIST_FAILED", "Failed to load users");
   }
-
-  const rows = await db
-    .select()
-    .from(v4AdminUsers)
-    .where(where.length ? and(...where) : undefined)
-    .orderBy(desc(v4AdminUsers.createdAt))
-    .limit(limit);
-
-  const users = rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    firstName: r.firstName,
-    lastName: r.lastName,
-    email: r.email,
-    role: r.role,
-    country: r.country,
-    state: r.state,
-    city: r.city,
-    createdAt: r.createdAt,
-    status: r.status,
-    suspendedUntil: r.suspendedUntil,
-    archivedAt: r.archivedAt,
-  }));
-
-  return ok({ users, nextCursor: null });
 }

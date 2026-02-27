@@ -42,6 +42,10 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Settings", href: "/settings", match: "prefix" },
     ],
   },
+  {
+    title: "System",
+    items: [{ label: "Data Coverage", href: "/system/data-coverage", match: "prefix" }],
+  },
 ];
 
 function isActive(pathname: string, href: string, match: NavItem["match"]): boolean {
