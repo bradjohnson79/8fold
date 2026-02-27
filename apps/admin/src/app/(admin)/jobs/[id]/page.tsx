@@ -1,4 +1,5 @@
 import { adminApiFetch } from "@/server/adminApiV4";
+import JobStatusEditor from "./JobStatusEditor";
 
 type Party = { id: string; name: string | null; email: string | null; role: string | null };
 type PaymentState = { label: string; rawPaymentStatus: string | null; rawPayoutStatus: string | null };
@@ -52,6 +53,7 @@ type DetailResp = {
   job: JobDetail;
   timeline: TimelineEvent[];
   related: Related;
+  statusOptions?: string[];
 };
 
 function money(cents: number) {
@@ -143,6 +145,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   const job = data.job;
   const displayStatus = job.isMock ? "IN_PROGRESS" : job.displayStatus;
+  const statusOptions = Array.isArray(data.statusOptions) ? data.statusOptions : [job.statusRaw];
 
   return (
     <div>
@@ -158,6 +161,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12 }}>
           ID: <code>{job.id}</code>
         </div>
+      </div>
+
+      <div style={{ marginTop: 12, maxWidth: 560 }}>
+        <JobStatusEditor jobId={job.id} currentStatus={job.statusRaw} statusOptions={statusOptions} />
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
