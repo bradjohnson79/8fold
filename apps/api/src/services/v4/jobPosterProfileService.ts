@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { jobPosters } from "@/db/schema/jobPoster";
 import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
+import { users } from "@/db/schema/user";
 import { type V4JobPosterProfileInput } from "@/src/validation/v4/jobPosterProfileSchema";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
 
@@ -17,7 +19,45 @@ export async function saveV4JobPosterProfile(
   identity?: ClerkIdentity | null,
 ) {
   const now = new Date();
+  const contactName = [identity?.firstName, identity?.lastName].filter(Boolean).join(" ").trim();
+
   await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({
+        ...(contactName ? { name: contactName } : {}),
+        ...(identity?.email ? { email: identity.email } : {}),
+        formattedAddress: input.formattedAddress,
+        latitude: input.latitude as any,
+        longitude: input.longitude as any,
+        legalStreet: input.addressLine1,
+        legalCity: input.city,
+        legalProvince: input.provinceState,
+        legalPostalCode: input.postalCode,
+        legalCountry: input.country,
+        country: input.country as any,
+        countryCode: input.country as any,
+        stateCode: input.provinceState,
+        updatedAt: now,
+      } as any)
+      .where(eq(users.id, userId));
+
+    await tx
+      .insert(jobPosters)
+      .values({
+        userId,
+        isActive: true,
+        defaultRegion: input.provinceState,
+        createdAt: now,
+      } as any)
+      .onConflictDoUpdate({
+        target: jobPosters.userId,
+        set: {
+          isActive: true,
+          defaultRegion: input.provinceState,
+        } as any,
+      });
+
     await tx
       .insert(jobPosterProfilesV4)
       .values({

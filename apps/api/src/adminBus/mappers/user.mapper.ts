@@ -15,6 +15,10 @@ export type AdminUserView = {
   badges: string[];
   firstName?: string | null;
   lastName?: string | null;
+  businessName?: string | null;
+  formattedAddress?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export function mapUserRowToAdminUserDTO(row: any): AdminUserView {
@@ -36,6 +40,10 @@ export function mapUserRowToAdminUserDTO(row: any): AdminUserView {
     badges: Array.isArray(row.badges) ? row.badges : [],
     firstName: row.firstName ?? null,
     lastName: row.lastName ?? null,
+    businessName: row.businessName ?? null,
+    formattedAddress: row.formattedAddress ?? null,
+    latitude: Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
+    longitude: Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
   };
 }
 

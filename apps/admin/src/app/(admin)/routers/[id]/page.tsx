@@ -133,7 +133,11 @@ export default async function RouterDetailPage({ params }: { params: Promise<{ i
           {kv("Flags", String(data.enforcement.flags ?? 0))}
           {kv("Suspended until", fmt(data.enforcement.suspendedUntil))}
           {kv("Archived at", fmt(data.enforcement.archivedAt))}
-          <div style={{ marginTop: 8, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>Admin notes: Coming soon</div>
+          <div style={{ marginTop: 10 }}>
+            <a href={`/users/${encodeURIComponent(id)}`} style={{ color: "rgba(191,219,254,0.95)", textDecoration: "none", fontWeight: 900, fontSize: 12 }}>
+              Open Full Enforcement Controls (suspend/archive/delete)
+            </a>
+          </div>
         </Card>
       </div>
 
