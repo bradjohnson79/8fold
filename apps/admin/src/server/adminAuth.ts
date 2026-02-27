@@ -31,7 +31,10 @@ async function getAdminSessionTokenFromServerContext(): Promise<string | null> {
 }
 
 export async function getAdminAuthHeader(req?: Request): Promise<string> {
-  const token = req ? getAdminSessionTokenFromRequest(req) : await getAdminSessionTokenFromServerContext();
+  // Prefer request cookie parsing, but always fall back to Next server cookie context.
+  // This avoids false 401s when browser cookie header formatting differs from our parser.
+  let token = req ? getAdminSessionTokenFromRequest(req) : null;
+  if (!token) token = await getAdminSessionTokenFromServerContext();
   if (!token) throw Object.assign(new Error("Unauthorized"), { status: 401 });
   return `Bearer ${token}`;
 }
