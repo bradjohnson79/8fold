@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAdminTheme, setAdminTheme } from "@/components/theme/ThemeInit";
 
 type AdminMe = {
@@ -26,34 +26,10 @@ function cardStyle(): React.CSSProperties {
   };
 }
 
-function labelStyle(): React.CSSProperties {
-  return { display: "block", fontSize: 12, color: "var(--muted)", fontWeight: 900 };
-}
-
-function inputStyle(): React.CSSProperties {
-  return {
-    marginTop: 6,
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "var(--input-bg)",
-    color: "var(--text)",
-    outline: "none",
-  };
-}
-
 export default function SettingsClient() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [me, setMe] = useState<AdminMe["admin"] | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [pwBusy, setPwBusy] = useState(false);
-  const [pwError, setPwError] = useState<string | null>(null);
-  const [pwOk, setPwOk] = useState<string | null>(null);
 
   useEffect(() => {
     setTheme(getAdminTheme());
@@ -79,41 +55,6 @@ export default function SettingsClient() {
       cancelled = true;
     };
   }, []);
-
-  const canChangePassword = useMemo(() => {
-    if (pwBusy) return false;
-    if (currentPassword.trim().length < 1) return false;
-    if (newPassword.trim().length < 8) return false;
-    if (newPassword !== confirmPassword) return false;
-    return true;
-  }, [pwBusy, currentPassword, newPassword, confirmPassword]);
-
-  async function handleChangePassword() {
-    setPwBusy(true);
-    setPwError(null);
-    setPwOk(null);
-    try {
-      const resp = await fetch("/api/admin/password", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const json = await resp.json().catch(() => null);
-      if (!resp.ok || !json || json.ok !== true) {
-        setPwError(resp.status === 401 ? "Current password is incorrect." : "Password change failed.");
-        return;
-      }
-      setPwOk("Password updated. Please log in again.");
-      // Session is revoked server-side; send user to login.
-      setTimeout(() => {
-        window.location.href = "/login";
-      }, 600);
-    } catch {
-      setPwError("Password change failed.");
-    } finally {
-      setPwBusy(false);
-    }
-  }
 
   return (
     <div>
@@ -196,69 +137,15 @@ export default function SettingsClient() {
         </section>
 
         <section style={cardStyle()}>
-          <div style={{ fontWeight: 950 }}>Change password</div>
+          <div style={{ fontWeight: 950 }}>Credentials and MFA</div>
           <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 13 }}>
-            Requires your current password. After changing, you will be logged out.
+            Admin authentication is managed by Clerk. Update password and multi-factor settings in your Clerk account portal.
           </div>
-
-          <div style={{ marginTop: 12 }}>
-            <label style={labelStyle()}>Current password</label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              style={inputStyle()}
-            />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <label style={labelStyle()}>New password (min 8 chars)</label>
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              style={inputStyle()}
-            />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <label style={labelStyle()}>Confirm new password</label>
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              style={inputStyle()}
-            />
-          </div>
-
-          {pwError ? <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontSize: 13, fontWeight: 900 }}>{pwError}</div> : null}
-          {pwOk ? <div style={{ marginTop: 10, color: "rgba(134,239,172,0.95)", fontSize: 13, fontWeight: 900 }}>{pwOk}</div> : null}
-
-          <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              disabled={!canChangePassword}
-              onClick={() => void handleChangePassword()}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(56,189,248,0.35)",
-                background: pwBusy ? "rgba(56,189,248,0.08)" : "rgba(56,189,248,0.12)",
-                color: "rgba(125,211,252,0.95)",
-                fontWeight: 950,
-                cursor: pwBusy ? "default" : "pointer",
-                opacity: canChangePassword ? 1 : 0.6,
-              }}
-            >
-              {pwBusy ? "Updating..." : "Update password"}
-            </button>
+          <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
+            If you cannot sign in, request an admin role review and credential reset from platform operations.
           </div>
         </section>
       </div>
     </div>
   );
 }
-

@@ -1,26 +1,25 @@
 import { NextResponse } from "next/server";
-import { getAdminIdentityBySessionToken, adminSessionTokenFromRequest } from "@/src/lib/auth/adminSession";
-import { tierFromEmail, tierLabel } from "../_lib/adminTier";
+import { requireAdminIdentityWithTier, tierLabel } from "../_lib/adminTier";
 
 export async function GET(req: Request) {
   try {
-    const token = adminSessionTokenFromRequest(req);
-    if (!token) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    const identity = await requireAdminIdentityWithTier(req);
+    if (identity instanceof Response) return identity;
 
-    const admin = await getAdminIdentityBySessionToken(token);
-    if (!admin) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-
-    const tier = tierFromEmail(admin.email);
     return NextResponse.json(
       {
         ok: true,
         data: {
-          admin,
-          adminTier: tier,
-          adminTierLabel: tierLabel(tier),
+          admin: {
+            id: identity.userId,
+            email: identity.email,
+            role: identity.adminRole,
+          },
+          adminTier: identity.tier,
+          adminTierLabel: tierLabel(identity.tier),
           capabilities: {
-            canMutate: tier !== "ADMIN_VIEWER",
-            canFinancialOverride: tier === "ADMIN_SUPER",
+            canMutate: identity.tier !== "ADMIN_VIEWER",
+            canFinancialOverride: identity.tier === "ADMIN_SUPER",
           },
         },
       },
@@ -28,7 +27,15 @@ export async function GET(req: Request) {
     );
   } catch (err: unknown) {
     console.error("[ADMIN_ME_ERROR]", { message: (err as Error)?.message, stack: (err as Error)?.stack?.slice(0, 500) });
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Authentication required.",
+        },
+      },
+      { status: 401 },
+    );
   }
 }
-

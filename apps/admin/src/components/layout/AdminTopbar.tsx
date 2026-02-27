@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import styles from "./AdminTopbar.module.css";
@@ -65,9 +66,9 @@ export function AdminTopbar({
         <span className={styles.email} title={adminEmail ?? undefined}>
           {adminEmail ?? "—"}
         </span>
+        <UserButton afterSignOutUrl="/login" />
         <LogoutButton />
       </div>
     </>
   );
 }
-

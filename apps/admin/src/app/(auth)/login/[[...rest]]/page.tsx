@@ -1,12 +1,20 @@
-import { LoginForm } from "../LoginForm";
+import { SignIn } from "@clerk/nextjs";
 
-export default async function AdminLoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const sp = await searchParams;
-  const error = sp?.error === "invalid";
-  const next = typeof sp?.next === "string" ? sp.next : "/";
-  return <LoginForm error={error} next={next} />;
+export default function AdminLoginPage() {
+  return (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#070b14", padding: 16 }}>
+      <SignIn
+        path="/login"
+        routing="path"
+        forceRedirectUrl="/"
+        fallbackRedirectUrl="/"
+        appearance={{
+          elements: {
+            rootBox: { width: "100%", display: "flex", justifyContent: "center" },
+            card: { width: "100%", maxWidth: 460 },
+          },
+        }}
+      />
+    </div>
+  );
 }
