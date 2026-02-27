@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     }
 
     await rateLimitOrThrow({
-      key: `v4:upload:${role.internalUser.id}`,
+      key: `v4:job-upload:${role.internalUser.id}`,
       windowSeconds: 600,
       max: 30,
     });
