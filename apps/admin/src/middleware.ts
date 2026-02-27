@@ -1,28 +1,22 @@
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/admin-signup", "/403"];
+const isPublicRoute = createRouteMatcher(["/login(.*)", "/403(.*)", "/admin-signup(.*)"]);
 
-function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
+export default clerkMiddleware(async (auth, req) => {
+  const pathname = req.nextUrl.pathname;
 
-export default function middleware(req: any) {
-  const pathname = String(req?.nextUrl?.pathname ?? "");
-
-  // Never gate Next.js route handlers with redirects; route handlers should return JSON status codes.
+  // Route handlers should return JSON status codes rather than middleware redirects.
   if (pathname.startsWith("/api/")) return;
+  if (isPublicRoute(req)) return;
 
-  if (isPublicPath(pathname)) return;
-
-  const token = String(req?.cookies?.get("admin_session")?.value ?? "").trim();
-  if (!token) {
-    // eslint-disable-next-line no-console
-    console.log("[ADMIN_MIDDLEWARE]", { path: pathname, hasSession: false, redirect: "/login" });
-    const url = new URL("/login", req.url);
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+  const { userId } = await auth();
+  if (!userId) {
+    const signInUrl = new URL("/login", req.url);
+    signInUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(signInUrl);
   }
-}
+});
 
 export const config = {
   matcher: [
@@ -30,4 +24,3 @@ export const config = {
     "/(api|trpc)(.*)",
   ],
 };
-

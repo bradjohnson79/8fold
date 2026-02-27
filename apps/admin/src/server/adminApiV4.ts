@@ -1,5 +1,5 @@
 import { getValidatedApiOrigin } from "./env";
-import { ADMIN_SESSION_COOKIE_NAME, getAdminSessionTokenFromCookies } from "./adminSession";
+import { getAdminAuthHeader } from "./clerkApiAuth";
 
 type ApiV4Ok<T> = { ok: true; data: T };
 type ApiV4Err = { ok: false; error?: { code?: string; message?: string } | string; message?: string; code?: string };
@@ -29,15 +29,13 @@ export async function adminApiFetchV4<T>(
 ): Promise<T> {
   const apiOrigin = getValidatedApiOrigin();
   const url = `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
-
-  const token = await getAdminSessionTokenFromCookies();
-  if (!token) throw Object.assign(new Error("Unauthorized"), { status: 401 });
+  const authorization = await getAdminAuthHeader();
 
   const resp = await fetch(url, {
     ...init,
     headers: {
       ...(init?.headers ?? {}),
-      cookie: `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+      authorization,
       "content-type": (init?.headers as any)?.["content-type"] ?? "application/json",
     },
     cache: "no-store",

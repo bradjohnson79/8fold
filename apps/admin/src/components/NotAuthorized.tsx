@@ -1,15 +1,18 @@
 "use client";
 
+import { useClerk } from "@clerk/nextjs";
+
 export function NotAuthorized(props: { role?: string | null }) {
   const role = String(props.role ?? "").trim();
+  const { signOut: clerkSignOut } = useClerk();
 
-  async function signOut() {
+  async function handleSignOut() {
     try {
-      await fetch("/api/admin/v4/auth/logout", { method: "POST" });
+      await clerkSignOut({ redirectUrl: "/login" });
     } catch {
       // best-effort
+      window.location.href = "/login";
     }
-    window.location.href = "/login";
   }
 
   return (
@@ -36,7 +39,7 @@ export function NotAuthorized(props: { role?: string | null }) {
         <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
-            onClick={() => void signOut()}
+            onClick={() => void handleSignOut()}
             style={{
               padding: "10px 12px",
               borderRadius: 12,

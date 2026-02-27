@@ -1,4 +1,5 @@
 import "./globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeInit } from "@/components/theme/ThemeInit";
 
 export const metadata = {
@@ -14,8 +15,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body>
-        <ThemeInit />
-        {children}
+        <ClerkProvider>
+          <ThemeInit />
+          {children}
+        </ClerkProvider>
       </body>
     </html>
   );
