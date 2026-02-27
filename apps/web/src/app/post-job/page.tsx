@@ -13,11 +13,14 @@ type TradeMeta = {
 
 type AppraisalResult = {
   low: number;
-  high: number;
   median: number;
-  rationale: string;
-  modelUsed: string;
+  high: number;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  taxRate: number;
+  currency: "USD" | "CAD";
   appraisalToken: string;
+  modelUsed: string;
+  usedFallback: boolean;
 };
 
 type PaymentIntentResult = {
@@ -135,7 +138,8 @@ export default function PostJobPage() {
   const [images, setImages] = useState<UploadedImage[]>([]);
 
   const [appraisal, setAppraisal] = useState<AppraisalResult | null>(null);
-  const [appraisalPrice, setAppraisalPrice] = useState(0);
+  const [baseMedianCents, setBaseMedianCents] = useState(0);
+  const [sliderOffsetDollars, setSliderOffsetDollars] = useState(0);
 
   const [paymentConnected, setPaymentConnected] = useState<boolean | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentIntentResult | null>(null);
@@ -144,6 +148,7 @@ export default function PostJobPage() {
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
 
   const [working, setWorking] = useState(false);
+  const [isAppraising, setIsAppraising] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const stripePromise = useMemo(() => {
@@ -165,6 +170,19 @@ export default function PostJobPage() {
       lon,
     };
   }, [useSavedAddress, savedAddress, address, city, postalCode, region, country, lat, lon]);
+
+  const minOffsetDollars = appraisal ? appraisal.low - appraisal.median : 0;
+  const maxOffsetDollars = appraisal ? appraisal.high - appraisal.median : 0;
+  const appraisalPriceCents = Math.max(0, baseMedianCents + sliderOffsetDollars * 100);
+
+  const regionalFeeCents = urbanOrRegional === "regional" ? 2000 : 0;
+  const summaryCurrency: "USD" | "CAD" = activeAddress.country === "CA" ? "CAD" : "USD";
+  const taxRate = appraisal ? Number(appraisal.taxRate ?? 0) : 0;
+  const summaryTaxCents = summaryCurrency === "CAD" ? Math.max(0, Math.round((appraisalPriceCents + regionalFeeCents) * taxRate)) : 0;
+  const summaryTotalCents = appraisalPriceCents + regionalFeeCents + summaryTaxCents;
+
+  const isLower = appraisal ? appraisalPriceCents < baseMedianCents : false;
+  const isHigher = appraisal ? appraisalPriceCents > baseMedianCents : false;
 
   useEffect(() => {
     let cancelled = false;
@@ -238,10 +256,35 @@ export default function PostJobPage() {
               .filter((img: UploadedImage) => img.uploadId && img.url),
           );
 
-          const draftAppraisal = draftData.appraisal as AppraisalResult | undefined;
-          if (draftAppraisal?.appraisalToken) {
-            setAppraisal(draftAppraisal);
-            setAppraisalPrice(Number(draftData?.pricing?.appraisalPriceCents ?? draftAppraisal.median * 100));
+          const draftAppraisal = draftData.appraisal as Partial<AppraisalResult> | undefined;
+          const pricing = (draftData.pricing ?? {}) as Record<string, unknown>;
+          if (
+            draftAppraisal &&
+            Number.isFinite(Number(draftAppraisal.low)) &&
+            Number.isFinite(Number(draftAppraisal.median)) &&
+            Number.isFinite(Number(draftAppraisal.high))
+          ) {
+            const normalized: AppraisalResult = {
+              low: Number(draftAppraisal.low),
+              median: Number(draftAppraisal.median),
+              high: Number(draftAppraisal.high),
+              confidence: String(draftAppraisal.confidence ?? "LOW").toUpperCase() === "HIGH"
+                ? "HIGH"
+                : String(draftAppraisal.confidence ?? "LOW").toUpperCase() === "MEDIUM"
+                  ? "MEDIUM"
+                  : "LOW",
+              taxRate: Number(draftAppraisal.taxRate ?? 0),
+              currency: String(draftAppraisal.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
+              appraisalToken: String(draftAppraisal.appraisalToken ?? ""),
+              modelUsed: String(draftAppraisal.modelUsed ?? "gpt-5-nano"),
+              usedFallback: Boolean(draftAppraisal.usedFallback),
+            };
+            setAppraisal(normalized);
+            const medianCents = normalized.median * 100;
+            const selected = Number(pricing.appraisalPriceCents ?? pricing.selectedPriceCents ?? medianCents);
+            const offset = Math.round((selected - medianCents) / 100);
+            setBaseMedianCents(medianCents);
+            setSliderOffsetDollars(Math.max(normalized.low - normalized.median, Math.min(normalized.high - normalized.median, offset)));
           }
         }
       } finally {
@@ -261,6 +304,13 @@ export default function PostJobPage() {
         [block]: !(prev[day]?.[block] ?? false),
       },
     }));
+  }
+
+  function resetPaymentConfirmationState() {
+    setPaymentSummary(null);
+    setClientSecret(null);
+    setPaymentIntentId(null);
+    setPaymentConfirmed(false);
   }
 
   async function uploadFiles(files: FileList | null) {
@@ -312,8 +362,10 @@ export default function PostJobPage() {
         images,
         appraisal,
         pricing: {
-          appraisalPriceCents: appraisalPrice,
-          selectedPriceCents: appraisalPrice,
+          appraisalPriceCents,
+          selectedPriceCents: appraisalPriceCents,
+          appraisalAnchorCents: baseMedianCents,
+          sliderOffsetDollars,
           isRegional: urbanOrRegional === "regional",
         },
       },
@@ -346,37 +398,51 @@ export default function PostJobPage() {
       return;
     }
 
-    setWorking(true);
+    setIsAppraising(true);
     try {
       await persistDraft("DETAILS");
-      const resp = await fetch("/api/web/v4/job/appraise-preview", {
+      const resp = await fetch("/api/job-poster/v4/appraise", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          country: activeAddress.country,
+          province: activeAddress.region.trim().toUpperCase(),
+          tradeCategory: tradeCategory.trim().toUpperCase(),
           title: title.trim(),
           description: description.trim(),
-          tradeCategory: tradeCategory.trim().toUpperCase(),
-          provinceState: activeAddress.region.trim().toUpperCase(),
-          latitude: Number(activeAddress.lat),
-          longitude: Number(activeAddress.lon),
-          isRegionalRequested: urbanOrRegional === "regional",
         }),
       });
-      const json = (await resp.json().catch(() => ({}))) as AppraisalResult & { error?: string; message?: string };
-      if (!resp.ok || !json.appraisalToken) {
-        throw new Error(json.message ?? json.error ?? "Failed to appraise job.");
+      const json = (await resp.json().catch(() => ({}))) as Partial<AppraisalResult> & { error?: string; message?: string };
+
+      if (!resp.ok || !Number.isFinite(Number(json.low)) || !Number.isFinite(Number(json.median)) || !Number.isFinite(Number(json.high))) {
+        throw new Error(String(json.message ?? json.error ?? "Failed to appraise job."));
       }
-      setAppraisal(json);
-      setAppraisalPrice(json.median * 100);
-      setPaymentSummary(null);
-      setClientSecret(null);
-      setPaymentIntentId(null);
-      setPaymentConfirmed(false);
+
+      const next: AppraisalResult = {
+        low: Number(json.low),
+        median: Number(json.median),
+        high: Number(json.high),
+        confidence: String(json.confidence ?? "LOW").toUpperCase() === "HIGH"
+          ? "HIGH"
+          : String(json.confidence ?? "LOW").toUpperCase() === "MEDIUM"
+            ? "MEDIUM"
+            : "LOW",
+        taxRate: Number(json.taxRate ?? 0),
+        currency: String(json.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
+        appraisalToken: String(json.appraisalToken ?? ""),
+        modelUsed: String(json.modelUsed ?? "gpt-5-nano"),
+        usedFallback: Boolean(json.usedFallback),
+      };
+
+      setAppraisal(next);
+      setBaseMedianCents(next.median * 100);
+      setSliderOffsetDollars(0);
+      resetPaymentConfirmationState();
       await persistDraft("PRICING");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to appraise job.");
     } finally {
-      setWorking(false);
+      setIsAppraising(false);
     }
   }
 
@@ -386,7 +452,7 @@ export default function PostJobPage() {
       setError("Payment method required. Add a payment method in Payment Setup.");
       return;
     }
-    if (!appraisal?.appraisalToken) {
+    if (!appraisal) {
       setError("Complete appraisal before payment confirmation.");
       return;
     }
@@ -403,7 +469,7 @@ export default function PostJobPage() {
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          selectedPrice: appraisalPrice,
+          selectedPrice: appraisalPriceCents,
           isRegional: urbanOrRegional === "regional",
         }),
       });
@@ -447,19 +513,6 @@ export default function PostJobPage() {
       setWorking(false);
     }
   }
-
-  const sliderMin = appraisal ? appraisal.low * 100 : 0;
-  const sliderMax = appraisal ? appraisal.high * 100 : 0;
-  const sliderStep = 500;
-
-  const isLower = appraisal ? appraisalPrice < appraisal.median * 100 : false;
-  const isHigher = appraisal ? appraisalPrice > appraisal.median * 100 : false;
-
-  const summaryCurrency = paymentSummary?.currency ?? (activeAddress.country === "CA" ? "CAD" : "USD");
-  const summaryAppraisal = paymentSummary?.appraisalPriceCents ?? appraisalPrice;
-  const summaryRegional = paymentSummary?.regionalFeeCents ?? (urbanOrRegional === "regional" ? 2000 : 0);
-  const summaryTax = paymentSummary?.taxCents ?? 0;
-  const summaryTotal = paymentSummary?.totalCents ?? summaryAppraisal + summaryRegional + summaryTax;
 
   if (loading) {
     return (
@@ -526,11 +579,14 @@ export default function PostJobPage() {
             </div>
             <select
               value={urbanOrRegional}
-              onChange={(e) => setUrbanOrRegional(e.target.value === "regional" ? "regional" : "urban")}
+              onChange={(e) => {
+                setUrbanOrRegional(e.target.value === "regional" ? "regional" : "urban");
+                resetPaymentConfirmationState();
+              }}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
             >
               <option value="urban">Urban</option>
-              <option value="regional">Regional</option>
+              <option value="regional">Regional — $20 Extra Charge</option>
             </select>
           </section>
 
@@ -548,11 +604,11 @@ export default function PostJobPage() {
               <div className="mt-3 text-sm text-gray-700">
                 <p>{savedAddress.address || "No saved profile address found."}</p>
                 {savedAddress.lat != null && savedAddress.lon != null ? (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="mt-1 text-xs text-gray-500">
                     {savedAddress.lat.toFixed(5)}, {savedAddress.lon.toFixed(5)}
                   </p>
                 ) : (
-                  <p className="text-xs text-red-600 mt-1">Saved profile address is missing coordinates. Uncheck to enter manually.</p>
+                  <p className="mt-1 text-xs text-red-600">Saved profile address is missing coordinates. Uncheck to enter manually.</p>
                 )}
               </div>
             ) : (
@@ -644,12 +700,10 @@ export default function PostJobPage() {
             <input className="mt-2" type="file" accept="image/*" multiple onChange={(e) => void uploadFiles(e.target.files)} />
             {uploading ? <p className="mt-2 text-xs text-gray-600">Uploading images...</p> : null}
             {images.length > 0 ? (
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="mt-4 space-y-4">
                 {images.map((img) => (
-                  <div key={img.uploadId} className="rounded-md border border-gray-200 p-2">
-                    <div className="h-28 w-full overflow-hidden rounded bg-gray-50">
-                      <img src={img.url} alt="Uploaded job photo" className="h-full w-full object-contain" />
-                    </div>
+                  <div key={img.uploadId} className="rounded-md border border-gray-200 p-3">
+                    <img src={img.url} alt="Uploaded job photo" className="h-auto max-h-[28rem] w-full rounded object-contain" />
                     <button type="button" onClick={() => removeImage(img.uploadId)} className="mt-2 text-xs font-medium text-red-600 hover:underline">
                       Remove
                     </button>
@@ -661,26 +715,40 @@ export default function PostJobPage() {
 
           <section className="rounded-lg border border-gray-200 p-6 text-center">
             <h2 className="text-xl font-semibold text-gray-900">Job Appraisal</h2>
-            <button type="button" onClick={() => void beginAppraisal()} disabled={working} className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60">
-              {working ? "Running Appraisal..." : "Begin Appraisal"}
+            <button type="button" onClick={() => void beginAppraisal()} disabled={isAppraising} className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60">
+              {isAppraising ? "Analyzing..." : "Begin Appraisal"}
             </button>
 
             {appraisal ? (
-              <div className="mt-6">
+              <div className="mt-6 space-y-4 text-left">
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                  <div className="rounded border border-gray-200 p-3">Low Estimate: <span className="font-semibold">{formatMoney(appraisal.low * 100, summaryCurrency)}</span></div>
+                  <div className="rounded border border-gray-200 p-3">Suggested Median: <span className="font-semibold">{formatMoney(baseMedianCents, summaryCurrency)}</span></div>
+                  <div className="rounded border border-gray-200 p-3">High Estimate: <span className="font-semibold">{formatMoney(appraisal.high * 100, summaryCurrency)}</span></div>
+                </div>
+
                 <input
                   type="range"
-                  min={sliderMin}
-                  max={sliderMax}
-                  step={sliderStep}
-                  value={appraisalPrice}
-                  onChange={(e) => setAppraisalPrice(Number(e.target.value))}
+                  min={minOffsetDollars}
+                  max={maxOffsetDollars}
+                  step={5}
+                  value={sliderOffsetDollars}
+                  onChange={(e) => {
+                    setSliderOffsetDollars(Number(e.target.value));
+                    resetPaymentConfirmationState();
+                  }}
                   className="w-full"
                 />
-                <p className="mt-2 text-sm font-medium text-gray-800">
-                  Selected Price: {formatMoney(appraisalPrice, activeAddress.country === "CA" ? "CAD" : "USD")}
-                </p>
-                {isLower ? <p className="mt-2 text-sm text-amber-700">Lower pricing may delay contractor acceptance.</p> : null}
-                {isHigher ? <p className="mt-2 text-sm text-green-700">Higher pricing can help expedite routing.</p> : null}
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{minOffsetDollars}</span>
+                  <span>0</span>
+                  <span>{maxOffsetDollars > 0 ? `+${maxOffsetDollars}` : maxOffsetDollars}</span>
+                </div>
+
+                <p className="text-sm font-medium text-gray-800">Selected Price: {formatMoney(appraisalPriceCents, summaryCurrency)}</p>
+                {isLower ? <p className="text-sm text-amber-700">Lower pricing may delay contractor acceptance.</p> : null}
+                {isHigher ? <p className="text-sm text-green-700">Increased pricing may speed up contractor routing.</p> : null}
+                <p className="text-xs text-gray-500">Confidence: {appraisal.confidence}</p>
               </div>
             ) : null}
 
@@ -694,19 +762,19 @@ export default function PostJobPage() {
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Appraisal Price</span>
-                <span>{formatMoney(summaryAppraisal, summaryCurrency)}</span>
+                <span>{formatMoney(appraisalPriceCents, summaryCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Regional Fee</span>
-                <span>{formatMoney(summaryRegional, summaryCurrency)}</span>
+                <span>{formatMoney(regionalFeeCents, summaryCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Applicable Tax (Canada only)</span>
-                <span>{formatMoney(summaryTax, summaryCurrency)}</span>
+                <span>{formatMoney(summaryTaxCents, summaryCurrency)}</span>
               </div>
-              <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold">
+              <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold">
                 <span>Total Charge</span>
-                <span>{formatMoney(summaryTotal, summaryCurrency)}</span>
+                <span>{formatMoney(summaryTotalCents, summaryCurrency)}</span>
               </div>
             </div>
 
@@ -714,7 +782,7 @@ export default function PostJobPage() {
               <button
                 type="button"
                 onClick={() => void preparePaymentIntent()}
-                disabled={working || appraisalPrice <= 0 || !appraisal?.appraisalToken}
+                disabled={working || appraisalPriceCents <= 0 || !appraisal}
                 className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
               >
                 {working ? "Preparing..." : "Confirm Total"}
@@ -729,6 +797,9 @@ export default function PostJobPage() {
                 </Elements>
                 {paymentConfirmed && paymentIntentId ? (
                   <p className="mt-3 text-sm text-green-700">Stripe confirmation complete: {paymentIntentId}</p>
+                ) : null}
+                {paymentSummary ? (
+                  <p className="mt-2 text-xs text-gray-500">Server total prepared: {formatMoney(paymentSummary.totalCents, paymentSummary.currency)}</p>
                 ) : null}
               </div>
             ) : (
@@ -756,6 +827,16 @@ export default function PostJobPage() {
           {error ? <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
         </div>
       </div>
+
+      {isAppraising ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-modal="true" role="dialog">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Analyzing Your Job...</h3>
+            <div className="mx-auto mt-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" aria-hidden />
+            <p className="mt-4 text-sm text-gray-600">GPT-5 Nano is evaluating your job details...</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
