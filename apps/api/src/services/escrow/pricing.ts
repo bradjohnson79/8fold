@@ -1,0 +1,111 @@
+import { getTaxRateBps } from "@/src/services/escrow/taxRate";
+
+export type EscrowPricingInput = {
+  appraisalSubtotalCents: number;
+  isRegional: boolean;
+  country: string;
+  province: string | null | undefined;
+};
+
+export type EscrowPricingResult = {
+  appraisalSubtotalCents: number;
+  regionalFeeCents: number;
+  splitBaseCents: number;
+  taxRateBps: number;
+  taxAmountCents: number;
+  totalAmountCents: number;
+  currency: "USD" | "CAD";
+  paymentCurrency: "usd" | "cad";
+  province: string | null;
+  country: "US" | "CA";
+  legacy: {
+    laborTotalCents: number;
+    priceAdjustmentCents: number;
+    transactionFeeCents: number;
+    amountCents: number;
+  };
+};
+
+export type EscrowSplitResult = {
+  splitBaseCents: number;
+  contractorCents: number;
+  routerCents: number;
+  platformCents: number;
+  taxBucketCents: number;
+  totalCents: number;
+};
+
+function toCountry(country: string): "US" | "CA" {
+  return String(country ?? "").trim().toUpperCase() === "CA" ? "CA" : "US";
+}
+
+function toProvince(province: string | null | undefined): string | null {
+  const value = String(province ?? "").trim().toUpperCase();
+  return value || null;
+}
+
+function toPositiveCents(value: unknown): number {
+  const asNumber = Number(value ?? 0);
+  if (!Number.isFinite(asNumber)) return 0;
+  return Math.max(0, Math.trunc(asNumber));
+}
+
+export async function computeEscrowPricing(input: EscrowPricingInput): Promise<EscrowPricingResult> {
+  const country = toCountry(input.country);
+  const province = toProvince(input.province);
+  const appraisalSubtotalCents = toPositiveCents(input.appraisalSubtotalCents);
+  const regionalFeeCents = input.isRegional ? 2000 : 0;
+  const splitBaseCents = appraisalSubtotalCents + regionalFeeCents;
+
+  const taxRateBps = await getTaxRateBps({ country, province });
+  const taxAmountCents = Math.round((splitBaseCents * taxRateBps) / 10000);
+  const totalAmountCents = splitBaseCents + taxAmountCents;
+
+  return {
+    appraisalSubtotalCents,
+    regionalFeeCents,
+    splitBaseCents,
+    taxRateBps,
+    taxAmountCents,
+    totalAmountCents,
+    country,
+    province,
+    currency: country === "CA" ? "CAD" : "USD",
+    paymentCurrency: country === "CA" ? "cad" : "usd",
+    legacy: {
+      laborTotalCents: appraisalSubtotalCents,
+      priceAdjustmentCents: regionalFeeCents,
+      transactionFeeCents: taxAmountCents,
+      amountCents: totalAmountCents,
+    },
+  };
+}
+
+export function computeEscrowSplitAllocations(input: {
+  appraisalSubtotalCents: number;
+  regionalFeeCents: number;
+  taxAmountCents: number;
+}): EscrowSplitResult {
+  const appraisalSubtotalCents = toPositiveCents(input.appraisalSubtotalCents);
+  const regionalFeeCents = toPositiveCents(input.regionalFeeCents);
+  const taxBucketCents = toPositiveCents(input.taxAmountCents);
+
+  const splitBaseCents = appraisalSubtotalCents + regionalFeeCents;
+  const contractorCents = Math.round(splitBaseCents * 0.75);
+  const routerCents = Math.round(splitBaseCents * 0.15);
+  const platformCents = splitBaseCents - contractorCents - routerCents;
+  const totalCents = splitBaseCents + taxBucketCents;
+
+  if (contractorCents + routerCents + platformCents + taxBucketCents !== totalCents) {
+    throw Object.assign(new Error("Escrow split invariant failed"), { status: 500 });
+  }
+
+  return {
+    splitBaseCents,
+    contractorCents,
+    routerCents,
+    platformCents,
+    taxBucketCents,
+    totalCents,
+  };
+}

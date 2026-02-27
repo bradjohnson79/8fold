@@ -121,6 +121,17 @@ export const ledgerEntryTypeEnum = pgEnum("LedgerEntryType", [
   "PM_RELEASE",
   "PM_REFUND",
   "PM_CREDIT",
+  // Escrow lifecycle v1
+  "AUTH_HOLD",
+  "CAPTURE",
+  "ESCROW_AVAILABLE",
+  "PAYABLE_CONTRACTOR",
+  "PAYABLE_ROUTER",
+  "TAX_BUCKET",
+  "AUTH_EXPIRED",
+  "CHARGE",
+  "ESCROW_HELD",
+  "REFUND",
 ]);
 
 // Escrow + parts/materials (bank-ledger foundations; added in 0008)
@@ -304,5 +315,3 @@ export const sendBlockedReasonEnum = pgEnum("SendBlockedReason", [
   "DAILY_LIMIT_EXCEEDED",
   "INTERVAL_LIMIT_EXCEEDED",
 ]);
-
-
