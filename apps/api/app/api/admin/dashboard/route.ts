@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { and, asc, eq, isNull, or, sql, lt } from "drizzle-orm";
+import { and, asc, eq, or, sql, lt } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractors } from "@/db/schema/contractor";
 import { jobs } from "@/db/schema/job";
@@ -27,11 +27,10 @@ export async function GET(req: Request) {
     const archivedExcluded = eq(jobs.archived, false);
 
     // Admin overview: include mock jobs + DB-truth lifecycle filters.
-    // "CUSTOMER_APPROVED_AWAITING_ROUTER" is UI-level and maps to:
-    // Job.status=CUSTOMER_APPROVED AND routerApprovedAt IS NULL.
+    // "CUSTOMER_APPROVED_AWAITING_ROUTER" is UI-level and maps to Job.status=OPEN_FOR_ROUTING.
     const activeStatusesWhere = or(
       eq(jobs.status, "ASSIGNED" as any),
-      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
+      eq(jobs.status, "OPEN_FOR_ROUTING" as any),
     );
 
     const [
@@ -64,8 +63,7 @@ export async function GET(req: Request) {
           .where(
             and(
               archivedExcluded,
-              eq(jobs.status, "CUSTOMER_APPROVED" as any),
-              isNull(jobs.router_approved_at),
+              eq(jobs.status, "OPEN_FOR_ROUTING" as any),
             )
           )
       ),
@@ -137,8 +135,7 @@ export async function GET(req: Request) {
         .where(
           and(
             archivedExcluded,
-            eq(jobs.status, "CUSTOMER_APPROVED" as any),
-            isNull(jobs.router_approved_at),
+            eq(jobs.status, "OPEN_FOR_ROUTING" as any),
             lt(jobs.created_at, cutoff24h),
           ),
         )

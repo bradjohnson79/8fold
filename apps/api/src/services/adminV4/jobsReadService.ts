@@ -118,9 +118,7 @@ function deriveDisplayStatus(row: {
   router_approved_at: Date | null;
 }): string {
   if (row.is_mock) return "IN_PROGRESS";
-  if ((row.status === "OPEN_FOR_ROUTING" || row.status === "CUSTOMER_APPROVED") && !row.router_approved_at) {
-    return "CUSTOMER_APPROVED_AWAITING_ROUTER";
-  }
+  if (row.status === "OPEN_FOR_ROUTING") return "CUSTOMER_APPROVED_AWAITING_ROUTER";
   return row.status;
 }
 
@@ -167,12 +165,7 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
 
   if (params.status) {
     if (params.status === "CUSTOMER_APPROVED_AWAITING_ROUTER") {
-      where.push(
-        or(
-          eq(jobs.status, "OPEN_FOR_ROUTING" as any),
-          and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
-        ),
-      );
+      where.push(eq(jobs.status, "OPEN_FOR_ROUTING" as any));
     } else {
       where.push(eq(jobs.status, params.status as any));
     }

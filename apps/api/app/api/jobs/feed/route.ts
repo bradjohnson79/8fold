@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../../db/schema/job";
 import { handleApiError } from "../../../../src/lib/errorHandler";
@@ -27,7 +27,7 @@ export async function GET() {
       .where(
         and(
           eq(jobs.archived, false),
-          inArray(jobs.status, ["PUBLISHED", "OPEN_FOR_ROUTING"]),
+          eq(jobs.status, "OPEN_FOR_ROUTING"),
           eq(jobs.routing_status, "UNROUTED"),
           isNull(jobs.claimed_by_user_id),
           eq(jobs.is_mock, false),
@@ -47,4 +47,3 @@ export async function GET() {
     return handleApiError(err, "GET /api/jobs/feed");
   }
 }
-

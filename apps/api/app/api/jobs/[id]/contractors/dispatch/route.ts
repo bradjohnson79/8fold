@@ -60,7 +60,7 @@ export async function POST(req: Request) {
             .limit(1)
         )[0] ?? null;
       if (!job) return { kind: "not_found" as const };
-      if (job.status !== "PUBLISHED") return { kind: "job_not_available" as const };
+      if (job.status !== "OPEN_FOR_ROUTING") return { kind: "job_not_available" as const };
       if (job.routerId !== router.userId) return { kind: "forbidden" as const };
       if (!job.contractorPayoutCents || job.contractorPayoutCents <= 0) return { kind: "pricing_unlocked" as const };
 
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
             .where(eq(jobs.id, job.id))
             .limit(1)
         )[0] ?? null;
-      if (!claim || claim.status !== "PUBLISHED" || claim.routerId !== router.userId) {
+      if (!claim || claim.status !== "OPEN_FOR_ROUTING" || claim.routerId !== router.userId) {
         return { kind: "job_not_available" as const };
       }
 
@@ -175,4 +175,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

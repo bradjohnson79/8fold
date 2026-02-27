@@ -313,9 +313,9 @@ export async function listRouters(params: ListRoleUsersParams): Promise<AdminUse
   };
 }
 
-function deriveJobDisplayStatus(statusRaw: string, isMock: boolean, routerApprovedAt: Date | null): string {
+function deriveJobDisplayStatus(statusRaw: string, isMock: boolean, _routerApprovedAt: Date | null): string {
   if (isMock) return "IN_PROGRESS";
-  if (statusRaw === "CUSTOMER_APPROVED" && !routerApprovedAt) return "CUSTOMER_APPROVED_AWAITING_ROUTER";
+  if (statusRaw === "OPEN_FOR_ROUTING") return "CUSTOMER_APPROVED_AWAITING_ROUTER";
   return statusRaw;
 }
 
