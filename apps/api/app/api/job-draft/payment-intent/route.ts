@@ -225,8 +225,15 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
+    const rawMessage = err instanceof Error ? err.message : "Failed to create payment intent.";
+    console.error("[job-draft/payment-intent] failed", {
+      status,
+      message: rawMessage,
+      code: (err as any)?.code,
+    });
+    const message = status >= 500 ? "Unable to confirm total right now. Please try again." : rawMessage;
     return NextResponse.json(
-      { success: false, message: err instanceof Error ? err.message : "Failed to create payment intent." },
+      { success: false, message },
       { status }
     );
   }
