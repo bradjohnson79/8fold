@@ -1,17 +1,19 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type StripeStatusResponse = {
   ok: true;
-  state: "VERIFIED" | "PENDING_VERIFICATION" | "NOT_CONNECTED";
+  state: "CONNECTED" | "PENDING_VERIFICATION" | "NOT_CONNECTED" | "CURRENCY_MISMATCH";
   stripeAccountId: string | null;
+  payoutCurrency: "CAD" | "USD";
+  expectedCountry: "CA" | "US";
+  accountCountry?: string | null;
+  countryMismatch: boolean;
+  currencyMismatch: boolean;
+  onboardingComplete: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
-  requirements: {
-    currentlyDue: string[];
-    pastDue: string[];
-  };
 };
 
 export default function ContractorPaymentSetupPage() {
@@ -24,7 +26,7 @@ export default function ContractorPaymentSetupPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/contractor/v4/stripe/status", {
+      const resp = await fetch("/api/app/stripe/connect/create-account", {
         cache: "no-store",
         credentials: "include",
       });
@@ -52,7 +54,7 @@ export default function ContractorPaymentSetupPage() {
     setSaving(true);
     setError(null);
     try {
-      const resp = await fetch("/api/contractor/v4/stripe/onboard", {
+      const resp = await fetch("/api/app/stripe/connect/create-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -68,11 +70,6 @@ export default function ContractorPaymentSetupPage() {
       setSaving(false);
     }
   }
-
-  const requirements = useMemo(() => {
-    if (!status) return [];
-    return [...(status.requirements.currentlyDue ?? []), ...(status.requirements.pastDue ?? [])];
-  }, [status]);
 
   const badge = status?.state ?? "NOT_CONNECTED";
 
@@ -98,20 +95,26 @@ export default function ContractorPaymentSetupPage() {
             </div>
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                badge === "VERIFIED"
+                badge === "CONNECTED"
                   ? "bg-green-100 text-green-700"
-                  : badge === "PENDING_VERIFICATION"
-                    ? "bg-amber-100 text-amber-800"
+                : badge === "PENDING_VERIFICATION"
+                  ? "bg-amber-100 text-amber-800"
                     : "bg-red-100 text-red-700"
               }`}
             >
-              {badge === "VERIFIED" ? "VERIFIED" : badge === "PENDING_VERIFICATION" ? "PENDING VERIFICATION" : "NOT CONNECTED"}
+              {badge === "CONNECTED"
+                ? "VERIFIED"
+                : badge === "PENDING_VERIFICATION"
+                  ? "PENDING VERIFICATION"
+                  : badge === "CURRENCY_MISMATCH"
+                    ? "CURRENCY MISMATCH"
+                    : "NOT CONNECTED"}
             </span>
           </div>
 
           {loading ? <p className="mt-4 text-sm text-slate-600">Loading status…</p> : null}
 
-          {!loading && status?.state === "VERIFIED" ? (
+          {!loading && status?.state === "CONNECTED" ? (
             <p className="mt-4 text-sm text-slate-700">Your payout account is verified. You can accept routed jobs.</p>
           ) : null}
 
@@ -121,6 +124,12 @@ export default function ContractorPaymentSetupPage() {
 
           {!loading && status?.state === "NOT_CONNECTED" ? (
             <p className="mt-4 text-sm text-red-700">You must connect a payout account before accepting jobs.</p>
+          ) : null}
+
+          {!loading && status?.state === "CURRENCY_MISMATCH" ? (
+            <p className="mt-4 text-sm text-red-700">
+              Your Stripe account country/currency does not match your profile. Contact support to reset payment setup.
+            </p>
           ) : null}
         </section>
 
@@ -139,7 +148,7 @@ export default function ContractorPaymentSetupPage() {
               ? "Redirecting…"
               : status?.state === "PENDING_VERIFICATION"
                 ? "Continue Verification"
-                : status?.state === "VERIFIED"
+                : status?.state === "CONNECTED"
                   ? "Manage Stripe Account"
                   : "Connect Stripe Account"}
           </button>
@@ -148,15 +157,14 @@ export default function ContractorPaymentSetupPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-900">Verification Details</h2>
           {loading ? <p className="mt-2 text-sm text-slate-600">Loading verification details…</p> : null}
-          {!loading && requirements.length === 0 ? (
+          {!loading && status?.state !== "PENDING_VERIFICATION" ? (
             <p className="mt-2 text-sm text-slate-600">No additional verification items are currently required.</p>
           ) : null}
-          {!loading && requirements.length > 0 ? (
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700">
-              {requirements.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
+          {!loading && status?.state === "PENDING_VERIFICATION" ? (
+            <p className="mt-2 text-sm text-slate-700">
+              Stripe still requires account verification details. Click <span className="font-medium">Continue Verification</span>{" "}
+              to finish onboarding.
+            </p>
           ) : null}
         </section>
 

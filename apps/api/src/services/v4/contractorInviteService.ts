@@ -7,7 +7,7 @@ import { jobs } from "@/db/schema/job";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4Notifications } from "@/db/schema/v4Notification";
 import { badRequest, conflict, forbidden } from "./v4Errors";
-import { getContractorStripeSnapshot, isContractorStripeVerifiedForJobAcceptance } from "./contractorStripeService";
+import { isContractorStripeConnectReady } from "@/src/services/stripeConnectService";
 
 export async function listInvites(contractorUserId: string) {
   const rows = await db
@@ -26,7 +26,7 @@ export async function listInvites(contractorUserId: string) {
     .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.status, "PENDING")))
     .orderBy(v4ContractorJobInvites.createdAt);
 
-  const paymentReady = await getContractorStripeSnapshot(contractorUserId);
+  const paymentReady = await isContractorStripeConnectReady(contractorUserId);
   return { invites: rows, paymentReady };
 }
 
@@ -59,7 +59,7 @@ export async function acceptInvite(contractorUserId: string, jobId: string) {
   if (!jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
 
   await db.transaction(async (tx) => {
-    const paymentReady = await isContractorStripeVerifiedForJobAcceptance(contractorUserId);
+    const paymentReady = await isContractorStripeConnectReady(contractorUserId);
     if (!paymentReady) {
       await tx.insert(v4Notifications).values({
         id: randomUUID(),
