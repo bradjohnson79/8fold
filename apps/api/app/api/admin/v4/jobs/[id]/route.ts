@@ -75,125 +75,136 @@ async function updateJobStatusInternal(
   const { id } = await ctx.params;
   const now = new Date();
 
-  const updateResult = await db.transaction(async (tx) => {
-    const currentRows = await tx
-      .select({
-        id: jobs.id,
-        status: jobs.status,
-        customerApprovedAt: jobs.customer_approved_at,
-        customerRejectedAt: jobs.customer_rejected_at,
-        contractorCompletedAt: jobs.contractor_completed_at,
-        completionFlaggedAt: jobs.completion_flagged_at,
-        routerApprovedAt: jobs.router_approved_at,
-      })
-      .from(jobs)
-      .where(eq(jobs.id, id))
-      .limit(1);
+  const currentRows = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      customerApprovedAt: jobs.customer_approved_at,
+      customerRejectedAt: jobs.customer_rejected_at,
+      contractorCompletedAt: jobs.contractor_completed_at,
+      completionFlaggedAt: jobs.completion_flagged_at,
+      routerApprovedAt: jobs.router_approved_at,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, id))
+    .limit(1);
 
-    const current = currentRows[0] ?? null;
-    if (!current) return { kind: "not_found" as const };
+  const current = currentRows[0] ?? null;
+  if (!current) return err(404, "ADMIN_V4_JOB_NOT_FOUND", "Job not found");
 
-    const previousStatus = String(current.status ?? "");
-    if (previousStatus === nextStatus) {
-      return { kind: "noop" as const, previousStatus, nextStatus };
-    }
-
-    const setValues: Record<string, unknown> = {
-      status: nextStatus,
-      updated_at: now,
-    };
-
-    if (nextStatus === "CONTRACTOR_COMPLETED" && !current.contractorCompletedAt) {
-      setValues.contractor_completed_at = now;
-    }
-    if ((nextStatus === "CUSTOMER_APPROVED" || nextStatus === "OPEN_FOR_ROUTING") && !current.customerApprovedAt) {
-      setValues.customer_approved_at = now;
-    }
-    if (nextStatus === "CUSTOMER_REJECTED" && !current.customerRejectedAt) {
-      setValues.customer_rejected_at = now;
-    }
-    if (nextStatus === "COMPLETION_FLAGGED" && !current.completionFlaggedAt) {
-      setValues.completion_flagged_at = now;
-    }
-    if (nextStatus === "COMPLETED_APPROVED" && !current.routerApprovedAt) {
-      setValues.router_approved_at = now;
-    }
-
-    const updatedRows = await tx
-      .update(jobs)
-      .set(setValues as any)
-      .where(eq(jobs.id, id))
-      .returning({
-        id: jobs.id,
-        status: jobs.status,
-        updatedAt: jobs.updated_at,
-      });
-
-    const updated = updatedRows[0] ?? null;
-    if (!updated) {
-      return { kind: "write_blocked" as const, previousStatus, nextStatus };
-    }
-    const persistedStatus = String(updated.status ?? "");
-    if (persistedStatus !== nextStatus) {
-      return { kind: "write_mismatch" as const, previousStatus, nextStatus, persistedStatus };
-    }
-
-    // Status mutation must not fail if audit schema drifts in production.
-    try {
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: authed.adminId,
-        action: "JOB_STATUS_OVERRIDE",
-        entityType: "Job",
-        entityId: id,
-        metadata: {
-          fromStatus: previousStatus,
-          toStatus: nextStatus,
-          requestedStatus,
-          note,
-          adminEmail: authed.email,
-          adminRole: authed.role,
-          adminId: authed.adminId,
-        } as any,
-      });
-    } catch (auditErr) {
-      console.error("[ADMIN_V4_JOB_STATUS_AUDIT_WRITE_ERROR]", {
-        jobId: id,
-        fromStatus: previousStatus,
-        toStatus: nextStatus,
-        message: auditErr instanceof Error ? auditErr.message : String(auditErr),
-      });
-    }
-
-    return { kind: "updated" as const, previousStatus, nextStatus };
-  });
-
-  if (updateResult.kind === "not_found") {
-    return err(404, "ADMIN_V4_JOB_NOT_FOUND", "Job not found");
+  const previousStatus = String(current.status ?? "");
+  if (previousStatus === nextStatus) {
+    const same = await getAdminJobDetail(id);
+    if (!same) return err(404, "ADMIN_V4_JOB_NOT_FOUND", "Job not found");
+    return ok({
+      ...same,
+      statusOptions: jobStatusEnum.enumValues,
+      mutation: {
+        kind: "noop",
+        previousStatus,
+        nextStatus,
+        requestedStatus,
+        actualStatus: same.job.statusRaw,
+        changed: false,
+      },
+    });
   }
-  if (updateResult.kind === "write_blocked") {
+
+  const setValues: Record<string, unknown> = {
+    status: nextStatus,
+    updated_at: now,
+  };
+
+  if (nextStatus === "CONTRACTOR_COMPLETED" && !current.contractorCompletedAt) {
+    setValues.contractor_completed_at = now;
+  }
+  if ((nextStatus === "CUSTOMER_APPROVED" || nextStatus === "OPEN_FOR_ROUTING") && !current.customerApprovedAt) {
+    setValues.customer_approved_at = now;
+  }
+  if (nextStatus === "CUSTOMER_REJECTED" && !current.customerRejectedAt) {
+    setValues.customer_rejected_at = now;
+  }
+  if (nextStatus === "COMPLETION_FLAGGED" && !current.completionFlaggedAt) {
+    setValues.completion_flagged_at = now;
+  }
+  if (nextStatus === "COMPLETED_APPROVED" && !current.routerApprovedAt) {
+    setValues.router_approved_at = now;
+  }
+
+  const updatedRows = await db
+    .update(jobs)
+    .set(setValues as any)
+    .where(eq(jobs.id, id))
+    .returning({
+      id: jobs.id,
+      status: jobs.status,
+      updatedAt: jobs.updated_at,
+    });
+
+  const updated = updatedRows[0] ?? null;
+  if (!updated) {
     return err(409, "ADMIN_V4_JOB_STATUS_WRITE_BLOCKED", "Status update did not affect any rows");
   }
-  if (updateResult.kind === "write_mismatch") {
+  const persistedStatus = String(updated.status ?? "");
+  if (persistedStatus !== nextStatus) {
     return err(409, "ADMIN_V4_JOB_STATUS_WRITE_MISMATCH", "Status write did not persist requested value");
+  }
+
+  // Verify canonical table persisted value via direct jobs re-read.
+  const verifyRows = await db
+    .select({ status: jobs.status, updatedAt: jobs.updated_at })
+    .from(jobs)
+    .where(eq(jobs.id, id))
+    .limit(1);
+  const verify = verifyRows[0] ?? null;
+  const verifyStatus = String(verify?.status ?? "");
+  if (!verify || verifyStatus !== nextStatus) {
+    return err(409, "ADMIN_V4_JOB_STATUS_WRITE_NOT_PERSISTED", "Status update did not persist in canonical jobs table");
+  }
+
+  // Status mutation must not fail if audit schema drifts in production.
+  try {
+    await db.insert(auditLogs).values({
+      id: randomUUID(),
+      actorUserId: authed.adminId,
+      action: "JOB_STATUS_OVERRIDE",
+      entityType: "Job",
+      entityId: id,
+      metadata: {
+        fromStatus: previousStatus,
+        toStatus: nextStatus,
+        requestedStatus,
+        note,
+        adminEmail: authed.email,
+        adminRole: authed.role,
+        adminId: authed.adminId,
+      } as any,
+    });
+  } catch (auditErr) {
+    console.error("[ADMIN_V4_JOB_STATUS_AUDIT_WRITE_ERROR]", {
+      jobId: id,
+      fromStatus: previousStatus,
+      toStatus: nextStatus,
+      message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+    });
   }
 
   const refreshed = await getAdminJobDetail(id);
   if (!refreshed) {
     return err(404, "ADMIN_V4_JOB_NOT_FOUND", "Job not found after status update");
   }
-  if (updateResult.kind === "updated" && refreshed.job.statusRaw !== updateResult.nextStatus) {
-    return err(409, "ADMIN_V4_JOB_STATUS_STALE_READ", "Status update did not round-trip from canonical source");
-  }
+  const actualStatus = refreshed.job.statusRaw === nextStatus ? refreshed.job.statusRaw : verifyStatus;
 
   return ok({
     ...refreshed,
     statusOptions: jobStatusEnum.enumValues,
     mutation: {
-      ...updateResult,
+      kind: "updated",
+      previousStatus,
+      nextStatus,
       requestedStatus,
-      actualStatus: refreshed.job.statusRaw,
-      changed: updateResult.kind === "updated",
+      actualStatus,
+      changed: true,
     },
   });
 }
