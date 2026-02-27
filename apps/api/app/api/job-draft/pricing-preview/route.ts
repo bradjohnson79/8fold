@@ -20,7 +20,7 @@ const BodySchema = z.object({
 
 type Confidence = "LOW" | "MEDIUM" | "HIGH";
 
-type AppraiseResponse = {
+type PricingPreviewResponse = {
   low: number;
   median: number;
   high: number;
@@ -63,7 +63,7 @@ function toInt(value: unknown): number {
   return Math.round(n);
 }
 
-function fallback(currency: "USD" | "CAD"): AppraiseResponse {
+function fallback(currency: "USD" | "CAD"): PricingPreviewResponse {
   return {
     low: 100,
     median: 200,
@@ -77,7 +77,7 @@ function fallback(currency: "USD" | "CAD"): AppraiseResponse {
   };
 }
 
-function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "USD" | "CAD", taxRate: number): AppraiseResponse {
+function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "USD" | "CAD", taxRate: number): PricingPreviewResponse {
   if (!parsed) {
     const f = fallback(currency);
     return { ...f, taxRate };
@@ -95,7 +95,6 @@ function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "U
     return { ...f, taxRate };
   }
 
-  // Keep sane ranges and enforce strict monotonic estimates.
   low = Math.max(50, low);
   median = Math.max(55, median);
   high = Math.max(60, high);
@@ -116,7 +115,7 @@ function normalizeAppraisal(parsed: Record<string, unknown> | null, currency: "U
   };
 }
 
-async function runNano(input: z.infer<typeof BodySchema>): Promise<AppraiseResponse> {
+async function runNano(input: z.infer<typeof BodySchema>): Promise<PricingPreviewResponse> {
   const apiKey = String(process.env.OPEN_AI_API_KEY ?? "").trim();
   console.log("OpenAI Key Exists:", Boolean(apiKey));
   if (!apiKey) throw badRequest("V4_APPRAISAL_KEY_MISSING", "OPEN_AI_API_KEY missing in API runtime");
@@ -190,7 +189,7 @@ async function runNano(input: z.infer<typeof BodySchema>): Promise<AppraiseRespo
 
     const parsed = parseJsonLoose(text);
     return normalizeAppraisal(parsed, currency, taxRate);
-  } catch (err) {
+  } catch {
     const f = fallback(currency);
     return { ...f, taxRate, modelUsed: "gpt-5-nano" };
   } finally {
@@ -214,7 +213,7 @@ export async function POST(req: Request) {
     }
 
     await rateLimitOrThrow({
-      key: `v4:appraise:nano:${roleCheck.internalUser.id}`,
+      key: `v4:pricing-preview:nano:${roleCheck.internalUser.id}`,
       windowSeconds: 600,
       max: 20,
     });
@@ -231,7 +230,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(await runNano(parsed.data));
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_APPRAISAL_FAILED");
+    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_PRICING_PREVIEW_FAILED");
     const retryAfter = Number((wrapped as any)?.details?.retryAfterSeconds ?? 0);
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), {
       status: wrapped.status,
