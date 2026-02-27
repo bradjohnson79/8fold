@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { GoogleAddressAutocomplete } from "@/components/GoogleAddressAutocomplete";
@@ -125,6 +126,7 @@ function HoldConfirm(props: {
 
 export default function PostJobPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
 
   const [tradeMeta, setTradeMeta] = useState<TradeMeta>({ canonical: [], uiOrder: [] });
   const [loading, setLoading] = useState(true);
@@ -176,6 +178,15 @@ export default function PostJobPage() {
   const stripePromise = useMemo(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     return pk ? loadStripe(pk) : null;
+  }, []);
+
+  const apiOrigin = useMemo(() => {
+    const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
+    if (explicit) return explicit.replace(/\/+$/, "");
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+      return "http://localhost:3003";
+    }
+    return "https://api.8fold.app";
   }, []);
 
   const activeAddress = useMemo(() => {
@@ -335,6 +346,18 @@ export default function PostJobPage() {
     setPaymentConfirmed(false);
   }
 
+  function apiUrl(path: string): string {
+    return `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+
+  async function getApiAuthHeader(): Promise<Record<string, string>> {
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Unauthorized. Please sign in again.");
+    }
+    return { authorization: `Bearer ${token}` };
+  }
+
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
     setError(null);
@@ -343,7 +366,12 @@ export default function PostJobPage() {
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.set("file", file);
-        const resp = await fetch("/api/web/v4/job/upload", { method: "POST", body: form });
+        const authHeader = await getApiAuthHeader();
+        const resp = await fetch(apiUrl("/api/job/upload"), {
+          method: "POST",
+          headers: authHeader,
+          body: form,
+        });
         const json = (await resp.json().catch(() => ({}))) as { uploadId?: string; url?: string; message?: string; error?: string };
         if (!resp.ok || !json.uploadId || !json.url) {
           throw new Error(getApiErrorMessage(json, "Image upload failed."));
@@ -423,9 +451,13 @@ export default function PostJobPage() {
     setIsAppraising(true);
     try {
       await persistDraft("DETAILS");
-      const resp = await fetch("/api/job-poster/v4/appraise", {
+      const authHeader = await getApiAuthHeader();
+      const resp = await fetch(apiUrl("/api/job-draft/pricing-preview"), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          ...authHeader,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           country: activeAddress.country,
           province: activeAddress.region.trim().toUpperCase(),
@@ -520,9 +552,10 @@ export default function PostJobPage() {
     setWorking(true);
     try {
       await persistDraft("PAYMENT");
-      const resp = await fetch("/api/job-draft/submit", {
+      const authHeader = await getApiAuthHeader();
+      const resp = await fetch(apiUrl("/api/job-draft/submit"), {
         method: "POST",
-        credentials: "include",
+        headers: authHeader,
       });
       const json = (await resp.json().catch(() => ({}))) as { success?: boolean; jobId?: string; message?: string };
       if (!resp.ok || !json.success || !json.jobId) {
