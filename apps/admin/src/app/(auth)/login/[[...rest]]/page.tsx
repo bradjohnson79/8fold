@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -92,6 +93,12 @@ export default function AdminLoginPage() {
         >
           {submitting ? "Signing in..." : "Sign in"}
         </button>
+
+        <div style={{ marginTop: 4 }}>
+          <Link href="/admin-signup" style={{ color: "rgba(56,189,248,0.95)", fontWeight: 900, textDecoration: "none" }}>
+            Create admin with token
+          </Link>
+        </div>
       </form>
     </div>
   );

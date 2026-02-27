@@ -5,6 +5,7 @@ const EIGHT_HOURS_SECONDS = 60 * 60 * 8;
 
 function isPublicRoute(pathname: string): boolean {
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname === "/admin-signup" || pathname.startsWith("/admin-signup/")) return true;
   if (pathname.startsWith("/api/admin/auth/")) return true;
   return false;
 }
