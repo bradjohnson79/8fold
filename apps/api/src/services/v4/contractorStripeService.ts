@@ -1,11 +1,9 @@
-import { randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractors } from "@/db/schema/contractor";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { payoutMethods } from "@/db/schema/payoutMethod";
 import { users } from "@/db/schema/user";
-import { tradeEnumToCategoryKey } from "@/src/contractors/tradeMap";
 import { stripe } from "@/src/stripe/stripe";
 import { internal } from "@/src/services/v4/v4Errors";
 
@@ -55,137 +53,6 @@ function expectedCurrencyForCountry(country: "CA" | "US"): "CAD" | "USD" {
   return country === "CA" ? "CAD" : "USD";
 }
 
-function normalizeRegionCode(raw: string | null | undefined, country: "CA" | "US"): string {
-  const input = String(raw ?? "").trim().toUpperCase();
-  if (!input) return country;
-  if (input.length <= 8) return input;
-  return input.slice(0, 8);
-}
-
-function mapTradeCategoriesToTrade(raw: unknown): string {
-  const categories = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
-  const primary = String(categories[0] ?? "").toUpperCase();
-  switch (primary) {
-    case "PLUMBING":
-      return "PLUMBING";
-    case "ELECTRICAL":
-      return "ELECTRICAL";
-    case "DRYWALL":
-      return "DRYWALL";
-    case "ROOFING":
-      return "ROOFING";
-    case "CARPENTRY":
-      return "CARPENTRY";
-    case "JUNK_REMOVAL":
-      return "JUNK_REMOVAL";
-    case "LANDSCAPING":
-    case "SNOW_REMOVAL":
-    case "FENCING":
-      return "YARDWORK_GROUNDSKEEPING";
-    default:
-      return "CARPENTRY";
-  }
-}
-
-function normalizeTradeCategories(raw: unknown): string[] {
-  const allowed = new Set([
-    "PLUMBING",
-    "ELECTRICAL",
-    "HVAC",
-    "APPLIANCE",
-    "HANDYMAN",
-    "PAINTING",
-    "CARPENTRY",
-    "DRYWALL",
-    "ROOFING",
-    "JANITORIAL_CLEANING",
-    "LANDSCAPING",
-    "FENCING",
-    "SNOW_REMOVAL",
-    "JUNK_REMOVAL",
-    "MOVING",
-    "AUTOMOTIVE",
-    "FURNITURE_ASSEMBLY",
-  ]);
-  const categories = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
-  const normalized = categories
-    .map((v) => v.trim().toUpperCase())
-    .filter((v) => allowed.has(v));
-  return normalized.length > 0 ? normalized : ["HANDYMAN"];
-}
-
-async function ensureContractorRecordForUser(args: {
-  userId: string;
-  userEmail: string;
-  userCountry: "CA" | "US";
-}): Promise<{ id: string; stripeAccountId: string | null; stripePayoutsEnabled: boolean } | null> {
-  const existingRows = await db
-    .select({
-      id: contractors.id,
-      stripeAccountId: contractors.stripeAccountId,
-      stripePayoutsEnabled: contractors.stripePayoutsEnabled,
-    })
-    .from(contractors)
-    .where(sql`lower(${contractors.email}) = ${args.userEmail}`)
-    .limit(1);
-
-  const existing = existingRows[0] ?? null;
-  if (existing) return existing;
-
-  const profileRows = await db
-    .select({
-      contactName: contractorProfilesV4.contactName,
-      phone: contractorProfilesV4.phone,
-      businessName: contractorProfilesV4.businessName,
-      yearsExperience: contractorProfilesV4.yearsExperience,
-      city: contractorProfilesV4.city,
-      countryCode: contractorProfilesV4.countryCode,
-      tradeCategories: contractorProfilesV4.tradeCategories,
-      homeLatitude: contractorProfilesV4.homeLatitude,
-      homeLongitude: contractorProfilesV4.homeLongitude,
-    })
-    .from(contractorProfilesV4)
-    .where(eq(contractorProfilesV4.userId, args.userId))
-    .limit(1);
-
-  const profile = profileRows[0] ?? null;
-  if (!profile) return null;
-
-  const trade = mapTradeCategoriesToTrade(profile.tradeCategories);
-  const tradeCategories = normalizeTradeCategories(profile.tradeCategories);
-  const country = normalizeCountry(profile.countryCode ?? args.userCountry);
-  const regionCode = normalizeRegionCode(profile.city ?? null, country);
-  const contractorId = randomUUID();
-
-  const inserted = await db
-    .insert(contractors)
-    .values({
-      id: contractorId,
-      status: "PENDING",
-      businessName: String(profile.businessName ?? "").trim() || "Contractor",
-      contactName: String(profile.contactName ?? "").trim() || null,
-      yearsExperience: Number(profile.yearsExperience ?? 3),
-      phone: String(profile.phone ?? "").trim() || null,
-      email: args.userEmail,
-      country: country as any,
-      regionCode,
-      trade: trade as any,
-      categories: [tradeEnumToCategoryKey(trade)],
-      tradeCategories: tradeCategories as any,
-      lat: profile.homeLatitude ?? null,
-      lng: profile.homeLongitude ?? null,
-      regions: regionCode ? [regionCode.toLowerCase()] : [],
-      createdAt: new Date(),
-    } as any)
-    .returning({
-      id: contractors.id,
-      stripeAccountId: contractors.stripeAccountId,
-      stripePayoutsEnabled: contractors.stripePayoutsEnabled,
-    });
-
-  return inserted[0] ?? null;
-}
-
 async function resolveContractorStripeIdentity(userId: string): Promise<ContractorStripeIdentity> {
   const userRows = await db
     .select({ email: users.email, country: users.country })
@@ -194,10 +61,19 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
     .limit(1);
 
   const user = userRows[0] ?? null;
-  const userEmail = String(user?.email ?? "").trim().toLowerCase() || null;
   const userCountry = normalizeCountry(user?.country ?? null);
 
-  if (!userEmail) {
+  const profileRows = await db
+    .select({ userId: contractorProfilesV4.userId, email: contractorProfilesV4.email })
+    .from(contractorProfilesV4)
+    .where(eq(contractorProfilesV4.userId, userId))
+    .limit(1);
+
+  const profile = profileRows[0] ?? null;
+  const lookupEmail =
+    String(profile?.email ?? "").trim().toLowerCase() || String(user?.email ?? "").trim().toLowerCase() || null;
+
+  if (!lookupEmail) {
     return {
       userId,
       userCountry,
@@ -208,16 +84,22 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
     };
   }
 
-  const contractor = await ensureContractorRecordForUser({
-    userId,
-    userEmail,
-    userCountry,
-  });
+  const contractorRows = await db
+    .select({
+      id: contractors.id,
+      stripeAccountId: contractors.stripeAccountId,
+      stripePayoutsEnabled: contractors.stripePayoutsEnabled,
+    })
+    .from(contractors)
+    .where(sql`lower(${contractors.email}) = ${lookupEmail}`)
+    .limit(1);
+
+  const contractor = contractorRows[0] ?? null;
 
   return {
     userId,
     userCountry,
-    userEmail,
+    userEmail: lookupEmail,
     contractorId: contractor?.id ?? null,
     stripeAccountId: String(contractor?.stripeAccountId ?? "").trim() || null,
     stripePayoutsEnabled: Boolean(contractor?.stripePayoutsEnabled),
@@ -312,7 +194,11 @@ export async function createOrRefreshContractorOnboardingLink(userId: string): P
 
   const identity = await resolveContractorStripeIdentity(userId);
   // Temporary diagnostic log for contractor-user linkage verification.
-  console.log("Session user id:", userId);
+  console.log("Session:", { userId });
+  console.log("Looking for contractor with:", {
+    contractorProfileUserId: userId,
+    lookupEmail: identity.userEmail,
+  });
   console.log("Contractor record:", {
     contractorId: identity.contractorId,
     userEmail: identity.userEmail,
