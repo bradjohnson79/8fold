@@ -1,11 +1,16 @@
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { users } from "@/db/schema/user";
 import { type V4ContractorProfileInput } from "@/src/validation/v4/contractorProfileSchema";
 import { badRequest, conflict, forbidden, internal, type V4Error } from "@/src/services/v4/v4Errors";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
+
+function normalizeCountryCode(raw: string | null | undefined): "US" | "CA" {
+  return String(raw ?? "").trim().toUpperCase() === "CA" ? "CA" : "US";
+}
 
 export async function getV4ContractorProfile(userId: string) {
   const [profileRows, userRows] = await Promise.all([
@@ -92,6 +97,14 @@ export async function upsertV4ContractorProfile(
   identity?: ClerkIdentity | null,
 ) {
   const now = new Date();
+  const countryCode = normalizeCountryCode(input.countryCode);
+  const contactParts = String(input.contactName ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const firstName = contactParts[0] ?? identity?.firstName ?? null;
+  const lastName = contactParts.slice(1).join(" ") || identity?.lastName || null;
+
   if (!hasMinimumThreeYearsExperience(input.startedTradeYear, input.startedTradeMonth, now)) {
     const suspendedUntil = computeSuspendedUntil(input.startedTradeYear, input.startedTradeMonth);
     await db
@@ -115,8 +128,63 @@ export async function upsertV4ContractorProfile(
     await db.transaction(async (tx) => {
       await tx
         .update(users)
-        .set({ phone: input.phone, updatedAt: now } as any)
+        .set({
+          name: input.contactName,
+          phone: input.phone,
+          formattedAddress: input.formattedAddress,
+          latitude: input.homeLatitude as any,
+          longitude: input.homeLongitude as any,
+          legalStreet: input.streetAddress,
+          legalCity: input.city,
+          legalPostalCode: input.postalCode,
+          legalCountry: countryCode,
+          country: countryCode as any,
+          countryCode: countryCode as any,
+          updatedAt: now,
+        } as any)
         .where(eq(users.id, userId));
+
+      await tx
+        .insert(contractorAccounts)
+        .values({
+          userId,
+          firstName,
+          lastName,
+          businessName: input.businessName,
+          businessNumber: input.businessNumber ?? null,
+          address1: input.streetAddress,
+          postalCode: input.postalCode,
+          tradeCategory: input.tradeCategories[0] ?? null,
+          country: countryCode as any,
+          city: input.city,
+          tradeStartYear: input.startedTradeYear,
+          tradeStartMonth: input.startedTradeMonth,
+          waiverAccepted: true,
+          waiverAcceptedAt: now as any,
+          wizardCompleted: true,
+          isActive: true,
+          createdAt: now,
+        } as any)
+        .onConflictDoUpdate({
+          target: contractorAccounts.userId,
+          set: {
+            firstName,
+            lastName,
+            businessName: input.businessName,
+            businessNumber: input.businessNumber ?? null,
+            address1: input.streetAddress,
+            postalCode: input.postalCode,
+            tradeCategory: input.tradeCategories[0] ?? null,
+            country: countryCode as any,
+            city: input.city,
+            tradeStartYear: input.startedTradeYear,
+            tradeStartMonth: input.startedTradeMonth,
+            waiverAccepted: true,
+            waiverAcceptedAt: now as any,
+            wizardCompleted: true,
+            isActive: true,
+          } as any,
+        });
 
       await tx
         .insert(contractorProfilesV4)

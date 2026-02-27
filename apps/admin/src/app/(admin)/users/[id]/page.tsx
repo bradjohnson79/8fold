@@ -62,6 +62,14 @@ async function doRestore(userId: string) {
   redirect(`/users/${encodeURIComponent(userId)}`);
 }
 
+async function doHardDelete(userId: string, formData: FormData) {
+  "use server";
+  const confirm = String(formData.get("confirm") ?? "").trim();
+  if (confirm !== "DELETE") return;
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/hard-delete`, { method: "DELETE" }).catch(() => null);
+  redirect("/users");
+}
+
 async function doAddNote(userId: string, formData: FormData) {
   "use server";
   const note = String(formData.get("note") ?? "").trim();
@@ -254,6 +262,20 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
               </form>
             ) : null}
           </div>
+
+          <div style={{ height: 1, background: "rgba(148,163,184,0.12)", margin: "12px 0" }} />
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontWeight: 900, color: "rgba(254,202,202,0.95)" }}>Permanent delete (ADMIN_SUPER)</div>
+            <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12 }}>
+              Requires typed confirmation and is blocked for users with any job/routing history.
+            </div>
+            <form action={doHardDelete.bind(null, u.id)} style={{ display: "grid", gap: 8 }}>
+              <input name="confirm" placeholder='Type "DELETE" to confirm' style={inputStyle} />
+              <button type="submit" style={dangerButtonStyle}>
+                Permanently Delete User
+              </button>
+            </form>
+          </div>
         </Card>
       </div>
 
@@ -350,4 +372,3 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
     </div>
   );
 }
-

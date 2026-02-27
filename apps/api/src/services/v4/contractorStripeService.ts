@@ -1,5 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractors } from "@/db/schema/contractor";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { payoutMethods } from "@/db/schema/payoutMethod";
@@ -53,6 +54,12 @@ function expectedCurrencyForCountry(country: "CA" | "US"): "CAD" | "USD" {
   return country === "CA" ? "CAD" : "USD";
 }
 
+function toTruthyBool(raw: unknown): boolean {
+  if (typeof raw === "boolean") return raw;
+  const v = String(raw ?? "").trim().toLowerCase();
+  return ["true", "t", "1", "yes", "on"].includes(v);
+}
+
 async function resolveContractorStripeIdentity(userId: string): Promise<ContractorStripeIdentity> {
   const userRows = await db
     .select({ email: users.email, country: users.country })
@@ -73,40 +80,67 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
   const lookupEmail =
     String(profile?.email ?? "").trim().toLowerCase() || String(user?.email ?? "").trim().toLowerCase() || null;
 
-  if (!lookupEmail) {
-    return {
-      userId,
-      userCountry,
-      userEmail: null,
-      contractorId: null,
-      stripeAccountId: null,
-      stripePayoutsEnabled: false,
-    };
-  }
-
-  const contractorRows = await db
-    .select({
-      id: contractors.id,
-      stripeAccountId: contractors.stripeAccountId,
-      stripePayoutsEnabled: contractors.stripePayoutsEnabled,
-    })
-    .from(contractors)
-    .where(sql`lower(${contractors.email}) = ${lookupEmail}`)
-    .limit(1);
+  const [contractorRows, accountRows, payoutMethodRows] = await Promise.all([
+    lookupEmail
+      ? db
+          .select({
+            id: contractors.id,
+            stripeAccountId: contractors.stripeAccountId,
+            stripePayoutsEnabled: contractors.stripePayoutsEnabled,
+          })
+          .from(contractors)
+          .where(sql`lower(${contractors.email}) = ${lookupEmail}`)
+          .limit(1)
+      : Promise.resolve([] as Array<{ id: string; stripeAccountId: string | null; stripePayoutsEnabled: boolean }>),
+    db
+      .select({
+        stripeAccountId: contractorAccounts.stripeAccountId,
+        payoutStatus: contractorAccounts.payoutStatus,
+      })
+      .from(contractorAccounts)
+      .where(eq(contractorAccounts.userId, userId))
+      .limit(1),
+    db
+      .select({ details: payoutMethods.details })
+      .from(payoutMethods)
+      .where(and(eq(payoutMethods.userId, userId), eq(payoutMethods.provider, "STRIPE" as any), eq(payoutMethods.isActive, true)))
+      .orderBy(desc(payoutMethods.createdAt))
+      .limit(1),
+  ]);
 
   const contractor = contractorRows[0] ?? null;
+  const account = accountRows[0] ?? null;
+  const payoutMethod = payoutMethodRows[0] ?? null;
+  const payoutDetails = (payoutMethod?.details as Record<string, unknown> | null) ?? null;
+  const payoutMethodStripeId = String(payoutDetails?.stripeAccountId ?? "").trim() || null;
+  const payoutMethodPayoutsEnabled = toTruthyBool(payoutDetails?.stripePayoutsEnabled);
+  const accountPayoutVerified = ["ACTIVE", "VERIFIED", "READY"].includes(
+    String(account?.payoutStatus ?? "").toUpperCase(),
+  );
+  const resolvedStripeAccountId =
+    String(contractor?.stripeAccountId ?? "").trim() ||
+    String(account?.stripeAccountId ?? "").trim() ||
+    payoutMethodStripeId ||
+    null;
+  const resolvedPayoutsEnabled =
+    Boolean(contractor?.stripePayoutsEnabled) || accountPayoutVerified || payoutMethodPayoutsEnabled;
 
   return {
     userId,
     userCountry,
     userEmail: lookupEmail,
     contractorId: contractor?.id ?? null,
-    stripeAccountId: String(contractor?.stripeAccountId ?? "").trim() || null,
-    stripePayoutsEnabled: Boolean(contractor?.stripePayoutsEnabled),
+    stripeAccountId: resolvedStripeAccountId,
+    stripePayoutsEnabled: resolvedPayoutsEnabled,
   };
 }
 
-async function persistPayoutEnabled(args: { contractorId: string | null; stripeAccountId: string; payoutsEnabled: boolean }) {
+async function persistPayoutEnabled(args: {
+  userId: string;
+  contractorId: string | null;
+  stripeAccountId: string;
+  payoutsEnabled: boolean;
+}) {
   const now = new Date();
   const operations: Promise<unknown>[] = [];
 
@@ -121,15 +155,41 @@ async function persistPayoutEnabled(args: { contractorId: string | null; stripeA
 
   operations.push(
     db
+      .update(contractorAccounts)
+      .set({
+        stripeAccountId: args.stripeAccountId,
+        payoutStatus: args.payoutsEnabled ? "VERIFIED" : "PENDING",
+      } as any)
+      .where(eq(contractorAccounts.userId, args.userId)),
+  );
+
+  operations.push(
+    db
+      .update(contractorProfilesV4)
+      .set({
+        stripeConnected: true,
+        updatedAt: now,
+      } as any)
+      .where(eq(contractorProfilesV4.userId, args.userId)),
+  );
+
+  operations.push(
+    db
       .update(payoutMethods)
       .set({
-        details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${args.payoutsEnabled}), true)`,
+        details: sql`jsonb_set(
+          jsonb_set(${payoutMethods.details}, '{stripeAccountId}', to_jsonb(${args.stripeAccountId}), true),
+          '{stripePayoutsEnabled}',
+          to_jsonb(${args.payoutsEnabled}),
+          true
+        )`,
         updatedAt: now,
       } as any)
       .where(
         and(
+          eq(payoutMethods.userId, args.userId),
           eq(payoutMethods.provider, "STRIPE" as any),
-          sql`${payoutMethods.details} ->> 'stripeAccountId' = ${args.stripeAccountId}`,
+          eq(payoutMethods.isActive, true),
         ),
       ),
   );
@@ -169,6 +229,7 @@ export async function getContractorStripeStatus(userId: string): Promise<Contrac
     : [];
 
   await persistPayoutEnabled({
+    userId,
     contractorId: identity.contractorId,
     stripeAccountId: identity.stripeAccountId,
     payoutsEnabled,
@@ -206,7 +267,7 @@ export async function createOrRefreshContractorOnboardingLink(userId: string): P
     stripePayoutsEnabled: identity.stripePayoutsEnabled,
   });
 
-  if (!identity.contractorId || !identity.userEmail) {
+  if (!identity.userEmail) {
     throw internal("V4_CONTRACTOR_PROFILE_MISSING", "Contractor profile missing");
   }
 
@@ -223,17 +284,29 @@ export async function createOrRefreshContractorOnboardingLink(userId: string): P
       },
       metadata: {
         userId,
-        contractorId: identity.contractorId,
+        ...(identity.contractorId ? { contractorId: identity.contractorId } : {}),
         role: "CONTRACTOR",
         expectedCurrency,
       },
     });
     stripeAccountId = account.id;
 
-    await db
-      .update(contractors)
-      .set({ stripeAccountId } as any)
-      .where(eq(contractors.id, identity.contractorId));
+    await db.transaction(async (tx) => {
+      if (identity.contractorId) {
+        await tx
+          .update(contractors)
+          .set({ stripeAccountId } as any)
+          .where(eq(contractors.id, identity.contractorId));
+      }
+      await tx
+        .update(contractorAccounts)
+        .set({ stripeAccountId } as any)
+        .where(eq(contractorAccounts.userId, userId));
+      await tx
+        .update(contractorProfilesV4)
+        .set({ stripeConnected: true, updatedAt: new Date() } as any)
+        .where(eq(contractorProfilesV4.userId, userId));
+    });
   }
 
   const webOrigin = resolveWebOrigin();
