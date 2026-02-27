@@ -9,6 +9,35 @@ import { resolve as resolveTax } from "@/src/services/v4/taxResolver";
 
 type DraftData = Record<string, any>;
 
+const CA_PROVINCE_ALIASES: Record<string, string> = {
+  AB: "AB",
+  ALBERTA: "AB",
+  BC: "BC",
+  "BRITISH COLUMBIA": "BC",
+  MB: "MB",
+  MANITOBA: "MB",
+  NB: "NB",
+  "NEW BRUNSWICK": "NB",
+  NL: "NL",
+  "NEWFOUNDLAND AND LABRADOR": "NL",
+  NS: "NS",
+  "NOVA SCOTIA": "NS",
+  NT: "NT",
+  "NORTHWEST TERRITORIES": "NT",
+  NU: "NU",
+  NUNAVUT: "NU",
+  ON: "ON",
+  ONTARIO: "ON",
+  PE: "PE",
+  "PRINCE EDWARD ISLAND": "PE",
+  QC: "QC",
+  QUEBEC: "QC",
+  SK: "SK",
+  SASKATCHEWAN: "SK",
+  YT: "YT",
+  YUKON: "YT",
+};
+
 function asObject(v: unknown): DraftData {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as DraftData) : {};
 }
@@ -20,6 +49,12 @@ function hasAvailabilitySelection(v: unknown): boolean {
     if (blocks.morning === true || blocks.afternoon === true || blocks.evening === true) return true;
   }
   return false;
+}
+
+function normalizeProvince(countryCode: "US" | "CA", region: string): string {
+  const upper = String(region ?? "").trim().toUpperCase();
+  if (countryCode !== "CA") return upper;
+  return CA_PROVINCE_ALIASES[upper] ?? upper;
 }
 
 export async function POST(req: Request) {
@@ -58,7 +93,8 @@ export async function POST(req: Request) {
     const description = String(details.description ?? "").trim();
     const address = String(details.address ?? "").trim();
     const countryCode = String(details.countryCode ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US";
-    const regionCode = String(details.stateCode ?? details.region ?? "").trim().toUpperCase();
+    const regionCodeRaw = String(details.stateCode ?? details.region ?? "").trim();
+    const regionCode = normalizeProvince(countryCode, regionCodeRaw);
     const lat = Number(details.lat);
     const lon = Number(details.lon);
 
