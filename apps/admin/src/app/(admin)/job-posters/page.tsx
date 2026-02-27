@@ -2,7 +2,7 @@ import { adminApiFetch } from "@/server/adminApiV4";
 
 type UserRow = {
   id: string;
-  role: "ROUTER";
+  role: "JOB_POSTER";
   name: string | null;
   email: string | null;
   phone: string | null;
@@ -42,7 +42,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-export default async function RoutersPage({
+export default async function JobPostersPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -58,7 +58,7 @@ export default async function RoutersPage({
 
   try {
     data = await adminApiFetch<ListResp>(
-      `/api/admin/v4/routers${qs({
+      `/api/admin/v4/job-posters${qs({
         q: q || undefined,
         status: status || undefined,
         page: String(page),
@@ -66,7 +66,7 @@ export default async function RoutersPage({
       })}`,
     );
   } catch (e) {
-    err = e instanceof Error ? e.message : "Failed to load routers";
+    err = e instanceof Error ? e.message : "Failed to load job posters";
   }
 
   const rows = data?.rows ?? [];
@@ -75,9 +75,9 @@ export default async function RoutersPage({
 
   return (
     <div>
-      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Routers</h1>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Job Posters</h1>
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)" }}>
-        Router accounts, availability status context, and route workload indicators.
+        Job poster accounts, status signals, and recent activity context.
       </p>
 
       <div style={{ marginTop: 12, border: "1px solid rgba(148,163,184,0.14)", borderRadius: 16, padding: 12, background: "rgba(2,6,23,0.30)" }}>
@@ -106,7 +106,7 @@ export default async function RoutersPage({
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
           <thead>
             <tr>
-              {["Name", "Email", "Phone", "Home Region", "Status", "Created", "Badges"].map((h) => (
+              {["Name", "Email", "Phone", "Region", "Status", "Created", "Badges"].map((h) => (
                 <th key={h} style={{ textAlign: "left", fontSize: 12, color: "rgba(226,232,240,0.70)", fontWeight: 900, padding: "10px 10px", borderBottom: "1px solid rgba(148,163,184,0.12)" }}>
                   {h}
                 </th>
@@ -117,14 +117,14 @@ export default async function RoutersPage({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
-                  No routers found.
+                  No job posters found.
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
                   <td style={tdStyle}>
-                    <a href={`/routers/${encodeURIComponent(r.id)}`} style={linkStyle}>
+                    <a href={`/job-posters/${encodeURIComponent(r.id)}`} style={linkStyle}>
                       {r.name ?? "—"}
                     </a>
                   </td>
@@ -155,14 +155,14 @@ export default async function RoutersPage({
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <a
-            href={`/routers${qs({ q: q || undefined, status: status || undefined, page: String(Math.max(1, page - 1)), pageSize: String(pageSize) })}`}
+            href={`/job-posters${qs({ q: q || undefined, status: status || undefined, page: String(Math.max(1, page - 1)), pageSize: String(pageSize) })}`}
             style={{ ...pagerLinkStyle, pointerEvents: page <= 1 ? "none" : "auto", opacity: page <= 1 ? 0.45 : 1 }}
           >
             ← Prev
           </a>
           <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12, fontWeight: 900 }}>Page {page} / {totalPages}</div>
           <a
-            href={`/routers${qs({ q: q || undefined, status: status || undefined, page: String(Math.min(totalPages, page + 1)), pageSize: String(pageSize) })}`}
+            href={`/job-posters${qs({ q: q || undefined, status: status || undefined, page: String(Math.min(totalPages, page + 1)), pageSize: String(pageSize) })}`}
             style={{ ...pagerLinkStyle, pointerEvents: page >= totalPages ? "none" : "auto", opacity: page >= totalPages ? 0.45 : 1 }}
           >
             Next →

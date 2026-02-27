@@ -76,6 +76,8 @@ export * from "./v4AdminSupportTicket";
 export * from "./v4AdminIntegrityAlert";
 export * from "./v4AdminPayoutAdjustment";
 export * from "./v4AdminSyncCheckpoint";
+export * from "./v4ContractorStrike";
+export * from "./v4ContractorSuspension";
 export * from "./v4TaxRegion";
 export * from "./v4TaxSetting";
 export * from "./admin";

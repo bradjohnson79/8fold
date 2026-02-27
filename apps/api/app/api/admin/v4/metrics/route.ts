@@ -1,10 +1,9 @@
-import { sql } from "drizzle-orm";
+import { and, count, gte, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
-import { v4AdminJobs } from "@/db/schema/v4AdminJob";
-import { v4AdminDisputes } from "@/db/schema/v4AdminDispute";
-import { v4AdminUsers } from "@/db/schema/v4AdminUser";
+import { jobs, v4AdminDisputes } from "@/db/schema";
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 import { ok } from "@/src/lib/api/adminV4Response";
+import { contractorActivationMetrics } from "@/src/services/adminV4/usersReadService";
 
 export async function GET(req: Request) {
   const authed = await requireAdminV4(req);
@@ -13,30 +12,25 @@ export async function GET(req: Request) {
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 
-  const [revenueRows, throughputRows, activationRows, disputeRows] = await Promise.all([
+  const [revenueRows, throughputRows, activation, disputeRows] = await Promise.all([
     db
       .select({
-        monthCents: sql<number>`coalesce(sum(case when ${v4AdminJobs.createdAt} >= ${monthStart} then ${v4AdminJobs.amountCents} else 0 end), 0)::int`,
-        lifetimeCents: sql<number>`coalesce(sum(${v4AdminJobs.amountCents}), 0)::int`,
+        monthCents: sql<number>`coalesce(sum(case when ${jobs.created_at} >= ${monthStart} then ${jobs.amount_cents} else 0 end), 0)::int`,
+        lifetimeCents: sql<number>`coalesce(sum(${jobs.amount_cents}), 0)::int`,
       })
-      .from(v4AdminJobs)
-      .where(sql`${v4AdminJobs.paymentStatus} in ('PAID','RELEASED')`),
+      .from(jobs)
+      .where(sql`${jobs.payment_status} in ('FUNDED','FUNDS_SECURED','AUTHORIZED') or ${jobs.payout_status} = 'RELEASED'`),
     db
       .select({
-        total: sql<number>`count(*)::int`,
-        completed: sql<number>`count(*) filter (where ${v4AdminJobs.status} in ('COMPLETED','CUSTOMER_APPROVED_AWAITING_ROUTER'))::int`,
+        total: count(),
+        completed: count(sql`case when ${jobs.status} in ('COMPLETED','COMPLETED_APPROVED','CUSTOMER_APPROVED') then 1 end`),
       })
-      .from(v4AdminJobs),
+      .from(jobs),
+    contractorActivationMetrics(),
     db
       .select({
-        contractorTotal: sql<number>`count(*) filter (where ${v4AdminUsers.role} = 'CONTRACTOR')::int`,
-        contractorActive: sql<number>`count(*) filter (where ${v4AdminUsers.role} = 'CONTRACTOR' and ${v4AdminUsers.status} = 'ACTIVE')::int`,
-      })
-      .from(v4AdminUsers),
-    db
-      .select({
-        total: sql<number>`count(*)::int`,
-        open: sql<number>`count(*) filter (where ${v4AdminDisputes.status} not in ('DECIDED','CLOSED'))::int`,
+        total: count(),
+        open: count(sql`case when ${v4AdminDisputes.status} not in ('DECIDED','CLOSED') then 1 end`),
       })
       .from(v4AdminDisputes),
   ]);
@@ -51,8 +45,8 @@ export async function GET(req: Request) {
       completedJobs: Number(throughputRows[0]?.completed ?? 0),
     },
     contractorActivation: {
-      total: Number(activationRows[0]?.contractorTotal ?? 0),
-      active: Number(activationRows[0]?.contractorActive ?? 0),
+      total: Number(activation.total ?? 0),
+      active: Number(activation.active ?? 0),
     },
     disputeRates: {
       total: Number(disputeRows[0]?.total ?? 0),

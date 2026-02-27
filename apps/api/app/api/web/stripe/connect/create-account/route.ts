@@ -85,7 +85,6 @@ function parseAccountTypeChoice(value: unknown): StripeAccountTypeChoice {
   if (raw === "company" || raw === "business") return "COMPANY";
   return "AUTO";
 }
-
 async function getExistingStripeAccountId(userId: string): Promise<string | null> {
   const [method, contractor] = await Promise.all([
     db
@@ -331,7 +330,6 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as { accountType?: string; simulateApproved?: boolean };
     const accountTypeChoice = parseAccountTypeChoice(body?.accountType);
     const simulateApproved = Boolean(body?.simulateApproved);
-
     const typedRole = role as "ROUTER" | "CONTRACTOR";
     const country = await getUserCountry(user.userId, typedRole);
     const expectedCurrency = expectedCurrencyForCountry(country);
