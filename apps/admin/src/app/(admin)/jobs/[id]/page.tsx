@@ -1,4 +1,6 @@
 import { adminApiFetch } from "@/server/adminApiV4";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import JobStatusEditor from "./JobStatusEditor";
 
 type Party = { id: string; name: string | null; email: string | null; role: string | null };
@@ -55,6 +57,11 @@ type DetailResp = {
   related: Related;
   statusOptions?: string[];
 };
+
+function firstQueryValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return String(value[0] ?? "").trim();
+  return String(value ?? "").trim();
+}
 
 function money(cents: number) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
@@ -120,8 +127,15 @@ function PartyLink({ party }: { party: Party | null }) {
   );
 }
 
-export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function JobDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const query = (await searchParams) ?? {};
 
   let data: DetailResp | null = null;
   let loadErr: string | null = null;
@@ -146,6 +160,50 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const job = data.job;
   const displayStatus = job.isMock ? "IN_PROGRESS" : job.displayStatus;
   const statusOptions = Array.isArray(data.statusOptions) ? data.statusOptions : [job.statusRaw];
+  const allowedStatuses = new Set(statusOptions.map((v) => String(v ?? "").trim().toUpperCase()).filter(Boolean));
+  const statusUpdate = firstQueryValue(query.statusUpdate).toLowerCase();
+  const statusMessage = firstQueryValue(query.statusMessage);
+  const flash =
+    statusUpdate === "ok"
+      ? { tone: "success" as const, message: "Status updated." }
+      : statusUpdate === "error"
+        ? { tone: "error" as const, message: statusMessage || "Failed to update status." }
+        : null;
+
+  async function updateStatusAction(formData: FormData) {
+    "use server";
+
+    const nextStatus = String(formData.get("status") ?? "").trim().toUpperCase();
+    const noteRaw = String(formData.get("note") ?? "").trim();
+    const note = noteRaw ? noteRaw.slice(0, 500) : undefined;
+
+    if (!nextStatus || !allowedStatuses.has(nextStatus)) {
+      const qs = new URLSearchParams({
+        statusUpdate: "error",
+        statusMessage: "Invalid status selected.",
+      });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
+
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, note }),
+      });
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "Failed to update status";
+      const message = raw.trim() || "Failed to update status";
+      const qs = new URLSearchParams({
+        statusUpdate: "error",
+        statusMessage: message.slice(0, 160),
+      });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
+
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}?statusUpdate=ok`);
+  }
 
   return (
     <div>
@@ -164,7 +222,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       <div style={{ marginTop: 12, maxWidth: 560 }}>
-        <JobStatusEditor jobId={job.id} currentStatus={job.statusRaw} statusOptions={statusOptions} />
+        <JobStatusEditor
+          currentStatus={job.statusRaw}
+          statusOptions={statusOptions}
+          action={updateStatusAction}
+          flash={flash}
+        />
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
