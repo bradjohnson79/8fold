@@ -1,10 +1,14 @@
 export function getValidatedApiOrigin(): string {
+  const prodPinnedApiOrigin = "https://api.8fold.app";
+  const isProd = String(process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+
   // Admin remains DB-free and proxies to apps/api only.
   // Server-side API origin is sourced from API_ORIGIN only.
   // Admin never connects to DB directly; it proxies to apps/api only.
   const raw = process.env.API_ORIGIN;
   const value = String(raw ?? "").trim();
   if (!value) {
+    if (isProd) return prodPinnedApiOrigin;
     const mode = String(process.env.NODE_ENV ?? "").trim().toLowerCase();
     const message =
       mode && mode !== "development"
@@ -29,6 +33,15 @@ export function getValidatedApiOrigin(): string {
       code: "CONFIG_ORIGIN_INVALID",
       originVar: "API_ORIGIN",
     });
+  }
+
+  if (isProd && parsed.origin.replace(/\/+$/, "") !== prodPinnedApiOrigin) {
+    console.warn("[ADMIN_ENV_WARN]", {
+      message: "API_ORIGIN mismatched in production; using pinned api.8fold.app",
+      configured: parsed.origin,
+      using: prodPinnedApiOrigin,
+    });
+    return prodPinnedApiOrigin;
   }
 
   return parsed.origin.replace(/\/+$/, "");
