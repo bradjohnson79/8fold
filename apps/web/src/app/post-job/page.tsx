@@ -59,6 +59,28 @@ function formatMoney(cents: number, currency: "USD" | "CAD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
+function getApiErrorMessage(payload: unknown, fallback: string): string {
+  const obj = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const topMessage = typeof obj.message === "string" ? obj.message : "";
+  const topError = obj.error;
+  if (topMessage) return topMessage;
+  if (typeof topError === "string") return topError;
+  if (topError && typeof topError === "object") {
+    const nested = topError as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) return nested.message;
+    if (typeof nested.code === "string" && nested.code.trim()) return nested.code;
+    return JSON.stringify(topError);
+  }
+  return fallback;
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  if (err && typeof err === "object") return getApiErrorMessage(err, fallback);
+  return fallback;
+}
+
 function HoldConfirm(props: {
   onConfirmed: () => void;
   onError: (message: string) => void;
@@ -324,12 +346,12 @@ export default function PostJobPage() {
         const resp = await fetch("/api/web/v4/job/upload", { method: "POST", body: form });
         const json = (await resp.json().catch(() => ({}))) as { uploadId?: string; url?: string; message?: string; error?: string };
         if (!resp.ok || !json.uploadId || !json.url) {
-          throw new Error(json.message ?? json.error ?? "Image upload failed.");
+          throw new Error(getApiErrorMessage(json, "Image upload failed."));
         }
         setImages((prev) => [...prev, { uploadId: json.uploadId!, url: json.url! }]);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Image upload failed.");
+      setError(getErrorMessage(e, "Image upload failed."));
     } finally {
       setUploading(false);
     }
@@ -378,7 +400,7 @@ export default function PostJobPage() {
       body: JSON.stringify(payload),
     });
     const json = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error(String(json?.message ?? "Failed to save job draft."));
+    if (!resp.ok) throw new Error(getApiErrorMessage(json, "Failed to save job draft."));
   }
 
   function validateBeforeAppraisal() {
@@ -415,7 +437,7 @@ export default function PostJobPage() {
       const json = (await resp.json().catch(() => ({}))) as Partial<AppraisalResult> & { error?: string; message?: string };
 
       if (!resp.ok || !Number.isFinite(Number(json.low)) || !Number.isFinite(Number(json.median)) || !Number.isFinite(Number(json.high))) {
-        throw new Error(String(json.message ?? json.error ?? "Failed to appraise job."));
+        throw new Error(getApiErrorMessage(json, "Failed to appraise job."));
       }
 
       const next: AppraisalResult = {
@@ -440,7 +462,7 @@ export default function PostJobPage() {
       resetPaymentConfirmationState();
       await persistDraft("PRICING");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to appraise job.");
+      setError(getErrorMessage(e, "Failed to appraise job."));
     } finally {
       setIsAppraising(false);
     }
@@ -475,14 +497,14 @@ export default function PostJobPage() {
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
       if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
-        throw new Error(json.message ?? "Failed to prepare Stripe confirmation.");
+        throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
       }
       setPaymentSummary(json);
       setClientSecret(json.clientSecret);
       setPaymentIntentId(json.paymentIntentId);
       setPaymentConfirmed(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to prepare Stripe confirmation.");
+      setError(getErrorMessage(e, "Failed to prepare Stripe confirmation."));
     } finally {
       setWorking(false);
     }
@@ -504,11 +526,11 @@ export default function PostJobPage() {
       });
       const json = (await resp.json().catch(() => ({}))) as { success?: boolean; jobId?: string; message?: string };
       if (!resp.ok || !json.success || !json.jobId) {
-        throw new Error(json.message ?? "Failed to submit job.");
+        throw new Error(getApiErrorMessage(json, "Failed to submit job."));
       }
       router.push(`/dashboard/job-poster/jobs/${encodeURIComponent(json.jobId)}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit job.");
+      setError(getErrorMessage(e, "Failed to submit job."));
     } finally {
       setWorking(false);
     }

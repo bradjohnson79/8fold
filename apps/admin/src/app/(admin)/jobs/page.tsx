@@ -161,7 +161,9 @@ export default async function JobsPage({
   try {
     data = await adminApiFetch<JobsResp>(`/api/admin/v4/jobs${query}`);
   } catch (e) {
-    loadError = e instanceof Error ? e.message : "Failed to load jobs";
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : null;
+    const message = e instanceof Error ? e.message : "Failed to load jobs";
+    loadError = `/api/admin/v4/jobs failed${status ? ` (HTTP ${status})` : ""}: ${message}`;
   }
 
   const rows = data?.rows ?? [];
@@ -296,7 +298,13 @@ export default async function JobsPage({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {loadError ? (
+              <tr>
+                <td colSpan={12} style={{ ...tdStyle, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>
+                  {loadError}
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={12} style={tdStyle}>
                   No jobs found for current filters.

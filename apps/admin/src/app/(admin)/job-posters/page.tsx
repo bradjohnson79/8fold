@@ -66,7 +66,9 @@ export default async function JobPostersPage({
       })}`,
     );
   } catch (e) {
-    err = e instanceof Error ? e.message : "Failed to load job posters";
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : null;
+    const message = e instanceof Error ? e.message : "Failed to load job posters";
+    err = `/api/admin/v4/job-posters failed${status ? ` (HTTP ${status})` : ""}: ${message}`;
   }
 
   const rows = data?.rows ?? [];
@@ -114,7 +116,13 @@ export default async function JobPostersPage({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {err ? (
+              <tr>
+                <td colSpan={7} style={{ padding: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>
+                  {err}
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
                   No job posters found.
