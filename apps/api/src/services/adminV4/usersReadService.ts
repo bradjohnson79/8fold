@@ -438,20 +438,45 @@ async function payoutReadinessForUser(userId: string, status: string, stripeConn
 }
 
 async function enforcementForUser(userId: string, includeStrikes: boolean) {
-  const [flagRows, strikeRows] = await Promise.all([
-    db
+  const isMissingRelation = (error: unknown): boolean => {
+    const cause = (error as any)?.cause;
+    const code = String((error as any)?.code ?? cause?.code ?? "");
+    if (code === "42P01") return true;
+    const message = String((error as any)?.message ?? cause?.message ?? "");
+    return message.includes("does not exist");
+  };
+
+  let flags = 0;
+  try {
+    const flagRows = await db
       .select({ total: count() })
       .from(internalAccountFlags)
-      .where(and(eq(internalAccountFlags.userId, userId), or(eq(internalAccountFlags.status, "ACTIVE"), isNotNull(internalAccountFlags.id)))),
-    includeStrikes
-      ? db.select({ total: count() }).from(v4ContractorStrikes).where(eq(v4ContractorStrikes.contractorUserId, userId))
-      : Promise.resolve([{ total: 0 }]),
-  ]);
+      .where(
+        and(
+          eq(internalAccountFlags.userId, userId),
+          or(eq(internalAccountFlags.status, "ACTIVE"), isNotNull(internalAccountFlags.id)),
+        ),
+      );
+    flags = Number(flagRows[0]?.total ?? 0);
+  } catch (error) {
+    if (!isMissingRelation(error)) throw error;
+  }
 
-  return {
-    flags: Number(flagRows[0]?.total ?? 0),
-    strikes: includeStrikes ? Number(strikeRows[0]?.total ?? 0) : undefined,
-  };
+  let strikes: number | undefined = undefined;
+  if (includeStrikes) {
+    try {
+      const strikeRows = await db
+        .select({ total: count() })
+        .from(v4ContractorStrikes)
+        .where(eq(v4ContractorStrikes.contractorUserId, userId));
+      strikes = Number(strikeRows[0]?.total ?? 0);
+    } catch (error) {
+      if (!isMissingRelation(error)) throw error;
+      strikes = 0;
+    }
+  }
+
+  return { flags, strikes };
 }
 
 function accountStatusFromUser(user: {
