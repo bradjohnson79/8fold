@@ -10,7 +10,7 @@ import { contractorAccounts } from "../../../../../../db/schema/contractorAccoun
 import { contractors } from "../../../../../../db/schema/contractor";
 import { contractorProfilesV4 } from "../../../../../../db/schema/contractorProfileV4";
 import { routerProfilesV4 } from "../../../../../../db/schema/routerProfileV4";
-import { getBaseUrl } from "../../../../../../src/lib/getBaseUrl";
+import { getWebOrigin } from "../../../../../../src/server/bootConfig";
 
 type UserCountry = "CA" | "US";
 type StripeAccountTypeChoice = "AUTO" | "INDIVIDUAL" | "COMPANY";
@@ -404,11 +404,9 @@ export async function POST(req: Request) {
     }
 
     const onboardingComplete = Boolean(account.details_submitted) && Boolean(account.charges_enabled) && Boolean(account.payouts_enabled);
-    const baseUrl = getBaseUrl();
+    const baseUrl = getWebOrigin();
     const profilePath =
-      role === "ROUTER"
-        ? "/dashboard/router/payment?stripe=return"
-        : "/dashboard/contractor/payment?stripe=return";
+      role === "ROUTER" ? "/dashboard/stripe/return?role=ROUTER" : "/dashboard/stripe/return?role=CONTRACTOR";
     const profileUrl = `${baseUrl}${profilePath}`;
 
     if (onboardingComplete) {
