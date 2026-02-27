@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
-import { getAdminAuthHeader } from "@/server/clerkApiAuth";
+import { getAdminAuthHeader } from "@/server/adminAuth";
 
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   try {
     const apiOrigin = getValidatedApiOrigin();
-    const authorization = await getAdminAuthHeader();
+    const authorization = await getAdminAuthHeader(req);
     const { path } = await ctx.params;
     const pathSuffix = Array.isArray(path) ? path.join("/") : "";
     const target = `${apiOrigin}/api/admin/v4/${pathSuffix}`;

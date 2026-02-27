@@ -6,7 +6,7 @@ export async function POST() {
       ok: false,
       error: {
         code: "ADMIN_LEGACY_AUTH_GONE",
-        message: "Legacy admin auth route is retired. Manage credentials in Clerk.",
+        message: "Legacy admin auth route is retired. Manage credentials via sovereign admin auth.",
       },
     },
     { status: 410 },

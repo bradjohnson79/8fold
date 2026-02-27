@@ -6,7 +6,7 @@ export async function POST() {
       ok: false,
       error: {
         code: "ADMIN_V4_LEGACY_AUTH_GONE",
-        message: "Bootstrap route is retired. Provision admin users via Clerk + DB role assignment.",
+        message: "Bootstrap route is retired. Provision admin users via secure seed or database insert.",
       },
     },
     { status: 410 },

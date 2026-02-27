@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
-import { getAdminAuthHeader } from "@/server/clerkApiAuth";
+import { getAdminAuthHeader } from "@/server/adminAuth";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const apiOrigin = getValidatedApiOrigin();
-    const authorization = await getAdminAuthHeader();
+    const authorization = await getAdminAuthHeader(req);
     const url = `${apiOrigin}/api/admin/v4/auth/me`;
 
     const resp = await fetch(url, {
