@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
+import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { users } from "@/db/schema/user";
@@ -8,7 +8,7 @@ import { users } from "@/db/schema/user";
 const ROUTER_TOS_VERSION = "v1.0";
 
 export async function getV4Readiness(userId: string) {
-  const [userRows, contractorRows, routerRows, posterRows] = await Promise.all([
+  const [userRows, contractorAccountRows, routerRows, posterRows] = await Promise.all([
     db
       .select({
         role: users.role,
@@ -21,8 +21,8 @@ export async function getV4Readiness(userId: string) {
       .limit(1),
     db
       .select()
-      .from(contractorProfilesV4)
-      .where(eq(contractorProfilesV4.userId, userId))
+      .from(contractorAccounts)
+      .where(eq(contractorAccounts.userId, userId))
       .limit(1),
     db
       .select()
@@ -37,32 +37,14 @@ export async function getV4Readiness(userId: string) {
   ]);
 
   const user = userRows[0] ?? null;
-  const contractor = contractorRows[0] ?? null;
+  const contractorAccount = contractorAccountRows[0] ?? null;
   const router = routerRows[0] ?? null;
   const poster = posterRows[0] ?? null;
 
   const contractorReady = Boolean(
-    contractor &&
-    contractor.acceptedTosAt != null &&
-    contractor.tosVersion &&
-    contractor.tosVersion.trim().length > 0 &&
-    Array.isArray(contractor.tradeCategories) &&
-    contractor.tradeCategories.length > 0 &&
-    contractor.homeLatitude != null &&
-    contractor.homeLongitude != null &&
-    contractor.streetAddress &&
-    contractor.streetAddress.trim().length > 0 &&
-    contractor.city &&
-    contractor.city.trim().length > 0 &&
-    contractor.postalCode &&
-    contractor.postalCode.trim().length > 0 &&
-    contractor.countryCode &&
-    contractor.countryCode.trim().length > 0 &&
-    contractor.startedTradeYear != null &&
-    contractor.startedTradeMonth != null &&
-    contractor.phone &&
-    contractor.contactName &&
-    contractor.businessName,
+    contractorAccount &&
+      contractorAccount.isActive === true &&
+      contractorAccount.wizardCompleted === true,
   );
   const routerAcceptedTos = user?.tosVersion === ROUTER_TOS_VERSION;
   const routerReady = Boolean(
@@ -106,9 +88,9 @@ export async function getV4Readiness(userId: string) {
     user.tosVersion.trim().length > 0,
   );
   const contractorAcceptedTos = Boolean(
-    contractor?.acceptedTosAt != null &&
-    contractor?.tosVersion &&
-    contractor.tosVersion.trim().length > 0,
+    contractorAccount &&
+      contractorAccount.waiverAccepted === true &&
+      contractorAccount.waiverAcceptedAt != null,
   );
 
   return {
