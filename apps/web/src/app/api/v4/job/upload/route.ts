@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch, getApiOrigin } from "@/server/api/apiClient";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   try {
     await requireSession(req);
@@ -32,6 +34,9 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json({ ok: false, error: "PROXY_FAILED" }, { status });
+    const code = typeof (err as any)?.code === "string" ? (err as any).code : "UPLOAD_PROXY_FAILED";
+    const message = err instanceof Error ? err.message : "Upload proxy failed";
+    console.error("[web] upload proxy failed", { status, code, message });
+    return NextResponse.json({ ok: false, error: { code, message } }, { status });
   }
 }
