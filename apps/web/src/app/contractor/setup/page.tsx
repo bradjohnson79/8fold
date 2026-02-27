@@ -121,8 +121,8 @@ export default function ContractorSetupPage() {
     (async () => {
       try {
         const [metaResp, profileResp] = await Promise.all([
-          fetch("/api/web/v4/meta/trade-categories", { cache: "no-store" }),
-          fetch("/api/web/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
+          fetch("/api/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
         ]);
 
         const meta = (await metaResp.json().catch(() => ({}))) as { uiOrder?: string[] };
@@ -215,7 +215,7 @@ export default function ContractorSetupPage() {
         tosVersion: CONTRACTOR_TOS_VERSION,
       };
 
-      const resp = await fetch("/api/web/v4/contractor/profile", {
+      const resp = await fetch("/api/v4/contractor/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
