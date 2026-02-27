@@ -20,6 +20,7 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { label: "Jobs", href: "/jobs", match: "prefix" },
       { label: "Contractors", href: "/contractors", match: "prefix" },
+      { label: "Job Posters", href: "/job-posters", match: "prefix" },
       { label: "Routers", href: "/routers", match: "prefix" },
       { label: "Payouts", href: "/payouts", match: "prefix" },
       { label: "Disputes", href: "/disputes", match: "prefix" },
@@ -50,11 +51,7 @@ function isActive(pathname: string, href: string, match: NavItem["match"]): bool
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar({
-  onNavigate,
-}: {
-  onNavigate?: () => void;
-}) {
+export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname() || "/";
 
   return (
