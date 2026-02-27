@@ -25,22 +25,57 @@ function roundHalfUp(value: number): number {
   return Math.floor(value + 0.5);
 }
 
+function normalizeMode(value: unknown): TaxMode {
+  return String(value ?? "").trim().toUpperCase() === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE";
+}
+
+async function safeResolveMode(requestedMode?: TaxMode): Promise<TaxMode> {
+  if (requestedMode === "INCLUSIVE" || requestedMode === "EXCLUSIVE") {
+    return requestedMode;
+  }
+
+  try {
+    // Select only tax_mode to avoid failures when optional columns drift between envs.
+    const rows = await db
+      .select({ taxMode: v4TaxSettings.taxMode })
+      .from(v4TaxSettings)
+      .where(eq(v4TaxSettings.id, "default"))
+      .limit(1);
+    return normalizeMode(rows[0]?.taxMode);
+  } catch (err) {
+    console.warn("[taxResolver] failed to load tax mode; defaulting to EXCLUSIVE", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return "EXCLUSIVE";
+  }
+}
+
+async function safeResolveRate(country: string, province: string): Promise<number> {
+  try {
+    const regionRows = await db
+      .select({ combinedRate: v4TaxRegions.combinedRate })
+      .from(v4TaxRegions)
+      .where(and(eq(v4TaxRegions.countryCode, country), eq(v4TaxRegions.regionCode, province), eq(v4TaxRegions.active, true)))
+      .limit(1);
+    const rate = Number(regionRows[0]?.combinedRate ?? 0);
+    return Number.isFinite(rate) && rate > 0 ? rate : 0;
+  } catch (err) {
+    console.warn("[taxResolver] failed to load tax region; defaulting to 0%", {
+      country,
+      province,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  }
+}
+
 export async function resolve(input: TaxResolverInput): Promise<TaxResolverOutput> {
   const amountCents = Math.max(0, Math.trunc(Number(input.amountCents ?? 0)));
   const country = String(input.country ?? "").trim().toUpperCase();
   const province = String(input.province ?? "").trim().toUpperCase();
 
-  const settingsRows = await db.select().from(v4TaxSettings).where(eq(v4TaxSettings.id, "default")).limit(1);
-  const mode = (input.mode ?? String(settingsRows[0]?.taxMode ?? "EXCLUSIVE").toUpperCase()) as TaxMode;
-
-  const regionRows = await db
-    .select()
-    .from(v4TaxRegions)
-    .where(and(eq(v4TaxRegions.countryCode, country), eq(v4TaxRegions.regionCode, province), eq(v4TaxRegions.active, true)))
-    .limit(1);
-  const region = regionRows[0] ?? null;
-
-  const rate = Number(region?.combinedRate ?? 0);
+  const mode = await safeResolveMode(input.mode);
+  const rate = await safeResolveRate(country, province);
   if (!Number.isFinite(rate) || rate <= 0) {
     return {
       grossCents: amountCents,

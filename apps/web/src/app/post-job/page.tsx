@@ -518,10 +518,13 @@ export default function PostJobPage() {
     setWorking(true);
     try {
       await persistDraft("PAYMENT");
-      const resp = await fetch("/api/job-draft/payment-intent", {
+      const authHeader = await getApiAuthHeader();
+      const resp = await fetch(apiUrl("/api/job-draft/payment-intent"), {
         method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: {
+          ...authHeader,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           selectedPrice: appraisalPriceCents,
           isRegional: urbanOrRegional === "regional",
@@ -871,6 +874,24 @@ export default function PostJobPage() {
             >
               {working ? "Submitting Job..." : "Submit Job"}
             </button>
+            <div className="mt-3 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+              <span className="text-gray-700">Stripe Status</span>
+              {paymentConnected === true ? (
+                <span className="font-medium text-green-700">Online</span>
+              ) : paymentConnected === false ? (
+                <span className="font-medium text-red-700">Offline</span>
+              ) : (
+                <span className="font-medium text-gray-600">Checking...</span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+              <span className="text-gray-700">Payment Hold</span>
+              {paymentConfirmed ? (
+                <span className="font-medium text-green-700">Confirmed</span>
+              ) : (
+                <span className="font-medium text-gray-600">Not confirmed</span>
+              )}
+            </div>
           </div>
 
           {paymentConnected === false ? (
