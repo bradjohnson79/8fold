@@ -8,6 +8,7 @@ export const jobPosterProfilesV4 = dbSchema.table("job_poster_profiles_v4", {
   lastName: text("last_name"),
   email: text("email"),
   avatarUrl: text("avatar_url"),
+  phone: text("phone"),
   addressLine1: text("address_line1").notNull(),
   addressLine2: text("address_line2"),
   city: text("city").notNull(),
