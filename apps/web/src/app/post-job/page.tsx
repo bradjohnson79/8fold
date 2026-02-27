@@ -166,6 +166,7 @@ export default function PostJobPage() {
   const [sliderOffsetDollars, setSliderOffsetDollars] = useState(0);
 
   const [paymentConnected, setPaymentConnected] = useState<boolean | null>(null);
+  const [paymentProviderReady, setPaymentProviderReady] = useState<boolean | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentIntentResult | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
@@ -230,7 +231,7 @@ export default function PostJobPage() {
 
         const metaJson = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profileJson = (await profileResp.json().catch(() => ({}))) as any;
-        const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean };
+        const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean; providerReady?: boolean };
         const draftJson = (await draftResp.json().catch(() => ({}))) as any;
 
         if (cancelled) return;
@@ -240,6 +241,7 @@ export default function PostJobPage() {
           uiOrder: Array.isArray(metaJson.uiOrder) ? metaJson.uiOrder : [],
         });
         setPaymentConnected(typeof paymentJson.connected === "boolean" ? paymentJson.connected : null);
+        setPaymentProviderReady(typeof paymentJson.providerReady === "boolean" ? paymentJson.providerReady : null);
 
         const profile = profileJson?.profile ?? null;
         if (profile && typeof profile.latitude === "number" && typeof profile.longitude === "number") {
@@ -502,6 +504,10 @@ export default function PostJobPage() {
 
   async function preparePaymentIntent() {
     setError(null);
+    if (paymentProviderReady === false) {
+      setError("Stripe service is currently unavailable. Please try again shortly.");
+      return;
+    }
     if (paymentConnected === false) {
       setError("Payment method required. Add a payment method in Payment Setup.");
       return;
@@ -876,9 +882,9 @@ export default function PostJobPage() {
             </button>
             <div className="mt-3 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
               <span className="text-gray-700">Stripe Status</span>
-              {paymentConnected === true ? (
+              {paymentConnected === true && paymentProviderReady === true ? (
                 <span className="font-medium text-green-700">Online</span>
-              ) : paymentConnected === false ? (
+              ) : paymentConnected === false || paymentProviderReady === false ? (
                 <span className="font-medium text-red-700">Offline</span>
               ) : (
                 <span className="font-medium text-gray-600">Checking...</span>

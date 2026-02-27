@@ -34,28 +34,32 @@ export async function createPaymentIntent(
   const currency = normalizeStripeCurrency(opts.currency);
   assertStripeMinimumAmount(amountCents, currency);
 
-  const paymentIntent = await stripe.paymentIntents.create(
-    {
-      amount: amountCents,
-      currency,
-      metadata: opts.metadata ?? {},
-      description: opts.description,
-      capture_method: opts.captureMethod ?? "automatic",
-      confirmation_method: opts.confirmationMethod ?? "automatic",
-      payment_method_options: opts.requestExtendedAuthorization
-        ? {
-            card: {
-              request_extended_authorization: "if_available",
-            },
-          }
-        : undefined,
-      // Escrow-style approach:
-      // - We capture funds into the platform account
-      // - We DO NOT split at charge time (transfers happen later, controlled by backend)
-      automatic_payment_methods: { enabled: true }
-    },
-    { idempotencyKey: opts.idempotencyKey }
-  );
+  const createParams: Stripe.PaymentIntentCreateParams = {
+    amount: amountCents,
+    currency,
+    metadata: opts.metadata ?? {},
+    description: opts.description,
+    capture_method: opts.captureMethod ?? "automatic",
+    payment_method_options: opts.requestExtendedAuthorization
+      ? {
+          card: {
+            request_extended_authorization: "if_available",
+          },
+        }
+      : undefined,
+    // Escrow-style approach:
+    // - We capture funds into the platform account
+    // - We DO NOT split at charge time (transfers happen later, controlled by backend)
+    automatic_payment_methods: { enabled: true },
+  };
+
+  // Stripe can reject requests that combine automatic_payment_methods with explicit confirmation_method.
+  // Keep this unset by default; only send when a caller explicitly asks for non-default behavior.
+  if (opts.confirmationMethod && opts.confirmationMethod !== "automatic") {
+    createParams.confirmation_method = opts.confirmationMethod;
+  }
+
+  const paymentIntent = await stripe.paymentIntents.create(createParams, { idempotencyKey: opts.idempotencyKey });
 
   if (!paymentIntent.client_secret) {
     throw Object.assign(new Error("Stripe payment intent missing client_secret"), { status: 500 });
