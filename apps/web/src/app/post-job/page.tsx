@@ -728,7 +728,12 @@ export default function PostJobPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 p-4">
-            <h2 className="text-sm font-medium text-gray-700">Availability</h2>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-medium text-gray-700">Availability</h2>
+              <p className="text-xs text-gray-500">
+                These are just time blocks that show when you&apos;re available and help the contractor book a time with you.
+              </p>
+            </div>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -891,11 +896,11 @@ export default function PostJobPage() {
               )}
             </div>
             <div className="mt-2 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-              <span className="text-gray-700">Payment Hold</span>
+              <span className="text-gray-700">Payment Charge</span>
               {paymentConfirmed ? (
-                <span className="font-medium text-green-700">Confirmed</span>
+                <span className="font-medium text-green-700">Charged</span>
               ) : (
-                <span className="font-medium text-gray-600">Not confirmed</span>
+                <span className="font-medium text-gray-600">Not charged</span>
               )}
             </div>
           </div>
