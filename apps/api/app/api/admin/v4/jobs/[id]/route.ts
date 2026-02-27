@@ -103,21 +103,31 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         .set(setValues as any)
         .where(eq(jobs.id, id));
 
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: authed.adminId,
-        actorAdminUserId: authed.adminId as any,
-        action: "ADMIN_V4_JOB_STATUS_SET",
-        entityType: "Job",
-        entityId: id,
-        metadata: {
+      // Status mutation must not fail if audit schema drifts in production.
+      try {
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: authed.adminId,
+          action: "ADMIN_V4_JOB_STATUS_SET",
+          entityType: "Job",
+          entityId: id,
+          metadata: {
+            fromStatus: previousStatus,
+            toStatus: nextStatus,
+            note,
+            adminEmail: authed.email,
+            adminRole: authed.role,
+            adminId: authed.adminId,
+          } as any,
+        });
+      } catch (auditErr) {
+        console.error("[ADMIN_V4_JOB_STATUS_AUDIT_WRITE_ERROR]", {
+          jobId: id,
           fromStatus: previousStatus,
           toStatus: nextStatus,
-          note,
-          adminEmail: authed.email,
-          adminRole: authed.role,
-        } as any,
-      });
+          message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
 
       return { kind: "updated" as const, previousStatus, nextStatus };
     });
