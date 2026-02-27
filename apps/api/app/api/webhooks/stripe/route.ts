@@ -456,30 +456,28 @@ async function handleWebhook(req: Request) {
           const account = event.data.object as Stripe.Account;
           const accountId = String(account.id ?? "").trim();
           if (!accountId) return;
-          const onboardingComplete = Boolean(account.charges_enabled) && Boolean(account.payouts_enabled);
+          const payoutsEnabled = Boolean(account.payouts_enabled);
 
           testLog({ eventType: event.type, connectedAccountId: accountId });
 
-          if (onboardingComplete) {
-            await Promise.all([
-              tx
-                .update(contractors)
-                .set({ stripePayoutsEnabled: true } as any)
-                .where(eq(contractors.stripeAccountId, accountId)),
-              tx
-                .update(payoutMethods)
-                .set({
-                  details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${true}), true)`,
-                  updatedAt: now,
-                } as any)
-                .where(
-                  and(
-                    eq(payoutMethods.provider, "STRIPE" as any),
-                    sql`${payoutMethods.details} ->> 'stripeAccountId' = ${accountId}`,
-                  ),
+          await Promise.all([
+            tx
+              .update(contractors)
+              .set({ stripePayoutsEnabled: payoutsEnabled } as any)
+              .where(eq(contractors.stripeAccountId, accountId)),
+            tx
+              .update(payoutMethods)
+              .set({
+                details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${payoutsEnabled}), true)`,
+                updatedAt: now,
+              } as any)
+              .where(
+                and(
+                  eq(payoutMethods.provider, "STRIPE" as any),
+                  sql`${payoutMethods.details} ->> 'stripeAccountId' = ${accountId}`,
                 ),
-            ]);
-          }
+              ),
+          ]);
           return;
         }
       }
@@ -531,4 +529,3 @@ async function handleWebhook(req: Request) {
  *   Missing secret → 500 {"ok":false,"error":{"code":"STRIPE_WEBHOOK_SECRET_MISSING","message":"Webhook secret not configured"}}
  *   Missing stripe-signature header → 400 {"ok":false,"error":{"code":"STRIPE_SIGNATURE_MISSING","message":"Missing stripe-signature header"}}
  */
-
