@@ -242,24 +242,38 @@ async function runNano(input: z.infer<typeof BodySchema>): Promise<PricingPrevie
 }
 
 export async function POST(req: Request) {
+  const rawBody = await req.json().catch(() => ({}));
+  const parsed = BodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Invalid request body",
+        details: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })),
+      },
+      { status: 400 },
+    );
+  }
+
+  const requestInput = parsed.data;
+  const fallbackCurrency: "USD" | "CAD" = requestInput.country === "CA" ? "CAD" : "USD";
+  const fallbackTaxRate = await safeTaxRate(requestInput.country, requestInput.province);
+
   try {
     await requireJobPoster(req);
-    const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Invalid request body",
-          details: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })),
-        },
-        { status: 400 },
-      );
-    }
-
-    return NextResponse.json(await runNano(parsed.data));
+    return NextResponse.json(await runNano(requestInput));
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
     const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ ok: false, error: message }, { status });
+
+    if (status === 401 || status === 403) {
+      return NextResponse.json({ ok: false, error: message }, { status });
+    }
+
+    console.error("[pricing-preview] unexpected failure; returning fallback appraisal", {
+      status,
+      message,
+    });
+    return NextResponse.json(fallback(fallbackCurrency, fallbackTaxRate), { status: 200 });
   }
 }
