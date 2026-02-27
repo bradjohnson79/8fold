@@ -31,6 +31,21 @@ type JobDetail = {
   amountCents: number;
   paymentStatus: string | null;
   payoutStatus: string | null;
+  financialSummary: {
+    appraisalSubtotalCents: number;
+    regionalFeeCents: number;
+    taxRateBps: number;
+    taxAmountCents: number;
+    totalAmountCents: number;
+    country: string;
+    province: string | null;
+    stripePaymentIntentId: string | null;
+    stripePaymentIntentStatus: string | null;
+    stripePaidAt: string | null;
+    stripeRefundedAt: string | null;
+    stripeCanceledAt: string | null;
+    ledgerByType: Array<{ type: string; count: number; creditsCents: number; debitsCents: number }>;
+  };
   jobPoster: Party | null;
   router: Party | null;
   contractor: Party | null;
@@ -323,6 +338,36 @@ export default async function JobDetailPage({
           {kv("Message count", String(data.related.messages.messageCount))}
           <div style={{ marginTop: 8, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>
             Full messaging/PM drill-down views are coming soon.
+          </div>
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <Card title="Escrow Financial Summary (Read-only)">
+          {kv("Subtotal", money(job.financialSummary.appraisalSubtotalCents))}
+          {kv("Regional fee", money(job.financialSummary.regionalFeeCents))}
+          {kv("Tax rate", `${(job.financialSummary.taxRateBps / 100).toFixed(2)}%`)}
+          {kv("Tax amount", money(job.financialSummary.taxAmountCents))}
+          {kv("Total", money(job.financialSummary.totalAmountCents))}
+          {kv("Country / Province", `${job.financialSummary.country || "—"} / ${job.financialSummary.province || "—"}`)}
+          {kv("PI id", job.financialSummary.stripePaymentIntentId ?? "—")}
+          {kv("PI status", job.financialSummary.stripePaymentIntentStatus ?? "—")}
+          {kv("Paid at", fmt(job.financialSummary.stripePaidAt))}
+          {kv("Refunded at", fmt(job.financialSummary.stripeRefundedAt))}
+          {kv("Canceled at", fmt(job.financialSummary.stripeCanceledAt))}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ color: "rgba(226,232,240,0.65)", fontSize: 12, fontWeight: 800 }}>Ledger allocations</div>
+            {job.financialSummary.ledgerByType.length === 0 ? (
+              <div style={{ marginTop: 6, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>No ledger entries</div>
+            ) : (
+              <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                {job.financialSummary.ledgerByType.map((entry) => (
+                  <div key={entry.type} style={{ fontSize: 12, color: "rgba(226,232,240,0.90)" }}>
+                    <code>{entry.type}</code>: count {entry.count} · credits {money(entry.creditsCents)} · debits {money(entry.debitsCents)}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </Card>
       </div>

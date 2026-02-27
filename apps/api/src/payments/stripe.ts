@@ -39,7 +39,6 @@ export async function createPaymentIntent(
     currency,
     metadata: opts.metadata ?? {},
     description: opts.description,
-    capture_method: opts.captureMethod ?? "automatic",
     payment_method_options: opts.requestExtendedAuthorization
       ? {
           card: {
@@ -57,6 +56,9 @@ export async function createPaymentIntent(
   // Keep this unset by default; only send when a caller explicitly asks for non-default behavior.
   if (opts.confirmationMethod && opts.confirmationMethod !== "automatic") {
     createParams.confirmation_method = opts.confirmationMethod;
+  }
+  if (opts.captureMethod) {
+    createParams.capture_method = opts.captureMethod;
   }
 
   const paymentIntent = await stripe.paymentIntents.create(createParams, { idempotencyKey: opts.idempotencyKey });
@@ -121,5 +123,29 @@ export async function refundCharge(opts: {
     amount: opts.amountCents,
     reason: opts.reason
   });
+  return { refundId: refund.id, status: refund.status ?? "unknown" };
+}
+
+export async function refundPaymentIntent(opts: {
+  paymentIntentId: string;
+  amountCents?: number;
+  reason?: Stripe.RefundCreateParams.Reason;
+  idempotencyKey?: string;
+  metadata?: Record<string, string>;
+}): Promise<{ refundId: string; status: string }> {
+  if (!stripe) {
+    throw Object.assign(new Error("Stripe not configured"), { status: 500 });
+  }
+  if (!opts.paymentIntentId) throw Object.assign(new Error("Missing paymentIntentId"), { status: 400 });
+
+  const refund = await stripe.refunds.create(
+    {
+      payment_intent: opts.paymentIntentId,
+      amount: opts.amountCents,
+      reason: opts.reason,
+      metadata: opts.metadata,
+    },
+    opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
+  );
   return { refundId: refund.id, status: refund.status ?? "unknown" };
 }
