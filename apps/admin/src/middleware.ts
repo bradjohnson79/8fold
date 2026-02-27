@@ -6,6 +6,9 @@ const EIGHT_HOURS_SECONDS = 60 * 60 * 8;
 function isPublicRoute(pathname: string): boolean {
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
   if (pathname === "/admin-signup" || pathname.startsWith("/admin-signup/")) return true;
+  // Admin API routes have their own explicit auth guards/proxies.
+  // Avoid duplicating auth checks at middleware layer to prevent false 401s.
+  if (pathname.startsWith("/api/admin/")) return true;
   if (pathname.startsWith("/api/admin/auth/")) return true;
   return false;
 }
