@@ -77,6 +77,11 @@ function toCanonicalStatus(status: string): string {
   return upper;
 }
 
+function isNextRedirectError(error: unknown): boolean {
+  const digest = typeof error === "object" && error !== null ? (error as { digest?: unknown }).digest : undefined;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
+
 function money(cents: number) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
 }
@@ -236,6 +241,11 @@ export default async function JobDetailPage({
       revalidatePath(`/jobs/${encodeURIComponent(id)}`);
       redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
     } catch (e) {
+      if (isNextRedirectError(e)) throw e;
+      const status = typeof e === "object" && e !== null ? (e as { status?: unknown }).status : undefined;
+      if (status === 401) {
+        redirect(`/login?next=${encodeURIComponent(`/jobs/${encodeURIComponent(id)}`)}`);
+      }
       const raw = e instanceof Error ? e.message : "Failed to update status";
       const message = raw.trim() || "Failed to update status";
       const qs = new URLSearchParams({

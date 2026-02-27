@@ -39,12 +39,16 @@ export default function SettingsClient() {
     let cancelled = false;
     (async () => {
       setMeError(null);
-      const resp = await fetch("/api/admin/v4/auth/me", { method: "GET" }).catch(() => null);
+      const resp = await fetch("/api/admin/v4/auth/me", { method: "GET", credentials: "include" }).catch(() => null);
       if (!resp) {
         if (!cancelled) setMeError("Failed to load admin profile.");
         return;
       }
       const json = (await resp.json().catch(() => null)) as any;
+      if (resp.status === 401) {
+        if (!cancelled) setMeError("Admin session expired. Please log in again.");
+        return;
+      }
       if (!resp.ok || !json || json.ok !== true || !json.data?.admin) {
         if (!cancelled) setMeError("Failed to load admin profile.");
         return;

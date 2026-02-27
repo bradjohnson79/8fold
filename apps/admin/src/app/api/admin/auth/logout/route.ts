@@ -16,6 +16,7 @@ export async function POST(req: Request) {
   }
 
   const out = NextResponse.json({ ok: true, data: { loggedOut: true } }, { status: 200 });
-  out.headers.set("set-cookie", "admin_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0");
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  out.headers.set("set-cookie", `admin_session=; HttpOnly${secure}; SameSite=Lax; Path=/; Max-Age=0`);
   return out;
 }

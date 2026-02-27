@@ -24,8 +24,8 @@ export async function GET(req: Request) {
       {
         ok: false,
         error: {
-          code: status === 401 ? "UNAUTHORIZED" : "UPSTREAM_ERROR",
-          message: status === 401 ? "Authentication required." : "Failed to load admin profile.",
+          code: status === 401 ? "NOT_AUTHENTICATED" : "UPSTREAM_ERROR",
+          message: status === 401 ? "Admin session expired. Please log in again." : "Failed to load admin profile.",
         },
       },
       { status },

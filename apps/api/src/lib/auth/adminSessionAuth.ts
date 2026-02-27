@@ -24,7 +24,7 @@ function unauthorized(message = "Authentication required.") {
     {
       ok: false,
       error: {
-        code: "UNAUTHORIZED",
+        code: "NOT_AUTHENTICATED",
         message,
       },
     },
@@ -70,11 +70,13 @@ export function getAdminJwtSecret(): string {
 }
 
 export function sessionCookie(token: string): string {
-  return `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; SameSite=Lax; Path=/; Max-Age=28800`;
 }
 
 export function clearSessionCookie(): string {
-  return `${ADMIN_SESSION_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${ADMIN_SESSION_COOKIE_NAME}=; HttpOnly${secure}; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
 export function tokenFromRequest(req: Request): string | null {

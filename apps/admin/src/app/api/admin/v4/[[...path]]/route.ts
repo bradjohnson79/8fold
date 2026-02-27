@@ -36,8 +36,8 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
       {
         ok: false,
         error: {
-          code: status === 401 ? "UNAUTHORIZED" : "UPSTREAM_ERROR",
-          message: status === 401 ? "Authentication required." : "Request failed.",
+          code: status === 401 ? "NOT_AUTHENTICATED" : "UPSTREAM_ERROR",
+          message: status === 401 ? "Admin session expired. Please log in again." : "Request failed.",
         },
       },
       { status },
