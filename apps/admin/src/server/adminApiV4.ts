@@ -1,5 +1,5 @@
 import { getValidatedApiOrigin } from "./env";
-import { getAdminAuthHeader } from "./clerkApiAuth";
+import { getAdminAuthHeader } from "./adminAuth";
 
 type ApiV4Ok<T> = { ok: true; data: T };
 type ApiV4Err = { ok: false; error?: { code?: string; message?: string } | string; message?: string; code?: string };

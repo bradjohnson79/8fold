@@ -43,3 +43,5 @@ main().catch((err) => {
   console.error(String((err as any)?.message ?? err));
   process.exit(1);
 });
+
+export {};

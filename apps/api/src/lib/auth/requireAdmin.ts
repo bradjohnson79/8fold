@@ -5,7 +5,7 @@ import { routers } from "@/db/schema/router";
 import { requireRole } from "../../auth/requireRole";
 import { AuthErrorCodes } from "../../auth/errors/authErrorCodes";
 import { authErrorResponse, getOrCreateRequestId } from "../../auth/errors/authErrorResponse";
-import { requireAdminClerk } from "./requireAdminClerk";
+import { authenticateAdminRequest } from "./adminSessionAuth";
 
 export type RequireAdminOk = {
   userId: string;
@@ -30,20 +30,12 @@ function safePath(url: string): string {
   }
 }
 
-/**
- * Centralized admin auth guard for apps/api admin routes.
- *
- * Contract:
- * - Returns NextResponse JSON on failure (never throws)
- * - Returns { userId } on success
- */
 export async function requireAdmin(req: Request): Promise<NextResponse | RequireAdminOk> {
   try {
-    const admin = await requireAdminClerk(req);
+    const admin = await authenticateAdminRequest(req);
     if (admin instanceof Response) return admin;
-    return { userId: admin.admin.id, role: "ADMIN" };
+    return { userId: admin.adminId, role: "ADMIN" };
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[ADMIN_AUTH_GUARD_ERROR]", {
       route: safePath(req.url),
       method: req.method,
@@ -54,10 +46,6 @@ export async function requireAdmin(req: Request): Promise<NextResponse | Require
   }
 }
 
-/**
- * Admin or Router only. Returns NextResponse on failure (never throws).
- * Used for routes like POST /api/admin/jobs/:id/assign where routers can also assign.
- */
 export async function requireAdminOrRouter(req: Request): Promise<NextResponse | RequireAdminOrRouterOk> {
   try {
     const adminResult = await requireAdmin(req);
@@ -69,7 +57,6 @@ export async function requireAdminOrRouter(req: Request): Promise<NextResponse |
 
     return { userId: user.userId, role: "ROUTER" };
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[ADMIN_OR_ROUTER_GUARD_ERROR]", {
       route: safePath(req.url),
       method: req.method,
@@ -80,11 +67,6 @@ export async function requireAdminOrRouter(req: Request): Promise<NextResponse |
   }
 }
 
-/**
- * Admin or Senior Router guard for support routes.
- * Tries admin first; if not admin, tries Senior Router (session-based).
- * Returns NextResponse on failure (never throws).
- */
 export async function requireAdminOrSeniorRouter(
   req: Request,
 ): Promise<NextResponse | RequireAdminOrSeniorRouterOk> {
@@ -95,13 +77,10 @@ export async function requireAdminOrSeniorRouter(
     }
     const routerAuthed = await requireRole(req, "ROUTER");
     if (routerAuthed instanceof Response) return routerAuthed as NextResponse;
-    // Senior router determination remains DB-authoritative (routers.isSeniorRouter).
-    // If non-senior, behave like forbidden (admin response already contains proper error envelope).
     const r = await routersToSenior(req, routerAuthed.internalUser.id);
     if (r instanceof NextResponse) return r;
     return { user: { userId: routerAuthed.internalUser.id, role: "ROUTER" }, isAdmin: false };
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[ADMIN_OR_SENIOR_ROUTER_GUARD_ERROR]", {
       route: safePath(req.url),
       method: req.method,

@@ -54,7 +54,7 @@ describe("V4 job create hardening invariants", () => {
       userId,
       title: original.title,
       description: original.scope,
-      tradeCategory: original.trade_category,
+      tradeCategory: original.trade_category as any,
       provinceState: original.provinceState,
       latitude: original.latitude,
       longitude: original.longitude,
@@ -65,23 +65,23 @@ describe("V4 job create hardening invariants", () => {
       payloadHash,
       title: original.title,
       description: original.scope,
-      tradeCategory: original.trade_category,
+      tradeCategory: original.trade_category as any,
       provinceState: original.provinceState,
       latitude: original.latitude,
       longitude: original.longitude,
       isRegionalRequested: original.isRegionalRequested,
     });
 
-    const tampered = buildValidCreateInput({
+    const tampered = V4JobCreateBodySchema.parse(buildValidCreateInput({
       appraisalToken: token,
       latitude: 45.4215,
       longitude: -75.6972,
-    });
+    }));
     expect(() => assertAppraisalTokenMatchesPayload(tampered, userId)).toThrow("payload mismatch");
   });
 
   test("missing geo is rejected by schema", () => {
-    const input = buildValidCreateInput();
+    const input: any = buildValidCreateInput();
     delete input.latitude;
     const parsed = V4JobCreateBodySchema.safeParse(input);
     expect(parsed.success).toBe(false);

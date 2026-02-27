@@ -1,62 +1,96 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher(["/login(.*)", "/403(.*)", "/admin-signup(.*)"]);
+const ADMIN_SESSION_COOKIE = "admin_session";
+const EIGHT_HOURS_SECONDS = 60 * 60 * 8;
 
-const hasClerkEnv =
-  Boolean(String(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "").trim()) &&
-  Boolean(String(process.env.CLERK_SECRET_KEY ?? "").trim());
-
-function redirectToLogin(req: NextRequest): NextResponse {
-  const signInUrl = new URL("/login", req.url);
-  signInUrl.searchParams.set("next", req.nextUrl.pathname);
-  return NextResponse.redirect(signInUrl);
+function isPublicRoute(pathname: string): boolean {
+  if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname.startsWith("/api/admin/auth/")) return true;
+  return false;
 }
 
-const clerkHandler = clerkMiddleware(async (auth, req) => {
-  const pathname = req.nextUrl.pathname;
+function redirectToLogin(req: NextRequest): NextResponse {
+  const url = new URL("/login", req.url);
+  url.searchParams.set("next", req.nextUrl.pathname);
+  return NextResponse.redirect(url);
+}
 
-  // Route handlers should return JSON status codes rather than middleware redirects.
-  if (pathname.startsWith("/api/")) return;
-  if (isPublicRoute(req)) return;
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
 
-  const { userId } = await auth();
-  if (!userId) {
-    return redirectToLogin(req);
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i += 1) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+async function verifyHs256(token: string, secret: string): Promise<boolean> {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const [headerB64, payloadB64, signatureB64] = parts;
+    if (!headerB64 || !payloadB64 || !signatureB64) return false;
+
+    const headerJson = JSON.parse(atob(headerB64.replace(/-/g, "+").replace(/_/g, "/"))) as {
+      alg?: string;
+      typ?: string;
+    };
+    if (headerJson.alg !== "HS256") return false;
+
+    const payloadJson = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"))) as {
+      exp?: number;
+    };
+    if (typeof payloadJson.exp !== "number") return false;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (payloadJson.exp <= nowSeconds) return false;
+    if (payloadJson.exp > nowSeconds + EIGHT_HOURS_SECONDS + 60) return false;
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signed = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${headerB64}.${payloadB64}`));
+    const expected = toBase64Url(new Uint8Array(signed));
+    return timingSafeEqual(expected, signatureB64);
+  } catch {
+    return false;
   }
-});
+}
 
-export default async function middleware(req: NextRequest, ev: Parameters<typeof clerkHandler>[1]) {
+export default async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
+  if (isPublicRoute(pathname)) return NextResponse.next();
 
-  if (!hasClerkEnv) {
+  const secret = String(process.env.ADMIN_JWT_SECRET ?? "").trim();
+  if (!secret) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         { ok: false, error: { code: "ADMIN_AUTH_UNAVAILABLE", message: "Authentication is not configured." } },
         { status: 503 },
       );
     }
-    if (isPublicRoute(req)) return NextResponse.next();
     return redirectToLogin(req);
   }
 
-  try {
-    return await clerkHandler(req, ev);
-  } catch (error) {
-    console.error("[ADMIN_MIDDLEWARE_ERROR]", {
-      pathname,
-      message: error instanceof Error ? error.message : String(error),
-    });
-
+  const token = req.cookies.get(ADMIN_SESSION_COOKIE)?.value?.trim() ?? "";
+  if (!token || !(await verifyHs256(token, secret))) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
-        { ok: false, error: { code: "ADMIN_AUTH_ERROR", message: "Authentication check failed." } },
+        { ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required." } },
         { status: 401 },
       );
     }
-    if (isPublicRoute(req)) return NextResponse.next();
     return redirectToLogin(req);
   }
+
+  return NextResponse.next();
 }
 
 export const config = {

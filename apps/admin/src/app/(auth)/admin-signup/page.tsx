@@ -15,7 +15,7 @@ export default function AdminSignupPage() {
       >
         <div style={{ fontWeight: 950, fontSize: 18 }}>Admin provisioning moved</div>
         <div style={{ marginTop: 8, color: "rgba(226,232,240,0.72)", fontSize: 13 }}>
-          Admin account creation is no longer available from this page. Provision users in Clerk and grant admin role in the platform database.
+          Admin account creation is no longer available from this page. Provision users in the admins table and grant admin role.
         </div>
         <div style={{ marginTop: 12 }}>
           <Link href="/login" style={{ color: "rgba(56,189,248,0.95)", fontWeight: 900, textDecoration: "none" }}>

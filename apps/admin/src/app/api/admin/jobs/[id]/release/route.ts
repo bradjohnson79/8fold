@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
-import { getAdminAuthHeader } from "@/server/clerkApiAuth";
+import { getAdminAuthHeader } from "@/server/adminAuth";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
     const apiOrigin = getValidatedApiOrigin();
-    const authorization = await getAdminAuthHeader();
+    const authorization = await getAdminAuthHeader(req);
     const url = new URL(`${apiOrigin}/api/admin/v4/jobs/${encodeURIComponent(id)}/release`);
     const incoming = new URL(req.url);
     for (const [k, v] of incoming.searchParams.entries()) url.searchParams.set(k, v);

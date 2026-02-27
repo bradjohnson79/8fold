@@ -1,18 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useClerk } from "@clerk/nextjs";
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { signOut } = useClerk();
 
   async function handleLogout() {
     setLoading(true);
     setError(null);
     try {
-      await signOut({ redirectUrl: "/login" });
+      const resp = await fetch("/api/admin/auth/logout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      if (!resp.ok) throw new Error(`Logout failed (${resp.status})`);
+      window.location.href = "/login";
     } catch (e) {
       console.error("[ADMIN:logout:client:error]", {
         message: "Logout submission failed",
@@ -44,7 +47,7 @@ export function LogoutButton() {
           cursor: loading ? "default" : "pointer",
         }}
       >
-        {loading ? "Logging out…" : "Logout"}
+        {loading ? "Logging out..." : "Logout"}
       </button>
     </div>
   );

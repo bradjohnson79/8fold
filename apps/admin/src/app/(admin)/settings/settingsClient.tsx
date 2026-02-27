@@ -138,7 +138,7 @@ export default function SettingsClient() {
         <section style={cardStyle()}>
           <div style={{ fontWeight: 950 }}>Credentials and MFA</div>
           <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 13 }}>
-            Admin authentication is managed by Clerk. Update password and multi-factor settings in your Clerk account portal.
+            Admin authentication is managed by the sovereign session system. Rotate passwords and manage access in secure admin operations.
           </div>
           <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
             If you cannot sign in, request an admin role review and credential reset from platform operations.

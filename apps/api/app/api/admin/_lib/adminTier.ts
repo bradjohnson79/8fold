@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminClerk } from "@/src/lib/auth/requireAdminClerk";
+import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 
 export type AdminTier = "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
 
@@ -8,7 +8,7 @@ export type AdminIdentityWithTier = {
   email: string | null;
   adminRole: string;
   tier: AdminTier;
-  authSource: "clerk";
+  authSource: "admin_session";
 };
 
 function parseEmailAllowlist(raw: string | undefined): Set<string> {
@@ -34,7 +34,6 @@ export function tierFromEmail(email: string | null | undefined): AdminTier {
   const e = String(email ?? "").trim().toLowerCase();
   if (e && SUPER_EMAILS.has(e)) return "ADMIN_SUPER";
   if (e && VIEWER_EMAILS.has(e)) return "ADMIN_VIEWER";
-  // Default preserves current admin behavior, but blocks financial overrides unless allowlisted as SUPER.
   return "ADMIN_OPERATOR";
 }
 
@@ -48,16 +47,16 @@ export function tierGte(actual: AdminTier, required: AdminTier): boolean {
 }
 
 export async function requireAdminIdentityWithTier(req: Request): Promise<NextResponse | AdminIdentityWithTier> {
-  const admin = await requireAdminClerk(req);
-  if (admin instanceof Response) return admin;
-  const email = admin.admin.email ? String(admin.admin.email) : null;
-  const tierFromRole = tierFromAdminRole(admin.admin.role);
+  const admin = await requireAdminV4(req);
+  if (admin instanceof Response) return admin as NextResponse;
+  const email = admin.email ? String(admin.email) : null;
+  const tierFromRole = tierFromAdminRole(admin.role);
   return {
-    userId: admin.admin.id,
+    userId: admin.adminId,
     email,
-    adminRole: admin.admin.role,
+    adminRole: admin.role,
     tier: tierFromRole ?? tierFromEmail(email),
-    authSource: "clerk",
+    authSource: "admin_session",
   };
 }
 
