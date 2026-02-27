@@ -6,8 +6,8 @@ import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { jobs } from "@/db/schema/job";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4Notifications } from "@/db/schema/v4Notification";
-import { users } from "@/db/schema/user";
 import { badRequest, conflict, forbidden } from "./v4Errors";
+import { getContractorStripeSnapshot, isContractorStripeVerifiedForJobAcceptance } from "./contractorStripeService";
 
 export async function listInvites(contractorUserId: string) {
   const rows = await db
@@ -26,20 +26,7 @@ export async function listInvites(contractorUserId: string) {
     .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.status, "PENDING")))
     .orderBy(v4ContractorJobInvites.createdAt);
 
-  const paymentRows = await db
-    .select({
-      stripeStatus: users.stripeStatus,
-      stripeDefaultPaymentMethodId: users.stripeDefaultPaymentMethodId,
-    })
-    .from(users)
-    .where(eq(users.id, contractorUserId))
-    .limit(1);
-  const paymentUser = paymentRows[0] ?? null;
-  const paymentReady = Boolean(
-    paymentUser?.stripeStatus === "CONNECTED" &&
-      paymentUser?.stripeDefaultPaymentMethodId &&
-      paymentUser.stripeDefaultPaymentMethodId.trim().length > 0
-  );
+  const paymentReady = await getContractorStripeSnapshot(contractorUserId);
   return { invites: rows, paymentReady };
 }
 
@@ -72,20 +59,7 @@ export async function acceptInvite(contractorUserId: string, jobId: string) {
   if (!jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
 
   await db.transaction(async (tx) => {
-    const paymentRows = await tx
-      .select({
-        stripeStatus: users.stripeStatus,
-        stripeDefaultPaymentMethodId: users.stripeDefaultPaymentMethodId,
-      })
-      .from(users)
-      .where(eq(users.id, contractorUserId))
-      .limit(1);
-    const paymentUser = paymentRows[0] ?? null;
-    const paymentReady = Boolean(
-      paymentUser?.stripeStatus === "CONNECTED" &&
-        paymentUser?.stripeDefaultPaymentMethodId &&
-        paymentUser.stripeDefaultPaymentMethodId.trim().length > 0
-    );
+    const paymentReady = await isContractorStripeVerifiedForJobAcceptance(contractorUserId);
     if (!paymentReady) {
       await tx.insert(v4Notifications).values({
         id: randomUUID(),
