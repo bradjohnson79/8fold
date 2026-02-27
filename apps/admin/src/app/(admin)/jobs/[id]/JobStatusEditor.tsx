@@ -55,6 +55,7 @@ export default function JobStatusEditor({ jobId, currentStatus, statusOptions }:
       try {
         const resp = await fetch(`/api/admin/v4/jobs/${encodeURIComponent(jobId)}`, {
           method: "PATCH",
+          credentials: "include",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             status: nextStatus,
