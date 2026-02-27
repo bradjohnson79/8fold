@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type StripeConnectStatus = {
   ok: true;
@@ -14,6 +15,8 @@ type StripeConnectStatus = {
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   onboardingComplete: boolean;
+  simulationEnabled?: boolean;
+  simulatedApproved?: boolean;
 };
 
 type RouterSummary = {
@@ -28,8 +31,10 @@ type RouterSummary = {
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function RouterPaymentSetupPage() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [accountType, setAccountType] = useState<"AUTO" | "INDIVIDUAL" | "COMPANY">("AUTO");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StripeConnectStatus | null>(null);
   const [summary, setSummary] = useState<RouterSummary | null>(null);
@@ -82,7 +87,10 @@ export default function RouterPaymentSetupPage() {
       const resp = await fetch("/api/app/stripe/connect/create-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({
+          accountType:
+            accountType === "INDIVIDUAL" ? "individual" : accountType === "COMPANY" ? "company" : "auto",
+        }),
         credentials: "include",
       });
       const data = (await resp.json().catch(() => null)) as { url?: string; error?: string } | null;
@@ -96,7 +104,30 @@ export default function RouterPaymentSetupPage() {
     }
   }
 
+  async function handleSimulateApproval() {
+    setSaving(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/app/stripe/connect/create-account", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ simulateApproved: true }),
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!resp.ok || data?.ok !== true) {
+        throw new Error(String(data?.error ?? "Failed to simulate Stripe approval"));
+      }
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to simulate Stripe approval");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const badge = status?.state ?? "NOT_CONNECTED";
+  const returnedFromStripe = searchParams?.get("stripe") === "return";
   const isVerified = badge === "CONNECTED";
   const isPending = badge === "PENDING_VERIFICATION";
   const notConnected = badge === "NOT_CONNECTED";
@@ -112,6 +143,13 @@ export default function RouterPaymentSetupPage() {
 
         {error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        ) : null}
+        {!error && returnedFromStripe && !loading ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {isVerified
+              ? "Stripe setup is active."
+              : "Returned from Stripe. If setup is incomplete, continue onboarding below."}
+          </div>
         ) : null}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -161,6 +199,20 @@ export default function RouterPaymentSetupPage() {
           <p className="mt-1 text-sm text-slate-600">
             8Fold does not store your bank details. Stripe handles secure onboarding, tax details, and payout rails.
           </p>
+          {notConnected ? (
+            <div className="mt-3 max-w-sm">
+              <label className="mb-1 block text-sm text-slate-700">Account type</label>
+              <select
+                value={accountType}
+                onChange={(e) => setAccountType(e.target.value as "AUTO" | "INDIVIDUAL" | "COMPANY")}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="AUTO">Let Stripe decide during onboarding</option>
+                <option value="INDIVIDUAL">Personal (Individual)</option>
+                <option value="COMPANY">Business (Company)</option>
+              </select>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => void handleOnboard()}
@@ -175,6 +227,16 @@ export default function RouterPaymentSetupPage() {
                   ? "Manage Stripe Account"
                   : "Connect Stripe Account"}
           </button>
+          {status?.simulationEnabled ? (
+            <button
+              type="button"
+              onClick={() => void handleSimulateApproval()}
+              disabled={saving || loading}
+              className="mt-4 ml-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? "Simulating…" : "Simulate Approval (Dev)"}
+            </button>
+          ) : null}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
