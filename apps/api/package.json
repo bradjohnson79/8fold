@@ -26,6 +26,7 @@
     "stripe:cli-context": "tsx scripts/stripe-cli-context.ts",
     "verify:webhook:live": "DOTENV_CONFIG_PATH=.env.local tsx scripts/verifyStripeWebhookLive.ts",
     "stripe:env-doctor": "tsx scripts/stripeEnvDoctor.ts",
+    "escrow:refund-stale-unassigned": "tsx scripts/refund-stale-unassigned.ts",
     "ci:smoke": "tsx scripts/ci-smoke.ts",
     "backfill:roles": "tsx scripts/backfill-role-taxonomy.ts",
     "migrate:router-rewards": "tsx scripts/migrate-router-rewards.ts",

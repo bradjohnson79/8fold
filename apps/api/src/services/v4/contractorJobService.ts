@@ -91,10 +91,16 @@ export async function startJob(contractorUserId: string, jobId: string) {
     });
   }
 
-  await db
-    .update(v4JobAssignments)
-    .set({ status: "IN_PROGRESS" })
-    .where(eq(v4JobAssignments.id, assignment.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(v4JobAssignments)
+      .set({ status: "IN_PROGRESS" })
+      .where(eq(v4JobAssignments.id, assignment.id));
+    await tx
+      .update(jobs)
+      .set({ status: "IN_PROGRESS" as any, updated_at: new Date() })
+      .where(eq(jobs.id, jobId));
+  });
 }
 
 /**
@@ -127,8 +133,14 @@ export async function completeJob(contractorUserId: string, jobId: string) {
     });
   }
 
-  await db
-    .update(v4JobAssignments)
-    .set({ status: "COMPLETED" })
-    .where(eq(v4JobAssignments.id, assignment.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(v4JobAssignments)
+      .set({ status: "COMPLETED" })
+      .where(eq(v4JobAssignments.id, assignment.id));
+    await tx
+      .update(jobs)
+      .set({ status: "COMPLETED" as any, contractor_completed_at: new Date(), updated_at: new Date() })
+      .where(eq(jobs.id, jobId));
+  });
 }

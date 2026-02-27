@@ -6,10 +6,9 @@ export type AdminPartySummary = {
 };
 
 export type AdminJobPaymentState = {
-  secured: boolean;
-  captured: boolean;
   paid: boolean;
-  label: "UNPAID" | "SECURED" | "CAPTURED" | "PAID" | "REFUNDED";
+  refunded: boolean;
+  label: "UNPAID" | "PAID" | "REFUNDED";
   rawPaymentStatus: string | null;
   rawPayoutStatus: string | null;
 };
@@ -71,6 +70,21 @@ export type AdminJobDetail = {
   amountCents: number;
   paymentStatus: string | null;
   payoutStatus: string | null;
+  financialSummary: {
+    appraisalSubtotalCents: number;
+    regionalFeeCents: number;
+    taxRateBps: number;
+    taxAmountCents: number;
+    totalAmountCents: number;
+    country: string;
+    province: string | null;
+    stripePaymentIntentId: string | null;
+    stripePaymentIntentStatus: string | null;
+    stripePaidAt: string | null;
+    stripeRefundedAt: string | null;
+    stripeCanceledAt: string | null;
+    ledgerByType: Array<{ type: string; count: number; creditsCents: number; debitsCents: number }>;
+  };
   jobPoster: AdminPartySummary | null;
   router: AdminPartySummary | null;
   contractor: AdminPartySummary | null;
