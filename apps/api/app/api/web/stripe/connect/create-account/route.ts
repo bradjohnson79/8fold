@@ -266,7 +266,10 @@ export async function POST(req: Request) {
 
     const onboardingComplete = Boolean(account.details_submitted) && Boolean(account.charges_enabled) && Boolean(account.payouts_enabled);
     const baseUrl = getBaseUrl();
-    const profilePath = role === "ROUTER" ? "/app/router/profile" : "/app/contractor/profile";
+    const profilePath =
+      role === "ROUTER"
+        ? "/dashboard/router/payment?stripe=return"
+        : "/dashboard/contractor/payment?stripe=return";
     const profileUrl = `${baseUrl}${profilePath}`;
 
     if (onboardingComplete) {

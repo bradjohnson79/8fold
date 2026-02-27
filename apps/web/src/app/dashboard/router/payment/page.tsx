@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type StripeConnectStatus = {
   ok: true;
@@ -28,6 +29,7 @@ type RouterSummary = {
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function RouterPaymentSetupPage() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +99,7 @@ export default function RouterPaymentSetupPage() {
   }
 
   const badge = status?.state ?? "NOT_CONNECTED";
+  const returnedFromStripe = searchParams?.get("stripe") === "return";
   const isVerified = badge === "CONNECTED";
   const isPending = badge === "PENDING_VERIFICATION";
   const notConnected = badge === "NOT_CONNECTED";
@@ -112,6 +115,13 @@ export default function RouterPaymentSetupPage() {
 
         {error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        ) : null}
+        {!error && returnedFromStripe && !loading ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {isVerified
+              ? "Stripe setup is active."
+              : "Returned from Stripe. If setup is incomplete, continue onboarding below."}
+          </div>
         ) : null}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

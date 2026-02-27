@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useSearchParams } from "next/navigation";
 
 type ConnectStatus = {
   ok: true;
@@ -16,6 +17,7 @@ type ConnectStatus = {
 };
 
 export function StripeExpressPayoutSetup() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -82,6 +84,7 @@ export function StripeExpressPayoutSetup() {
   }
 
   const mode = status?.state ?? "NOT_CONNECTED";
+  const returnedFromStripe = searchParams?.get("stripe") === "return";
 
   return (
     <div className="mt-6 border border-gray-200 rounded-2xl p-5">
@@ -92,6 +95,13 @@ export function StripeExpressPayoutSetup() {
       </div>
 
       {error ? <div className="mt-3 text-sm text-red-700">{error}</div> : null}
+      {!error && returnedFromStripe && !loading ? (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {mode === "CONNECTED"
+            ? "Stripe setup is active."
+            : "Returned from Stripe. If setup is incomplete, continue onboarding below."}
+        </div>
+      ) : null}
 
       {loading ? <div className="mt-3 text-sm text-gray-600">Loading Stripe payout status…</div> : null}
 
