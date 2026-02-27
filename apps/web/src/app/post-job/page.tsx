@@ -2,12 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { GoogleAddressAutocomplete } from "@/components/GoogleAddressAutocomplete";
-import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
-import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type TradeMeta = {
   canonical: string[];
@@ -62,28 +59,6 @@ function formatMoney(cents: number, currency: "USD" | "CAD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
-function getApiErrorMessage(payload: unknown, fallback: string): string {
-  const obj = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
-  const topMessage = typeof obj.message === "string" ? obj.message : "";
-  const topError = obj.error;
-  if (topMessage) return topMessage;
-  if (typeof topError === "string") return topError;
-  if (topError && typeof topError === "object") {
-    const nested = topError as Record<string, unknown>;
-    if (typeof nested.message === "string" && nested.message.trim()) return nested.message;
-    if (typeof nested.code === "string" && nested.code.trim()) return nested.code;
-    return JSON.stringify(topError);
-  }
-  return fallback;
-}
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message.trim()) return err.message;
-  if (typeof err === "string" && err.trim()) return err;
-  if (err && typeof err === "object") return getApiErrorMessage(err, fallback);
-  return fallback;
-}
-
 function HoldConfirm(props: {
   onConfirmed: () => void;
   onError: (message: string) => void;
@@ -128,7 +103,6 @@ function HoldConfirm(props: {
 
 export default function PostJobPage() {
   const router = useRouter();
-  const { getToken } = useAuth();
 
   const [tradeMeta, setTradeMeta] = useState<TradeMeta>({ canonical: [], uiOrder: [] });
   const [loading, setLoading] = useState(true);
@@ -168,7 +142,6 @@ export default function PostJobPage() {
   const [sliderOffsetDollars, setSliderOffsetDollars] = useState(0);
 
   const [paymentConnected, setPaymentConnected] = useState<boolean | null>(null);
-  const [paymentProviderReady, setPaymentProviderReady] = useState<boolean | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentIntentResult | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
@@ -177,21 +150,10 @@ export default function PostJobPage() {
   const [working, setWorking] = useState(false);
   const [isAppraising, setIsAppraising] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
-  const [incompleteMissing, setIncompleteMissing] = useState<MissingStep[]>([]);
 
   const stripePromise = useMemo(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     return pk ? loadStripe(pk) : null;
-  }, []);
-
-  const apiOrigin = useMemo(() => {
-    const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
-    if (explicit) return explicit.replace(/\/+$/, "");
-    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-      return "http://localhost:3003";
-    }
-    return "https://api.8fold.app";
   }, []);
 
   const activeAddress = useMemo(() => {
@@ -235,7 +197,7 @@ export default function PostJobPage() {
 
         const metaJson = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profileJson = (await profileResp.json().catch(() => ({}))) as any;
-        const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean; providerReady?: boolean };
+        const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean };
         const draftJson = (await draftResp.json().catch(() => ({}))) as any;
 
         if (cancelled) return;
@@ -245,7 +207,6 @@ export default function PostJobPage() {
           uiOrder: Array.isArray(metaJson.uiOrder) ? metaJson.uiOrder : [],
         });
         setPaymentConnected(typeof paymentJson.connected === "boolean" ? paymentJson.connected : null);
-        setPaymentProviderReady(typeof paymentJson.providerReady === "boolean" ? paymentJson.providerReady : null);
 
         const profile = profileJson?.profile ?? null;
         if (profile && typeof profile.latitude === "number" && typeof profile.longitude === "number") {
@@ -352,40 +313,23 @@ export default function PostJobPage() {
     setPaymentConfirmed(false);
   }
 
-  function apiUrl(path: string): string {
-    return `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
-  }
-
-  async function getApiAuthHeader(): Promise<Record<string, string>> {
-    const token = await getToken();
-    if (!token) {
-      throw new Error("Unauthorized. Please sign in again.");
-    }
-    return { authorization: `Bearer ${token}` };
-  }
-
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
     setError(null);
     setUploading(true);
     try {
-      const authHeader = await getApiAuthHeader();
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.set("file", file);
-        const resp = await fetch(apiUrl("/api/job/upload"), {
-          method: "POST",
-          headers: authHeader,
-          body: form,
-        });
+        const resp = await fetch("/api/web/v4/job/upload", { method: "POST", body: form });
         const json = (await resp.json().catch(() => ({}))) as { uploadId?: string; url?: string; message?: string; error?: string };
         if (!resp.ok || !json.uploadId || !json.url) {
-          throw new Error(getApiErrorMessage(json, "Image upload failed."));
+          throw new Error(json.message ?? json.error ?? "Image upload failed.");
         }
         setImages((prev) => [...prev, { uploadId: json.uploadId!, url: json.url! }]);
       }
     } catch (e) {
-      setError(getErrorMessage(e, "Image upload failed."));
+      setError(e instanceof Error ? e.message : "Image upload failed.");
     } finally {
       setUploading(false);
     }
@@ -434,7 +378,7 @@ export default function PostJobPage() {
       body: JSON.stringify(payload),
     });
     const json = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error(getApiErrorMessage(json, "Failed to save job draft."));
+    if (!resp.ok) throw new Error(String(json?.message ?? "Failed to save job draft."));
   }
 
   function validateBeforeAppraisal() {
@@ -456,13 +400,10 @@ export default function PostJobPage() {
 
     setIsAppraising(true);
     try {
-      const authHeader = await getApiAuthHeader();
-      const resp = await fetch(apiUrl("/api/job-draft/pricing-preview"), {
+      await persistDraft("DETAILS");
+      const resp = await fetch("/api/job-poster/v4/appraise", {
         method: "POST",
-        headers: {
-          ...authHeader,
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           country: activeAddress.country,
           province: activeAddress.region.trim().toUpperCase(),
@@ -474,7 +415,7 @@ export default function PostJobPage() {
       const json = (await resp.json().catch(() => ({}))) as Partial<AppraisalResult> & { error?: string; message?: string };
 
       if (!resp.ok || !Number.isFinite(Number(json.low)) || !Number.isFinite(Number(json.median)) || !Number.isFinite(Number(json.high))) {
-        throw new Error(getApiErrorMessage(json, "Failed to appraise job."));
+        throw new Error(String(json.message ?? json.error ?? "Failed to appraise job."));
       }
 
       const next: AppraisalResult = {
@@ -497,10 +438,9 @@ export default function PostJobPage() {
       setBaseMedianCents(next.median * 100);
       setSliderOffsetDollars(0);
       resetPaymentConfirmationState();
-      // Pricing draft persistence should not block appraisal UX.
-      void persistDraft("PRICING").catch(() => {});
+      await persistDraft("PRICING");
     } catch (e) {
-      setError(getErrorMessage(e, "Failed to appraise job."));
+      setError(e instanceof Error ? e.message : "Failed to appraise job.");
     } finally {
       setIsAppraising(false);
     }
@@ -508,10 +448,6 @@ export default function PostJobPage() {
 
   async function preparePaymentIntent() {
     setError(null);
-    if (paymentProviderReady === false) {
-      setError("Stripe service is currently unavailable. Please try again shortly.");
-      return;
-    }
     if (paymentConnected === false) {
       setError("Payment method required. Add a payment method in Payment Setup.");
       return;
@@ -528,13 +464,10 @@ export default function PostJobPage() {
     setWorking(true);
     try {
       await persistDraft("PAYMENT");
-      const authHeader = await getApiAuthHeader();
-      const resp = await fetch(apiUrl("/api/job-draft/payment-intent"), {
+      const resp = await fetch("/api/job-draft/payment-intent", {
         method: "POST",
-        headers: {
-          ...authHeader,
-          "content-type": "application/json",
-        },
+        credentials: "include",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           selectedPrice: appraisalPriceCents,
           isRegional: urbanOrRegional === "regional",
@@ -542,14 +475,14 @@ export default function PostJobPage() {
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
       if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
-        throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
+        throw new Error(json.message ?? "Failed to prepare Stripe confirmation.");
       }
       setPaymentSummary(json);
       setClientSecret(json.clientSecret);
       setPaymentIntentId(json.paymentIntentId);
       setPaymentConfirmed(false);
     } catch (e) {
-      setError(getErrorMessage(e, "Failed to prepare Stripe confirmation."));
+      setError(e instanceof Error ? e.message : "Failed to prepare Stripe confirmation.");
     } finally {
       setWorking(false);
     }
@@ -565,29 +498,17 @@ export default function PostJobPage() {
     setWorking(true);
     try {
       await persistDraft("PAYMENT");
-      const authHeader = await getApiAuthHeader();
-      const resp = await fetch(apiUrl("/api/job-draft/submit"), {
+      const resp = await fetch("/api/job-draft/submit", {
         method: "POST",
-        headers: authHeader,
+        credentials: "include",
       });
-      const json = (await resp.json().catch(() => ({}))) as {
-        success?: boolean;
-        jobId?: string;
-        message?: string;
-        error?: { code?: string; message?: string; details?: { missing?: MissingStep[] } };
-      };
-      const missing = parseMissingSteps(json);
-      if (missing) {
-        setIncompleteMissing(missing);
-        setShowIncompleteModal(true);
-        return;
-      }
+      const json = (await resp.json().catch(() => ({}))) as { success?: boolean; jobId?: string; message?: string };
       if (!resp.ok || !json.success || !json.jobId) {
-        throw new Error(getApiErrorMessage(json, "Failed to submit job."));
+        throw new Error(json.message ?? "Failed to submit job.");
       }
       router.push(`/dashboard/job-poster/jobs/${encodeURIComponent(json.jobId)}`);
     } catch (e) {
-      setError(getErrorMessage(e, "Failed to submit job."));
+      setError(e instanceof Error ? e.message : "Failed to submit job.");
     } finally {
       setWorking(false);
     }
@@ -743,12 +664,7 @@ export default function PostJobPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 p-4">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-sm font-medium text-gray-700">Availability</h2>
-              <p className="text-xs text-gray-500">
-                These are just time blocks that show when you&apos;re available and help the contractor book a time with you.
-              </p>
-            </div>
+            <h2 className="text-sm font-medium text-gray-700">Availability</h2>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -900,24 +816,6 @@ export default function PostJobPage() {
             >
               {working ? "Submitting Job..." : "Submit Job"}
             </button>
-            <div className="mt-3 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-              <span className="text-gray-700">Stripe Status</span>
-              {paymentConnected === true && paymentProviderReady === true ? (
-                <span className="font-medium text-green-700">Online</span>
-              ) : paymentConnected === false || paymentProviderReady === false ? (
-                <span className="font-medium text-red-700">Offline</span>
-              ) : (
-                <span className="font-medium text-gray-600">Checking...</span>
-              )}
-            </div>
-            <div className="mt-2 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-              <span className="text-gray-700">Payment Charge</span>
-              {paymentConfirmed ? (
-                <span className="font-medium text-green-700">Charged</span>
-              ) : (
-                <span className="font-medium text-gray-600">Not charged</span>
-              )}
-            </div>
           </div>
 
           {paymentConnected === false ? (
@@ -939,12 +837,6 @@ export default function PostJobPage() {
           </div>
         </div>
       ) : null}
-      <AccountIncompleteModal
-        role="JOB_POSTER"
-        missing={incompleteMissing}
-        open={showIncompleteModal}
-        onClose={() => setShowIncompleteModal(false)}
-      />
     </div>
   );
 }
