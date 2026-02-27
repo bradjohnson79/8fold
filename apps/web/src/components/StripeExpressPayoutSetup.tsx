@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useSearchParams } from "next/navigation";
 
 type ConnectStatus = {
   ok: true;
@@ -13,11 +14,15 @@ type ConnectStatus = {
   countryMismatch?: boolean;
   currencyMismatch?: boolean;
   message?: string;
+  simulationEnabled?: boolean;
+  simulatedApproved?: boolean;
 };
 
 export function StripeExpressPayoutSetup() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [accountType, setAccountType] = React.useState<"AUTO" | "INDIVIDUAL" | "COMPANY">("AUTO");
   const [error, setError] = React.useState("");
   const [status, setStatus] = React.useState<ConnectStatus | null>(null);
 
@@ -50,6 +55,10 @@ export function StripeExpressPayoutSetup() {
       const resp = await fetch("/api/app/stripe/connect/create-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accountType:
+            accountType === "INDIVIDUAL" ? "individual" : accountType === "COMPANY" ? "company" : "auto",
+        }),
         credentials: "include",
       });
       const json = (await resp.json().catch(() => null)) as any;
@@ -81,7 +90,30 @@ export function StripeExpressPayoutSetup() {
     }
   }
 
+  async function simulateApproval() {
+    setSaving(true);
+    setError("");
+    try {
+      const resp = await fetch("/api/app/stripe/connect/create-account", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ simulateApproved: true }),
+        credentials: "include",
+      });
+      const json = (await resp.json().catch(() => null)) as any;
+      if (!resp.ok || String(json?.ok) !== "true") {
+        throw new Error(String(json?.error ?? "Failed to simulate Stripe approval"));
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to simulate Stripe approval");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const mode = status?.state ?? "NOT_CONNECTED";
+  const returnedFromStripe = searchParams?.get("stripe") === "return";
 
   return (
     <div className="mt-6 border border-gray-200 rounded-2xl p-5">
@@ -92,20 +124,49 @@ export function StripeExpressPayoutSetup() {
       </div>
 
       {error ? <div className="mt-3 text-sm text-red-700">{error}</div> : null}
+      {!error && returnedFromStripe && !loading ? (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {mode === "CONNECTED"
+            ? "Stripe setup is active."
+            : "Returned from Stripe. If setup is incomplete, continue onboarding below."}
+        </div>
+      ) : null}
 
       {loading ? <div className="mt-3 text-sm text-gray-600">Loading Stripe payout status…</div> : null}
 
       {!loading && mode === "NOT_CONNECTED" ? (
         <div className="mt-4">
-          <div className="text-sm text-gray-700">No Stripe account is connected yet.</div>
-          <button
-            type="button"
-            onClick={() => void openStripe()}
-            disabled={saving}
-            className="mt-3 bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+          <div className="text-sm text-gray-700 mb-2">Account type</div>
+          <select
+            value={accountType}
+            onChange={(e) => setAccountType(e.target.value as "AUTO" | "INDIVIDUAL" | "COMPANY")}
+            className="w-full max-w-sm rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
           >
-            {saving ? "Redirecting…" : "Connect with Stripe"}
-          </button>
+            <option value="AUTO">Let Stripe decide during onboarding</option>
+            <option value="INDIVIDUAL">Personal (Individual)</option>
+            <option value="COMPANY">Business (Company)</option>
+          </select>
+          <div className="text-sm text-gray-700">No Stripe account is connected yet.</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void openStripe()}
+              disabled={saving}
+              className="bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+            >
+              {saving ? "Redirecting…" : "Connect with Stripe"}
+            </button>
+            {status?.simulationEnabled ? (
+              <button
+                type="button"
+                onClick={() => void simulateApproval()}
+                disabled={saving}
+                className="bg-slate-700 text-white hover:bg-slate-800 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+              >
+                {saving ? "Simulating…" : "Simulate Approval (Dev)"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
