@@ -12,6 +12,7 @@ export function RouterDashboardShell({ children }: { children: React.ReactNode }
     { href: "/dashboard/router/profile", label: "Profile" },
     { href: "/dashboard/router/payment", label: "Payment Setup" },
     { href: "/dashboard/router/support", label: "Support" },
+    { href: "/app/router/support/inbox", label: "Support Inbox" },
   ];
 
   return <DashboardShell title="Router Dashboard" items={items} navMode="sidebar">{children}</DashboardShell>;

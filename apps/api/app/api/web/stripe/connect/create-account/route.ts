@@ -19,7 +19,7 @@ function isStripeSimulationEnabled(): boolean {
   const explicit = String(process.env.STRIPE_SIMULATION_ENABLED ?? "").trim().toLowerCase();
   if (explicit === "true") return true;
   if (explicit === "false") return false;
-  return String(process.env.NODE_ENV ?? "").toLowerCase() !== "production";
+  return true;
 }
 
 function expectedCurrencyForCountry(country: UserCountry): "CAD" | "USD" {
@@ -196,6 +196,7 @@ async function markSimulatedApproval(args: {
   });
 
   if (args.role === "CONTRACTOR") {
+    const now = new Date();
     const [userRow, profileRow] = await Promise.all([
       db
         .select({ email: users.email })
@@ -211,6 +212,21 @@ async function markSimulatedApproval(args: {
         .then((rows) => rows[0] ?? null),
     ]);
     const lookupEmail = String(profileRow?.email ?? userRow?.email ?? "").trim().toLowerCase();
+    await Promise.all([
+      db
+        .update(contractorAccounts)
+        .set({
+          stripeAccountId: args.stripeAccountId,
+          payoutMethod: "STRIPE",
+          payoutStatus: "VERIFIED",
+        } as any)
+        .where(eq(contractorAccounts.userId, args.userId)),
+      db
+        .update(contractorProfilesV4)
+        .set({ stripeConnected: true, updatedAt: now } as any)
+        .where(eq(contractorProfilesV4.userId, args.userId)),
+    ]);
+
     if (lookupEmail) {
       await db
         .update(contractors)
@@ -322,9 +338,6 @@ export async function POST(req: Request) {
     if (role !== "ROUTER" && role !== "CONTRACTOR") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!stripe) {
-      return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
-    }
 
     const simulationEnabled = isStripeSimulationEnabled();
     const body = (await req.json().catch(() => ({}))) as { accountType?: string; simulateApproved?: boolean };
@@ -358,6 +371,10 @@ export async function POST(req: Request) {
         simulationEnabled,
         simulatedApproved: true,
       });
+    }
+
+    if (!stripe) {
+      return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
     }
 
     let stripeAccountId = existing;

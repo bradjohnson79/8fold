@@ -161,9 +161,9 @@ export function StripeExpressPayoutSetup() {
                 type="button"
                 onClick={() => void simulateApproval()}
                 disabled={saving}
-                className="bg-slate-700 text-white hover:bg-slate-800 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+                className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
               >
-                {saving ? "Simulating…" : "Simulate Approval (Dev)"}
+                {saving ? "Simulating…" : "Simulate Skype Approval"}
               </button>
             ) : null}
           </div>
@@ -173,14 +173,26 @@ export function StripeExpressPayoutSetup() {
       {!loading && mode === "PENDING_VERIFICATION" ? (
         <div className="mt-4">
           <div className="text-sm text-amber-800">Stripe onboarding incomplete. Finish setup to receive payouts.</div>
-          <button
-            type="button"
-            onClick={() => void openStripe()}
-            disabled={saving}
-            className="mt-3 bg-amber-600 text-white hover:bg-amber-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
-          >
-            {saving ? "Redirecting…" : "Complete Stripe Setup"}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void openStripe()}
+              disabled={saving}
+              className="bg-amber-600 text-white hover:bg-amber-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+            >
+              {saving ? "Redirecting…" : "Complete Stripe Setup"}
+            </button>
+            {status?.simulationEnabled ? (
+              <button
+                type="button"
+                onClick={() => void simulateApproval()}
+                disabled={saving}
+                className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+              >
+                {saving ? "Simulating…" : "Simulate Skype Approval"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

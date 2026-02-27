@@ -41,15 +41,6 @@ function formatDateTime(value?: string) {
   return date.toLocaleString();
 }
 
-function nextFridayLabel() {
-  const now = new Date();
-  const day = now.getDay();
-  const offset = (5 - day + 7) % 7 || 7;
-  const nextFriday = new Date(now);
-  nextFriday.setDate(now.getDate() + offset);
-  return nextFriday.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
-
 function statusBadgeClasses(status: string) {
   const s = status.toUpperCase();
   if (s.includes("INVIT")) return "bg-amber-50 text-amber-700 ring-amber-200";
@@ -127,8 +118,6 @@ export default function ContractorOverviewPage() {
     ? Math.round((completedJobs.length / (assignedJobs.length + completedJobs.length)) * 100)
     : 0;
   const onTimeRate = "—";
-  const nextPayout = nextFridayLabel();
-
   const timeline = [
     ...invites.slice(0, 3).map((i) => ({
       id: `inv-${i.id}`,
@@ -173,11 +162,10 @@ export default function ContractorOverviewPage() {
         </details>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Card title="Available Earnings" value={availableEarnings} subtitle="Funds ready to release" icon="💵" accent="from-emerald-50 to-white" />
         <Card title="In Progress Jobs" value={String(inProgressCount)} subtitle="Active assigned jobs" icon="🧰" accent="from-sky-50 to-white" />
         <Card title="Pending Invites" value={String(pendingInviteCount)} subtitle="Awaiting your response" icon="📨" accent="from-amber-50 to-white" />
-        <Card title="Next Payout Date" value={nextPayout} subtitle="Estimated payout window" icon="📅" accent="from-indigo-50 to-white" />
       </div>
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -213,30 +213,32 @@ export default function RouterPaymentSetupPage() {
               </select>
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void handleOnboard()}
-            disabled={saving || loading}
-            className="mt-4 rounded-lg bg-[#635BFF] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5349e8] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saving
-              ? "Redirecting…"
-              : isPending
-                ? "Continue Verification"
-                : isVerified
-                  ? "Manage Stripe Account"
-                  : "Connect Stripe Account"}
-          </button>
-          {status?.simulationEnabled ? (
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => void handleSimulateApproval()}
+              onClick={() => void handleOnboard()}
               disabled={saving || loading}
-              className="mt-4 ml-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-[#635BFF] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5349e8] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? "Simulating…" : "Simulate Approval (Dev)"}
+              {saving
+                ? "Redirecting…"
+                : isPending
+                  ? "Continue Verification"
+                  : isVerified
+                    ? "Manage Stripe Account"
+                    : "Connect Stripe Account"}
             </button>
-          ) : null}
+            {status?.simulationEnabled ? (
+              <button
+                type="button"
+                onClick={() => void handleSimulateApproval()}
+                disabled={saving || loading}
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Simulating…" : "Simulate Skype Approval"}
+              </button>
+            ) : null}
+          </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
