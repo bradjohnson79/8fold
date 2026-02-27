@@ -39,6 +39,7 @@ export async function createPaymentIntent(
     currency,
     metadata: opts.metadata ?? {},
     description: opts.description,
+    capture_method: opts.captureMethod ?? "automatic",
     payment_method_options: opts.requestExtendedAuthorization
       ? {
           card: {
@@ -56,9 +57,6 @@ export async function createPaymentIntent(
   // Keep this unset by default; only send when a caller explicitly asks for non-default behavior.
   if (opts.confirmationMethod && opts.confirmationMethod !== "automatic") {
     createParams.confirmation_method = opts.confirmationMethod;
-  }
-  if (opts.captureMethod) {
-    createParams.capture_method = opts.captureMethod;
   }
 
   const paymentIntent = await stripe.paymentIntents.create(createParams, { idempotencyKey: opts.idempotencyKey });
