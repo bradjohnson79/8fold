@@ -20,6 +20,7 @@ import { disputeCases } from "../../db/schema/disputeCase";
 import { jobs } from "../../db/schema/job";
 import { jobPayments } from "../../db/schema/jobPayment";
 import { transferRecords } from "../../db/schema/transferRecord";
+import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
 
 function requireStripe() {
   if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
@@ -47,6 +48,7 @@ export async function refundJobFunds(jobId: string): Promise<RefundJobFundsKind>
     const jobRows = await tx
       .select({
         id: jobs.id,
+        jobPosterUserId: jobs.job_poster_user_id,
         status: jobs.status,
         paymentStatus: jobs.payment_status,
         payoutStatus: jobs.payout_status,
@@ -135,7 +137,46 @@ export async function refundJobFunds(jobId: string): Promise<RefundJobFundsKind>
       } as any)
       .where(and(eq(jobPayments.jobId, jobId), isNull(jobPayments.refundedAt)));
 
+    if (job.jobPosterUserId) {
+      await createNotification(
+        {
+          userId: String(job.jobPosterUserId),
+          role: "JOB_POSTER",
+          type: "JOB_REFUNDED",
+          title: "Job refunded",
+          message: "A refund has been issued for your job payment.",
+          entityType: "REFUND",
+          entityId: jobId,
+          priority: "HIGH",
+          metadata: {
+            jobId,
+            refundId: refund.id,
+            source: "manual_or_workflow",
+          },
+          idempotencyKey: `job_refunded:${jobId}:${refund.id}:poster`,
+        },
+        tx,
+      );
+    }
+
+    await createAdminNotifications(
+      {
+        type: "JOB_REFUNDED",
+        title: "Job refunded",
+        message: `Refund issued for job ${jobId}.`,
+        entityType: "REFUND",
+        entityId: jobId,
+        priority: "HIGH",
+        metadata: {
+          jobId,
+          refundId: refund.id,
+          source: "manual_or_workflow",
+        },
+        idempotencyKey: `job_refunded:${jobId}:${refund.id}`,
+      },
+      tx,
+    );
+
     return { kind: "ok" as const, refundId: refund.id, status: refund.status ?? "unknown" };
   });
 }
-

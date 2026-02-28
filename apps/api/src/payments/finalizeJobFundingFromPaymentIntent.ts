@@ -7,6 +7,7 @@ import { jobPayments } from "../../db/schema/jobPayment";
 import { escrows } from "../../db/schema/escrow";
 import { auditLogs } from "../../db/schema/auditLog";
 import { logEvent } from "../server/observability/log";
+import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
 
 type FinalizeOpts = {
   route: string;
@@ -242,6 +243,48 @@ export async function finalizeJobFundingFromPaymentIntent(
         source: opts.source,
       } as any,
     });
+
+    await createNotification(
+      {
+        userId: String(job.jobPosterUserId),
+        role: "JOB_POSTER",
+        type: "PAYMENT_RECEIVED",
+        title: "Payment received",
+        message: "Your payment is secured and your job is ready for routing.",
+        entityType: "PAYMENT",
+        entityId: job.id,
+        priority: "NORMAL",
+        metadata: {
+          jobId: job.id,
+          paymentIntentId: pi.id,
+          amountCents: incomingAmount,
+          source: opts.source,
+          webhookEventId: opts.webhookEventId ?? null,
+        },
+        idempotencyKey: `payment_received:${job.id}:${pi.id}:poster`,
+      },
+      tx,
+    );
+
+    await createAdminNotifications(
+      {
+        type: "PAYMENT_RECEIVED",
+        title: "Payment received",
+        message: `Job ${job.id} payment is now secured.`,
+        entityType: "PAYMENT",
+        entityId: job.id,
+        priority: "LOW",
+        metadata: {
+          jobId: job.id,
+          paymentIntentId: pi.id,
+          amountCents: incomingAmount,
+          source: opts.source,
+          webhookEventId: opts.webhookEventId ?? null,
+        },
+        idempotencyKey: `payment_received:${job.id}:${pi.id}`,
+      },
+      tx,
+    );
 
     return {
       ok: true,

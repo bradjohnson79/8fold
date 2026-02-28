@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import { randomUUID } from "crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "@/db/drizzle";
 import { auditLogs } from "@/db/schema/auditLog";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractors } from "@/db/schema/contractor";
@@ -9,17 +8,22 @@ import { jobDispatches } from "@/db/schema/jobDispatch";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { users } from "@/db/schema/user";
-import { haversineKm } from "@/src/jobs/geo";
+import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
+import { db } from "@/db/drizzle";
 import { serviceTypeToTradeCategory } from "@/src/contractors/tradeMap";
+import { haversineKm } from "@/src/jobs/geo";
 import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "@/src/jurisdiction";
+import { createNotification } from "@/src/services/notifications/notificationService";
+import { getRouterActiveRoutingLockTx, reconcileV4RoutingStateTx } from "@/src/services/v4/routerRoutingStateService";
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
 export type RouteJobResult =
-  | { kind: "ok"; created: Array<{ dispatchId: string; contractorId: string; token?: string }> }
+  | { kind: "ok"; created: Array<{ inviteId: string; contractorId: string; dispatchId?: string; token?: string }> }
   | { kind: "forbidden" }
+  | { kind: "router_active_job_lock"; activeJobId: string; blockedReason: string }
   | { kind: "not_found" }
   | { kind: "job_archived" }
   | { kind: "job_not_available" }
@@ -30,14 +34,21 @@ export type RouteJobResult =
   | { kind: "contractor_not_eligible" }
   | { kind: "contractor_missing_coords" };
 
-export async function routeV4Job(
-  routerUserId: string,
-  jobId: string,
-  contractorIds: string[],
-): Promise<RouteJobResult> {
+export async function routeV4Job(routerUserId: string, jobId: string, contractorIds: string[]): Promise<RouteJobResult> {
   const desired = Array.from(new Set(contractorIds)).slice(0, 5);
 
   return db.transaction(async (tx) => {
+    await reconcileV4RoutingStateTx(tx);
+
+    const lock = await getRouterActiveRoutingLockTx(tx, routerUserId);
+    if (lock.activeJobId && lock.activeJobId !== jobId) {
+      return {
+        kind: "router_active_job_lock",
+        activeJobId: lock.activeJobId,
+        blockedReason: lock.blockedReason ?? "Finish your active routed job before routing another one.",
+      };
+    }
+
     const profileRows = await tx
       .select({
         homeCountryCode: routerProfilesV4.homeCountryCode,
@@ -56,6 +67,7 @@ export async function routeV4Job(
     const jobRows = await tx
       .select({
         id: jobs.id,
+        title: jobs.title,
         archived: jobs.archived,
         is_mock: jobs.is_mock,
         job_source: jobs.job_source,
@@ -72,6 +84,7 @@ export async function routeV4Job(
         claimed_by_user_id: jobs.claimed_by_user_id,
         first_routed_at: jobs.first_routed_at,
         contractor_payout_cents: jobs.contractor_payout_cents,
+        contractor_user_id: jobs.contractor_user_id,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -84,6 +97,7 @@ export async function routeV4Job(
     if (job.status !== "OPEN_FOR_ROUTING") return { kind: "job_not_available" };
     if (job.routing_status !== "UNROUTED") return { kind: "job_not_available" };
     if (job.claimed_by_user_id) return { kind: "job_not_available" };
+    if (job.contractor_user_id) return { kind: "job_not_available" };
     if (!job.contractor_payout_cents || Number(job.contractor_payout_cents) <= 0) return { kind: "pricing_unlocked" };
 
     const jobCountryCode = normalizeCountryCode(String(job.country_code ?? job.country ?? ""));
@@ -98,25 +112,19 @@ export async function routeV4Job(
     const milesToKm = (mi: number) => mi * 1.60934;
     const jobTypeLimitKm = job.job_type === "urban" ? (isUS ? milesToKm(30) : 50) : isUS ? milesToKm(60) : 100;
 
-    const existingPending = await tx
-      .select({ contractorId: jobDispatches.contractorId })
-      .from(jobDispatches)
-      .where(and(eq(jobDispatches.jobId, job.id), eq(jobDispatches.status, "PENDING"), sql`${jobDispatches.expiresAt} > now()`));
-    const existingContractorIds = new Set(existingPending.map((d) => d.contractorId));
-    const newIds = desired.filter((id) => !existingContractorIds.has(id));
-    if (existingPending.length + newIds.length > 5) return { kind: "too_many" };
-
-    const category = (job.trade_category ?? serviceTypeToTradeCategory(job.service_type)) as any;
+    const category = (job.trade_category ?? serviceTypeToTradeCategory(job.service_type)) as string;
 
     const contractorRows = await tx
       .select({
-        id: contractors.id,
-        status: contractors.status,
+        contractorId: contractors.id,
+        contractorStatus: contractors.status,
+        stripePayoutsEnabled: contractors.stripePayoutsEnabled,
         tradeCategories: contractors.tradeCategories,
         automotiveEnabled: contractors.automotiveEnabled,
-        regions: contractors.regions,
         countryCode: users.countryCode,
         stateCode: users.stateCode,
+        userStatus: users.status,
+        userId: users.id,
         lat: contractors.lat,
         lng: contractors.lng,
         serviceRadiusKm: contractorAccounts.serviceRadiusKm,
@@ -124,24 +132,44 @@ export async function routeV4Job(
       .from(contractors)
       .innerJoin(users, sql`lower(${users.email}) = lower(${contractors.email})`)
       .leftJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
-      .where(and(eq(users.status, "ACTIVE"), inArray(contractors.id, desired as any)));
-    const byId = new Map(contractorRows.map((c) => [c.id, c]));
+      .where(and(inArray(contractors.id, desired as any), eq(users.status, "ACTIVE"), eq(contractors.status, "APPROVED"), eq(contractors.stripePayoutsEnabled, true)));
 
-    const created: Array<{ dispatchId: string; contractorId: string; token?: string }> = [];
+    const byId = new Map(contractorRows.map((c) => [c.contractorId, c]));
+
+    const existingPendingDispatches = await tx
+      .select({ contractorId: jobDispatches.contractorId })
+      .from(jobDispatches)
+      .where(and(eq(jobDispatches.jobId, job.id), eq(jobDispatches.status, "PENDING"), sql`${jobDispatches.expiresAt} > now()`));
+    const existingPendingContractorIds = new Set(existingPendingDispatches.map((row) => row.contractorId));
+
+    const existingInvites = await tx
+      .select({ contractorUserId: v4ContractorJobInvites.contractorUserId })
+      .from(v4ContractorJobInvites)
+      .where(eq(v4ContractorJobInvites.jobId, job.id));
+    const existingInvitedUserIds = new Set(existingInvites.map((row) => row.contractorUserId));
+
+    const created: Array<{ inviteId: string; contractorId: string; dispatchId?: string; token?: string }> = [];
     const allowEcho = process.env.ALLOW_DEV_OTP_ECHO === "true";
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    for (const contractorId of desired) {
-      if (existingContractorIds.has(contractorId)) continue;
-      const c = byId.get(contractorId);
-      if (!c || c.status !== "APPROVED") return { kind: "contractor_not_eligible" };
+    const newIds = desired.filter((id) => !existingPendingContractorIds.has(id));
+    if (existingPendingDispatches.length + newIds.length > 5) return { kind: "too_many" };
 
-      const tradeCategories = (c.tradeCategories ?? []) as any[];
+    for (const contractorId of desired) {
+      if (existingPendingContractorIds.has(contractorId)) continue;
+
+      const c = byId.get(contractorId);
+      if (!c || c.contractorStatus !== "APPROVED" || c.userStatus !== "ACTIVE" || !c.stripePayoutsEnabled) {
+        return { kind: "contractor_not_eligible" };
+      }
+
+      const tradeCategories = (c.tradeCategories ?? []) as string[];
       if (!tradeCategories.includes(category)) return { kind: "contractor_not_eligible" };
       if (String(category) === "AUTOMOTIVE" && !c.automotiveEnabled) return { kind: "contractor_not_eligible" };
-      const contractorCountryCode = normalizeCountryCode(String((c as any).countryCode ?? ""));
-      const contractorStateCode = normalizeStateCode(String((c as any).stateCode ?? ""));
+
+      const contractorCountryCode = normalizeCountryCode(String(c.countryCode ?? ""));
+      const contractorStateCode = normalizeStateCode(String(c.stateCode ?? ""));
       if (!isSameJurisdiction(contractorCountryCode, contractorStateCode, jobCountryCode, jobStateCode)) {
         return { kind: "cross_jurisdiction_blocked" };
       }
@@ -152,10 +180,43 @@ export async function routeV4Job(
       const effectiveRadiusKm = serviceRadiusKm !== null ? Math.min(jobTypeLimitKm, serviceRadiusKm) : jobTypeLimitKm;
       if (km > effectiveRadiusKm) return { kind: "contractor_not_eligible" };
 
+      if (!c.userId || existingInvitedUserIds.has(c.userId)) continue;
+
+      const inviteId = randomUUID();
+      await tx.insert(v4ContractorJobInvites).values({
+        id: inviteId,
+        routeId: routerUserId,
+        jobId: job.id,
+        contractorUserId: c.userId,
+        status: "PENDING",
+        createdAt: now,
+      } as any);
+
+      await createNotification(
+        {
+          userId: c.userId,
+          role: "CONTRACTOR",
+          type: "JOB_ROUTED",
+          title: "Routed Job Invite",
+          message: `You have a new routed invite for ${job.title}.`,
+          entityType: "JOB",
+          entityId: job.id,
+          priority: "NORMAL",
+          createdAt: now,
+          metadata: {
+            jobId: job.id,
+            routerUserId,
+            contractorId,
+          },
+          idempotencyKey: `job_routed:${job.id}:${c.userId}:${routerUserId}`,
+        },
+        tx,
+      );
+
       const rawToken = crypto.randomBytes(24).toString("hex");
       const tokenHash = sha256(rawToken);
-
       const dispatchId = randomUUID();
+
       await tx.insert(jobDispatches).values({
         id: dispatchId,
         createdAt: now,
@@ -166,7 +227,7 @@ export async function routeV4Job(
         tokenHash,
         jobId: job.id,
         contractorId,
-        routerUserId: routerUserId,
+        routerUserId,
       });
 
       await tx.insert(auditLogs).values({
@@ -176,15 +237,18 @@ export async function routeV4Job(
         action: "JOB_DISPATCH_SENT",
         entityType: "Job",
         entityId: job.id,
-        metadata: { dispatchId, contractorId, expiresAt: expiresAt.toISOString() } as any,
+        metadata: { inviteId, dispatchId, contractorId, contractorUserId: c.userId, expiresAt: expiresAt.toISOString() } as any,
       });
 
       created.push({
-        dispatchId,
+        inviteId,
         contractorId,
+        dispatchId,
         token: process.env.NODE_ENV !== "production" && allowEcho ? rawToken : undefined,
       });
     }
+
+    if (created.length === 0) return { kind: "contractor_not_eligible" };
 
     const updated = await tx
       .update(jobs)
@@ -206,7 +270,11 @@ export async function routeV4Job(
       action: "JOB_ROUTING_APPLIED",
       entityType: "Job",
       entityId: job.id,
-      metadata: { contractorIds: desired, createdDispatches: created.map((c) => c.dispatchId) } as any,
+      metadata: {
+        contractorIds: desired,
+        createdInvites: created.map((c) => c.inviteId),
+        createdDispatches: created.map((c) => c.dispatchId).filter(Boolean),
+      } as any,
     });
 
     return { kind: "ok", created };

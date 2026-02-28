@@ -1,27 +1,17 @@
-import { and, eq, or } from "drizzle-orm";
-import { db } from "@/server/db/drizzle";
-import { v4Notifications } from "@/db/schema/v4Notification";
-import { requireAdminV4 } from "@/src/auth/requireAdminV4";
+import { requireAdmin } from "@/src/adminBus";
+import { markNotificationReadById } from "@/src/services/notifications/notificationService";
 import { err, ok } from "@/src/lib/api/adminV4Response";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const authed = await requireAdminV4(req);
+  const authed = await requireAdmin(req);
   if (authed instanceof Response) return authed;
 
   const { id } = await ctx.params;
-
-  const rows = await db
-    .update(v4Notifications)
-    .set({ read: true })
-    .where(
-      and(
-        eq(v4Notifications.id, id),
-        or(eq(v4Notifications.userId, authed.adminId), eq(v4Notifications.role, "ADMIN")),
-      ),
-    )
-    .returning();
-
-  const updated = rows[0] ?? null;
+  const updated = await markNotificationReadById(id, {
+    userId: authed.adminId,
+  });
   if (!updated) return err(404, "ADMIN_V4_NOTIFICATION_NOT_FOUND", "Notification not found");
 
   return ok({ notification: updated });
