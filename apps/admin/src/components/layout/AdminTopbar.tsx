@@ -19,6 +19,7 @@ function titleForPath(pathname: string): { title: string; subtitle?: string } {
   if (p.startsWith("/users/")) return { title: "User", subtitle: "Profile / controls" };
 
   if (p === "/payouts") return { title: "Payouts", subtitle: "Financial controls" };
+  if (p === "/finances/stripe") return { title: "Stripe Gateway", subtitle: "Sync + reconciliation" };
 
   if (p === "/disputes") return { title: "Disputes" };
   if (p === "/support") return { title: "Support" };

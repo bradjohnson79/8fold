@@ -26,6 +26,11 @@ import {
   finalizePmFundingFromPaymentIntent,
   requirePmEscrowMetadata,
 } from "@/src/pm/finalizePmFunding";
+import {
+  logStripeEventIfNew,
+  markStripeEventProcessed,
+  snapshotFromWebhookEvent,
+} from "@/src/services/stripeGateway/stripeSyncService";
 
 /**
  * LOCAL DEV:
@@ -43,12 +48,13 @@ export const config = {
 };
 
 /** Events we process. Unknown types return 200 { ok: true, ignored: true }. */
-const SUPPORTED_EVENTS = new Set<Stripe.Event.Type>([
+const SUPPORTED_EVENTS = new Set<string>([
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
   "refund.updated",
   "transfer.created",
+  "transfer.reversed",
   "account.updated",
   "payout.paid",
   "checkout.session.completed",
@@ -183,6 +189,7 @@ async function handleWebhook(req: Request) {
   }
 
   webhookLog("VERIFIED", { eventId: event.id, eventType: event.type });
+  console.info("[STRIPE_WEBHOOK_RECEIVED]", { eventId: event.id, eventType: event.type });
 
   const now = new Date();
   let duplicateEvent = false;
@@ -190,6 +197,13 @@ async function handleWebhook(req: Request) {
 
   try {
     await db.transaction(async (tx) => {
+      const isNewGatewayEvent = await logStripeEventIfNew(event, tx);
+      if (!isNewGatewayEvent) {
+        duplicateEvent = true;
+        webhookLog("DUPLICATE", { eventId: event.id });
+        return;
+      }
+
       await tx
         .insert(stripeWebhookEvents)
         .values({
@@ -218,6 +232,15 @@ async function handleWebhook(req: Request) {
         webhookLog("PROCESSED", { eventId: event.id, eventType: event.type, ignored: true });
         return;
       }
+
+      await snapshotFromWebhookEvent(event, tx).catch((error) => {
+        webhookLog("FAILED", {
+          eventId: event.id,
+          eventType: event.type,
+          code: "STRIPE_SNAPSHOT_WRITE_FAILED",
+          message: error instanceof Error ? error.message : "unknown",
+        });
+      });
 
       switch (event.type) {
         case "payment_intent.succeeded": {
@@ -481,6 +504,41 @@ async function handleWebhook(req: Request) {
           }
           return;
         }
+        case "transfer.reversed": {
+          const transfer = event.data.object as Stripe.Transfer;
+          const transferId = String(transfer.id ?? "").trim() || null;
+          const jobId = typeof transfer.metadata?.jobId === "string" ? String(transfer.metadata.jobId) : null;
+          testLog({
+            eventType: event.type,
+            jobId,
+            connectedAccountId:
+              typeof transfer.destination === "string" ? transfer.destination : transfer.destination?.id ?? null,
+            transferId,
+          });
+
+          await tx.insert(auditLogs).values({
+            id: randomUUID(),
+            actorUserId: "system:stripe",
+            action: "STRIPE_TRANSFER_FAILED",
+            entityType: "Transfer",
+            entityId: transferId ?? event.id,
+            metadata: {
+              stripeWebhookEventId: event.id,
+              transferId,
+              jobId,
+              destination:
+                typeof transfer.destination === "string" ? transfer.destination : transfer.destination?.id ?? null,
+              amountCents: Number(transfer.amount ?? 0),
+              currency: String(transfer.currency ?? "").toUpperCase(),
+              sourceType: transfer.source_type ?? null,
+              sourceTransaction:
+                typeof transfer.source_transaction === "string"
+                  ? transfer.source_transaction
+                  : transfer.source_transaction?.id ?? null,
+            } as any,
+          });
+          return;
+        }
         case "payout.paid": {
           const payout = event.data.object as Stripe.Payout;
           const accountId = typeof event.account === "string" ? event.account : null;
@@ -586,6 +644,7 @@ async function handleWebhook(req: Request) {
         }
       }
     });
+    await markStripeEventProcessed(event.id).catch(() => {});
   } catch (err) {
     const ref = `stripe_wh_${randomUUID()}`;
     webhookLog("FAILED", {

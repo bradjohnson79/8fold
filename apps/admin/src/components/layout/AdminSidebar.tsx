@@ -31,6 +31,7 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
   {
     title: "Finance",
     items: [
+      { label: "Stripe Gateway", href: "/finances/stripe", match: "prefix" },
       { label: "Tax Regions", href: "/tax/regions", match: "prefix" },
       { label: "Tax Settings", href: "/tax/settings", match: "prefix" },
     ],
