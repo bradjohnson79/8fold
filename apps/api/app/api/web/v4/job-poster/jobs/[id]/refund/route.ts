@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireRoleCompletion } from "@/src/auth/requireRoleCompletion";
 import { requireV4Role } from "@/src/auth/requireV4Role";
 import { refundRoutableUnassignedJobForPoster } from "@/src/services/v4/jobPosterJobsService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
@@ -12,6 +13,8 @@ export async function POST(
     const role = await requireV4Role(req, "JOB_POSTER");
     if (role instanceof Response) return role;
     requestId = role.requestId;
+    const completionGuard = await requireRoleCompletion(role.userId, "JOB_POSTER");
+    if (completionGuard) return completionGuard;
 
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });

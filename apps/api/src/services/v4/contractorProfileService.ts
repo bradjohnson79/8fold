@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { users } from "@/db/schema/user";
+import { recordRoleTermsAcceptance } from "@/src/services/v4/roleTermsService";
 import { type V4ContractorProfileInput } from "@/src/validation/v4/contractorProfileSchema";
 import { badRequest, conflict, forbidden, internal, type V4Error } from "@/src/services/v4/v4Errors";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
@@ -242,6 +243,13 @@ export async function upsertV4ContractorProfile(
           },
         });
     });
+    await recordRoleTermsAcceptance({
+      userId,
+      role: "CONTRACTOR",
+      version: input.tosVersion,
+      acceptedAt: now,
+    });
+    console.log("Contractor saved:", userId);
   } catch (err) {
     throw mapContractorProfileDbError(err);
   }

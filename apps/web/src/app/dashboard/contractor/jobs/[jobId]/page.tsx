@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
+import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type JobDetail = {
   job: {
@@ -27,6 +29,8 @@ export default function ContractorJobDetailPage() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [progressAction, setProgressAction] = useState<"start" | "complete" | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [missingSteps, setMissingSteps] = useState<MissingStep[]>([]);
 
   const fetchJob = async () => {
     if (!jobId) return;
@@ -60,10 +64,19 @@ export default function ContractorJobDetailPage() {
         method: "POST",
         credentials: "include",
       });
-      const result = (await resp.json().catch(() => ({}))) as { ok?: boolean; error?: string | { message?: string } };
+      const result = (await resp.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string | { message?: string; code?: string; details?: { missing?: MissingStep[] } };
+      };
       if (resp.ok && result.ok) {
         await fetchJob();
       } else {
+        const missing = parseMissingSteps(result);
+        if (missing) {
+          setMissingSteps(missing);
+          setShowIncompleteModal(true);
+          return;
+        }
         const msg = typeof result?.error === "string" ? result.error : result?.error?.message;
         setProgressError(msg ?? "Failed to start job");
       }
@@ -82,10 +95,19 @@ export default function ContractorJobDetailPage() {
         method: "POST",
         credentials: "include",
       });
-      const result = (await resp.json().catch(() => ({}))) as { ok?: boolean; error?: string | { message?: string } };
+      const result = (await resp.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string | { message?: string; code?: string; details?: { missing?: MissingStep[] } };
+      };
       if (resp.ok && result.ok) {
         await fetchJob();
       } else {
+        const missing = parseMissingSteps(result);
+        if (missing) {
+          setMissingSteps(missing);
+          setShowIncompleteModal(true);
+          return;
+        }
         const msg = typeof result?.error === "string" ? result.error : result?.error?.message;
         setProgressError(msg ?? "Failed to complete job");
       }
@@ -239,6 +261,12 @@ export default function ContractorJobDetailPage() {
           Messages
         </Link>
       </div>
+      <AccountIncompleteModal
+        role="CONTRACTOR"
+        missing={missingSteps}
+        open={showIncompleteModal}
+        onClose={() => setShowIncompleteModal(false)}
+      />
     </div>
   );
 }

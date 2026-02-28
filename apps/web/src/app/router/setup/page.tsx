@@ -25,14 +25,18 @@ export default function RouterSetupPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [setupComplete, setSetupComplete] = useState(false);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const resp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const readinessResp = await fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as any;
+        const readiness = (await readinessResp.json().catch(() => null)) as any;
         if (!alive || !resp.ok || !json?.ok) return;
+        setSetupComplete(Boolean(readinessResp.ok && readiness?.roleCompletion?.complete));
         const p = json?.profile;
         if (p) {
           const name =
@@ -123,6 +127,14 @@ export default function RouterSetupPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {setupComplete ? (
+          <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Your setup is already complete. You can update your profile here any time.
+            <Link href="/dashboard/router" className="ml-2 font-semibold underline">
+              Return to dashboard
+            </Link>
+          </div>
+        ) : null}
         <h1 className="text-4xl font-bold text-gray-900">Router Setup</h1>
         <p className="text-gray-600 mt-3">Complete your profile to start routing jobs.</p>
 

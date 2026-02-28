@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { users } from "@/db/schema/user";
 import { requireV4Role } from "@/src/auth/requireV4Role";
+import { recordRoleTermsAcceptance } from "@/src/services/v4/roleTermsService";
 import { z } from "zod";
 
 const ROUTER_TOS_VERSION = "v1.0";
@@ -41,6 +42,13 @@ export async function POST(req: Request) {
       updatedAt: now,
     })
     .where(eq(users.id, authed.userId));
+
+  await recordRoleTermsAcceptance({
+    userId: authed.userId,
+    role: "ROUTER",
+    version: ROUTER_TOS_VERSION,
+    acceptedAt: now,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -12,9 +12,5 @@ export default async function DashboardEntryPage() {
     redirect("/auth/complete-registration");
   }
 
-  if (!state.acceptedTos || !state.profileComplete) {
-    redirect("/dashboard/setup");
-  }
-
   redirect(`/dashboard/${state.roleSlug}`);
 }

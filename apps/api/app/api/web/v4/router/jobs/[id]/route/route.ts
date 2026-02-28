@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requireRoleCompletion } from "@/src/auth/requireRoleCompletion";
 import { requireV4Role } from "@/src/auth/requireV4Role";
 import { routeV4Job } from "@/src/services/v4/routerRouteJobService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
     const authed = await requireV4Role(req, "ROUTER");
     if (authed instanceof Response) return authed;
     requestId = authed.requestId;
+    const completionGuard = await requireRoleCompletion(authed.userId, "ROUTER");
+    if (completionGuard) return completionGuard;
 
     const jobId = getJobIdFromUrl(req);
     if (!jobId) {

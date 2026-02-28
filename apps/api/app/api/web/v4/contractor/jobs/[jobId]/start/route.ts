@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireContractorV4 } from "@/src/auth/requireContractorV4";
+import { requireRoleCompletion } from "@/src/auth/requireRoleCompletion";
 import { startJob } from "@/src/services/v4/contractorJobService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
@@ -13,6 +14,8 @@ export async function POST(
     const ctx = await requireContractorV4(req);
     if (ctx instanceof Response) return ctx;
     requestId = ctx.requestId;
+    const completionGuard = await requireRoleCompletion(ctx.internalUser.id, "CONTRACTOR");
+    if (completionGuard) return completionGuard;
     const { jobId } = await params;
     if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
     await startJob(ctx.internalUser.id, jobId);

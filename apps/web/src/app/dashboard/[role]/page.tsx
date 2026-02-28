@@ -13,7 +13,6 @@ export default async function DashboardRolePage({ params }: { params: Promise<{ 
   const state = await getCurrentUserState();
   if (!state) redirect("/login?next=/dashboard");
   if (!state.role) redirect("/auth/complete-registration");
-  if (!state.acceptedTos || !state.profileComplete) redirect("/dashboard/setup");
 
   const { role } = await params;
   if (role !== state.roleSlug) {

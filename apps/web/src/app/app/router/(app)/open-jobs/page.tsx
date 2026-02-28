@@ -2,6 +2,8 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
+import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type RoutableJob = {
   id: string;
@@ -33,6 +35,8 @@ export default function RouterOpenJobsPage() {
 
   const [contractors, setContractors] = React.useState<EligibleContractor[]>([]);
   const [selectedContractorIds, setSelectedContractorIds] = React.useState<string[]>([]);
+  const [showIncompleteModal, setShowIncompleteModal] = React.useState(false);
+  const [missingSteps, setMissingSteps] = React.useState<MissingStep[]>([]);
 
   async function loadJobs() {
     setLoading(true);
@@ -94,7 +98,21 @@ export default function RouterOpenJobsPage() {
         body: JSON.stringify({ jobId: selectedJobId, contractorIds: selectedContractorIds }),
       });
       const json = await resp.json().catch(() => ({} as any));
-      if (!resp.ok) throw new Error(json?.error || "Failed to route");
+      const missing = parseMissingSteps(json);
+      if (missing) {
+        setMissingSteps(missing);
+        setShowIncompleteModal(true);
+        return;
+      }
+      if (!resp.ok) {
+        const message =
+          typeof json?.error === "string"
+            ? json.error
+            : typeof json?.error?.message === "string"
+              ? json.error.message
+              : "Failed to route";
+        throw new Error(message);
+      }
       router.push("/app/router/queue");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to route");
@@ -246,7 +264,12 @@ export default function RouterOpenJobsPage() {
           </div>
         )}
       </div>
+      <AccountIncompleteModal
+        role="ROUTER"
+        missing={missingSteps}
+        open={showIncompleteModal}
+        onClose={() => setShowIncompleteModal(false)}
+      />
     </>
   );
 }
-

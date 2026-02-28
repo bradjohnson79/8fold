@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
+import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type Invite = {
   id: string;
@@ -23,7 +25,6 @@ type ApiErrorBody = {
 
 export default function ContractorInvitesPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
-  const [paymentReady, setPaymentReady] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,9 +35,8 @@ export default function ContractorInvitesPage() {
           credentials: "include",
         });
         if (resp.ok) {
-          const data = (await resp.json()) as { invites?: Invite[]; paymentReady?: boolean };
+          const data = (await resp.json()) as { invites?: Invite[] };
           setInvites(Array.isArray(data.invites) ? data.invites : []);
-          setPaymentReady(Boolean(data.paymentReady));
         }
       } catch {
         setInvites([]);
@@ -69,7 +69,6 @@ export default function ContractorInvitesPage() {
               <InviteCard
                 key={inv.id}
                 invite={inv}
-                paymentReady={paymentReady}
                 onRespond={() => setInvites((prev) => prev.filter((i) => i.id !== inv.id))}
               />
             ))}
@@ -80,14 +79,11 @@ export default function ContractorInvitesPage() {
   );
 }
 
-function InviteCard({ invite, paymentReady, onRespond }: { invite: Invite; paymentReady: boolean; onRespond: () => void }) {
+function InviteCard({ invite, onRespond }: { invite: Invite; onRespond: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [paymentBlocked, setPaymentBlocked] = useState(!paymentReady);
-
-  useEffect(() => {
-    setPaymentBlocked(!paymentReady);
-  }, [paymentReady]);
+  const [missingSteps, setMissingSteps] = useState<MissingStep[]>([]);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
 
   async function handleAccept() {
     setError(null);
@@ -101,14 +97,14 @@ function InviteCard({ invite, paymentReady, onRespond }: { invite: Invite; payme
       if (resp.ok) {
         onRespond();
       } else {
-        const code = data?.error?.code ?? "";
-        const message = data?.error?.message ?? "Failed to accept";
-        if (code === "V4_PAYMENT_SETUP_REQUIRED") {
-          setPaymentBlocked(true);
-          setError("You must complete Payment Setup before accepting jobs.");
-        } else {
-          setError(message);
+        const missing = parseMissingSteps(data);
+        if (missing) {
+          setMissingSteps(missing);
+          setShowIncompleteModal(true);
+          return;
         }
+        const message = data?.error?.message ?? "Failed to accept";
+        setError(message);
       }
     } catch {
       setError("Failed to accept");
@@ -158,7 +154,7 @@ function InviteCard({ invite, paymentReady, onRespond }: { invite: Invite; payme
           <button
             type="button"
             onClick={handleAccept}
-            disabled={loading || paymentBlocked || !paymentReady}
+            disabled={loading}
             className="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Accept
@@ -174,13 +170,13 @@ function InviteCard({ invite, paymentReady, onRespond }: { invite: Invite; payme
         </div>
       </div>
 
-      {paymentBlocked || !paymentReady ? (
-        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          You must complete Payment Setup before accepting jobs. <Link href="/dashboard/contractor/payment" className="font-semibold underline">Go to Payment Setup</Link>
-        </div>
-      ) : null}
-
-      {error && !paymentBlocked ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+      <AccountIncompleteModal
+        role="CONTRACTOR"
+        missing={missingSteps}
+        open={showIncompleteModal}
+        onClose={() => setShowIncompleteModal(false)}
+      />
     </li>
   );
 }
