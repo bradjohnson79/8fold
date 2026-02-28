@@ -20,6 +20,8 @@ import { payoutMethods } from "@/db/schema/payoutMethod";
 import { auditLogs } from "@/db/schema/auditLog";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { escrows } from "@/db/schema/escrow";
+import { finalizeJobFundingFromPaymentIntent } from "@/src/payments/finalizeJobFundingFromPaymentIntent";
+import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
 import {
   finalizePmFundingFromPaymentIntent,
   requirePmEscrowMetadata,
@@ -109,15 +111,6 @@ function requireJobEscrowMetadata(metadata: Stripe.MetadataParam | null | undefi
   const jobPosterUserId = String(metadata?.jobPosterUserId ?? metadata?.posterId ?? "");
   if (type !== "job_escrow" || !jobId || !jobPosterUserId) return null;
   return { jobId, jobPosterUserId };
-}
-
-async function resolveJobIdByPaymentIntent(tx: any, paymentIntentId: string): Promise<string | null> {
-  const rows = await tx
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(eq(jobs.stripe_payment_intent_id, paymentIntentId))
-    .limit(1);
-  return rows[0]?.id ?? null;
 }
 
 export async function POST(req: Request) {
@@ -258,57 +251,51 @@ async function handleWebhook(req: Request) {
           }
 
           const meta = requireJobEscrowMetadata(pi.metadata);
-          const jobId = meta?.jobId ?? (await resolveJobIdByPaymentIntent(tx, pi.id));
-          if (!jobId) return;
+          if (!meta) {
+            logEvent({
+              level: "warn",
+              event: "stripe.webhook_missing_job_metadata",
+              route: "/api/webhooks/stripe",
+              method: "POST",
+              status: 200,
+              code: "STRIPE_METADATA_INVALID",
+              context: { eventId: event.id, eventType: event.type, paymentIntentId: pi.id },
+            });
+            return;
+          }
 
-          testLog({ eventType: event.type, jobId });
-          const currentRows = await tx
-            .select({ paymentStatus: jobs.payment_status })
-            .from(jobs)
-            .where(eq(jobs.id, jobId))
-            .limit(1);
-          const currentStatus = String(currentRows[0]?.paymentStatus ?? "").toUpperCase();
-          const shouldMarkPaid = !["FUNDS_SECURED", "FUNDED", "REFUNDED"].includes(currentStatus);
-          const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null;
-
-          await tx
-            .update(jobs)
-            .set({
-              stripe_payment_intent_status: String(pi.status ?? ""),
-              stripe_paid_at: sql`coalesce(${jobs.stripe_paid_at}, ${now})`,
-              stripe_charge_id: chargeId,
-              ...(shouldMarkPaid
-                ? {
-                    payment_status: "FUNDS_SECURED" as any,
-                    funds_secured_at: sql`coalesce(${jobs.funds_secured_at}, ${now})`,
-                    funded_at: sql`coalesce(${jobs.funded_at}, ${now})`,
-                    payment_captured_at: sql`coalesce(${jobs.payment_captured_at}, ${now})`,
-                  }
-                : {}),
-              updated_at: now,
-            } as any)
-            .where(eq(jobs.id, jobId));
-
-          await tx
-            .update(jobPayments)
-            .set({
-              stripePaymentIntentStatus: String(pi.status ?? ""),
-              stripeChargeId: chargeId,
-              status: "CAPTURED" as any,
-              escrowLockedAt: sql`coalesce(${jobPayments.escrowLockedAt}, ${now})`,
-              paymentCapturedAt: sql`coalesce(${jobPayments.paymentCapturedAt}, ${now})`,
-              updatedAt: now,
-            } as any)
-            .where(eq(jobPayments.jobId, jobId));
+          testLog({ eventType: event.type, jobId: meta.jobId });
+          const finalized = await finalizeJobFundingFromPaymentIntent(pi, {
+            route: "/api/webhooks/stripe",
+            source: "webhook",
+            webhookEventId: event.id,
+            tx,
+          });
+          if (!finalized.ok) {
+            logEvent({
+              level: "error",
+              event: "stripe.webhook_payment_finalize_failed",
+              route: "/api/webhooks/stripe",
+              method: "POST",
+              status: 200,
+              code: finalized.code,
+              context: {
+                eventId: event.id,
+                paymentIntentId: pi.id,
+                jobId: finalized.jobId,
+                traceId: finalized.traceId,
+                reason: finalized.reason,
+              },
+            });
+          }
           return;
         }
         case "payment_intent.payment_failed": {
           const pi = event.data.object as Stripe.PaymentIntent;
           const meta = requireJobEscrowMetadata(pi.metadata);
-          const jobId = meta?.jobId ?? (await resolveJobIdByPaymentIntent(tx, pi.id));
-          if (!jobId) return;
+          if (!meta) return;
 
-          testLog({ eventType: event.type, jobId });
+          testLog({ eventType: event.type, jobId: meta.jobId });
 
           await tx
             .update(jobPayments)
@@ -317,7 +304,7 @@ async function handleWebhook(req: Request) {
               status: "FAILED" as any,
               updatedAt: now,
             } as any)
-            .where(eq(jobPayments.jobId, jobId));
+            .where(eq(jobPayments.jobId, meta.jobId));
 
           await tx
             .update(jobs)
@@ -326,7 +313,7 @@ async function handleWebhook(req: Request) {
               stripe_payment_intent_status: String(pi.status ?? ""),
               updated_at: now,
             } as any)
-            .where(eq(jobs.id, jobId));
+            .where(eq(jobs.id, meta.jobId));
           return;
         }
         case "charge.refunded": {
@@ -339,7 +326,7 @@ async function handleWebhook(req: Request) {
 
           testLog({ eventType: event.type });
 
-          await tx
+          const refundedJobs = await tx
             .update(jobs)
             .set({
               payment_status: "REFUNDED" as any,
@@ -348,8 +335,13 @@ async function handleWebhook(req: Request) {
               archived: true,
               completion_flag_reason: sql`coalesce(${jobs.completion_flag_reason}, 'REFUNDED_UNASSIGNED_TIMEOUT')`,
               updated_at: now,
-            })
-            .where(eq(jobs.stripe_payment_intent_id, paymentIntentId));
+            } as any)
+            .where(eq(jobs.stripe_payment_intent_id, paymentIntentId))
+            .returning({
+              id: jobs.id,
+              jobPosterUserId: jobs.job_poster_user_id,
+            });
+
           await tx
             .update(jobPayments)
             .set({
@@ -359,6 +351,50 @@ async function handleWebhook(req: Request) {
               updatedAt: now,
             } as any)
             .where(eq(jobPayments.stripePaymentIntentId, paymentIntentId));
+
+          for (const job of refundedJobs) {
+            if (job.jobPosterUserId) {
+              await createNotification(
+                {
+                  userId: String(job.jobPosterUserId),
+                  role: "JOB_POSTER",
+                  type: "JOB_AUTO_REFUNDED",
+                  title: "Automatic refund processed",
+                  message: "A Stripe refund was processed for your job payment.",
+                  entityType: "REFUND",
+                  entityId: job.id,
+                  priority: "HIGH",
+                  metadata: {
+                    stripeWebhookEventId: event.id,
+                    stripePaymentIntentId: paymentIntentId,
+                    chargeId: charge.id,
+                    source: "stripe_webhook",
+                  },
+                  idempotencyKey: `job_auto_refunded:${event.id}:${job.id}:poster`,
+                },
+                tx,
+              );
+            }
+
+            await createAdminNotifications(
+              {
+                type: "JOB_AUTO_REFUNDED",
+                title: "Automatic refund processed",
+                message: `Stripe processed an automatic refund for job ${job.id}.`,
+                entityType: "REFUND",
+                entityId: job.id,
+                priority: "HIGH",
+                metadata: {
+                  stripeWebhookEventId: event.id,
+                  stripePaymentIntentId: paymentIntentId,
+                  chargeId: charge.id,
+                  source: "stripe_webhook",
+                },
+                idempotencyKey: `job_auto_refunded:${event.id}:${job.id}`,
+              },
+              tx,
+            );
+          }
           return;
         }
         case "refund.updated": {
