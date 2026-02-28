@@ -1,11 +1,11 @@
-import { requireAdmin } from "@/src/adminBus";
+import { requireAdminIdentity } from "@/src/adminBus/auth";
 import { listNotifications } from "@/src/services/notifications/notificationService";
 import { ok } from "@/src/lib/api/adminV4Response";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const authed = await requireAdmin(req);
+  const authed = await requireAdminIdentity(req);
   if (authed instanceof Response) return authed;
 
   try {

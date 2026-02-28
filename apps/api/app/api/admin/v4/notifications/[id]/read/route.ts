@@ -1,11 +1,11 @@
-import { requireAdmin } from "@/src/adminBus";
+import { requireAdminIdentity } from "@/src/adminBus/auth";
 import { markNotificationReadById } from "@/src/services/notifications/notificationService";
 import { err, ok } from "@/src/lib/api/adminV4Response";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const authed = await requireAdmin(req);
+  const authed = await requireAdminIdentity(req);
   if (authed instanceof Response) return authed;
 
   const { id } = await ctx.params;

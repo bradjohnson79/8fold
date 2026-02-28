@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
-import { getAdminAuthHeader } from "@/server/adminAuth";
+import { getAdminSessionTokenFromRequest } from "@/server/adminAuth";
+import { fetchWithAdminTimeout } from "@/server/upstreamFetch";
 
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   try {
     const apiOrigin = getValidatedApiOrigin();
-    const authorization = await getAdminAuthHeader(req);
+    const token = getAdminSessionTokenFromRequest(req);
+    const inboundCookie = req.headers.get("cookie") ?? "";
+    if (!token && !inboundCookie) {
+      throw Object.assign(new Error("Unauthorized"), { status: 401 });
+    }
     const { path } = await ctx.params;
     const pathSuffix = Array.isArray(path) ? path.join("/") : "";
     const target = `${apiOrigin}/api/admin/v4/${pathSuffix}`;
@@ -16,12 +21,17 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
 
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : await req.text();
 
-    const resp = await fetch(url.toString(), {
+    // Keep admin auth forwarding explicit and canonical:
+    // pass bearer token plus raw cookie when present.
+    const headers: Record<string, string> = {
+      "content-type": req.headers.get("content-type") ?? "application/json",
+    };
+    if (token) headers.authorization = `Bearer ${token}`;
+    if (inboundCookie) headers.cookie = inboundCookie;
+
+    const resp = await fetchWithAdminTimeout(url.toString(), {
       method: req.method,
-      headers: {
-        authorization,
-        "content-type": req.headers.get("content-type") ?? "application/json",
-      },
+      headers,
       body,
       cache: "no-store",
     });
@@ -32,12 +42,18 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
     return out;
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : 401;
+    const message =
+      status === 401
+        ? "Authentication required."
+        : status === 504
+          ? "Upstream timeout."
+          : "Request failed.";
     return NextResponse.json(
       {
         ok: false,
         error: {
           code: status === 401 ? "UNAUTHORIZED" : "UPSTREAM_ERROR",
-          message: status === 401 ? "Authentication required." : "Request failed.",
+          message,
         },
       },
       { status },
