@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
 import { getAdminAuthHeader } from "@/server/adminAuth";
+import { fetchWithAdminTimeout } from "@/server/upstreamFetch";
 
 export async function GET(req: Request) {
   try {
@@ -8,7 +9,7 @@ export async function GET(req: Request) {
     const authorization = await getAdminAuthHeader(req);
     const url = `${apiOrigin}/api/admin/v4/auth/me`;
 
-    const resp = await fetch(url, {
+    const resp = await fetchWithAdminTimeout(url, {
       method: "GET",
       headers: { authorization },
       cache: "no-store",
@@ -20,12 +21,18 @@ export async function GET(req: Request) {
     return out;
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : 401;
+    const message =
+      status === 401
+        ? "Authentication required."
+        : status === 504
+          ? "Upstream timeout."
+          : "Failed to load admin profile.";
     return NextResponse.json(
       {
         ok: false,
         error: {
           code: status === 401 ? "UNAUTHORIZED" : "UPSTREAM_ERROR",
-          message: status === 401 ? "Authentication required." : "Failed to load admin profile.",
+          message,
         },
       },
       { status },

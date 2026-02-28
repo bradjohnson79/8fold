@@ -1,5 +1,6 @@
 import { getValidatedApiOrigin } from "./env";
 import { getAdminAuthHeader } from "./adminAuth";
+import { fetchWithAdminTimeout } from "./upstreamFetch";
 
 type ApiOk<T> = { ok: true; data: T };
 type ApiErr = { ok: false; error?: string | { code?: string; message?: string }; message?: string };
@@ -25,15 +26,22 @@ export async function adminApiFetch<T>(
   const url = `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
   const authorization = await getAdminAuthHeader();
 
-  const resp = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      authorization,
-      "content-type": (init?.headers as any)?.["content-type"] ?? "application/json",
-    },
-    cache: "no-store",
-  });
+  let resp: Response;
+  try {
+    resp = await fetchWithAdminTimeout(url, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        authorization,
+        "content-type": (init?.headers as any)?.["content-type"] ?? "application/json",
+      },
+      cache: "no-store",
+    });
+  } catch (err: any) {
+    const status = typeof err?.status === "number" ? err.status : 502;
+    const message = String(err?.message ?? "Upstream request failed.");
+    throw Object.assign(new Error(message), { status });
+  }
 
   const json = (await resp.json().catch(() => null)) as (ApiOk<T> & ApiErr) | null;
   if (!resp.ok || !json) {

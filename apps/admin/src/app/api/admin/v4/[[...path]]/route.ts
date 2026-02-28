@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
 import { getAdminSessionTokenFromRequest } from "@/server/adminAuth";
+import { fetchWithAdminTimeout } from "@/server/upstreamFetch";
 
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   try {
@@ -28,7 +29,7 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
     if (token) headers.authorization = `Bearer ${token}`;
     if (inboundCookie) headers.cookie = inboundCookie;
 
-    const resp = await fetch(url.toString(), {
+    const resp = await fetchWithAdminTimeout(url.toString(), {
       method: req.method,
       headers,
       body,
@@ -41,12 +42,18 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
     return out;
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : 401;
+    const message =
+      status === 401
+        ? "Authentication required."
+        : status === 504
+          ? "Upstream timeout."
+          : "Request failed.";
     return NextResponse.json(
       {
         ok: false,
         error: {
           code: status === 401 ? "UNAUTHORIZED" : "UPSTREAM_ERROR",
-          message: status === 401 ? "Authentication required." : "Request failed.",
+          message,
         },
       },
       { status },
