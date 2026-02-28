@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
-import { getAdminAuthHeader } from "@/server/adminAuth";
+import { getAdminSessionTokenFromRequest } from "@/server/adminAuth";
 
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   try {
     const apiOrigin = getValidatedApiOrigin();
-    const authorization = await getAdminAuthHeader(req);
+    const token = getAdminSessionTokenFromRequest(req);
+    const inboundCookie = req.headers.get("cookie") ?? "";
+    if (!token && !inboundCookie) {
+      throw Object.assign(new Error("Unauthorized"), { status: 401 });
+    }
     const { path } = await ctx.params;
     const pathSuffix = Array.isArray(path) ? path.join("/") : "";
     const target = `${apiOrigin}/api/admin/v4/${pathSuffix}`;
@@ -16,12 +20,15 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
 
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : await req.text();
 
+    const headers: Record<string, string> = {
+      "content-type": req.headers.get("content-type") ?? "application/json",
+    };
+    if (token) headers.authorization = `Bearer ${token}`;
+    if (inboundCookie) headers.cookie = inboundCookie;
+
     const resp = await fetch(url.toString(), {
       method: req.method,
-      headers: {
-        authorization,
-        "content-type": req.headers.get("content-type") ?? "application/json",
-      },
+      headers,
       body,
       cache: "no-store",
     });

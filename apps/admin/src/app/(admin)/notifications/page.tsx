@@ -72,7 +72,10 @@ export default function NotificationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/admin/v4/notifications${toQuery(filters)}`, { cache: "no-store" });
+      const resp = await fetch(`/api/admin/v4/notifications${toQuery(filters)}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
       if (resp.status === 401) {
         window.location.href = "/login?next=/notifications";
         return;
@@ -101,7 +104,10 @@ export default function NotificationsPage() {
 
   async function markRead(id: string) {
     try {
-      const resp = await fetch(`/api/admin/v4/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+      const resp = await fetch(`/api/admin/v4/notifications/${encodeURIComponent(id)}/read`, {
+        method: "POST",
+        credentials: "include",
+      });
       if (resp.status === 401) {
         window.location.href = "/login?next=/notifications";
         return;
