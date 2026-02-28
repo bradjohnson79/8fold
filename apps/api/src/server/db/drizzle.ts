@@ -20,7 +20,10 @@ const DB_CONNECTION_TIMEOUT_MS = parsePositiveInt(process.env.DB_CONNECTION_TIME
 const DB_QUERY_TIMEOUT_MS = parsePositiveInt(process.env.DB_QUERY_TIMEOUT_MS, 10000);
 const DB_STATEMENT_TIMEOUT_MS = parsePositiveInt(process.env.DB_STATEMENT_TIMEOUT_MS, 10000);
 const DB_IDLE_TIMEOUT_MS = parsePositiveInt(process.env.DB_IDLE_TIMEOUT_MS, 30000);
-const DB_POOL_MAX = Math.min(Math.max(parsePositiveInt(process.env.POOL_MAX, 1), 1), 5);
+const DB_POOL_MAX = Math.min(
+  Math.max(parsePositiveInt(process.env.POOL_MAX ?? process.env.DB_POOL_MAX, 1), 1),
+  5,
+);
 
 // Temporary diagnostic: log parsed host (no credentials). Remove after env fix.
 (function logDbUrlDiagnostic() {

@@ -8,6 +8,7 @@ import { adminApiFetch } from "@/server/adminApiV4";
 validateAdminEnv();
 
 export default async function AdminAppLayout({ children }: { children: React.ReactNode }) {
+  const fallbackTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" = "ADMIN_OPERATOR";
   try {
     const me = await adminApiFetch<{
       admin: { id: string; email: string; role: string };
@@ -20,7 +21,7 @@ export default async function AdminAppLayout({ children }: { children: React.Rea
     return <AdminLayout adminEmail={adminEmail} adminTier={tier as any}>{children}</AdminLayout>;
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : null;
-    // Instrumentation: log before redirect/degrade so Vercel logs show the actual error
+    // Instrumentation: log before redirect/fallback so Vercel logs show the actual error.
     console.error("[ADMIN_LAYOUT_ERROR]", {
       message: err?.message,
       status,
@@ -29,8 +30,12 @@ export default async function AdminAppLayout({ children }: { children: React.Rea
     });
     if (status === 401) redirect("/login");
     if (status === 403) redirect("/403");
-    // Non-auth upstream failures (timeout/network/5xx) should not hard-crash SSR layout.
-    // Degrade gracefully and let child pages render their own data/error states.
-    return <AdminLayout adminEmail={null} adminTier="ADMIN_OPERATOR">{children}</AdminLayout>;
+
+    // Non-auth upstream issues (timeouts/5xx/network) must not crash SSR layout render.
+    console.warn("[ADMIN_LAYOUT_NON_FATAL]", {
+      status,
+      message: err?.message,
+    });
+    return <AdminLayout adminEmail={null} adminTier={fallbackTier}>{children}</AdminLayout>;
   }
 }
