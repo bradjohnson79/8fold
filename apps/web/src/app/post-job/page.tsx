@@ -6,6 +6,8 @@ import { useAuth } from "@clerk/nextjs";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { GoogleAddressAutocomplete } from "@/components/GoogleAddressAutocomplete";
+import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
+import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type TradeMeta = {
   canonical: string[];
@@ -175,6 +177,8 @@ export default function PostJobPage() {
   const [working, setWorking] = useState(false);
   const [isAppraising, setIsAppraising] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [incompleteMissing, setIncompleteMissing] = useState<MissingStep[]>([]);
 
   const stripePromise = useMemo(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -566,7 +570,18 @@ export default function PostJobPage() {
         method: "POST",
         headers: authHeader,
       });
-      const json = (await resp.json().catch(() => ({}))) as { success?: boolean; jobId?: string; message?: string };
+      const json = (await resp.json().catch(() => ({}))) as {
+        success?: boolean;
+        jobId?: string;
+        message?: string;
+        error?: { code?: string; message?: string; details?: { missing?: MissingStep[] } };
+      };
+      const missing = parseMissingSteps(json);
+      if (missing) {
+        setIncompleteMissing(missing);
+        setShowIncompleteModal(true);
+        return;
+      }
       if (!resp.ok || !json.success || !json.jobId) {
         throw new Error(getApiErrorMessage(json, "Failed to submit job."));
       }
@@ -924,6 +939,12 @@ export default function PostJobPage() {
           </div>
         </div>
       ) : null}
+      <AccountIncompleteModal
+        role="JOB_POSTER"
+        missing={incompleteMissing}
+        open={showIncompleteModal}
+        onClose={() => setShowIncompleteModal(false)}
+      />
     </div>
   );
 }
