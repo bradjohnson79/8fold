@@ -227,14 +227,23 @@ async function markSimulatedApproval(args: {
         .where(eq(contractorProfilesV4.userId, args.userId)),
     ]);
 
+    // Best-effort mirror into legacy Contractor table.
+    // This must never block dev simulation success.
     if (lookupEmail) {
-      await db
-        .update(contractors)
-        .set({
-          stripeAccountId: args.stripeAccountId,
-          stripePayoutsEnabled: true,
-        } as any)
-        .where(sql`lower(${contractors.email}) = ${lookupEmail}`);
+      try {
+        await db
+          .update(contractors)
+          .set({
+            stripeAccountId: args.stripeAccountId,
+            stripePayoutsEnabled: true,
+          } as any)
+          .where(sql`lower(${contractors.email}) = ${lookupEmail}`);
+      } catch (err) {
+        console.warn("[stripe-sim] contractor legacy mirror update failed; continuing", {
+          userId: args.userId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 }
