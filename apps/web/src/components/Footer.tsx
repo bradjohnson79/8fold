@@ -44,18 +44,28 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/how-to-earn" className="text-gray-600 hover:text-gray-900 text-sm">
+                  How It Works
+                </Link>
+              </li>
+              <li>
                 <Link href="/support" className="text-gray-600 hover:text-gray-900 text-sm">
                   Support
                 </Link>
               </li>
               <li>
-                <Link href="/privacy" className="text-gray-600 hover:text-gray-900 text-sm">
-                  Privacy Policy
+                <Link href="/media" className="text-gray-600 hover:text-gray-900 text-sm">
+                  Media
                 </Link>
               </li>
               <li>
                 <Link href="/terms" className="text-gray-600 hover:text-gray-900 text-sm">
-                  Terms &amp; Conditions
+                  Terms
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="text-gray-600 hover:text-gray-900 text-sm">
+                  Privacy
                 </Link>
               </li>
             </ul>
