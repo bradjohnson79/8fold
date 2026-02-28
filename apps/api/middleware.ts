@@ -1,19 +1,25 @@
 import { NextResponse } from "next/server";
 import { getAdminOrigin, getWebOrigin, logBootConfigOnce } from "./src/server/bootConfig";
 
-logBootConfigOnce();
-
-// Admin UI is served from the configured admin origin.
-// This middleware only applies to direct /api/admin/* calls to apps/api.
-const ADMIN_ORIGIN = getAdminOrigin();
-const WEB_ORIGIN = getWebOrigin();
+// Health endpoints bypass middleware entirely (no boot config, no CORS).
+// Use for diagnostics: if these fail, domain/root/matcher may be wrong.
+const HEALTH_PATHS = ["/healthz", "/api/health/noop"];
 
 export function middleware(req: Request) {
   const url = new URL(req.url);
-  const isAdminApi = url.pathname.startsWith("/api/admin/");
+  const path = url.pathname;
+  if (HEALTH_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
+    return NextResponse.next();
+  }
+
+  logBootConfigOnce();
+  const ADMIN_ORIGIN = getAdminOrigin();
+  const WEB_ORIGIN = getWebOrigin();
+
+  const isAdminApi = path.startsWith("/api/admin/");
   const isWebApi = url.pathname.startsWith("/api/web/");
-  const isJobApi = url.pathname.startsWith("/api/job/");
-  const isJobDraftApi = url.pathname.startsWith("/api/job-draft/");
+  const isJobApi = path.startsWith("/api/job/");
+  const isJobDraftApi = path.startsWith("/api/job-draft/");
   const isBrowserApi = isWebApi || isJobApi || isJobDraftApi;
 
   if (!isAdminApi && !isBrowserApi) {
