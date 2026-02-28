@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     const result = await routeV4Job(authed.userId, jobId, parsed.data.contractorIds);
 
     if (result.kind === "ok") {
-      return NextResponse.json({ ok: true, created: result.created }, { status: 200 });
+      return NextResponse.json({ ok: true, created: result.created, routingStatusLabel: result.routingStatusLabel }, { status: 200 });
     }
     if (result.kind === "not_found") {
       return NextResponse.json(toV4ErrorResponse({ status: 404, code: "V4_NOT_FOUND", message: "Not found" } as V4Error, requestId), { status: 404 });
@@ -74,12 +74,6 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    if (result.kind === "pricing_unlocked") {
-      return NextResponse.json(
-        toV4ErrorResponse({ status: 409, code: "V4_PRICING_UNLOCKED", message: "Job pricing is not locked" } as V4Error, requestId),
-        { status: 409 },
-      );
-    }
     if (result.kind === "missing_job_coords") {
       return NextResponse.json(
         toV4ErrorResponse({ status: 409, code: "V4_MISSING_COORDS", message: "Job location coordinates are missing" } as V4Error, requestId),
@@ -92,7 +86,7 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    if (result.kind === "contractor_missing_coords" || result.kind === "contractor_not_eligible") {
+    if (result.kind === "contractor_not_eligible") {
       return NextResponse.json(
         toV4ErrorResponse({ status: 409, code: "V4_CONTRACTOR_NOT_ELIGIBLE", message: "Contractor not eligible" } as V4Error, requestId),
         { status: 409 },

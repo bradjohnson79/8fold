@@ -10,10 +10,14 @@ type Invite = {
   jobId: string;
   routeId: string;
   status: string;
+  statusLabel?: string;
   createdAt: string;
   title?: string;
-  scope?: string;
+  tradeCategory?: string;
+  city?: string;
   region?: string;
+  appraisalTotal?: number;
+  appraisalTotalCents?: number;
 };
 
 type ApiErrorBody = {
@@ -79,6 +83,11 @@ export default function ContractorInvitesPage() {
   );
 }
 
+function formatMoney(centsLike: number | null | undefined) {
+  const cents = Math.max(0, Number(centsLike ?? 0) || 0);
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 function InviteCard({ invite, onRespond }: { invite: Invite; onRespond: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,8 +149,9 @@ function InviteCard({ invite, onRespond }: { invite: Invite; onRespond: () => vo
         <div>
           <h3 className="font-semibold">{invite.title ?? "Job"}</h3>
           <p className="mt-1 text-sm text-gray-500">
-            {invite.region ?? ""} {invite.scope ?? ""}
+            {invite.tradeCategory ?? "General"} • {invite.city ?? "Unknown city"}{invite.region ? `, ${invite.region}` : ""}
           </p>
+          <p className="mt-1 text-sm text-gray-600">Appraisal Total: {formatMoney(invite.appraisalTotalCents ?? invite.appraisalTotal)}</p>
           <p className="mt-1 text-xs text-gray-400">Invited {new Date(invite.createdAt).toLocaleString()}</p>
         </div>
         <div className="flex gap-2">

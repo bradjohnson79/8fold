@@ -25,11 +25,14 @@ export async function getV4RouterAvailableJobs(userId: string) {
       status: jobs.status,
       title: jobs.title,
       scope: jobs.scope,
+      city: jobs.city,
       region: jobs.region,
       postedAt: jobs.posted_at,
       serviceType: jobs.service_type,
       tradeCategory: jobs.trade_category,
       jobType: jobs.job_type,
+      amountCents: jobs.amount_cents,
+      totalAmountCents: jobs.total_amount_cents,
       contractorPayoutCents: jobs.contractor_payout_cents,
       routerEarningsCents: jobs.router_earnings_cents,
       brokerFeeCents: jobs.broker_fee_cents,
@@ -66,12 +69,23 @@ export async function getV4RouterAvailableJobs(userId: string) {
       status: j.status,
       title: j.title,
       scope: j.scope,
+      city: j.city,
       region: j.region,
+      countryCode,
+      regionCode,
       postedAt: j.postedAt ? j.postedAt.toISOString() : "",
+      createdAt: j.postedAt ? j.postedAt.toISOString() : "",
       serviceType: j.serviceType,
       tradeCategory: j.tradeCategory,
       jobType: j.jobType,
+      urbanOrRegional: j.jobType === "urban" ? "Urban" : "Regional",
       budgetCents: jobPosterPaysCents,
+      appraisalTotal:
+        Number((j.totalAmountCents as any) ?? 0) > 0
+          ? Number((j.totalAmountCents as any) ?? 0)
+          : Number((j.amountCents as any) ?? 0) > 0
+            ? Number((j.amountCents as any) ?? 0)
+            : jobPosterPaysCents,
       laborTotalCents: j.laborTotalCents,
       materialsTotalCents: j.materialsTotalCents,
       transactionFeeCents: j.transactionFeeCents,
