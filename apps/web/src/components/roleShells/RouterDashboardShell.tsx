@@ -9,6 +9,7 @@ export function RouterDashboardShell({ children }: { children: React.ReactNode }
     { href: "/dashboard/router/jobs/available", label: "Available Jobs" },
     { href: "/dashboard/router/jobs/routed", label: "Routed Jobs" },
     { href: "/dashboard/router/messages", label: "Messages" },
+    { href: "/dashboard/router/notifications", label: "Notifications" },
     { href: "/dashboard/router/profile", label: "Profile" },
     { href: "/dashboard/router/payment", label: "Payment Setup" },
     { href: "/dashboard/router/support", label: "Support" },

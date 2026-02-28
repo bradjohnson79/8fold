@@ -1,28 +1,51 @@
-import { and, desc, eq, or } from "drizzle-orm";
-import { db } from "@/server/db/drizzle";
-import { v4Notifications } from "@/db/schema/v4Notification";
-import { requireAdminV4 } from "@/src/auth/requireAdminV4";
+import { requireAdmin } from "@/src/adminBus";
+import { listNotifications } from "@/src/services/notifications/notificationService";
 import { ok } from "@/src/lib/api/adminV4Response";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
-  const authed = await requireAdminV4(req);
+  const authed = await requireAdmin(req);
   if (authed instanceof Response) return authed;
 
-  const { searchParams } = new URL(req.url);
-  const priority = String(searchParams.get("priority") ?? "").trim();
-  const read = String(searchParams.get("read") ?? "").trim();
+  try {
+    const { searchParams } = new URL(req.url);
+    const priority = String(searchParams.get("priority") ?? "").trim();
+    const type = String(searchParams.get("type") ?? "").trim();
+    const entityType = String(searchParams.get("entity_type") ?? "").trim();
+    const read = String(searchParams.get("read") ?? "").trim();
+    const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+    const pageSize = Math.max(1, Math.min(100, Number(searchParams.get("pageSize") ?? "25") || 25));
 
-  const where = [or(eq(v4Notifications.userId, authed.adminId), eq(v4Notifications.role, "ADMIN"))] as any[];
-  if (priority) where.push(eq(v4Notifications.priority, priority));
-  if (read === "true") where.push(eq(v4Notifications.read, true));
-  if (read === "false") where.push(eq(v4Notifications.read, false));
+    const readState = read === "true" ? true : read === "false" ? false : null;
+    const data = await listNotifications({
+      userId: authed.adminId,
+      read: readState,
+      priority: priority || null,
+      type: type || null,
+      entityType: entityType || null,
+      page,
+      pageSize,
+    });
 
-  const rows = await db
-    .select()
-    .from(v4Notifications)
-    .where(and(...where))
-    .orderBy(desc(v4Notifications.createdAt))
-    .limit(200);
-
-  return ok({ notifications: rows });
+    return ok({
+      notifications: data.rows,
+      rows: data.rows,
+      totalCount: data.totalCount,
+      unreadCount: data.unreadCount,
+      page: data.page,
+      pageSize: data.pageSize,
+    });
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: "ADMIN_V4_NOTIFICATIONS_FAILED",
+          message: error instanceof Error ? error.message : "Failed to load notifications",
+        },
+      }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    );
+  }
 }
