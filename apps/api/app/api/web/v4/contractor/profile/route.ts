@@ -35,8 +35,8 @@ export async function PUT(req: Request) {
       );
     }
     const identity = await getClerkIdentity(role.clerkUserId);
-    await upsertV4ContractorProfile(role.userId, parsed.data, identity);
-    return NextResponse.json({ ok: true }, { status: 200 });
+    const contractor = await upsertV4ContractorProfile(role.userId, parsed.data, identity);
+    return NextResponse.json({ ok: true, contractor }, { status: 200 });
   } catch (err) {
     console.error("V4_CONTRACTOR_PROFILE_PUT_ERROR", { requestId, err });
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_CONTRACTOR_PROFILE_SAVE_FAILED");
