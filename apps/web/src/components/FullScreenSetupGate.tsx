@@ -27,10 +27,10 @@ export function FullScreenSetupGate() {
             You must complete your profile before accessing your dashboard.
           </p>
           <Link
-            href="/job-poster/setup"
+            href="/dashboard/job-poster/profile"
             className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-8fold-green px-4 py-2.5 text-sm font-semibold text-white hover:bg-8fold-green-dark"
           >
-            Complete Setup
+            Complete Profile
           </Link>
         </div>
       </div>

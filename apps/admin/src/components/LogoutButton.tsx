@@ -10,7 +10,11 @@ export function LogoutButton() {
     setLoading(true);
     setError(null);
     try {
-      await fetch("/api/admin/logout", { method: "POST" });
+      const resp = await fetch("/api/admin/auth/logout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      if (!resp.ok) throw new Error(`Logout failed (${resp.status})`);
       window.location.href = "/login";
     } catch (e) {
       console.error("[ADMIN:logout:client:error]", {
@@ -18,6 +22,7 @@ export function LogoutButton() {
         cause: e instanceof Error ? e.message : "Unknown error",
       });
       setError("Logout failed. Please try again.");
+      window.location.href = "/login";
     } finally {
       setLoading(false);
     }
@@ -42,9 +47,8 @@ export function LogoutButton() {
           cursor: loading ? "default" : "pointer",
         }}
       >
-        {loading ? "Logging out…" : "Logout"}
+        {loading ? "Logging out..." : "Logout"}
       </button>
     </div>
   );
 }
-

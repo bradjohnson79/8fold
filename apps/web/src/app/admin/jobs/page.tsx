@@ -109,6 +109,7 @@ function adminStatusLabel(s: AdminJobStatusFilter) {
 }
 
 function jobStatusLabel(s: Job["status"]) {
+  if (s === "OPEN_FOR_ROUTING") return "Customer approved (awaiting router)";
   if (s === "ASSIGNED") return "Assigned";
   if (s === "IN_PROGRESS") return "In progress";
   if (s === "CONTRACTOR_COMPLETED") return "Contractor completed";
@@ -116,7 +117,6 @@ function jobStatusLabel(s: Job["status"]) {
   if (s === "CUSTOMER_REJECTED") return "Customer rejected";
   if (s === "COMPLETION_FLAGGED") return "Flagged / hold";
   if (s === "COMPLETED_APPROVED") return "Completed approved";
-  if (s === "OPEN_FOR_ROUTING") return "Open for routing";
   if (s === "PUBLISHED") return "Published";
   return s;
 }
@@ -863,7 +863,7 @@ export default function JobsAdminPage() {
               </div>
 
               <div style={{ minWidth: 340, display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {j.status === "PUBLISHED" && !j.archived ? (
+                {j.status === "OPEN_FOR_ROUTING" && !j.archived ? (
                   <>
                     <select
                       value={assigning[j.id] ?? ""}
@@ -910,4 +910,3 @@ export default function JobsAdminPage() {
     </main>
   );
 }
-

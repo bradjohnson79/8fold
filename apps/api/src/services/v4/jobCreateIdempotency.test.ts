@@ -131,8 +131,8 @@ describe("V4 job create idempotency", () => {
 
     const { createV4Job } = await import("@/src/services/v4/jobCreateService");
     const input = buildInput();
-    const first = await createV4Job(input as any, "user_1", "idem-key-1");
-    const second = await createV4Job(input as any, "user_1", "idem-key-1");
+    const first = (await createV4Job(input as any, "user_1", "idem-key-1")) as { jobId: string };
+    const second = (await createV4Job(input as any, "user_1", "idem-key-1")) as { jobId: string };
 
     expect(first.jobId).toBeTruthy();
     expect(second.jobId).toBe(first.jobId);

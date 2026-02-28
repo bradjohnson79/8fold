@@ -1,22 +1,14 @@
 import { NextResponse } from "next/server";
-import { getValidatedApiOrigin } from "@/server/env";
 
-export async function GET(req: Request) {
-  const apiOrigin = getValidatedApiOrigin();
-  const url = `${apiOrigin}/api/admin/me`;
-
-  const resp = await fetch(url, {
-    method: "GET",
-    headers: {
-      // Forward admin_session cookie to the API (browser cannot call API directly).
-      cookie: req.headers.get("cookie") ?? "",
+export async function GET() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: {
+        code: "ADMIN_LEGACY_AUTH_GONE",
+        message: "Legacy admin auth route is retired. Use /api/admin/v4/auth/me.",
+      },
     },
-    cache: "no-store",
-  });
-
-  const text = await resp.text();
-  const res = new NextResponse(text, { status: resp.status });
-  res.headers.set("content-type", resp.headers.get("content-type") ?? "application/json");
-  return res;
+    { status: 410 },
+  );
 }
-

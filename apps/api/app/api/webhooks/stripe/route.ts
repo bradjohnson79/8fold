@@ -21,6 +21,7 @@ import { auditLogs } from "@/db/schema/auditLog";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { escrows } from "@/db/schema/escrow";
 import { finalizeJobFundingFromPaymentIntent } from "@/src/payments/finalizeJobFundingFromPaymentIntent";
+import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
 import {
   finalizePmFundingFromPaymentIntent,
   requirePmEscrowMetadata,
@@ -46,6 +47,7 @@ const SUPPORTED_EVENTS = new Set<Stripe.Event.Type>([
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
+  "refund.updated",
   "transfer.created",
   "account.updated",
   "payout.paid",
@@ -306,7 +308,11 @@ async function handleWebhook(req: Request) {
 
           await tx
             .update(jobs)
-            .set({ payment_status: "FAILED" as any })
+            .set({
+              payment_status: "FAILED" as any,
+              stripe_payment_intent_status: String(pi.status ?? ""),
+              updated_at: now,
+            } as any)
             .where(eq(jobs.id, meta.jobId));
           return;
         }
@@ -320,10 +326,108 @@ async function handleWebhook(req: Request) {
 
           testLog({ eventType: event.type });
 
+          const refundedJobs = await tx
+            .update(jobs)
+            .set({
+              payment_status: "REFUNDED" as any,
+              stripe_refunded_at: sql`coalesce(${jobs.stripe_refunded_at}, ${now})`,
+              refunded_at: sql`coalesce(${jobs.refunded_at}, ${now})`,
+              archived: true,
+              completion_flag_reason: sql`coalesce(${jobs.completion_flag_reason}, 'REFUNDED_UNASSIGNED_TIMEOUT')`,
+              updated_at: now,
+            } as any)
+            .where(eq(jobs.stripe_payment_intent_id, paymentIntentId))
+            .returning({
+              id: jobs.id,
+              jobPosterUserId: jobs.job_poster_user_id,
+            });
+
+          await tx
+            .update(jobPayments)
+            .set({
+              status: "REFUNDED" as any,
+              refundedAt: sql`coalesce(${jobPayments.refundedAt}, ${now})`,
+              refundIssuedAt: sql`coalesce(${jobPayments.refundIssuedAt}, ${now})`,
+              updatedAt: now,
+            } as any)
+            .where(eq(jobPayments.stripePaymentIntentId, paymentIntentId));
+
+          for (const job of refundedJobs) {
+            if (job.jobPosterUserId) {
+              await createNotification(
+                {
+                  userId: String(job.jobPosterUserId),
+                  role: "JOB_POSTER",
+                  type: "JOB_AUTO_REFUNDED",
+                  title: "Automatic refund processed",
+                  message: "A Stripe refund was processed for your job payment.",
+                  entityType: "REFUND",
+                  entityId: job.id,
+                  priority: "HIGH",
+                  metadata: {
+                    stripeWebhookEventId: event.id,
+                    stripePaymentIntentId: paymentIntentId,
+                    chargeId: charge.id,
+                    source: "stripe_webhook",
+                  },
+                  idempotencyKey: `job_auto_refunded:${event.id}:${job.id}:poster`,
+                },
+                tx,
+              );
+            }
+
+            await createAdminNotifications(
+              {
+                type: "JOB_AUTO_REFUNDED",
+                title: "Automatic refund processed",
+                message: `Stripe processed an automatic refund for job ${job.id}.`,
+                entityType: "REFUND",
+                entityId: job.id,
+                priority: "HIGH",
+                metadata: {
+                  stripeWebhookEventId: event.id,
+                  stripePaymentIntentId: paymentIntentId,
+                  chargeId: charge.id,
+                  source: "stripe_webhook",
+                },
+                idempotencyKey: `job_auto_refunded:${event.id}:${job.id}`,
+              },
+              tx,
+            );
+          }
+          return;
+        }
+        case "refund.updated": {
+          const refund = event.data.object as Stripe.Refund;
+          const paymentIntentId =
+            typeof refund.payment_intent === "string"
+              ? refund.payment_intent
+              : (refund.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
+          if (!paymentIntentId) return;
+
+          testLog({ eventType: event.type });
+
           await tx
             .update(jobs)
-            .set({ payment_status: "REFUNDED" as any, refunded_at: now })
+            .set({
+              payment_status: "REFUNDED" as any,
+              stripe_refunded_at: sql`coalesce(${jobs.stripe_refunded_at}, ${now})`,
+              refunded_at: sql`coalesce(${jobs.refunded_at}, ${now})`,
+              archived: true,
+              completion_flag_reason: sql`coalesce(${jobs.completion_flag_reason}, 'REFUNDED_UNASSIGNED_TIMEOUT')`,
+              updated_at: now,
+            } as any)
             .where(eq(jobs.stripe_payment_intent_id, paymentIntentId));
+
+          await tx
+            .update(jobPayments)
+            .set({
+              status: "REFUNDED" as any,
+              refundedAt: sql`coalesce(${jobPayments.refundedAt}, ${now})`,
+              refundIssuedAt: sql`coalesce(${jobPayments.refundIssuedAt}, ${now})`,
+              updatedAt: now,
+            } as any)
+            .where(eq(jobPayments.stripePaymentIntentId, paymentIntentId));
           return;
         }
         case "transfer.created": {
@@ -456,30 +560,28 @@ async function handleWebhook(req: Request) {
           const account = event.data.object as Stripe.Account;
           const accountId = String(account.id ?? "").trim();
           if (!accountId) return;
-          const onboardingComplete = Boolean(account.charges_enabled) && Boolean(account.payouts_enabled);
+          const payoutsEnabled = Boolean(account.payouts_enabled);
 
           testLog({ eventType: event.type, connectedAccountId: accountId });
 
-          if (onboardingComplete) {
-            await Promise.all([
-              tx
-                .update(contractors)
-                .set({ stripePayoutsEnabled: true } as any)
-                .where(eq(contractors.stripeAccountId, accountId)),
-              tx
-                .update(payoutMethods)
-                .set({
-                  details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${true}), true)`,
-                  updatedAt: now,
-                } as any)
-                .where(
-                  and(
-                    eq(payoutMethods.provider, "STRIPE" as any),
-                    sql`${payoutMethods.details} ->> 'stripeAccountId' = ${accountId}`,
-                  ),
+          await Promise.all([
+            tx
+              .update(contractors)
+              .set({ stripePayoutsEnabled: payoutsEnabled } as any)
+              .where(eq(contractors.stripeAccountId, accountId)),
+            tx
+              .update(payoutMethods)
+              .set({
+                details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${payoutsEnabled}), true)`,
+                updatedAt: now,
+              } as any)
+              .where(
+                and(
+                  eq(payoutMethods.provider, "STRIPE" as any),
+                  sql`${payoutMethods.details} ->> 'stripeAccountId' = ${accountId}`,
                 ),
-            ]);
-          }
+              ),
+          ]);
           return;
         }
       }
@@ -531,4 +633,3 @@ async function handleWebhook(req: Request) {
  *   Missing secret → 500 {"ok":false,"error":{"code":"STRIPE_WEBHOOK_SECRET_MISSING","message":"Webhook secret not configured"}}
  *   Missing stripe-signature header → 400 {"ok":false,"error":{"code":"STRIPE_SIGNATURE_MISSING","message":"Missing stripe-signature header"}}
  */
-

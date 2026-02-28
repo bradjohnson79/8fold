@@ -20,10 +20,19 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { label: "Jobs", href: "/jobs", match: "prefix" },
       { label: "Contractors", href: "/contractors", match: "prefix" },
+      { label: "Job Posters", href: "/job-posters", match: "prefix" },
       { label: "Routers", href: "/routers", match: "prefix" },
       { label: "Payouts", href: "/payouts", match: "prefix" },
       { label: "Disputes", href: "/disputes", match: "prefix" },
       { label: "Support", href: "/support", match: "prefix" },
+      { label: "Notifications", href: "/notifications", match: "prefix" },
+    ],
+  },
+  {
+    title: "Finance",
+    items: [
+      { label: "Tax Regions", href: "/tax/regions", match: "prefix" },
+      { label: "Tax Settings", href: "/tax/settings", match: "prefix" },
     ],
   },
   {
@@ -32,6 +41,10 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Metrics", href: "/metrics", match: "prefix" },
       { label: "Settings", href: "/settings", match: "prefix" },
     ],
+  },
+  {
+    title: "System",
+    items: [{ label: "Data Coverage", href: "/system/data-coverage", match: "prefix" }],
   },
 ];
 
@@ -42,11 +55,7 @@ function isActive(pathname: string, href: string, match: NavItem["match"]): bool
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar({
-  onNavigate,
-}: {
-  onNavigate?: () => void;
-}) {
+export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname() || "/";
 
   return (
@@ -97,4 +106,3 @@ export function AdminSidebar({
     </div>
   );
 }
-

@@ -172,14 +172,18 @@ export async function requireContractorReady(
   const method = req.method;
 
   const acctRows = await db
-    .select({ wizardCompleted: contractorAccounts.wizardCompleted })
+    .select({
+      wizardCompleted: contractorAccounts.wizardCompleted,
+      isActive: contractorAccounts.isActive,
+    })
     .from(contractorAccounts)
     .where(eq(contractorAccounts.userId, user.userId))
     .limit(1);
   const acct = acctRows[0] ?? null;
 
   const wizardCompleted = Boolean(acct?.wizardCompleted);
-  const ready = Boolean(acct) && wizardCompleted;
+  const isActive = Boolean(acct?.isActive);
+  const ready = Boolean(acct) && wizardCompleted && isActive;
   if (!ready) {
     return onboardingNotReady(
       {
@@ -197,6 +201,7 @@ export async function requireContractorReady(
         method,
         missing: ["WIZARD"],
         wizardCompleted,
+        isActive,
       },
     );
   }

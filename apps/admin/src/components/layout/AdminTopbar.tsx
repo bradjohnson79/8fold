@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/LogoutButton";
+import { AdminNotificationsBell } from "./AdminNotificationsBell";
 import styles from "./AdminTopbar.module.css";
 
 function titleForPath(pathname: string): { title: string; subtitle?: string } {
@@ -59,15 +60,15 @@ export function AdminTopbar({
       </div>
 
       <div className={styles.right}>
+        <AdminNotificationsBell />
         <span className={styles.role} title="Admin tier">
           {adminTier === "ADMIN_SUPER" ? "SUPER" : adminTier === "ADMIN_OPERATOR" ? "OPERATOR" : "VIEWER"}
         </span>
         <span className={styles.email} title={adminEmail ?? undefined}>
-          {adminEmail ?? "—"}
+          {adminEmail ?? "-"}
         </span>
         <LogoutButton />
       </div>
     </>
   );
 }
-

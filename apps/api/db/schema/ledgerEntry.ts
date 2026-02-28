@@ -1,4 +1,4 @@
-import { integer, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, jsonb, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 import { currencyCodeEnum, ledgerBucketEnum, ledgerDirectionEnum, ledgerEntryTypeEnum } from "./enums";
 import { jobs } from "./job";
@@ -21,5 +21,5 @@ export const ledgerEntries = dbSchema.table("LedgerEntry", {
   stripeRef: text("stripeRef"),
 
   memo: text("memo"),
+  metadata: jsonb("metadata"),
 });
-

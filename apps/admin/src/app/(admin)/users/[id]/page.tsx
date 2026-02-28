@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { adminApiFetch } from "@/server/adminApi";
+import { adminApiFetch } from "@/server/adminApiV4";
 
 type UserDetail = {
   id: string;
@@ -32,7 +32,7 @@ async function doSuspend(userId: string, formData: FormData) {
   const months = Number(formData.get("months") ?? 1);
   const reason = String(formData.get("reason") ?? "").trim();
   if (!reason) return;
-  await adminApiFetch(`/api/admin/users/${encodeURIComponent(userId)}/suspend`, {
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/suspend`, {
     method: "POST",
     body: JSON.stringify({ months, reason }),
   }).catch(() => null);
@@ -41,7 +41,7 @@ async function doSuspend(userId: string, formData: FormData) {
 
 async function doUnsuspend(userId: string) {
   "use server";
-  await adminApiFetch(`/api/admin/users/${encodeURIComponent(userId)}/unsuspend`, { method: "POST" }).catch(() => null);
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/unsuspend`, { method: "POST" }).catch(() => null);
   redirect(`/users/${encodeURIComponent(userId)}`);
 }
 
@@ -49,7 +49,7 @@ async function doArchive(userId: string, formData: FormData) {
   "use server";
   const reason = String(formData.get("reason") ?? "").trim();
   if (!reason) return;
-  await adminApiFetch(`/api/admin/users/${encodeURIComponent(userId)}/archive`, {
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/archive`, {
     method: "POST",
     body: JSON.stringify({ reason }),
   }).catch(() => null);
@@ -58,15 +58,23 @@ async function doArchive(userId: string, formData: FormData) {
 
 async function doRestore(userId: string) {
   "use server";
-  await adminApiFetch(`/api/admin/users/${encodeURIComponent(userId)}/restore`, { method: "POST" }).catch(() => null);
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/restore`, { method: "POST" }).catch(() => null);
   redirect(`/users/${encodeURIComponent(userId)}`);
+}
+
+async function doHardDelete(userId: string, formData: FormData) {
+  "use server";
+  const confirm = String(formData.get("confirm") ?? "").trim();
+  if (confirm !== "DELETE") return;
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/hard-delete`, { method: "DELETE" }).catch(() => null);
+  redirect("/users");
 }
 
 async function doAddNote(userId: string, formData: FormData) {
   "use server";
   const note = String(formData.get("note") ?? "").trim();
   if (!note) return;
-  await adminApiFetch(`/api/admin/users/${encodeURIComponent(userId)}/notes`, {
+  await adminApiFetch(`/api/admin/v4/users/${encodeURIComponent(userId)}/notes`, {
     method: "POST",
     body: JSON.stringify({ note }),
   }).catch(() => null);
@@ -138,8 +146,8 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
   let err: string | null = null;
 
   try {
-    detail = await adminApiFetch<DetailResp>(`/api/admin/users/${encodeURIComponent(id)}`);
-    notes = await adminApiFetch<NotesResp>(`/api/admin/users/${encodeURIComponent(id)}/notes`).catch(() => ({ notes: [] }));
+    detail = await adminApiFetch<DetailResp>(`/api/admin/v4/users/${encodeURIComponent(id)}`);
+    notes = await adminApiFetch<NotesResp>(`/api/admin/v4/users/${encodeURIComponent(id)}/notes`).catch(() => ({ notes: [] }));
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load user";
   }
@@ -254,6 +262,20 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
               </form>
             ) : null}
           </div>
+
+          <div style={{ height: 1, background: "rgba(148,163,184,0.12)", margin: "12px 0" }} />
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontWeight: 900, color: "rgba(254,202,202,0.95)" }}>Permanent delete (ADMIN_SUPER)</div>
+            <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12 }}>
+              Requires typed confirmation and is blocked for users with any job/routing history.
+            </div>
+            <form action={doHardDelete.bind(null, u.id)} style={{ display: "grid", gap: 8 }}>
+              <input name="confirm" placeholder='Type "DELETE" to confirm' style={inputStyle} />
+              <button type="submit" style={dangerButtonStyle}>
+                Permanently Delete User
+              </button>
+            </form>
+          </div>
         </Card>
       </div>
 
@@ -350,4 +372,3 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
     </div>
   );
 }
-

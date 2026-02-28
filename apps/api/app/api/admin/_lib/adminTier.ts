@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { adminSessionTokenFromRequest, getAdminIdentityBySessionToken } from "@/src/lib/auth/adminSession";
-import { requireAuth } from "@/src/auth/requireAuth";
+import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 
 export type AdminTier = "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
 
 export type AdminIdentityWithTier = {
   userId: string;
   email: string | null;
+  adminRole: string;
   tier: AdminTier;
-  authSource: "admin_session" | "clerk";
+  authSource: "admin_session";
 };
 
 function parseEmailAllowlist(raw: string | undefined): Set<string> {
@@ -34,7 +34,6 @@ export function tierFromEmail(email: string | null | undefined): AdminTier {
   const e = String(email ?? "").trim().toLowerCase();
   if (e && SUPER_EMAILS.has(e)) return "ADMIN_SUPER";
   if (e && VIEWER_EMAILS.has(e)) return "ADMIN_VIEWER";
-  // Default preserves current admin behavior, but blocks financial overrides unless allowlisted as SUPER.
   return "ADMIN_OPERATOR";
 }
 
@@ -48,37 +47,16 @@ export function tierGte(actual: AdminTier, required: AdminTier): boolean {
 }
 
 export async function requireAdminIdentityWithTier(req: Request): Promise<NextResponse | AdminIdentityWithTier> {
-  // Preferred: admin_session cookie (apps/admin). We intentionally do NOT hard-code "role === ADMIN" here
-  // so tiers can be expressed out-of-band (currently via email allowlists).
-  const token = adminSessionTokenFromRequest(req);
-  if (token) {
-    const admin = await getAdminIdentityBySessionToken(token).catch(() => null);
-    if (admin?.id) {
-      const email = admin.email ? String(admin.email) : null;
-      const tierFromRole = tierFromAdminRole(admin.role);
-      return {
-        userId: String(admin.id),
-        email,
-        tier: tierFromRole ?? tierFromEmail(email),
-        authSource: "admin_session",
-      };
-    }
-  }
-
-  // Fallback: Clerk-based auth (if present). We keep this path compatible with existing ADMIN auth.
-  const authed = await requireAuth(req);
-  if (authed instanceof Response) return authed as NextResponse;
-  const user = authed.internalUser;
-  if (!user?.id) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  const role = String(user?.role ?? "").trim().toUpperCase();
-  if (role !== "ADMIN") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-
-  const email = user?.email ? String(user.email) : null;
+  const admin = await requireAdminV4(req);
+  if (admin instanceof Response) return admin as NextResponse;
+  const email = admin.email ? String(admin.email) : null;
+  const tierFromRole = tierFromAdminRole(admin.role);
   return {
-    userId: String(user.id),
+    userId: admin.adminId,
     email,
-    tier: tierFromEmail(email),
-    authSource: "clerk",
+    adminRole: admin.role,
+    tier: tierFromRole ?? tierFromEmail(email),
+    authSource: "admin_session",
   };
 }
 
@@ -94,4 +72,3 @@ export function enforceTier(identity: AdminIdentityWithTier, required: AdminTier
     { status: 403 },
   );
 }
-

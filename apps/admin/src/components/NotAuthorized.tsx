@@ -3,13 +3,17 @@
 export function NotAuthorized(props: { role?: string | null }) {
   const role = String(props.role ?? "").trim();
 
-  async function signOut() {
+  async function handleSignOut() {
     try {
-      await fetch("/api/admin/logout", { method: "POST" });
+      await fetch("/api/admin/auth/logout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
     } catch {
       // best-effort
+    } finally {
+      window.location.href = "/login";
     }
-    window.location.href = "/login";
   }
 
   return (
@@ -36,7 +40,7 @@ export function NotAuthorized(props: { role?: string | null }) {
         <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
-            onClick={() => void signOut()}
+            onClick={() => void handleSignOut()}
             style={{
               padding: "10px 12px",
               borderRadius: 12,
@@ -54,4 +58,3 @@ export function NotAuthorized(props: { role?: string | null }) {
     </div>
   );
 }
-

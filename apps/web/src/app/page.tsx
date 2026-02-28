@@ -5,6 +5,7 @@ import { requireServerSession } from "@/server/auth/meSession";
 import { HeroBackgroundVideo } from "./HeroBackgroundVideo";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { HomepageFAQSection } from "@/components/home/HomepageFAQSection";
 
 export default async function HomePage() {
   let session: Awaited<ReturnType<typeof requireServerSession>> | null = null;
@@ -395,6 +396,8 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <HomepageFAQSection />
 
       {/* ──────────────────── 7. TESTIMONIALS ────────────────────────── */}
       <section className="py-20">

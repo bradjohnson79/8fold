@@ -1,28 +1,40 @@
-import { getValidatedApiOrigin } from "./env";
+import { cookies } from "next/headers";
 
-function env(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`${name} is required (apps/admin)`);
-  return String(v).trim();
+export const ADMIN_SESSION_COOKIE_NAME = "admin_session";
+
+function cookieValueFromHeader(cookieHeader: string | null, name: string): string {
+  const raw = cookieHeader ?? "";
+  if (!raw) return "";
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    if (key !== name) continue;
+    const value = part.slice(idx + 1).trim();
+    try {
+      return value ? decodeURIComponent(value) : "";
+    } catch {
+      return value;
+    }
+  }
+  return "";
 }
 
-export type AdminIdentity = {
-  adminId: string;
-  internalSecret: string;
-  apiOrigin: string;
-};
-
-export function requireAdminIdentity(): AdminIdentity {
-  const adminId = env("ADMIN_ID");
-  const internalSecret = env("INTERNAL_SECRET");
-  const apiOrigin = getValidatedApiOrigin();
-  return { adminId, internalSecret, apiOrigin };
+export function getAdminSessionTokenFromRequest(req: Request): string | null {
+  const token = cookieValueFromHeader(req.headers.get("cookie"), ADMIN_SESSION_COOKIE_NAME).trim();
+  return token || null;
 }
 
-export function adminHeaders(id: AdminIdentity): Record<string, string> {
-  return {
-    "x-admin-id": id.adminId,
-    "x-internal-secret": id.internalSecret,
-  };
+async function getAdminSessionTokenFromServerContext(): Promise<string | null> {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE_NAME)?.value?.trim() ?? "";
+  return token || null;
 }
 
+export async function getAdminAuthHeader(req?: Request): Promise<string> {
+  // Prefer request cookie parsing, but always fall back to Next server cookie context.
+  // This avoids false 401s when browser cookie header formatting differs from our parser.
+  let token = req ? getAdminSessionTokenFromRequest(req) : null;
+  if (!token) token = await getAdminSessionTokenFromServerContext();
+  if (!token) throw Object.assign(new Error("Unauthorized"), { status: 401 });
+  return `Bearer ${token}`;
+}

@@ -3,135 +3,299 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-type Invite = { id: string; jobId: string; title?: string; status: string; createdAt: string };
-type JobSummary = { jobId: string; title?: string; assignmentStatus: string; assignedAt: string };
+type Invite = {
+  id: string;
+  jobId: string;
+  title?: string;
+  scope?: string;
+  region?: string;
+  status: string;
+  createdAt: string;
+};
+
+type JobSummary = {
+  id: string;
+  title?: string;
+  scope?: string;
+  region?: string;
+  status: string;
+  assignedAt: string;
+};
+
+type AccountStatus = {
+  strikeCount: number;
+  activeSuspension?: { suspendedUntil: string; reason?: string | null } | null;
+};
+
+function formatDate(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString();
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString();
+}
+
+function statusBadgeClasses(status: string) {
+  const s = status.toUpperCase();
+  if (s.includes("INVIT")) return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (s.includes("ACCEPT")) return "bg-blue-50 text-blue-700 ring-blue-200";
+  if (s.includes("PROGRESS") || s.includes("ASSIGN")) return "bg-sky-50 text-sky-700 ring-sky-200";
+  if (s.includes("PM") || s.includes("MATERIAL")) return "bg-orange-50 text-orange-700 ring-orange-200";
+  if (s.includes("COMPLETE")) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  return "bg-slate-50 text-slate-700 ring-slate-200";
+}
+
+function normalizeStatusLabel(status: string) {
+  const s = status.toUpperCase();
+  if (s.includes("INVIT")) return "Invited";
+  if (s.includes("ACCEPT")) return "Accepted";
+  if (s.includes("PROGRESS") || s.includes("ASSIGN")) return "In Progress";
+  if (s.includes("PM") || s.includes("MATERIAL")) return "Awaiting P&M";
+  if (s.includes("COMPLETE")) return "Completed";
+  return status || "Unknown";
+}
 
 export default function ContractorOverviewPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [assignedJobs, setAssignedJobs] = useState<JobSummary[]>([]);
+  const [completedJobs, setCompletedJobs] = useState<JobSummary[]>([]);
+  const [paymentReady, setPaymentReady] = useState<boolean>(true);
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [invResp, jobsResp] = await Promise.all([
+        const [invResp, assignedResp, completedResp, statusResp] = await Promise.all([
           fetch("/api/v4/contractor/invites", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/jobs?status=assigned", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/contractor/jobs?status=completed", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/contractor/account-status", { cache: "no-store", credentials: "include" }),
         ]);
+
         if (invResp.ok) {
-          const invData = (await invResp.json()) as { invites?: Invite[] };
+          const invData = (await invResp.json()) as { invites?: Invite[]; paymentReady?: boolean };
           setInvites(Array.isArray(invData.invites) ? invData.invites : []);
+          setPaymentReady(Boolean(invData.paymentReady ?? true));
         }
-        if (jobsResp.ok) {
-          const jobsData = (await jobsResp.json()) as { jobs?: { id: string; title?: string; status: string; assignedAt: string }[] };
-          const items = Array.isArray(jobsData.jobs) ? jobsData.jobs : [];
-          setAssignedJobs(
-            items.map((j) => ({
-              jobId: j.id ?? "",
-              title: j.title,
-              assignmentStatus: j.status ?? "",
-              assignedAt: j.assignedAt ?? "",
-            }))
-          );
+
+        if (assignedResp.ok) {
+          const data = (await assignedResp.json()) as { jobs?: JobSummary[] };
+          setAssignedJobs(Array.isArray(data.jobs) ? data.jobs : []);
+        }
+
+        if (completedResp.ok) {
+          const data = (await completedResp.json()) as { jobs?: JobSummary[] };
+          setCompletedJobs(Array.isArray(data.jobs) ? data.jobs : []);
+        }
+
+        if (statusResp.ok) {
+          const data = (await statusResp.json()) as AccountStatus;
+          setAccountStatus(data);
         }
       } catch {
         setInvites([]);
         setAssignedJobs([]);
+        setCompletedJobs([]);
+        setPaymentReady(false);
+        setAccountStatus(null);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
+  const availableEarnings = "$0.00";
+  const pendingInviteCount = invites.length;
+  const inProgressCount = assignedJobs.length;
+  const completionRate = assignedJobs.length + completedJobs.length > 0
+    ? Math.round((completedJobs.length / (assignedJobs.length + completedJobs.length)) * 100)
+    : 0;
+  const onTimeRate = "—";
+  const timeline = [
+    ...invites.slice(0, 3).map((i) => ({
+      id: `inv-${i.id}`,
+      message: `Invite received${i.title ? ` • ${i.title}` : ""}`,
+      at: i.createdAt,
+    })),
+    ...assignedJobs.slice(0, 2).map((j) => ({
+      id: `asg-${j.id}`,
+      message: `Job active${j.title ? ` • ${j.title}` : ""}`,
+      at: j.assignedAt,
+    })),
+  ]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 5);
+
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <h1 className="text-2xl font-bold">Contractor Dashboard</h1>
-        <p className="mt-2 text-gray-600">Loading…</p>
+        <p className="mt-2 text-slate-600">Loading command center…</p>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Contractor Dashboard</h1>
-      <p className="mt-1 text-gray-600">Overview of your invites and assigned jobs.</p>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link
-          href="/dashboard/contractor/invites"
-          className="rounded-lg border border-gray-200 p-4 hover:bg-gray-50"
-        >
-          <p className="text-sm font-medium text-gray-500">Pending Invites</p>
-          <p className="mt-1 text-2xl font-bold">{invites.length}</p>
-        </Link>
-        <Link
-          href="/dashboard/contractor/jobs"
-          className="rounded-lg border border-gray-200 p-4 hover:bg-gray-50"
-        >
-          <p className="text-sm font-medium text-gray-500">Assigned Jobs</p>
-          <p className="mt-1 text-2xl font-bold">{assignedJobs.length}</p>
-        </Link>
+    <div className="rounded-3xl bg-slate-50 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Contractor Command Center</h1>
+          <p className="mt-1 text-slate-600">Track active work, earnings progress, and next actions.</p>
+        </div>
+        <details className="group relative">
+          <summary className="cursor-pointer list-none rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+            Quick Actions
+          </summary>
+          <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+            <Link href="/dashboard/contractor/profile" className="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Update Availability</Link>
+            <Link href="/dashboard/contractor/pm" className="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Submit P&M</Link>
+            <Link href="/dashboard/contractor/messages" className="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">View Messages</Link>
+            <Link href="/dashboard/contractor/profile" className="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Update Profile</Link>
+          </div>
+        </details>
       </div>
 
-      {invites.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold">Pending Invites</h2>
-          <ul className="mt-2 space-y-2">
-            {invites.slice(0, 5).map((inv) => (
-              <li key={inv.id}>
-                <Link
-                  href={`/dashboard/contractor/invites?job=${inv.jobId}`}
-                  className="block rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
-                >
-                  <span className="font-medium">{inv.title ?? "Job"}</span>
-                  <span className="ml-2 text-sm text-gray-500">
-                    {new Date(inv.createdAt).toLocaleDateString()}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Link
-            href="/dashboard/contractor/invites"
-            className="mt-2 inline-block text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            View all invites →
-          </Link>
-        </div>
-      )}
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <Card title="Available Earnings" value={availableEarnings} subtitle="Funds ready to release" icon="💵" accent="from-emerald-50 to-white" />
+        <Card title="In Progress Jobs" value={String(inProgressCount)} subtitle="Active assigned jobs" icon="🧰" accent="from-sky-50 to-white" />
+        <Card title="Pending Invites" value={String(pendingInviteCount)} subtitle="Awaiting your response" icon="📨" accent="from-amber-50 to-white" />
+      </div>
 
-      {assignedJobs.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold">Assigned Jobs</h2>
-          <ul className="mt-2 space-y-2">
-            {assignedJobs.slice(0, 5).map((a) => (
-              <li key={a.jobId}>
-                <Link
-                  href={`/dashboard/contractor/jobs/${a.jobId}`}
-                  className="block rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
-                >
-                  <span className="font-medium">{a.title ?? "Job"}</span>
-                  <span className="ml-2 text-sm text-gray-500">{a.assignmentStatus}</span>
-                  <span className="ml-2 text-sm text-gray-400">
-                    {new Date(a.assignedAt).toLocaleDateString()}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Link
-            href="/dashboard/contractor/jobs"
-            className="mt-2 inline-block text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            View all jobs →
-          </Link>
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Your Active Jobs</h2>
+          <Link href="/dashboard/contractor/jobs" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View Available Jobs</Link>
         </div>
-      )}
 
-      {invites.length === 0 && assignedJobs.length === 0 && (
-        <p className="mt-6 text-gray-500">No pending invites or assigned jobs.</p>
-      )}
+        {assignedJobs.length === 0 ? (
+          <p className="mt-4 text-slate-500">You’re all clear. New job invites will appear here.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {assignedJobs.slice(0, 6).map((job) => (
+              <article key={job.id} className="rounded-xl border border-slate-200 p-4 transition hover:border-emerald-200 hover:shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled Job"}</h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {job.region?.split(",")[0] || "Location pending"} • Distance in job details
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">Scheduled: {formatDate(job.assignedAt)}</p>
+                    <p className="mt-1 text-sm text-slate-500">Job Value: To be confirmed</p>
+                  </div>
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadgeClasses(job.status)}`}>
+                    {normalizeStatusLabel(job.status)}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link href={`/dashboard/contractor/jobs/${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">🔵 View Details</Link>
+                  <Link href={`/dashboard/contractor/messages?job=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">💬 Message</Link>
+                  <Link href={`/dashboard/contractor/pm?job=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">📄 Submit P&amp;M</Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Jobs Near You</h2>
+          {accountStatus?.activeSuspension ? (
+            <p className="mt-3 text-sm text-slate-500">Nearby opportunities are hidden while account restrictions are active.</p>
+          ) : (
+            <>
+              <div className="mt-3 space-y-2">
+                {invites.slice(0, 5).map((inv) => (
+                  <div key={inv.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="text-sm font-medium text-slate-800">{inv.title ?? inv.scope ?? "Trade Opportunity"}</div>
+                    <div className="mt-1 text-xs text-slate-500">{inv.region ?? "Regional"} • Distance shown in details</div>
+                    <div className="mt-1 text-xs text-slate-500">Budget range shared when opened</div>
+                  </div>
+                ))}
+                {invites.length === 0 ? <p className="text-sm text-slate-500">No nearby opportunities yet.</p> : null}
+              </div>
+              <Link href="/dashboard/contractor/invites" className="mt-3 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">View Available Jobs</Link>
+            </>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Performance Snapshot</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <Metric label="⭐ Rating" value="Coming soon" />
+            <Metric label="🕒 On-Time Rate" value={onTimeRate} />
+            <Metric label="🛠 Completion Rate" value={`${completionRate}%`} />
+            <Metric
+              label="🚫 Strike Count"
+              value={String(accountStatus?.strikeCount ?? 0)}
+              tone={(accountStatus?.strikeCount ?? 0) > 0 ? "warning" : "neutral"}
+            />
+          </div>
+        </section>
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Account Health &amp; Payment Setup</h2>
+          <div className="mt-3 space-y-2 text-sm">
+            <p className={paymentReady ? "text-emerald-700" : "text-amber-700"}>
+              {paymentReady ? "🟢 Payment Setup: Verified" : "🟡 Payment Setup: Pending"}
+            </p>
+            {accountStatus?.activeSuspension ? (
+              <p className="text-rose-700">
+                🔴 Action Required: Suspended until {formatDate(accountStatus.activeSuspension.suspendedUntil)}
+              </p>
+            ) : null}
+            {!paymentReady ? (
+              <Link href="/dashboard/contractor/payment" className="inline-block rounded-lg bg-emerald-600 px-3 py-2 font-medium text-white hover:bg-emerald-700">
+                Complete Payment Setup
+              </Link>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Activity Timeline</h2>
+          {timeline.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">No recent activity yet.</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {timeline.map((event) => (
+                <li key={event.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <div className="font-medium text-slate-800">{event.message}</div>
+                  <div className="text-xs text-slate-500">{formatDateTime(event.at)}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Card(props: { title: string; value: string; subtitle: string; icon: string; accent: string }) {
+  return (
+    <div className={`rounded-2xl border border-slate-200 bg-gradient-to-br ${props.accent} p-4 shadow-sm`}>
+      <p className="text-sm font-medium text-slate-600">{props.icon} {props.title}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-900">{props.value}</p>
+      <p className="mt-1 text-xs text-slate-500">{props.subtitle}</p>
+    </div>
+  );
+}
+
+function Metric(props: { label: string; value: string; tone?: "neutral" | "warning" }) {
+  return (
+    <div className={`rounded-xl border p-3 ${props.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+      <div className="text-slate-600">{props.label}</div>
+      <div className="mt-1 font-semibold text-slate-900">{props.value}</div>
     </div>
   );
 }

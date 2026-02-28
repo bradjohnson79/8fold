@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
+import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type RoutableJob = {
   id: string;
@@ -177,6 +179,8 @@ export function RoutingWorkspace() {
   const [supportSubject, setSupportSubject] = React.useState("");
   const [supportMessage, setSupportMessage] = React.useState("");
   const [supportNotice, setSupportNotice] = React.useState<string>("");
+  const [showIncompleteModal, setShowIncompleteModal] = React.useState(false);
+  const [missingSteps, setMissingSteps] = React.useState<MissingStep[]>([]);
 
 
   async function loadAvailableJobs() {
@@ -262,8 +266,20 @@ export function RoutingWorkspace() {
         credentials: "include",
         body: JSON.stringify({ jobId: selectedJob.id, contractorIds: selectedContractorIds })
       });
-      const json = await safeJson<{ ok?: boolean; error?: string; created?: DispatchCreated[] }>(resp);
-      if (!resp.ok) throw new Error(json.error || "Failed to route");
+      const json = await safeJson<{
+        ok?: boolean;
+        error?: string | { code?: string; message?: string; details?: { missing?: MissingStep[] } };
+        created?: DispatchCreated[];
+      }>(resp);
+      const missing = parseMissingSteps(json);
+      if (missing) {
+        setMissingSteps(missing);
+        setShowIncompleteModal(true);
+        return;
+      }
+      const errorMessage =
+        typeof json.error === "string" ? json.error : typeof json.error?.message === "string" ? json.error.message : "";
+      if (!resp.ok) throw new Error(errorMessage || "Failed to route");
       setLastDispatches(Array.isArray(json.created) ? json.created : []);
 
       await Promise.all([loadAvailableJobs(), loadRoutedJobs(), loadEarnings(), loadPayoutMethod()]);
@@ -961,7 +977,12 @@ export function RoutingWorkspace() {
           </div>
         </div>
       ) : null}
+      <AccountIncompleteModal
+        role="ROUTER"
+        missing={missingSteps}
+        open={showIncompleteModal}
+        onClose={() => setShowIncompleteModal(false)}
+      />
     </div>
   );
 }
-

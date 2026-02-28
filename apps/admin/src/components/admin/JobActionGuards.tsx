@@ -263,7 +263,7 @@ export function JobActionGuards(props: Props) {
               setApprovePreviewErr(null);
               (async () => {
                 try {
-                  const preview = await loadPreview(`/api/admin/jobs/${encodeURIComponent(props.jobId)}/complete?dryRun=true`, {
+                  const preview = await loadPreview(`/api/admin/v4/jobs/${encodeURIComponent(props.jobId)}/complete?dryRun=true`, {
                     method: "POST",
                     headers: { "content-type": "application/json" },
                     body: JSON.stringify({ override: true, reason: approveReason || "Admin override" }),
@@ -355,7 +355,7 @@ export function JobActionGuards(props: Props) {
           {!canFinancialOverride ? pill("Requires SUPER", "red") : null}
         </div>
         <div style={{ marginTop: 10, color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>
-          Attempts a Stripe refund via <code>/api/admin/jobs/:id/refund</code>. Backend guards still apply.
+          Attempts a Stripe refund via <code>/api/admin/v4/jobs/:id/refund</code>. Backend guards still apply.
         </div>
         {props.lastActors?.refund ? (
           <div style={{ marginTop: 8, color: "rgba(226,232,240,0.60)", fontSize: 12 }}>
@@ -381,7 +381,7 @@ export function JobActionGuards(props: Props) {
               setRefundPreviewErr(null);
               (async () => {
                 try {
-                  const preview = await loadPreview(`/api/admin/jobs/${encodeURIComponent(props.jobId)}/refund?dryRun=true`, {
+                  const preview = await loadPreview(`/api/admin/v4/jobs/${encodeURIComponent(props.jobId)}/refund?dryRun=true`, {
                     method: "POST",
                   });
                   setRefundPreview(preview);
@@ -453,7 +453,7 @@ export function JobActionGuards(props: Props) {
           {!canFinancialOverride ? pill("Requires SUPER", "red") : null}
         </div>
         <div style={{ marginTop: 10, color: "rgba(226,232,240,0.72)", fontSize: 13, lineHeight: "20px" }}>
-          Manual release retries the release engine (<code>/api/admin/jobs/:id/release</code>).
+          Manual release retries the release engine (<code>/api/admin/v4/jobs/:id/release</code>).
         </div>
         {props.lastActors?.manualRelease ? (
           <div style={{ marginTop: 8, color: "rgba(226,232,240,0.60)", fontSize: 12 }}>
@@ -477,7 +477,7 @@ export function JobActionGuards(props: Props) {
               setReleasePreviewErr(null);
               (async () => {
                 try {
-                  const preview = await loadPreview(`/api/admin/jobs/${encodeURIComponent(props.jobId)}/release?dryRun=true`, { method: "POST" });
+                  const preview = await loadPreview(`/api/admin/v4/jobs/${encodeURIComponent(props.jobId)}/release?dryRun=true`, { method: "POST" });
                   setReleasePreview(preview);
                 } catch (err) {
                   setReleasePreviewErr(err instanceof Error ? err.message : "Preview failed");

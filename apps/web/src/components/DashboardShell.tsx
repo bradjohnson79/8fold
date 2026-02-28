@@ -13,10 +13,12 @@ type BellRole = "job-poster" | "contractor" | "router" | null;
 type BellNotification = {
   id: string;
   title: string;
-  body?: string;
+  message?: string;
   createdAt: string;
+  read?: boolean;
   readAt?: string | null;
-  jobId?: string;
+  entityType?: string | null;
+  entityId?: string | null;
 };
 
 export function DashboardShell({
@@ -33,7 +35,6 @@ export function DashboardShell({
   children: React.ReactNode;
 }) {
   const path = usePathname();
-  const useV4Endpoints = path.startsWith("/dashboard/job-poster");
   const [boot, setBoot] = useState<
     | { loading: true }
     | { loading: false; ok: true; superuser: boolean }
@@ -42,11 +43,11 @@ export function DashboardShell({
 
   const bellRole: BellRole = path.startsWith("/app/job-poster") || path.startsWith("/dashboard/job-poster")
     ? "job-poster"
-    : path.startsWith("/app/contractor")
+    : path.startsWith("/app/contractor") || path.startsWith("/dashboard/contractor")
       ? "contractor"
-      : path.startsWith("/app/router") || path.startsWith("/dashboard/router")
-        ? "router"
-        : null;
+    : path.startsWith("/app/router") || path.startsWith("/dashboard/router")
+      ? "router"
+      : null;
 
   const [bellOpen, setBellOpen] = useState(false);
   const [bellLoading, setBellLoading] = useState(false);
@@ -73,7 +74,7 @@ export function DashboardShell({
           if (delay) await new Promise((r) => setTimeout(r, delay));
           if (cancelled) return;
 
-          const resp = await fetch(useV4Endpoints ? "/api/v4/job-poster/me" : "/api/app/me", { cache: "no-store", credentials: "include" });
+          const resp = await fetch(path.startsWith("/dashboard/job-poster") ? "/api/v4/job-poster/me" : "/api/app/me", { cache: "no-store", credentials: "include" });
           const json = (await resp.json().catch(() => null)) as any;
           if (cancelled) return;
 
@@ -116,7 +117,7 @@ export function DashboardShell({
     setBellLoading(true);
     setBellError("");
     try {
-      const resp = await fetch(useV4Endpoints ? "/api/v4/job-poster/notifications" : `/api/app/${bellRole}/notifications`, { cache: "no-store", credentials: "include" });
+      const resp = await fetch("/api/v4/notifications?page=1&pageSize=12", { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load notifications");
 
@@ -140,7 +141,7 @@ export function DashboardShell({
     if (!bellRole) return;
     if (!ids.length) return;
     try {
-      await fetch(useV4Endpoints ? "/api/v4/job-poster/notifications/mark-read" : `/api/app/${bellRole}/notifications/mark-read`, {
+      await fetch("/api/v4/notifications/mark-read", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -155,7 +156,14 @@ export function DashboardShell({
     if (!bellOpen) return;
     void loadBell();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bellOpen, bellRole, useV4Endpoints]);
+  }, [bellOpen, bellRole]);
+
+  function notificationsPath(role: BellRole): string {
+    if (role === "job-poster") return "/dashboard/job-poster/notifications";
+    if (role === "contractor") return "/dashboard/contractor/notifications";
+    if (role === "router") return "/dashboard/router/notifications";
+    return "#";
+  }
 
   // Bootstrap sequencing: do not mount dashboard children until we know auth/session state.
   // This prevents dependent fetches from firing while session/profile is unknown.
@@ -247,7 +255,7 @@ export function DashboardShell({
                     ) : (
                       <div className="max-h-[420px] overflow-y-auto divide-y divide-gray-100">
                         {bellNotifications.map((n) => {
-                          const unread = (n as any)?.readAt == null;
+                          const unread = (n as any)?.readAt == null && !(n as any)?.read;
                           return (
                             <button
                               key={n.id}
@@ -265,7 +273,7 @@ export function DashboardShell({
                                   <div className="font-semibold text-gray-900 truncate">
                                     {unread ? "• " : ""}{n.title}
                                   </div>
-                                  {n.body ? <div className="text-sm text-gray-600 mt-1 whitespace-pre-wrap break-words">{n.body}</div> : null}
+                                  {n.message ? <div className="text-sm text-gray-600 mt-1 whitespace-pre-wrap break-words">{n.message}</div> : null}
                                   <div className="text-xs text-gray-500 mt-2">{new Date(n.createdAt).toLocaleString()}</div>
                                 </div>
                               </div>
@@ -274,6 +282,11 @@ export function DashboardShell({
                         })}
                       </div>
                     )}
+                    <div className="p-3 border-t border-gray-100 bg-gray-50">
+                      <Link href={notificationsPath(bellRole)} className="text-sm font-semibold text-8fold-green hover:underline" onClick={() => setBellOpen(false)}>
+                        View all notifications
+                      </Link>
+                    </div>
                   </div>
                 ) : null}
               </div>

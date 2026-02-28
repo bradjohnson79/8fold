@@ -3,7 +3,8 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
+import { requireRoleCompletion } from "../../../../../src/auth/requireRoleCompletion";
+import { requireRouter } from "../../../../../src/auth/rbac";
 import { toHttpError } from "../../../../../src/http/errors";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
@@ -29,9 +30,9 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const authed = await requireRouterReady(req);
-    if (authed instanceof Response) return authed;
-    const router = authed;
+    const router = await requireRouter(req);
+    const completionGuard = await requireRoleCompletion(router.userId, "ROUTER");
+    if (completionGuard) return completionGuard;
     await ensureActiveAccount(router.userId);
     let raw: unknown = {};
     try {
@@ -247,4 +248,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

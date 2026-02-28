@@ -8,6 +8,7 @@ type PaymentStatus = {
   stripeStatus: "CONNECTED" | "NOT_CONNECTED";
   lastFour?: string;
   stripeUpdatedAt?: string | null;
+  simulationEnabled?: boolean;
 };
 
 export default function JobPosterPaymentPage() {
@@ -15,6 +16,7 @@ export default function JobPosterPaymentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
 
@@ -89,6 +91,28 @@ export default function JobPosterPaymentPage() {
     }
   };
 
+  const handleSimulateSuccess = async () => {
+    setSimulating(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/web/v4/job-poster/payment/simulate-success", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.error?.message ?? "Failed to simulate payment setup success");
+      }
+      setSuccess(true);
+      setCanceled(false);
+      await fetchStatus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to simulate payment setup success");
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   if (loading && !status) {
     return (
       <div className="p-6">
@@ -139,27 +163,51 @@ export default function JobPosterPaymentPage() {
             {lastUpdated && (
               <p className="mt-1 text-gray-600">Last Updated: {lastUpdated}</p>
             )}
-            <button
-              type="button"
-              onClick={handleUpdate}
-              disabled={actionLoading}
-              className="mt-4 px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {actionLoading ? "Redirecting…" : "Update Payment Method"}
-            </button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleUpdate}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading ? "Redirecting…" : "Update Payment Method"}
+              </button>
+              {status?.simulationEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleSimulateSuccess}
+                  disabled={simulating || actionLoading}
+                  className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {simulating ? "Simulating…" : "Stripe Simulation Success"}
+                </button>
+              ) : null}
+            </div>
           </>
         ) : (
           <>
             <p className="font-medium text-gray-900">Status: Not Connected</p>
             <p className="mt-1 text-gray-600">Add a payment method to activate jobs.</p>
-            <button
-              type="button"
-              onClick={handleConnect}
-              disabled={actionLoading}
-              className="mt-4 px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {actionLoading ? "Redirecting…" : "Connect Payment Method"}
-            </button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleConnect}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading ? "Redirecting…" : "Connect Payment Method"}
+              </button>
+              {status?.simulationEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleSimulateSuccess}
+                  disabled={simulating || actionLoading}
+                  className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {simulating ? "Simulating…" : "Stripe Simulation Success"}
+                </button>
+              ) : null}
+            </div>
           </>
         )}
       </div>

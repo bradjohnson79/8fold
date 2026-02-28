@@ -1,9 +1,5 @@
-import { WizardV3 } from "./WizardV3";
+import { redirect } from "next/navigation";
 
 export default function JobPosterPostAJobV3Page() {
-  return (
-    <div className="max-w-4xl mx-auto">
-      <WizardV3 />
-    </div>
-  );
+  redirect("/post-job");
 }

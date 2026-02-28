@@ -150,7 +150,7 @@ export async function POST(req: Request) {
     }
 
     // Routing status should not contradict lifecycle: only reroute jobs that are still pre-assignment.
-    if (!["PUBLISHED", "OPEN_FOR_ROUTING"].includes(String(job.status ?? "").toUpperCase())) {
+    if (String(job.status ?? "").toUpperCase() !== "OPEN_FOR_ROUTING") {
       await db.insert(auditLogs).values({
         id: crypto.randomUUID(),
         actorUserId: identity.userId,
@@ -313,4 +313,3 @@ export async function POST(req: Request) {
     return handleApiError(err, "POST /api/admin/router/jobs/[jobId]/route");
   }
 }
-

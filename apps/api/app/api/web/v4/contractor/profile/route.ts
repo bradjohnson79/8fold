@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/src/auth/requireAuth";
-import { requireRole } from "@/src/auth/requireRole";
+import { requireV4Role } from "@/src/auth/requireV4Role";
 import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
 import { V4ContractorProfileSchema } from "@/src/validation/v4/contractorProfileSchema";
 import { getV4ContractorProfile, upsertV4ContractorProfile } from "@/src/services/v4/contractorProfileService";
@@ -9,13 +8,12 @@ import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/ser
 export async function GET(req: Request) {
   let requestId: string | undefined;
   try {
-    const authed = await requireAuth(req);
-    if (authed instanceof Response) return authed;
-    requestId = authed.requestId;
-    const role = await requireRole(req, "CONTRACTOR");
+    const role = await requireV4Role(req, "CONTRACTOR");
     if (role instanceof Response) return role;
-    return NextResponse.json(await getV4ContractorProfile(role.internalUser.id));
+    requestId = role.requestId;
+    return NextResponse.json(await getV4ContractorProfile(role.userId));
   } catch (err) {
+    console.error("V4_CONTRACTOR_PROFILE_GET_ERROR", { requestId, err });
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_CONTRACTOR_PROFILE_LOAD_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
   }
@@ -24,11 +22,9 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   let requestId: string | undefined;
   try {
-    const authed = await requireAuth(req);
-    if (authed instanceof Response) return authed;
-    requestId = authed.requestId;
-    const role = await requireRole(req, "CONTRACTOR");
+    const role = await requireV4Role(req, "CONTRACTOR");
     if (role instanceof Response) return role;
+    requestId = role.requestId;
     const raw = await req.json().catch(() => ({}));
     const parsed = V4ContractorProfileSchema.safeParse(raw);
     if (!parsed.success) {
@@ -39,9 +35,10 @@ export async function PUT(req: Request) {
       );
     }
     const identity = await getClerkIdentity(role.clerkUserId);
-    await upsertV4ContractorProfile(role.internalUser.id, parsed.data, identity);
-    return NextResponse.json({ ok: true }, { status: 200 });
+    const contractor = await upsertV4ContractorProfile(role.userId, parsed.data, identity);
+    return NextResponse.json({ ok: true, contractor }, { status: 200 });
   } catch (err) {
+    console.error("V4_CONTRACTOR_PROFILE_PUT_ERROR", { requestId, err });
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_CONTRACTOR_PROFILE_SAVE_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
   }

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { users } from "@/db/schema/user";
 import { requireV4Role } from "@/src/auth/requireV4Role";
+import { recordRoleTermsAcceptance } from "@/src/services/v4/roleTermsService";
 import { z } from "zod";
 
 const AcceptTosSchema = z.object({
@@ -32,6 +33,13 @@ export async function POST(req: Request) {
       updatedAt: now,
     })
     .where(eq(users.id, authed.userId));
+
+  await recordRoleTermsAcceptance({
+    userId: authed.userId,
+    role: "JOB_POSTER",
+    version: parsed.data.version,
+    acceptedAt: now,
+  });
 
   return NextResponse.json({ ok: true });
 }

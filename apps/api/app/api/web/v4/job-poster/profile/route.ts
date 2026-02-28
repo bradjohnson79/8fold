@@ -2,9 +2,17 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { requireRole } from "@/src/auth/requireRole";
 import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
-import { getV4JobPosterProfile, saveV4JobPosterProfile } from "@/src/services/v4/jobPosterProfileService";
+import {
+  getV4JobPosterProfile,
+  saveV4JobPosterProfile,
+} from "@/src/services/v4/jobPosterProfileService";
 import { V4JobPosterProfileSchema } from "@/src/validation/v4/jobPosterProfileSchema";
-import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
+import {
+  badRequest,
+  internal,
+  toV4ErrorResponse,
+  type V4Error,
+} from "@/src/services/v4/v4Errors";
 
 export async function GET(req: Request) {
   let requestId: string | undefined;
@@ -16,12 +24,17 @@ export async function GET(req: Request) {
     if (role instanceof Response) return role;
     return NextResponse.json(await getV4JobPosterProfile(role.internalUser.id));
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_JOB_POSTER_PROFILE_LOAD_FAILED");
-    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    const wrapped =
+      err instanceof Error && "status" in err
+        ? (err as V4Error)
+        : internal("V4_JOB_POSTER_PROFILE_LOAD_FAILED");
+    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), {
+      status: wrapped.status,
+    });
   }
 }
 
-export async function PUT(req: Request) {
+export async function POST(req: Request) {
   let requestId: string | undefined;
   try {
     const authed = await requireAuth(req);
@@ -33,17 +46,36 @@ export async function PUT(req: Request) {
     const raw = await req.json().catch(() => null);
     const parsed = V4JobPosterProfileSchema.safeParse(raw);
     if (!parsed.success) {
-      throw badRequest(
-        "V4_INVALID_REQUEST_BODY",
-        "Invalid input",
-        { issues: parsed.error.errors.map((e) => ({ path: e.path.join("."), message: e.message })) },
-      );
+      throw badRequest("V4_INVALID_REQUEST_BODY", "Invalid input", {
+        issues: parsed.error.errors.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })),
+      });
     }
     const identity = await getClerkIdentity(role.clerkUserId);
-    await saveV4JobPosterProfile(role.internalUser.id, parsed.data, identity);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      await saveV4JobPosterProfile(role.internalUser.id, parsed.data, identity),
+    );
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_JOB_POSTER_PROFILE_SAVE_FAILED");
-    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    console.error("V4_JOB_POSTER_PROFILE_SAVE_ERROR", {
+      requestId,
+      message: err instanceof Error ? err.message : String(err),
+      code: (err as any)?.code ?? null,
+      causeCode: (err as any)?.cause?.code ?? null,
+      causeConstraint: (err as any)?.cause?.constraint ?? null,
+    });
+    const wrapped =
+      err instanceof Error && "status" in err
+        ? (err as V4Error)
+        : internal("V4_JOB_POSTER_PROFILE_SAVE_FAILED");
+    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), {
+      status: wrapped.status,
+    });
   }
+}
+
+export async function PUT(req: Request) {
+  // Backward-compatible alias while callers migrate to POST.
+  return POST(req);
 }

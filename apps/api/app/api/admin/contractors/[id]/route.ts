@@ -3,10 +3,11 @@ import { requireAdmin } from "@/src/lib/auth/requireAdmin";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { ContractorUpdateInputSchema } from "@8fold/shared";
 import crypto from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../../../../db/drizzle";
 import { auditLogs } from "../../../../../db/schema/auditLog";
 import { contractors } from "../../../../../db/schema/contractor";
+import { users } from "../../../../../db/schema/user";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -25,7 +26,23 @@ export async function GET(req: Request) {
     if (!contractor) {
       return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, data: { contractor } });
+    const linkedUserRows = contractor.email
+      ? await db
+          .select({ userId: users.id })
+          .from(users)
+          .where(sql`lower(${users.email}) = ${String(contractor.email).toLowerCase()}`)
+          .limit(1)
+      : [];
+    const linkedUserId = linkedUserRows[0]?.userId ?? null;
+    return NextResponse.json({
+      ok: true,
+      data: {
+        contractor: {
+          ...contractor,
+          userId: linkedUserId,
+        },
+      },
+    });
   } catch (err) {
     return handleApiError(err, "GET /api/admin/contractors/[id]");
   }
@@ -69,4 +86,3 @@ export async function PATCH(req: Request) {
     return handleApiError(err, "PATCH /api/admin/contractors/[id]");
   }
 }
-
