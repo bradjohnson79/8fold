@@ -1,7 +1,28 @@
 import { getRoleCompletionSnapshot } from "@/src/services/v4/roleCompletionService";
 
 export async function getV4Readiness(userId: string) {
-  const snapshot = await getRoleCompletionSnapshot(userId);
+  let snapshot;
+  try {
+    snapshot = await getRoleCompletionSnapshot(userId);
+  } catch (error) {
+    console.error("[v4/readiness] failed to load role completion snapshot", {
+      userId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    snapshot = {
+      role: null,
+      hasAcceptedJobPosterTerms: false,
+      hasCompletedJobPosterProfile: false,
+      hasCompletedJobPosterPaymentSetup: false,
+      hasAcceptedContractorTerms: false,
+      hasCompletedContractorProfile: false,
+      hasCompletedContractorPaymentSetup: false,
+      hasAcceptedRouterTerms: false,
+      hasCompletedRouterProfile: false,
+      hasCompletedRouterPaymentSetup: false,
+      roleCompletion: null,
+    };
+  }
   const completion = snapshot.roleCompletion;
   const roleCompletion = {
     terms: Boolean(completion?.terms),

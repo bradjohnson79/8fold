@@ -7,12 +7,50 @@ import { users } from "@/db/schema/user";
 import { type V4JobPosterProfileInput } from "@/src/validation/v4/jobPosterProfileSchema";
 import type { ClerkIdentity } from "@/src/auth/getClerkIdentity";
 
+function isMissingRelationOrColumn(error: unknown): boolean {
+  const cause = (error as any)?.cause;
+  const code = String((error as any)?.code ?? cause?.code ?? "");
+  if (code === "42P01" || code === "42703") return true;
+  const message = String((error as any)?.message ?? cause?.message ?? "").toLowerCase();
+  return message.includes("does not exist");
+}
+
+function emptyV4JobPosterProfile() {
+  return {
+    ok: true as const,
+    profile: {
+      phone: "",
+      country: "",
+      region: "",
+      city: "",
+      address: "",
+      latitude: null,
+      longitude: null,
+      firstName: "",
+      lastName: "",
+      email: "",
+      addressLine1: "",
+      cityLegacy: "",
+      provinceState: "",
+      postalCode: "",
+      formattedAddress: "",
+    },
+  };
+}
+
 export async function getV4JobPosterProfile(userId: string) {
-  const rows = await db
-    .select()
-    .from(jobPosterProfilesV4)
-    .where(eq(jobPosterProfilesV4.userId, userId))
-    .limit(1);
+  let rows;
+  try {
+    rows = await db
+      .select()
+      .from(jobPosterProfilesV4)
+      .where(eq(jobPosterProfilesV4.userId, userId))
+      .limit(1);
+  } catch (error) {
+    if (!isMissingRelationOrColumn(error)) throw error;
+    console.warn("[job-poster-profile] profile table/column unavailable; returning empty profile");
+    return emptyV4JobPosterProfile();
+  }
   const row = rows[0] ?? null;
   const country = String(row?.country ?? "").toUpperCase();
   return {
