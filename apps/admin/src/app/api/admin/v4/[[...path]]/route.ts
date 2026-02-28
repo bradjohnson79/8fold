@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
-import { getAdminSessionTokenFromRequest } from "@/server/adminAuth";
+import { getAdminSessionToken } from "@/server/adminAuth";
 import { fetchWithAdminTimeout } from "@/server/upstreamFetch";
 
 async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   try {
     const apiOrigin = getValidatedApiOrigin();
-    const token = getAdminSessionTokenFromRequest(req);
+    const token = await getAdminSessionToken();
     const inboundCookie = req.headers.get("cookie") ?? "";
     if (!token && !inboundCookie) {
       throw Object.assign(new Error("Unauthorized"), { status: 401 });
