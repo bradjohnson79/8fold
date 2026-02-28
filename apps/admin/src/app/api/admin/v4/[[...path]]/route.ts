@@ -30,7 +30,6 @@ async function proxy(req: Request, ctx: { params: Promise<{ path?: string[] }> }
     if (inboundCookie) headers.cookie = inboundCookie;
 
     const resp = await fetchWithAdminTimeout(url.toString(), {
-    const resp = await fetchWithAdminTimeout(url.toString(), {
       method: req.method,
       headers,
       body,
