@@ -19,6 +19,7 @@
     "test": "pnpm -C apps/web test",
     "format": "prettier -w .",
     "guardrails": "node scripts/guardrails.mjs",
+    "guard:api-stability": "node scripts/api-stability-guard.mjs",
     "v4:guard": "node scripts/v4-guardrail.mjs",
     "ai:guard": "tsx scripts/ai-guard.ts",
     "test:jurisdiction-containment": "tsx scripts/jurisdiction-containment-test.ts",

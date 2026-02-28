@@ -15,7 +15,10 @@ export default function ApiHomePage() {
         <div style={{ fontWeight: 900 }}>Quick checks</div>
         <ul style={{ marginTop: 10, marginBottom: 0, lineHeight: "22px" }}>
           <li>
-            Health: <code>/healthz</code>
+            Health (no DB): <code>/healthz</code>, <code>/api/health/noop</code>
+          </li>
+          <li>
+            Health (with DB): <code>/api/system/health</code>, <code>/api/health</code>
           </li>
           <li>
             Jobs feed (public): <code>/api/jobs/feed</code>

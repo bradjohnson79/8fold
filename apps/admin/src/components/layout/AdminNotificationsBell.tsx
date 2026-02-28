@@ -18,7 +18,7 @@ export function AdminNotificationsBell() {
       try {
         const resp = await fetch("/api/admin/v4/notifications?read=false&page=1&pageSize=1", {
           cache: "no-store",
-          credentials: "same-origin",
+          credentials: "include",
         });
 
         if (resp.status === 401) {
