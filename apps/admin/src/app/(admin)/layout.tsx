@@ -8,6 +8,7 @@ import { adminApiFetch } from "@/server/adminApiV4";
 validateAdminEnv();
 
 export default async function AdminAppLayout({ children }: { children: React.ReactNode }) {
+  const fallbackTier: "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER" = "ADMIN_OPERATOR";
   try {
     const me = await adminApiFetch<{
       admin: { id: string; email: string; role: string };
