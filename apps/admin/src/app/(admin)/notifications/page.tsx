@@ -24,6 +24,7 @@ type ListResp = {
 };
 
 const PAGE_SIZE = 25;
+const LIST_ENDPOINT = "/api/admin/v4/notifications";
 
 function priorityColor(priority: string): React.CSSProperties {
   const p = String(priority ?? "").toUpperCase();
@@ -55,6 +56,11 @@ function toQuery(filters: { priority: string; type: string; read: string; page: 
   return q ? `?${q}` : "";
 }
 
+function formatApiError(endpoint: string, status: number, json: any): string {
+  const message = String(json?.error?.message ?? json?.error ?? "Request failed").trim();
+  return `Admin API Error (${status}) Endpoint: ${endpoint}${message ? ` - ${message}` : ""}`;
+}
+
 export default function NotificationsPage() {
   const [priority, setPriority] = useState("CRITICAL");
   const [type, setType] = useState("");
@@ -72,15 +78,11 @@ export default function NotificationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/admin/v4/notifications${toQuery(filters)}`, { cache: "no-store" });
-      if (resp.status === 401) {
-        window.location.href = "/login?next=/notifications";
-        return;
-      }
-
+      const endpoint = `${LIST_ENDPOINT}${toQuery(filters)}`;
+      const resp = await fetch(endpoint, { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => null);
       if (!resp.ok || !json || json.ok !== true) {
-        setError(String(json?.error?.message ?? json?.error ?? "Failed to load notifications"));
+        setError(formatApiError(LIST_ENDPOINT, resp.status, json));
         return;
       }
 
@@ -101,14 +103,16 @@ export default function NotificationsPage() {
 
   async function markRead(id: string) {
     try {
-      const resp = await fetch(`/api/admin/v4/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
-      if (resp.status === 401) {
-        window.location.href = "/login?next=/notifications";
+      const endpoint = `/api/admin/v4/notifications/${encodeURIComponent(id)}/read`;
+      const resp = await fetch(endpoint, { method: "POST", credentials: "include" });
+      if (!resp.ok) {
+        const json = await resp.json().catch(() => null);
+        setError(formatApiError("/api/admin/v4/notifications/:id/read", resp.status, json));
         return;
       }
       await load();
     } catch {
-      setError("Failed to mark notification as read");
+      setError("Admin API Error (network) Endpoint: /api/admin/v4/notifications/:id/read - Request failed");
     }
   }
 

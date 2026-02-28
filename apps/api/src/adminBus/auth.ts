@@ -1,8 +1,17 @@
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 import { err } from "@/src/lib/api/adminV4Response";
 
-export async function requireAdmin(req: Request): Promise<Response | Awaited<ReturnType<typeof requireAdminV4>>> {
+// Canonical Admin Bus identity guard.
+// Single auth path: admin session JWT verified with process.env.ADMIN_JWT_SECRET.
+export async function requireAdminIdentity(
+  req: Request,
+): Promise<Response | Awaited<ReturnType<typeof requireAdminV4>>> {
   return await requireAdminV4(req);
+}
+
+// Backward-compatible alias while routes migrate to requireAdminIdentity.
+export async function requireAdmin(req: Request): Promise<Response | Awaited<ReturnType<typeof requireAdminV4>>> {
+  return await requireAdminIdentity(req);
 }
 
 export type AdminTier = "ADMIN_VIEWER" | "ADMIN_OPERATOR" | "ADMIN_SUPER";
@@ -47,7 +56,7 @@ export async function requireAdminTier(
   req: Request,
   required: AdminTier,
 ): Promise<Response | RequireAdminWithTierOk> {
-  const admin = await requireAdminV4(req);
+  const admin = await requireAdminIdentity(req);
   if (admin instanceof Response) return admin;
 
   const tier = tierFromAdminRole(admin.role) ?? tierFromEmail(admin.email);
