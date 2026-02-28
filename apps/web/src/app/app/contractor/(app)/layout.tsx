@@ -55,10 +55,10 @@ export default async function ContractorAppLayout({ children }: { children: Reac
         <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-4">
           <h3 className="text-base font-semibold text-amber-900">Complete Your Contractor Setup</h3>
           <a
-            href="/contractor/setup"
+            href="/dashboard/contractor/profile"
             className="mt-3 inline-flex rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100"
           >
-            Go to Setup
+            Complete Profile
           </a>
         </div>
       )}

@@ -29,7 +29,7 @@ export function RouterWizardGate(props: { children: React.ReactNode }) {
         <h2 className="text-lg font-bold text-gray-900">Profile required</h2>
         <p className="text-gray-600 mt-2">Complete your router profile to start routing jobs.</p>
         <a
-          href="/router/setup"
+          href="/dashboard/router/profile"
           className="mt-4 inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500"
         >
           Complete profile
@@ -41,4 +41,3 @@ export function RouterWizardGate(props: { children: React.ReactNode }) {
   // READY
   return <>{props.children}</>;
 }
-

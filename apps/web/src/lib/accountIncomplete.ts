@@ -23,10 +23,17 @@ export function stepLabel(step: MissingStep): string {
 }
 
 export function stepHref(role: CompletionRole, step: MissingStep): string {
-  const setupHref = role === "CONTRACTOR" ? "/contractor/setup" : role === "ROUTER" ? "/router/setup" : "/job-poster/setup";
-  if (step === "TERMS" || step === "PROFILE") return setupHref;
+  if (step === "TERMS") {
+    if (role === "CONTRACTOR") return "/dashboard/contractor";
+    if (role === "ROUTER") return "/dashboard/router";
+    return "/dashboard/job-poster";
+  }
+  if (step === "PROFILE") {
+    if (role === "CONTRACTOR") return "/dashboard/contractor/profile";
+    if (role === "ROUTER") return "/dashboard/router/profile";
+    return "/dashboard/job-poster/profile";
+  }
   if (role === "CONTRACTOR") return "/dashboard/contractor/payment";
   if (role === "ROUTER") return "/dashboard/router/payment";
   return "/dashboard/job-poster/payment";
 }
-
