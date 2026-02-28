@@ -26,4 +26,13 @@ export function installMockAdminAuth(options?: MockAdminAuthOptions): void {
       },
     })),
   }));
+
+  // New admin routes authenticate through requireAdminV4/admin session tiering.
+  vi.doMock("@/src/auth/requireAdminV4", () => ({
+    requireAdminV4: vi.fn(async () => ({
+      adminId: userId,
+      email,
+      role: "ADMIN_SUPER",
+    })),
+  }));
 }

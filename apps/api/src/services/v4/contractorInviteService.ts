@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
@@ -22,14 +22,45 @@ export async function listInvites(contractorUserId: string) {
       title: jobs.title,
       scope: jobs.scope,
       region: jobs.region,
+      city: jobs.city,
+      tradeCategory: jobs.trade_category,
+      amountCents: jobs.amount_cents,
+      totalAmountCents: jobs.total_amount_cents,
+      contractorPayoutCents: jobs.contractor_payout_cents,
+      routerEarningsCents: jobs.router_earnings_cents,
+      brokerFeeCents: jobs.broker_fee_cents,
+      transactionFeeCents: jobs.transaction_fee_cents,
     })
     .from(v4ContractorJobInvites)
     .innerJoin(jobs, eq(jobs.id, v4ContractorJobInvites.jobId))
     .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.status, "PENDING")))
-    .orderBy(v4ContractorJobInvites.createdAt);
+    .orderBy(desc(v4ContractorJobInvites.createdAt));
 
   const paymentReady = await getContractorStripeSnapshot(contractorUserId);
-  return { invites: rows, paymentReady };
+  return {
+    invites: rows.map((row) => {
+      const contractorPayoutCents = Number(row.contractorPayoutCents ?? 0);
+      const routerEarningsCents = Number(row.routerEarningsCents ?? 0);
+      const brokerFeeCents = Number(row.brokerFeeCents ?? 0);
+      const transactionFeeCents = Number(row.transactionFeeCents ?? 0);
+      const fallbackTotal = contractorPayoutCents + routerEarningsCents + brokerFeeCents + transactionFeeCents;
+      const appraisalTotalCents =
+        Number(row.totalAmountCents ?? 0) > 0
+          ? Number(row.totalAmountCents)
+          : Number(row.amountCents ?? 0) > 0
+            ? Number(row.amountCents)
+            : fallbackTotal;
+      return {
+        ...row,
+        city: row.city ?? "",
+        tradeCategory: row.tradeCategory ?? "",
+        appraisalTotal: appraisalTotalCents,
+        appraisalTotalCents,
+        statusLabel: "INVITED" as const,
+      };
+    }),
+    paymentReady,
+  };
 }
 
 export async function getInviteByJob(contractorUserId: string, jobId: string) {
@@ -163,6 +194,16 @@ export async function acceptInvite(contractorUserId: string, jobId: string) {
       .update(v4ContractorJobInvites)
       .set({ status: "ACCEPTED" })
       .where(eq(v4ContractorJobInvites.id, invite.id));
+    await tx
+      .update(v4ContractorJobInvites)
+      .set({ status: "REJECTED" })
+      .where(
+        and(
+          eq(v4ContractorJobInvites.jobId, jobId),
+          ne(v4ContractorJobInvites.id, invite.id),
+          eq(v4ContractorJobInvites.status, "PENDING"),
+        ),
+      );
 
     const assignmentId = randomUUID();
     await tx.insert(v4JobAssignments).values({
@@ -209,6 +250,18 @@ export async function acceptInvite(contractorUserId: string, jobId: string) {
       priority: "NORMAL",
       createdAt: new Date(),
     });
+    await tx.insert(v4Notifications).values({
+      id: randomUUID(),
+      userId: String(invite.routeId),
+      role: "ROUTER",
+      type: "CONTRACTOR_ACCEPTED_ROUTE_INVITE",
+      title: "Contractor accepted routed job",
+      message: "A contractor accepted one of your routed job invites.",
+      entityType: "JOB",
+      entityId: jobId,
+      priority: "NORMAL",
+      createdAt: new Date(),
+    });
 
     const existingThread = await tx
       .select({ id: v4MessageThreads.id })
@@ -237,8 +290,36 @@ export async function rejectInvite(contractorUserId: string, jobId: string) {
   if (!invite) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
   if (invite.status !== "PENDING") throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already accepted or rejected");
 
-  await db
-    .update(v4ContractorJobInvites)
-    .set({ status: "REJECTED" })
-    .where(eq(v4ContractorJobInvites.id, invite.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(v4ContractorJobInvites)
+      .set({ status: "REJECTED" })
+      .where(eq(v4ContractorJobInvites.id, invite.id));
+
+    const summaryRows = await tx
+      .select({
+        pending: sql<number>`sum(case when ${v4ContractorJobInvites.status} = 'PENDING' then 1 else 0 end)`,
+        accepted: sql<number>`sum(case when ${v4ContractorJobInvites.status} = 'ACCEPTED' then 1 else 0 end)`,
+      })
+      .from(v4ContractorJobInvites)
+      .where(eq(v4ContractorJobInvites.jobId, jobId))
+      .limit(1);
+    const summary = summaryRows[0] ?? null;
+    const hasPending = Number(summary?.pending ?? 0) > 0;
+    const hasAccepted = Number(summary?.accepted ?? 0) > 0;
+
+    if (!hasPending && !hasAccepted) {
+      await tx
+        .update(jobs)
+        .set({
+          status: "OPEN_FOR_ROUTING" as any,
+          routing_status: "UNROUTED" as any,
+          claimed_by_user_id: null,
+          claimed_at: null,
+          routed_at: null,
+          updated_at: new Date(),
+        })
+        .where(and(eq(jobs.id, jobId), eq(jobs.status, "OPEN_FOR_ROUTING")));
+    }
+  });
 }
