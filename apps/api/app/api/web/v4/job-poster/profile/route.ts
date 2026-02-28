@@ -58,6 +58,13 @@ export async function POST(req: Request) {
       await saveV4JobPosterProfile(role.internalUser.id, parsed.data, identity),
     );
   } catch (err) {
+    console.error("V4_JOB_POSTER_PROFILE_SAVE_ERROR", {
+      requestId,
+      message: err instanceof Error ? err.message : String(err),
+      code: (err as any)?.code ?? null,
+      causeCode: (err as any)?.cause?.code ?? null,
+      causeConstraint: (err as any)?.cause?.constraint ?? null,
+    });
     const wrapped =
       err instanceof Error && "status" in err
         ? (err as V4Error)
