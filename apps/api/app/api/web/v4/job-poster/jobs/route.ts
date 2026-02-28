@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireRoleCompletion } from "@/src/auth/requireRoleCompletion";
 import { requireV4Role } from "@/src/auth/requireV4Role";
 import { listJobsForJobPoster } from "@/src/services/v4/jobPosterJobsService";
 import { submitJobFromActiveDraft } from "@/src/services/escrow/jobDraftSubmitService";
@@ -22,6 +23,8 @@ export async function POST(req: Request) {
   try {
     const role = await requireV4Role(req, "JOB_POSTER");
     if (role instanceof Response) return role;
+    const completionGuard = await requireRoleCompletion(role.userId, "JOB_POSTER");
+    if (completionGuard) return completionGuard;
     const result = await submitJobFromActiveDraft(role.userId);
     return NextResponse.json({ success: true, jobId: result.jobId, created: result.created });
   } catch (err) {

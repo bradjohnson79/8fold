@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireContractorV4 } from "@/src/auth/requireContractorV4";
+import { requireRoleCompletion } from "@/src/auth/requireRoleCompletion";
 import { acceptInvite } from "@/src/services/v4/contractorInviteService";
 import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
@@ -9,6 +10,8 @@ export async function POST(req: Request) {
     const ctx = await requireContractorV4(req);
     if (ctx instanceof Response) return ctx;
     requestId = ctx.requestId;
+    const completionGuard = await requireRoleCompletion(ctx.internalUser.id, "CONTRACTOR");
+    if (completionGuard) return completionGuard;
 
     const body = (await req.json().catch(() => null)) as { jobId?: string } | null;
     const jobId = String(body?.jobId ?? "").trim();

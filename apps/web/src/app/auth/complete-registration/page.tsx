@@ -41,7 +41,7 @@ export default function CompleteRegistrationPage() {
           const msg = String(json?.error?.message ?? json?.error ?? "Could not complete registration.");
           throw new Error(msg);
         }
-        router.replace("/dashboard/setup");
+        router.replace("/dashboard");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not complete registration.");
       }

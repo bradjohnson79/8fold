@@ -81,3 +81,4 @@ export * from "./v4ContractorSuspension";
 export * from "./v4TaxRegion";
 export * from "./v4TaxSetting";
 export * from "./admin";
+export * from "./roleTermsAcceptance";

@@ -48,6 +48,7 @@ export default function ContractorSetupPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(false);
 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [contactName, setContactName] = useState("");
@@ -120,13 +121,15 @@ export default function ContractorSetupPage() {
 
     (async () => {
       try {
-        const [metaResp, profileResp] = await Promise.all([
+        const [metaResp, profileResp, readinessResp] = await Promise.all([
           fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
           fetch("/api/v4/contractor/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" }),
         ]);
 
         const meta = (await metaResp.json().catch(() => ({}))) as { uiOrder?: string[] };
         const json = (await profileResp.json().catch(() => null)) as any;
+        const readiness = (await readinessResp.json().catch(() => null)) as any;
         if (!alive) return;
 
         if (profileResp.status === 401) {
@@ -141,6 +144,7 @@ export default function ContractorSetupPage() {
         }
 
         setTradeOptions(Array.isArray(meta.uiOrder) ? meta.uiOrder : []);
+        setSetupComplete(Boolean(readinessResp.ok && readiness?.roleCompletion?.complete));
 
         const p = json?.profile;
         if (p) {
@@ -276,6 +280,14 @@ export default function ContractorSetupPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
+        {setupComplete ? (
+          <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Your setup is already complete. You can update your details here any time.
+            <Link href="/dashboard/contractor" className="ml-2 font-semibold underline">
+              Return to dashboard
+            </Link>
+          </div>
+        ) : null}
         <h1 className="text-3xl font-bold text-gray-900">Contractor Setup</h1>
         <p className="mt-2 text-gray-600">Complete your contractor profile to access dashboard features.</p>
 
