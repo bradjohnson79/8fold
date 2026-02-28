@@ -73,7 +73,6 @@ function mapJobPosterProfileDbError(err: unknown): V4Error {
 
   return internal("V4_JOB_POSTER_PROFILE_SAVE_FAILED");
 }
-
 export async function getV4JobPosterProfile(userId: string) {
   let rows;
   try {
