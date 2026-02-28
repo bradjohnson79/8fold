@@ -163,7 +163,7 @@ export function StripeExpressPayoutSetup() {
                 disabled={saving}
                 className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
               >
-                {saving ? "Simulating…" : "Simulate Skype Approval"}
+                {saving ? "Simulating…" : "Stripe Simulation Success"}
               </button>
             ) : null}
           </div>
@@ -189,7 +189,7 @@ export function StripeExpressPayoutSetup() {
                 disabled={saving}
                 className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
               >
-                {saving ? "Simulating…" : "Simulate Skype Approval"}
+                {saving ? "Simulating…" : "Stripe Simulation Success"}
               </button>
             ) : null}
           </div>
@@ -202,14 +202,26 @@ export function StripeExpressPayoutSetup() {
           <div className="mt-2 text-sm text-gray-700">Payout currency: {status.payoutCurrency}</div>
           <div className="text-sm text-gray-700">Charges enabled: {String(status.chargesEnabled)}</div>
           <div className="text-sm text-gray-700">Payouts enabled: {String(status.payoutsEnabled)}</div>
-          <button
-            type="button"
-            onClick={() => void openStripe()}
-            disabled={saving}
-            className="mt-3 bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
-          >
-            {saving ? "Redirecting…" : "Manage in Stripe"}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void openStripe()}
+              disabled={saving}
+              className="bg-8fold-green text-white hover:bg-8fold-green-dark disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+            >
+              {saving ? "Redirecting…" : "Manage in Stripe"}
+            </button>
+            {status?.simulationEnabled ? (
+              <button
+                type="button"
+                onClick={() => void simulateApproval()}
+                disabled={saving}
+                className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
+              >
+                {saving ? "Simulating…" : "Stripe Simulation Success"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

@@ -235,7 +235,7 @@ export default function RouterPaymentSetupPage() {
                 disabled={saving || loading}
                 className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? "Simulating…" : "Simulate Skype Approval"}
+                {saving ? "Simulating…" : "Stripe Simulation Success"}
               </button>
             ) : null}
           </div>
