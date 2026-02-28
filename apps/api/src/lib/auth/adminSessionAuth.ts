@@ -64,6 +64,8 @@ function readCookie(cookieHeader: string | null, name: string): string {
 }
 
 export function getAdminJwtSecret(): string {
+  // Canonical admin session secret source across API/Admin projects.
+  // Do not introduce fallback env vars.
   const secret = String(process.env.ADMIN_JWT_SECRET ?? "").trim();
   if (!secret) throw Object.assign(new Error("ADMIN_JWT_SECRET is required"), { status: 500 });
   return secret;
