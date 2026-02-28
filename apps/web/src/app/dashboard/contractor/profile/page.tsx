@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-/** Slim profile view — redirect to /contractor/setup for edits per plan. */
+/** Slim profile view */
 export default function ContractorProfilePage() {
   const [profile, setProfile] = useState<{
     firstName?: string | null;
@@ -91,7 +91,7 @@ export default function ContractorProfilePage() {
       </div>
 
       <Link
-        href="/contractor/setup"
+        href="/dashboard/contractor/profile"
         className="mt-6 inline-block rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800"
       >
         Edit Profile

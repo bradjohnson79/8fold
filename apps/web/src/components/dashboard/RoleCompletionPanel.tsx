@@ -26,7 +26,18 @@ type CardConfig = {
 };
 
 function cardConfigs(role: DashboardRole): CardConfig[] {
-  const setupHref = role === "CONTRACTOR" ? "/contractor/setup" : role === "ROUTER" ? "/router/setup" : "/job-poster/setup";
+  const termsHref =
+    role === "CONTRACTOR"
+      ? "/dashboard/contractor"
+      : role === "ROUTER"
+        ? "/dashboard/router"
+        : "/dashboard/job-poster";
+  const profileHref =
+    role === "CONTRACTOR"
+      ? "/dashboard/contractor/profile"
+      : role === "ROUTER"
+        ? "/dashboard/router/profile"
+        : "/dashboard/job-poster/profile";
   const paymentHref =
     role === "CONTRACTOR"
       ? "/dashboard/contractor/payment"
@@ -40,14 +51,14 @@ function cardConfigs(role: DashboardRole): CardConfig[] {
       title: "Terms",
       description: "Accept your role-specific Terms & Conditions.",
       ctaLabel: "Review & Accept",
-      href: setupHref,
+      href: termsHref,
     },
     {
       key: "PROFILE",
       title: "Profile Setup",
       description: "Complete your profile information for routing and compliance.",
       ctaLabel: "Complete Profile",
-      href: setupHref,
+      href: profileHref,
     },
     {
       key: "PAYMENT",
@@ -119,4 +130,3 @@ export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
     </section>
   );
 }
-
