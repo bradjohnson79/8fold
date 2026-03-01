@@ -4,12 +4,11 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
 type Invite = {
-  id: string;
+  inviteId: string;
   jobId: string;
-  title?: string;
-  scope?: string;
-  region?: string;
-  status: string;
+  jobTitle?: string;
+  jobDescription?: string;
+  address?: string;
   createdAt: string;
 };
 
@@ -63,6 +62,7 @@ function normalizeStatusLabel(status: string) {
 
 export default function ContractorOverviewPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
   const [assignedJobs, setAssignedJobs] = useState<JobSummary[]>([]);
   const [completedJobs, setCompletedJobs] = useState<JobSummary[]>([]);
   const [paymentReady, setPaymentReady] = useState<boolean>(true);
@@ -72,17 +72,25 @@ export default function ContractorOverviewPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [invResp, assignedResp, completedResp, statusResp] = await Promise.all([
-          fetch("/api/v4/contractor/invites", { cache: "no-store", credentials: "include" }),
+        const [inviteCountResp, invResp, assignedResp, completedResp, statusResp] = await Promise.all([
+          fetch("/api/contractor/invites/count", { cache: "no-store", credentials: "include" }),
+          fetch("/api/contractor/invites", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/jobs?status=assigned", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/jobs?status=completed", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/account-status", { cache: "no-store", credentials: "include" }),
         ]);
 
+        if (inviteCountResp.ok) {
+          const countData = (await inviteCountResp.json()) as { count?: number };
+          setPendingInviteCount(Number(countData.count ?? 0));
+        }
+
         if (invResp.ok) {
-          const invData = (await invResp.json()) as { invites?: Invite[]; paymentReady?: boolean };
-          setInvites(Array.isArray(invData.invites) ? invData.invites : []);
-          setPaymentReady(Boolean(invData.paymentReady ?? true));
+          const invData = (await invResp.json()) as Invite[];
+          const parsedInvites = Array.isArray(invData) ? invData : [];
+          setInvites(parsedInvites);
+          if (!inviteCountResp.ok) setPendingInviteCount(parsedInvites.length);
+          setPaymentReady(true);
         }
 
         if (assignedResp.ok) {
@@ -101,6 +109,7 @@ export default function ContractorOverviewPage() {
         }
       } catch {
         setInvites([]);
+        setPendingInviteCount(0);
         setAssignedJobs([]);
         setCompletedJobs([]);
         setPaymentReady(false);
@@ -112,7 +121,6 @@ export default function ContractorOverviewPage() {
   }, []);
 
   const availableEarnings = "$0.00";
-  const pendingInviteCount = invites.length;
   const inProgressCount = assignedJobs.length;
   const completionRate = assignedJobs.length + completedJobs.length > 0
     ? Math.round((completedJobs.length / (assignedJobs.length + completedJobs.length)) * 100)
@@ -120,8 +128,8 @@ export default function ContractorOverviewPage() {
   const onTimeRate = "—";
   const timeline = [
     ...invites.slice(0, 3).map((i) => ({
-      id: `inv-${i.id}`,
-      message: `Invite received${i.title ? ` • ${i.title}` : ""}`,
+      id: `inv-${i.inviteId}`,
+      message: `Invite received${i.jobTitle ? ` • ${i.jobTitle}` : ""}`,
       at: i.createdAt,
     })),
     ...assignedJobs.slice(0, 2).map((j) => ({
@@ -165,7 +173,23 @@ export default function ContractorOverviewPage() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Card title="Available Earnings" value={availableEarnings} subtitle="Funds ready to release" icon="💵" accent="from-emerald-50 to-white" />
         <Card title="In Progress Jobs" value={String(inProgressCount)} subtitle="Active assigned jobs" icon="🧰" accent="from-sky-50 to-white" />
-        <Card title="Pending Invites" value={String(pendingInviteCount)} subtitle="Awaiting your response" icon="📨" accent="from-amber-50 to-white" />
+        <div className={`rounded-2xl border p-4 shadow-sm ${pendingInviteCount > 0 ? "border-amber-300 bg-gradient-to-br from-amber-100 to-white" : "border-slate-200 bg-gradient-to-br from-amber-50 to-white"}`}>
+          <p className="text-sm font-medium text-slate-700">
+            📨 Pending Invites
+            {pendingInviteCount > 0 ? <span className="ml-2 inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-amber-500 align-middle" /> : null}
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{String(pendingInviteCount)}</p>
+          <p className="mt-1 text-xs text-slate-600">
+            {pendingInviteCount > 0
+              ? `You have ${pendingInviteCount} job invitation(s) waiting.`
+              : "Awaiting your response"}
+          </p>
+          {pendingInviteCount > 0 ? (
+            <Link href="/dashboard/contractor/invites" className="mt-2 inline-block text-sm font-medium text-amber-700 hover:text-amber-800">
+              View Invites →
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -195,7 +219,7 @@ export default function ContractorOverviewPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link href={`/dashboard/contractor/jobs/${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">🔵 View Details</Link>
-                  <Link href={`/dashboard/contractor/messages?job=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">💬 Message</Link>
+                  <Link href={`/dashboard/contractor/messages?jobId=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">💬 Message</Link>
                   <Link href={`/dashboard/contractor/pm?job=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">📄 Submit P&amp;M</Link>
                 </div>
               </article>
@@ -213,15 +237,15 @@ export default function ContractorOverviewPage() {
             <>
               <div className="mt-3 space-y-2">
                 {invites.slice(0, 5).map((inv) => (
-                  <div key={inv.id} className="rounded-xl border border-slate-200 p-3">
-                    <div className="text-sm font-medium text-slate-800">{inv.title ?? inv.scope ?? "Trade Opportunity"}</div>
-                    <div className="mt-1 text-xs text-slate-500">{inv.region ?? "Regional"} • Distance shown in details</div>
+                  <div key={inv.inviteId} className="rounded-xl border border-slate-200 p-3">
+                    <div className="text-sm font-medium text-slate-800">{inv.jobTitle ?? inv.jobDescription ?? "Trade Opportunity"}</div>
+                    <div className="mt-1 text-xs text-slate-500">{inv.address ?? "Regional"} • Distance shown in details</div>
                     <div className="mt-1 text-xs text-slate-500">Budget range shared when opened</div>
                   </div>
                 ))}
                 {invites.length === 0 ? <p className="text-sm text-slate-500">No nearby opportunities yet.</p> : null}
               </div>
-              <Link href="/dashboard/contractor/invites" className="mt-3 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">View Available Jobs</Link>
+              <Link href="/dashboard/contractor/invites" className="mt-3 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">View Invites →</Link>
             </>
           )}
         </section>

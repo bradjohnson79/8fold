@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/db/drizzle";
+import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4Messages } from "@/db/schema/v4Message";
 import { jobs } from "@/db/schema/job";
@@ -13,6 +14,15 @@ export type ThreadSummary = {
   contractorUserId: string;
   lastMessageAt: string;
   unreadCount?: number;
+  jobDescription?: string | null;
+  jobPosterFirstName?: string | null;
+  jobPosterLastName?: string | null;
+  tradeCategory?: string | null;
+  availability?: string | null;
+  contractorAmount?: number;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type MessageRow = {
@@ -48,6 +58,89 @@ export async function listThreadsForJobPoster(userId: string): Promise<ThreadSum
     contractorUserId: r.contractorUserId,
     lastMessageAt: r.lastMessageAt.toISOString(),
   }));
+}
+
+function toNonEmpty(value: string | null | undefined): string {
+  return String(value ?? "").trim();
+}
+
+function toAvailability(raw: unknown, timeWindow: string | null | undefined): string {
+  const fromWindow = toNonEmpty(timeWindow);
+  if (fromWindow) return fromWindow;
+  if (typeof raw === "string") return toNonEmpty(raw);
+  if (raw == null) return "";
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return "";
+  }
+}
+
+function computeContractorAmountCents(input: {
+  contractorPayoutCents: number | null;
+  totalAmountCents: number | null;
+  amountCents: number | null;
+}): number {
+  const contractorPayoutCents = Number(input.contractorPayoutCents ?? 0);
+  if (contractorPayoutCents > 0) return contractorPayoutCents;
+  const total = Math.max(Number(input.totalAmountCents ?? 0), Number(input.amountCents ?? 0), 0);
+  return Math.round(total * 0.75);
+}
+
+export async function listThreadsForContractor(userId: string): Promise<ThreadSummary[]> {
+  const rows = await db
+    .select({
+      id: v4MessageThreads.id,
+      jobId: v4MessageThreads.jobId,
+      jobPosterUserId: v4MessageThreads.jobPosterUserId,
+      contractorUserId: v4MessageThreads.contractorUserId,
+      lastMessageAt: v4MessageThreads.lastMessageAt,
+      jobTitle: jobs.title,
+      jobDescription: jobs.scope,
+      tradeCategory: jobs.trade_category,
+      availability: jobs.availability,
+      timeWindow: jobs.time_window,
+      contractorPayoutCents: jobs.contractor_payout_cents,
+      totalAmountCents: jobs.total_amount_cents,
+      amountCents: jobs.amount_cents,
+      address: jobs.address_full,
+      city: jobs.city,
+      region: jobs.region,
+      latitude: jobs.lat,
+      longitude: jobs.lng,
+      jobPosterFirstName: jobPosterProfilesV4.firstName,
+      jobPosterLastName: jobPosterProfilesV4.lastName,
+    })
+    .from(v4MessageThreads)
+    .innerJoin(jobs, eq(jobs.id, v4MessageThreads.jobId))
+    .leftJoin(jobPosterProfilesV4, eq(jobPosterProfilesV4.userId, v4MessageThreads.jobPosterUserId))
+    .where(eq(v4MessageThreads.contractorUserId, userId))
+    .orderBy(desc(v4MessageThreads.lastMessageAt));
+
+  return rows.map((r) => {
+    const fallbackAddress = [toNonEmpty(r.city), toNonEmpty(r.region)].filter(Boolean).join(", ");
+    return {
+      id: r.id,
+      jobId: r.jobId,
+      jobTitle: r.jobTitle ?? null,
+      jobPosterUserId: r.jobPosterUserId,
+      contractorUserId: r.contractorUserId,
+      lastMessageAt: r.lastMessageAt.toISOString(),
+      jobDescription: r.jobDescription ?? null,
+      jobPosterFirstName: r.jobPosterFirstName ?? null,
+      jobPosterLastName: r.jobPosterLastName ?? null,
+      tradeCategory: r.tradeCategory ?? null,
+      availability: toAvailability(r.availability, r.timeWindow),
+      contractorAmount: computeContractorAmountCents({
+        contractorPayoutCents: r.contractorPayoutCents,
+        totalAmountCents: r.totalAmountCents,
+        amountCents: r.amountCents,
+      }),
+      address: toNonEmpty(r.address) || fallbackAddress || null,
+      latitude: typeof r.latitude === "number" && Number.isFinite(r.latitude) ? r.latitude : null,
+      longitude: typeof r.longitude === "number" && Number.isFinite(r.longitude) ? r.longitude : null,
+    };
+  });
 }
 
 export async function getThreadMessagesByThreadId(threadId: string, userId: string): Promise<MessageRow[]> {
