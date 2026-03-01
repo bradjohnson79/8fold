@@ -160,6 +160,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
   if (invite.contractorUserId !== contractorUserId) throw forbidden("V4_INVITE_FORBIDDEN", "Invite does not belong to you");
 
   const now = new Date();
+  const posterAcceptExpiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
   return db.transaction(async (tx) => {
     await tx.execute(sql`select id from jobs where id = ${invite.jobId} for update`);
@@ -238,6 +239,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         status: "ASSIGNED" as any,
         contractor_user_id: contractorUserId,
         accepted_at: now,
+        poster_accept_expires_at: posterAcceptExpiresAt,
         routing_started_at: null,
         routing_expires_at: null,
         updated_at: now,
