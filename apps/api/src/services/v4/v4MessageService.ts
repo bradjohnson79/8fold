@@ -1,6 +1,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/db/drizzle";
+import { contractorAccounts } from "@/db/schema/contractorAccount";
+import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4Messages } from "@/db/schema/v4Message";
@@ -14,6 +16,7 @@ export type ThreadSummary = {
   contractorUserId: string;
   lastMessageAt: string;
   unreadCount?: number;
+  jobStatus?: string | null;
   jobDescription?: string | null;
   jobPosterFirstName?: string | null;
   jobPosterLastName?: string | null;
@@ -23,6 +26,11 @@ export type ThreadSummary = {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  contractorName?: string | null;
+  contractorBusinessName?: string | null;
+  contractorYearsExperience?: number | null;
+  contractorCity?: string | null;
+  contractorRegion?: string | null;
 };
 
 export type MessageRow = {
@@ -44,9 +52,21 @@ export async function listThreadsForJobPoster(userId: string): Promise<ThreadSum
       contractorUserId: v4MessageThreads.contractorUserId,
       lastMessageAt: v4MessageThreads.lastMessageAt,
       jobTitle: jobs.title,
+      jobStatus: jobs.status,
+      jobDescription: jobs.scope,
+      tradeCategory: jobs.trade_category,
+      availability: jobs.availability,
+      timeWindow: jobs.time_window,
+      contractorName: contractorProfilesV4.contactName,
+      contractorBusinessName: contractorProfilesV4.businessName,
+      contractorYearsExperience: contractorProfilesV4.yearsExperience,
+      contractorCity: contractorProfilesV4.city,
+      contractorRegion: contractorAccounts.regionCode,
     })
     .from(v4MessageThreads)
     .innerJoin(jobs, eq(jobs.id, v4MessageThreads.jobId))
+    .leftJoin(contractorProfilesV4, eq(contractorProfilesV4.userId, v4MessageThreads.contractorUserId))
+    .leftJoin(contractorAccounts, eq(contractorAccounts.userId, v4MessageThreads.contractorUserId))
     .where(eq(v4MessageThreads.jobPosterUserId, userId))
     .orderBy(desc(v4MessageThreads.lastMessageAt));
 
@@ -57,6 +77,18 @@ export async function listThreadsForJobPoster(userId: string): Promise<ThreadSum
     jobPosterUserId: r.jobPosterUserId,
     contractorUserId: r.contractorUserId,
     lastMessageAt: r.lastMessageAt.toISOString(),
+    jobStatus: r.jobStatus ?? null,
+    jobDescription: r.jobDescription ?? null,
+    tradeCategory: r.tradeCategory ?? null,
+    availability: toAvailability(r.availability, r.timeWindow),
+    contractorName: toNonEmpty(r.contractorName) || "Assigned Contractor",
+    contractorBusinessName: toNonEmpty(r.contractorBusinessName) || "Contractor Business",
+    contractorYearsExperience:
+      typeof r.contractorYearsExperience === "number" && Number.isFinite(r.contractorYearsExperience)
+        ? r.contractorYearsExperience
+        : null,
+    contractorCity: toNonEmpty(r.contractorCity) || null,
+    contractorRegion: toNonEmpty(r.contractorRegion) || null,
   }));
 }
 
@@ -96,6 +128,7 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
       contractorUserId: v4MessageThreads.contractorUserId,
       lastMessageAt: v4MessageThreads.lastMessageAt,
       jobTitle: jobs.title,
+      jobStatus: jobs.status,
       jobDescription: jobs.scope,
       tradeCategory: jobs.trade_category,
       availability: jobs.availability,
@@ -126,6 +159,7 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
       jobPosterUserId: r.jobPosterUserId,
       contractorUserId: r.contractorUserId,
       lastMessageAt: r.lastMessageAt.toISOString(),
+      jobStatus: r.jobStatus ?? null,
       jobDescription: r.jobDescription ?? null,
       jobPosterFirstName: r.jobPosterFirstName ?? null,
       jobPosterLastName: r.jobPosterLastName ?? null,

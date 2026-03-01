@@ -151,6 +151,7 @@ export const jobs = dbSchema.table(
     routing_started_at: timestamp("routing_started_at", { mode: "date" }),
     routing_expires_at: timestamp("routing_expires_at", { mode: "date" }),
     poster_accept_expires_at: timestamp("poster_accept_expires_at", { mode: "date" }),
+    poster_accepted_at: timestamp("poster_accepted_at", { mode: "date" }),
 
     contractor_completed_at: timestamp("contractor_completed_at", { mode: "date" }),
     contractor_completion_summary: text("contractor_completion_summary"),
