@@ -23,6 +23,7 @@ export function Header() {
     return {
       howToEarn: p === "/how-to-earn",
       about: p === "/about-8fold",
+      media: p.startsWith("/media"),
       workers: p.startsWith("/workers"),
       workersJobPosters: p.startsWith("/workers/job-posters"),
       workersRouters: p.startsWith("/workers/routers"),
@@ -142,6 +143,16 @@ export function Header() {
             >
               About 8Fold
             </Link>
+            <Link
+              href="/media"
+              className={
+                active.media
+                  ? "text-white font-semibold transition-colors"
+                  : "text-gray-200 hover:text-white font-semibold transition-colors"
+              }
+            >
+              Media
+            </Link>
           </nav>
 
           {/* Auth Button */}
@@ -234,6 +245,13 @@ export function Header() {
                 className="block px-3 py-2 rounded-lg text-gray-200 hover:bg-white/10 hover:text-white font-semibold"
               >
                 About 8Fold
+              </Link>
+              <Link
+                href="/media"
+                onClick={() => setMobileOpen(false)}
+                className="block px-3 py-2 rounded-lg text-gray-200 hover:bg-white/10 hover:text-white font-semibold"
+              >
+                Media
               </Link>
 
               <SignedOut>

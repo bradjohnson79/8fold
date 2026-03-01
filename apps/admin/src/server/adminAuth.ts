@@ -2,39 +2,22 @@ import { cookies } from "next/headers";
 
 export const ADMIN_SESSION_COOKIE_NAME = "admin_session";
 
-function cookieValueFromHeader(cookieHeader: string | null, name: string): string {
-  const raw = cookieHeader ?? "";
-  if (!raw) return "";
-  for (const part of raw.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) continue;
-    const key = part.slice(0, idx).trim();
-    if (key !== name) continue;
-    const value = part.slice(idx + 1).trim();
-    try {
-      return value ? decodeURIComponent(value) : "";
-    } catch {
-      return value;
-    }
-  }
-  return "";
-}
-
-export function getAdminSessionTokenFromRequest(req: Request): string | null {
-  const token = cookieValueFromHeader(req.headers.get("cookie"), ADMIN_SESSION_COOKIE_NAME).trim();
-  return token || null;
-}
-
-async function getAdminSessionTokenFromServerContext(): Promise<string | null> {
+export async function getAdminSessionToken(): Promise<string | null> {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE_NAME)?.value?.trim() ?? "";
-  return token || null;
+  if (!token) return null;
+  const segments = token.split(".");
+  const isJwtFormat = segments.length === 3 && segments.every((s) => s.length > 0);
+  if (!isJwtFormat) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[ADMIN_SESSION_INVALID_FORMAT]");
+    }
+    return null;
+  }
+  return token;
 }
 
-export async function getAdminAuthHeader(req?: Request): Promise<string> {
-  // Prefer request cookie parsing, but always fall back to Next server cookie context.
-  // This avoids false 401s when browser cookie header formatting differs from our parser.
-  let token = req ? getAdminSessionTokenFromRequest(req) : null;
-  if (!token) token = await getAdminSessionTokenFromServerContext();
+export async function getAdminAuthHeader(_req?: Request): Promise<string> {
+  const token = await getAdminSessionToken();
   if (!token) throw Object.assign(new Error("Unauthorized"), { status: 401 });
   return `Bearer ${token}`;
 }
