@@ -170,6 +170,8 @@ export default function NotificationsPage() {
                 ? `/jobs/${encodeURIComponent(n.entityId)}`
                 : n.entityType === "REFUND" && n.entityId
                   ? `/jobs/${encodeURIComponent(n.entityId)}`
+                  : n.entityType === "FINANCIAL_INTEGRITY_ALERT" && n.entityId
+                    ? `/finances/revenue`
                   : null;
 
             return (

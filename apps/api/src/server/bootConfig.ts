@@ -1,3 +1,5 @@
+import { validateStripeIntegrityReadKeyOnStartup } from "@/src/stripe/integrity/env";
+
 type OriginEnvName = "API_ORIGIN" | "ADMIN_ORIGIN" | "WEB_ORIGIN";
 
 function missingOriginError(name: OriginEnvName): Error {
@@ -61,4 +63,8 @@ export function logBootConfigOnce() {
   // Clerk JWT verification must be configured in apps/api.
   // Fail fast at boot to avoid confusing 500s later.
   resolve("CLERK_ISSUER", process.env.CLERK_ISSUER);
+
+  // Stripe integrity client requires a read-only key.
+  // Production must fail fast; development warns once.
+  validateStripeIntegrityReadKeyOnStartup();
 }

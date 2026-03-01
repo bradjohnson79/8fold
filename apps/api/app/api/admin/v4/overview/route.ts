@@ -1,10 +1,10 @@
 import { and, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import {
+  financialIntegrityAlerts,
   jobs,
   payoutRequests,
   v4AdminDisputes,
-  v4AdminIntegrityAlerts,
   v4AdminSupportTickets,
 } from "@/db/schema";
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
@@ -70,8 +70,8 @@ export async function GET(req: Request) {
       .where(sql`${jobs.payment_status} in ('FUNDED','FUNDS_SECURED','AUTHORIZED') or ${jobs.payout_status} = 'RELEASED'`),
     db
       .select({ count: sql<number>`count(*)::int` })
-      .from(v4AdminIntegrityAlerts)
-      .where(sql`${v4AdminIntegrityAlerts.status} = 'OPEN'`),
+      .from(financialIntegrityAlerts)
+      .where(sql`${financialIntegrityAlerts.status} = 'OPEN'`),
   ]);
 
   return ok({
