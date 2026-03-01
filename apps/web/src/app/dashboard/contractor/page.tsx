@@ -26,6 +26,13 @@ type AccountStatus = {
   activeSuspension?: { suspendedUntil: string; reason?: string | null } | null;
 };
 
+type ReadinessResponse = {
+  paymentSetupComplete?: boolean;
+  roleCompletion?: {
+    payment?: boolean;
+  } | null;
+};
+
 function formatDate(value?: string) {
   if (!value) return "—";
   const date = new Date(value);
@@ -65,19 +72,20 @@ export default function ContractorOverviewPage() {
   const [pendingInviteCount, setPendingInviteCount] = useState(0);
   const [assignedJobs, setAssignedJobs] = useState<JobSummary[]>([]);
   const [completedJobs, setCompletedJobs] = useState<JobSummary[]>([]);
-  const [paymentReady, setPaymentReady] = useState<boolean>(true);
+  const [paymentSetupComplete, setPaymentSetupComplete] = useState<boolean>(false);
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [inviteCountResp, invResp, assignedResp, completedResp, statusResp] = await Promise.all([
+        const [inviteCountResp, invResp, assignedResp, completedResp, statusResp, readinessResp] = await Promise.all([
           fetch("/api/contractor/invites/count", { cache: "no-store", credentials: "include" }),
           fetch("/api/contractor/invites", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/jobs?status=assigned", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/jobs?status=completed", { cache: "no-store", credentials: "include" }),
           fetch("/api/v4/contractor/account-status", { cache: "no-store", credentials: "include" }),
+          fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" }),
         ]);
 
         if (inviteCountResp.ok) {
@@ -90,7 +98,6 @@ export default function ContractorOverviewPage() {
           const parsedInvites = Array.isArray(invData) ? invData : [];
           setInvites(parsedInvites);
           if (!inviteCountResp.ok) setPendingInviteCount(parsedInvites.length);
-          setPaymentReady(true);
         }
 
         if (assignedResp.ok) {
@@ -107,12 +114,20 @@ export default function ContractorOverviewPage() {
           const data = (await statusResp.json()) as AccountStatus;
           setAccountStatus(data);
         }
+
+        if (readinessResp.ok) {
+          const data = (await readinessResp.json()) as ReadinessResponse;
+          const computed = Boolean(data.paymentSetupComplete ?? data.roleCompletion?.payment);
+          setPaymentSetupComplete(computed);
+        } else {
+          setPaymentSetupComplete(false);
+        }
       } catch {
         setInvites([]);
         setPendingInviteCount(0);
         setAssignedJobs([]);
         setCompletedJobs([]);
-        setPaymentReady(false);
+        setPaymentSetupComplete(false);
         setAccountStatus(null);
       } finally {
         setLoading(false);
@@ -192,61 +207,39 @@ export default function ContractorOverviewPage() {
         </div>
       </div>
 
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Your Active Jobs</h2>
-          <Link href="/dashboard/contractor/jobs" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View Available Jobs</Link>
-        </div>
-
-        {assignedJobs.length === 0 ? (
-          <p className="mt-4 text-slate-500">You’re all clear. New job invites will appear here.</p>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {assignedJobs.slice(0, 6).map((job) => (
-              <article key={job.id} className="rounded-xl border border-slate-200 p-4 transition hover:border-emerald-200 hover:shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled Job"}</h3>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {job.region?.split(",")[0] || "Location pending"} • Distance in job details
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">Scheduled: {formatDate(job.assignedAt)}</p>
-                    <p className="mt-1 text-sm text-slate-500">Job Value: To be confirmed</p>
-                  </div>
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadgeClasses(job.status)}`}>
-                    {normalizeStatusLabel(job.status)}
-                  </span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link href={`/dashboard/contractor/jobs/${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">🔵 View Details</Link>
-                  <Link href={`/dashboard/contractor/messages?jobId=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">💬 Message</Link>
-                  <Link href={`/dashboard/contractor/pm?job=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">📄 Submit P&amp;M</Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Jobs Near You</h2>
-          {accountStatus?.activeSuspension ? (
-            <p className="mt-3 text-sm text-slate-500">Nearby opportunities are hidden while account restrictions are active.</p>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">Your Active Jobs</h2>
+            <Link href="/dashboard/contractor/jobs" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View All</Link>
+          </div>
+          {assignedJobs.length === 0 ? (
+            <p className="mt-4 text-slate-500">You’re all clear. New job invites will appear here.</p>
           ) : (
-            <>
-              <div className="mt-3 space-y-2">
-                {invites.slice(0, 5).map((inv) => (
-                  <div key={inv.inviteId} className="rounded-xl border border-slate-200 p-3">
-                    <div className="text-sm font-medium text-slate-800">{inv.jobTitle ?? inv.jobDescription ?? "Trade Opportunity"}</div>
-                    <div className="mt-1 text-xs text-slate-500">{inv.address ?? "Regional"} • Distance shown in details</div>
-                    <div className="mt-1 text-xs text-slate-500">Budget range shared when opened</div>
+            <div className="mt-4 space-y-3">
+              {assignedJobs.slice(0, 6).map((job) => (
+                <article key={job.id} className="rounded-xl border border-slate-200 p-4 transition hover:border-emerald-200 hover:shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled Job"}</h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {job.region?.split(",")[0] || "Location pending"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">Scheduled: {formatDate(job.assignedAt)}</p>
+                      <p className="mt-1 text-sm text-slate-500">Job Value: To be confirmed</p>
+                    </div>
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadgeClasses(job.status)}`}>
+                      {normalizeStatusLabel(job.status)}
+                    </span>
                   </div>
-                ))}
-                {invites.length === 0 ? <p className="text-sm text-slate-500">No nearby opportunities yet.</p> : null}
-              </div>
-              <Link href="/dashboard/contractor/invites" className="mt-3 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">View Invites →</Link>
-            </>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link href={`/dashboard/contractor/jobs/${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">🔵 View Details</Link>
+                    <Link href={`/dashboard/contractor/messages?jobId=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">💬 Message</Link>
+                    <Link href={`/dashboard/contractor/pm?job=${job.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">📄 Submit P&amp;M</Link>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
         </section>
 
@@ -269,15 +262,15 @@ export default function ContractorOverviewPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Account Health &amp; Payment Setup</h2>
           <div className="mt-3 space-y-2 text-sm">
-            <p className={paymentReady ? "text-emerald-700" : "text-amber-700"}>
-              {paymentReady ? "🟢 Payment Setup: Verified" : "🟡 Payment Setup: Pending"}
+            <p className={paymentSetupComplete ? "text-emerald-700" : "text-amber-700"}>
+              {paymentSetupComplete ? "🟢 Payment Setup: Verified" : "🟡 Payment Setup: Pending"}
             </p>
             {accountStatus?.activeSuspension ? (
               <p className="text-rose-700">
                 🔴 Action Required: Suspended until {formatDate(accountStatus.activeSuspension.suspendedUntil)}
               </p>
             ) : null}
-            {!paymentReady ? (
+            {!paymentSetupComplete ? (
               <Link href="/dashboard/contractor/payment" className="inline-block rounded-lg bg-emerald-600 px-3 py-2 font-medium text-white hover:bg-emerald-700">
                 Complete Payment Setup
               </Link>
