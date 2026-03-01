@@ -5,7 +5,7 @@ import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4E
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ jobId: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   let requestId: string | undefined;
   try {
@@ -13,10 +13,10 @@ export async function POST(
     if (role instanceof Response) return role;
     requestId = role.requestId;
 
-    const { jobId } = await params;
-    if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
+    const { id } = await params;
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-    const result = await acceptAppointmentForJobPoster(jobId, role.userId);
+    const result = await acceptAppointmentForJobPoster(id, role.userId);
     return NextResponse.json(result);
   } catch (err) {
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ACCEPT_APPOINTMENT_FAILED");
