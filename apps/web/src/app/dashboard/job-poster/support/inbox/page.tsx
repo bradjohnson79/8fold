@@ -18,7 +18,7 @@ export default function JobPosterSupportInboxLegacyPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/app/support/tickets?take=50", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/support/tickets?take=50", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => ({}))) as { data?: { tickets?: Ticket[] }; tickets?: Ticket[]; error?: { message?: string } | string };
         if (!alive) return;
         if (!resp.ok) {

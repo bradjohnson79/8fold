@@ -31,14 +31,6 @@ type Message = {
   readAt: string | null;
 };
 
-function toStatusBadge(thread: Thread): "ASSIGNED" | "APPOINTMENT_BOOKED" | "APPOINTMENT_ACCEPTED" | null {
-  const status = String(thread.jobStatus ?? "").toUpperCase();
-  if (status === "ASSIGNED") return "ASSIGNED";
-  if (thread.appointmentAt && thread.appointmentAcceptedAt) return "APPOINTMENT_ACCEPTED";
-  if (thread.appointmentAt) return "APPOINTMENT_BOOKED";
-  return null;
-}
-
 export default function JobPosterMessagesPage() {
   const searchParams = useSearchParams();
   const requestedJobId = String(searchParams.get("jobId") ?? "").trim();
@@ -50,9 +42,7 @@ export default function JobPosterMessagesPage() {
   const [loadingThreads, setLoadingThreads] = React.useState(true);
   const [loadingMessages, setLoadingMessages] = React.useState(false);
   const [sending, setSending] = React.useState(false);
-  const [accepting, setAccepting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [toast, setToast] = React.useState<string | null>(null);
 
   const selectedThread = React.useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
@@ -63,7 +53,7 @@ export default function JobPosterMessagesPage() {
     setLoadingThreads(true);
     setError(null);
     try {
-      const resp = await fetch("/api/v4/messages/threads?role=job_poster", {
+      const resp = await fetch("/api/web/v4/job-poster/messages/threads", {
         cache: "no-store",
         credentials: "include",
       });
@@ -95,7 +85,7 @@ export default function JobPosterMessagesPage() {
     setLoadingMessages(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/messages/thread/${encodeURIComponent(threadId)}`, {
+      const resp = await fetch(`/api/web/v4/job-poster/messages/thread/${encodeURIComponent(threadId)}`, {
         cache: "no-store",
         credentials: "include",
       });
@@ -131,7 +121,7 @@ export default function JobPosterMessagesPage() {
     setSending(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/messages/thread/${encodeURIComponent(selectedThreadId)}/send`, {
+      const resp = await fetch(`/api/web/v4/job-poster/messages/thread/${encodeURIComponent(selectedThreadId)}/send`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -153,32 +143,6 @@ export default function JobPosterMessagesPage() {
     }
   }
 
-  async function handleAcceptAppointment() {
-    if (!selectedThread || accepting) return;
-    setAccepting(true);
-    setError(null);
-    try {
-      const resp = await fetch(`/api/web/v4/job-poster/jobs/${encodeURIComponent(selectedThread.jobId)}/accept-appointment`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const payload = (await resp.json().catch(() => ({}))) as { error?: { message?: string } | string };
-      if (!resp.ok) {
-        const message =
-          typeof payload.error === "string" ? payload.error : payload.error?.message ?? "Failed to accept appointment";
-        setError(message);
-        return;
-      }
-      setToast("Appointment accepted.");
-      await loadThreads();
-      if (selectedThreadId) await loadMessages(selectedThreadId);
-    } catch {
-      setError("Failed to accept appointment");
-    } finally {
-      setAccepting(false);
-    }
-  }
-
   const selectedLabel = selectedThread
     ? `${selectedThread.jobTitle || `Job ${selectedThread.jobId.slice(0, 8)}`} — ${selectedThread.contractorName || "Assigned Contractor"}`
     : "Select conversation";
@@ -189,7 +153,6 @@ export default function JobPosterMessagesPage() {
       <p className="mt-1 text-slate-600">Coordinate appointment and job lifecycle with your contractor.</p>
 
       {error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
-      {toast ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{toast}</p> : null}
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <label htmlFor="thread-select" className="text-sm font-medium text-slate-700">
@@ -255,42 +218,6 @@ export default function JobPosterMessagesPage() {
               {sending ? "Sending..." : "Send"}
             </button>
           </div>
-        </div>
-      </section>
-
-      <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h2 className="text-sm font-semibold text-slate-900">Action Panel</h2>
-        </div>
-        <div className="space-y-2 px-4 py-4 text-sm text-slate-700">
-          {!selectedThread ? (
-            <p className="text-slate-500">Select a conversation to view appointment actions.</p>
-          ) : (
-            <>
-              {selectedThread.appointmentAt ? (
-                <p>
-                  <span className="font-medium">Appointment:</span> {new Date(selectedThread.appointmentAt).toLocaleString()}
-                </p>
-              ) : (
-                <p>No appointment has been booked yet.</p>
-              )}
-              {toStatusBadge(selectedThread) ? (
-                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">
-                  {toStatusBadge(selectedThread)}
-                </span>
-              ) : null}
-              {selectedThread.appointmentAt && !selectedThread.appointmentAcceptedAt ? (
-                <button
-                  type="button"
-                  onClick={() => void handleAcceptAppointment()}
-                  disabled={accepting}
-                  className="inline-flex rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {accepting ? "Working..." : "Accept Appointment"}
-                </button>
-              ) : null}
-            </>
-          )}
         </div>
       </section>
 

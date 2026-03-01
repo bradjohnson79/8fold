@@ -88,10 +88,10 @@ export default function ContractorOverviewPage() {
         const [inviteCountResp, invResp, assignedResp, completedResp, statusResp, readinessResp] = await Promise.all([
           fetch("/api/contractor/invites/count", { cache: "no-store", credentials: "include" }),
           fetch("/api/contractor/invites", { cache: "no-store", credentials: "include" }),
-          fetch("/api/v4/contractor/jobs?status=assigned", { cache: "no-store", credentials: "include" }),
-          fetch("/api/v4/contractor/jobs?status=completed", { cache: "no-store", credentials: "include" }),
-          fetch("/api/v4/contractor/account-status", { cache: "no-store", credentials: "include" }),
-          fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/contractor/jobs?status=assigned", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/contractor/jobs?status=completed", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/contractor/account-status", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/readiness", { cache: "no-store", credentials: "include" }),
         ]);
 
         if (inviteCountResp.ok) {

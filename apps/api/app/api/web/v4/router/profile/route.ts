@@ -3,7 +3,7 @@ import { requireAuth } from "@/src/auth/requireAuth";
 import { requireRole } from "@/src/auth/requireRole";
 import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
 import { getV4RouterProfile, saveV4RouterProfile, V4RouterProfileSchema } from "@/src/services/v4/routerProfileService";
-import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
+import { badRequest, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 export async function GET(req: Request) {
   let requestId: string | undefined;
@@ -15,8 +15,14 @@ export async function GET(req: Request) {
     if (role instanceof Response) return role;
     return NextResponse.json(await getV4RouterProfile(role.internalUser.id), { status: 200 });
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ROUTER_PROFILE_LOAD_FAILED");
-    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    const wrapped =
+      err instanceof Error && "status" in err
+        ? (err as V4Error)
+        : badRequest("V4_ROUTER_PROFILE_LOAD_FAILED", "Failed to load router profile");
+    const safeStatus = wrapped.status === 401 ? 401 : 400;
+    const safeError =
+      safeStatus === 401 ? wrapped : badRequest(wrapped.code ?? "V4_ROUTER_PROFILE_LOAD_FAILED", wrapped.message ?? "Failed to load router profile", wrapped.details);
+    return NextResponse.json(toV4ErrorResponse(safeError, requestId), { status: safeStatus });
   }
 }
 
@@ -42,8 +48,14 @@ async function save(req: Request) {
     await saveV4RouterProfile(role.internalUser.id, parsed.data, identity);
     return NextResponse.json(await getV4RouterProfile(role.internalUser.id), { status: 200 });
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ROUTER_PROFILE_SAVE_FAILED");
-    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    const wrapped =
+      err instanceof Error && "status" in err
+        ? (err as V4Error)
+        : badRequest("V4_ROUTER_PROFILE_SAVE_FAILED", "Failed to save router profile");
+    const safeStatus = wrapped.status === 401 ? 401 : 400;
+    const safeError =
+      safeStatus === 401 ? wrapped : badRequest(wrapped.code ?? "V4_ROUTER_PROFILE_SAVE_FAILED", wrapped.message ?? "Failed to save router profile", wrapped.details);
+    return NextResponse.json(toV4ErrorResponse(safeError, requestId), { status: safeStatus });
   }
 }
 

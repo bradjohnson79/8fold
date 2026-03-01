@@ -15,7 +15,7 @@ export default function ContractorAccountStatusPage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/api/v4/contractor/account-status", {
+        const resp = await fetch("/api/web/v4/contractor/account-status", {
           cache: "no-store",
           credentials: "include",
         });

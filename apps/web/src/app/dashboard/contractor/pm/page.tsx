@@ -31,7 +31,7 @@ export default function ContractorPmPage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/api/v4/pm/requests?role=contractor", {
+        const resp = await fetch("/api/web/v4/pm/requests?role=contractor", {
           cache: "no-store",
           credentials: "include",
         });
@@ -63,7 +63,7 @@ export default function ContractorPmPage() {
         setError("Add at least one item with description.");
         return;
       }
-      const resp = await fetch("/api/v4/pm/requests", {
+      const resp = await fetch("/api/web/v4/pm/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -88,7 +88,7 @@ export default function ContractorPmPage() {
   async function handleSend(id: string) {
     setSending(id);
     try {
-      const resp = await fetch(`/api/v4/pm/requests/${id}/send`, {
+      const resp = await fetch(`/api/web/v4/pm/requests/${id}/send`, {
         method: "POST",
         credentials: "include",
       });

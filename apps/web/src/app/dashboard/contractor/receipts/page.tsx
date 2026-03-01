@@ -21,7 +21,7 @@ export default function ContractorReceiptsPage() {
 
   const fetchApproved = async () => {
     try {
-      const resp = await fetch("/api/v4/pm/approved", {
+      const resp = await fetch("/api/web/v4/pm/approved", {
         cache: "no-store",
         credentials: "include",
       });
@@ -49,7 +49,7 @@ export default function ContractorReceiptsPage() {
     }
     setSubmittingFor(pmRequestId);
     try {
-      const resp = await fetch("/api/v4/pm/receipts/upload", {
+      const resp = await fetch("/api/web/v4/pm/receipts/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

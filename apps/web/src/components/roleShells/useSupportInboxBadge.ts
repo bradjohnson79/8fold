@@ -27,7 +27,7 @@ async function safeFetchTickets(userId: string | null | undefined): Promise<{ js
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 5000);
   try {
-    const res = await fetch("/api/app/support/tickets?take=1", {
+    const res = await fetch("/api/web/v4/support/tickets?take=1", {
       cache: "no-store",
       credentials: "include",
       signal: ctrl.signal,

@@ -85,7 +85,7 @@ export default function ContractorMessagesPage() {
     setLoadingThreads(true);
     setError(null);
     try {
-      const resp = await fetch("/api/v4/messages/threads?role=contractor", {
+      const resp = await fetch("/api/web/v4/contractor/messages/threads", {
         cache: "no-store",
         credentials: "include",
       });
@@ -116,7 +116,7 @@ export default function ContractorMessagesPage() {
     setLoadingMessages(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/messages/thread/${encodeURIComponent(threadId)}`, {
+      const resp = await fetch(`/api/web/v4/contractor/messages/thread/${encodeURIComponent(threadId)}`, {
         cache: "no-store",
         credentials: "include",
       });
@@ -152,7 +152,7 @@ export default function ContractorMessagesPage() {
     setSending(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/messages/thread/${encodeURIComponent(selectedThreadId)}/send`, {
+      const resp = await fetch(`/api/web/v4/contractor/messages/thread/${encodeURIComponent(selectedThreadId)}/send`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -185,7 +185,7 @@ export default function ContractorMessagesPage() {
     setBooking(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(selectedThread.jobId)}/book-appointment`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(selectedThread.jobId)}/book-appointment`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -218,7 +218,7 @@ export default function ContractorMessagesPage() {
     setRescheduling(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(selectedThread.jobId)}/reschedule`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(selectedThread.jobId)}/reschedule`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -245,7 +245,7 @@ export default function ContractorMessagesPage() {
     setCanceling(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(selectedThread.jobId)}/cancel`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(selectedThread.jobId)}/cancel`, {
         method: "POST",
         credentials: "include",
       });

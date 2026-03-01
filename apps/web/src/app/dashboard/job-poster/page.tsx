@@ -44,15 +44,6 @@ function toBadgeStatus(thread: Thread): "ASSIGNED" | "APPOINTMENT_BOOKED" | "APP
   return null;
 }
 
-function chooseAssignedThread(threads: Thread[]): Thread | null {
-  const sorted = [...threads].sort((a, b) => {
-    const aT = a.appointmentAt ? new Date(a.appointmentAt).getTime() : 0;
-    const bT = b.appointmentAt ? new Date(b.appointmentAt).getTime() : 0;
-    return bT - aT;
-  });
-  return sorted.find((t) => toBadgeStatus(t) !== null) ?? null;
-}
-
 export default function JobPosterSummaryPage() {
   const [summary, setSummary] = React.useState<Summary | null>(null);
   const [jobs, setJobs] = React.useState<JobItem[]>([]);
@@ -120,19 +111,18 @@ export default function JobPosterSummaryPage() {
     setAssignedLoading(true);
     setAssignedError(null);
     try {
-      const resp = await fetch("/api/v4/messages/threads?role=job_poster", {
+      const resp = await fetch("/api/web/v4/job-poster/assigned-contractor", {
         cache: "no-store",
         credentials: "include",
       });
-      const data = (await resp.json().catch(() => ({}))) as { threads?: Thread[]; error?: { message?: string } | string };
+      const data = (await resp.json().catch(() => ({}))) as { assignment?: Thread | null; error?: { message?: string } | string };
       if (!resp.ok) {
         const message = typeof data.error === "string" ? data.error : data?.error?.message ?? "Failed to load assigned context";
         setAssignedError(message);
         setAssigned(null);
         return;
       }
-      const threads = Array.isArray(data.threads) ? data.threads : [];
-      setAssigned(chooseAssignedThread(threads));
+      setAssigned(data.assignment ?? null);
     } catch {
       setAssignedError("Failed to load assigned context");
       setAssigned(null);

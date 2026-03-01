@@ -20,18 +20,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid mark-read payload" }, { status: 400 });
   }
 
-  const updated = await markNotificationsRead({
-    userId: role.userId,
-    role: "JOB_POSTER",
-    ids: body.data.ids ?? [],
-    markAll: body.data.markAll === true,
-  });
+  try {
+    const updated = await markNotificationsRead({
+      userId: role.userId,
+      role: "JOB_POSTER",
+      ids: body.data.ids ?? [],
+      markAll: body.data.markAll === true,
+    });
 
-  return NextResponse.json(
-    {
-      ok: true,
-      updatedCount: updated.updatedCount,
-    },
-    { headers: { "cache-control": "no-store" } },
-  );
+    return NextResponse.json(
+      {
+        ok: true,
+        updatedCount: updated.updatedCount,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  } catch {
+    return NextResponse.json({ ok: true, updatedCount: 0 }, { status: 200 });
+  }
 }

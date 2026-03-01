@@ -19,7 +19,7 @@ export default function JobPosterNotificationsPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/v4/notifications?page=1&pageSize=50", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/job-poster/notifications?page=1&pageSize=50", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => ({}))) as { notifications?: NotificationItem[]; error?: { message?: string } | string };
         if (!alive) return;
         if (!resp.ok) {
