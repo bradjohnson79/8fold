@@ -38,7 +38,7 @@ export default function RouterPaymentSetupPage() {
   const [summary, setSummary] = useState<RouterSummary | null>(null);
 
   async function loadStatus() {
-    const resp = await fetch("/api/app/stripe/connect/create-account", {
+    const resp = await fetch("/api/web/stripe/connect/create-account", {
       cache: "no-store",
       credentials: "include",
     });
@@ -82,7 +82,7 @@ export default function RouterPaymentSetupPage() {
     setSaving(true);
     setError(null);
     try {
-      const resp = await fetch("/api/app/stripe/connect/create-account", {
+      const resp = await fetch("/api/web/stripe/connect/create-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

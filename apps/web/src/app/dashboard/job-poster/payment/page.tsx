@@ -11,6 +11,23 @@ type PaymentStatus = {
   simulationEnabled?: boolean;
 };
 
+type PaymentBreakdown = {
+  ok: true;
+  jobId: string;
+  currency: "USD" | "CAD";
+  baseCents: number;
+  contractorShareCents: number;
+  routerShareCents: number;
+  platformShareCents: number;
+  stripeFeeCents: number;
+  taxCents: number;
+  totalCents: number;
+};
+
+function formatMoney(cents: number) {
+  return `$${(Math.max(0, Number(cents) || 0) / 100).toFixed(2)}`;
+}
+
 export default function JobPosterPaymentPage() {
   const [status, setStatus] = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,6 +36,8 @@ export default function JobPosterPaymentPage() {
   const [simulating, setSimulating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
+  const [breakdown, setBreakdown] = useState<PaymentBreakdown | null>(null);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -48,6 +67,47 @@ export default function JobPosterPaymentPage() {
   useEffect(() => {
     fetchStatus();
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setBreakdownError(null);
+        const jobsResp = await fetch("/api/web/v4/job-poster/jobs", { cache: "no-store", credentials: "include" });
+        const jobsJson = (await jobsResp.json().catch(() => ({}))) as { jobs?: Array<{ id: string }> };
+        const firstJobId = Array.isArray(jobsJson.jobs) ? String(jobsJson.jobs[0]?.id ?? "") : "";
+        if (!alive || !firstJobId) {
+          setBreakdown(null);
+          return;
+        }
+
+        const confirmResp = await fetch("/api/web/v4/job-poster/payment/confirm", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jobId: firstJobId }),
+        });
+        const confirmJson = (await confirmResp.json().catch(() => ({}))) as PaymentBreakdown & { error?: { message?: string } | string };
+        if (!alive) return;
+        if (!confirmResp.ok) {
+          const message =
+            typeof confirmJson.error === "string" ? confirmJson.error : confirmJson.error?.message ?? "Failed to load payment breakdown";
+          setBreakdownError(message);
+          setBreakdown(null);
+          return;
+        }
+        setBreakdown(confirmJson);
+      } catch {
+        if (alive) {
+          setBreakdownError("Failed to load payment breakdown");
+          setBreakdown(null);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [success]);
 
   const handleConnect = async () => {
     setActionLoading(true);
@@ -223,6 +283,25 @@ export default function JobPosterPaymentPage() {
           Post a Job
         </Link>
       </p>
+
+      <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-white">
+        <h2 className="text-lg font-semibold text-gray-900">Server Payment Breakdown</h2>
+        {breakdownError ? <p className="mt-2 text-sm text-red-700">{breakdownError}</p> : null}
+        {!breakdown && !breakdownError ? (
+          <p className="mt-2 text-sm text-gray-600">No jobs available to calculate payment breakdown.</p>
+        ) : null}
+        {breakdown ? (
+          <div className="mt-3 space-y-1 text-sm text-gray-700">
+            <p><span className="font-medium">Base:</span> {formatMoney(breakdown.baseCents)}</p>
+            <p><span className="font-medium">Contractor (75%):</span> {formatMoney(breakdown.contractorShareCents)}</p>
+            <p><span className="font-medium">Router (15%):</span> {formatMoney(breakdown.routerShareCents)}</p>
+            <p><span className="font-medium">Platform (10%):</span> {formatMoney(breakdown.platformShareCents)}</p>
+            <p><span className="font-medium">Stripe Fee:</span> {formatMoney(breakdown.stripeFeeCents)}</p>
+            <p><span className="font-medium">Tax:</span> {formatMoney(breakdown.taxCents)}</p>
+            <p className="pt-1 font-semibold text-gray-900"><span className="font-medium">Total:</span> {formatMoney(breakdown.totalCents)}</p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

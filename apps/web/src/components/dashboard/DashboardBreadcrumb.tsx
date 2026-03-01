@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 type NavItem = { href: string; label: string };
@@ -31,10 +32,12 @@ export function DashboardBreadcrumb({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   if (!pathname.startsWith("/dashboard/")) return null;
   const label = resolveLabel(pathname, items);
+  const role = pathname.split("/").filter(Boolean)[1] ?? "";
+  const overviewHref = role ? `/dashboard/${role}` : "/dashboard";
 
   return (
     <nav aria-label="Breadcrumb" className="mt-4 text-sm text-slate-600">
-      <span className="font-medium text-slate-700">Dashboard</span>
+      <Link href={overviewHref} className="font-medium text-slate-700 hover:underline">Dashboard</Link>
       <span className="mx-2 text-slate-400">&gt;</span>
       <span className="text-slate-900">{label}</span>
     </nav>

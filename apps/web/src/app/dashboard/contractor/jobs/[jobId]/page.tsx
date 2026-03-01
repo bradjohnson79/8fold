@@ -35,7 +35,7 @@ export default function ContractorJobDetailPage() {
   const fetchJob = async () => {
     if (!jobId) return;
     try {
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(jobId)}`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(jobId)}`, {
         cache: "no-store",
         credentials: "include",
       });
@@ -60,7 +60,7 @@ export default function ContractorJobDetailPage() {
     setProgressError(null);
     setProgressAction("start");
     try {
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(jobId)}/start`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(jobId)}/start`, {
         method: "POST",
         credentials: "include",
       });
@@ -91,7 +91,7 @@ export default function ContractorJobDetailPage() {
     setProgressError(null);
     setProgressAction("complete");
     try {
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(jobId)}/complete`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(jobId)}/complete`, {
         method: "POST",
         credentials: "include",
       });
@@ -130,7 +130,7 @@ export default function ContractorJobDetailPage() {
         setAvailabilityError("Invalid JSON");
         return;
       }
-      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(jobId)}/availability`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(jobId)}/availability`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

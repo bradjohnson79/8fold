@@ -21,7 +21,7 @@ export default function ContractorProfilePage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/api/v4/contractor/profile", {
+        const resp = await fetch("/api/web/v4/contractor/profile", {
           cache: "no-store",
           credentials: "include",
         });

@@ -75,7 +75,8 @@ export function DashboardShell({
           if (delay) await new Promise((r) => setTimeout(r, delay));
           if (cancelled) return;
 
-          const resp = await fetch(path.startsWith("/dashboard/job-poster") ? "/api/web/v4/job-poster/me" : "/api/app/me", { cache: "no-store", credentials: "include" });
+          const bootPath = path.startsWith("/dashboard/job-poster") ? "/api/web/v4/job-poster/me" : "/api/web/v4/readiness";
+          const resp = await fetch(bootPath, { cache: "no-store", credentials: "include" });
           const json = (await resp.json().catch(() => null)) as any;
           if (cancelled) return;
 
@@ -118,7 +119,7 @@ export function DashboardShell({
     setBellLoading(true);
     setBellError("");
     try {
-      const resp = await fetch("/api/v4/notifications?page=1&pageSize=12", { cache: "no-store", credentials: "include" });
+      const resp = await fetch(`${notificationApiPath(bellRole)}?page=1&pageSize=12`, { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load notifications");
 
@@ -142,7 +143,7 @@ export function DashboardShell({
     if (!bellRole) return;
     if (!ids.length) return;
     try {
-      await fetch("/api/v4/notifications/mark-read", {
+      await fetch(`${notificationApiPath(bellRole)}/mark-read`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -164,6 +165,12 @@ export function DashboardShell({
     if (role === "contractor") return "/dashboard/contractor/notifications";
     if (role === "router") return "/dashboard/router/notifications";
     return "#";
+  }
+
+  function notificationApiPath(role: Exclude<BellRole, null>): string {
+    if (role === "job-poster") return "/api/web/v4/job-poster/notifications";
+    if (role === "contractor") return "/api/web/v4/contractor/notifications";
+    return "/api/web/v4/router/notifications";
   }
 
   // Bootstrap sequencing: do not mount dashboard children until we know auth/session state.

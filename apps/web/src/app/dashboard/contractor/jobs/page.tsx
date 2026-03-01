@@ -21,7 +21,7 @@ export default function ContractorJobsPage() {
     setLoading(true);
     (async () => {
       try {
-        const resp = await fetch(`/api/v4/contractor/jobs?status=${tab}`, {
+        const resp = await fetch(`/api/web/v4/contractor/jobs?status=${tab}`, {
           cache: "no-store",
           credentials: "include",
         });

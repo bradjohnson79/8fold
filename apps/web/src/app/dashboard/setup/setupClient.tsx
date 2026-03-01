@@ -172,7 +172,7 @@ export function DashboardSetupClient() {
     (async () => {
       try {
         const [meResp, profileResp] = await Promise.all([
-          fetch("/api/app/me", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/readiness", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
         ]);
         const me = (await meResp.json().catch(() => null)) as any;
