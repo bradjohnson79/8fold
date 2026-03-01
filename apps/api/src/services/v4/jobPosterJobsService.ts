@@ -2,6 +2,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
+import { sendNotification } from "@/src/services/v4/notifications/notificationService";
 import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
 
 export type JobListItem = {
@@ -188,6 +189,7 @@ export async function acceptAssignedContractorForJobPoster(jobId: string, userId
       id: jobs.id,
       status: jobs.status,
       jobPosterUserId: jobs.job_poster_user_id,
+      contractorUserId: jobs.contractor_user_id,
       posterAcceptExpiresAt: jobs.poster_accept_expires_at,
       posterAcceptedAt: jobs.poster_accepted_at,
     })
@@ -211,6 +213,21 @@ export async function acceptAssignedContractorForJobPoster(jobId: string, userId
       .update(jobs)
       .set({ poster_accepted_at: now, updated_at: now })
       .where(eq(jobs.id, jobId));
+
+    if (job.contractorUserId) {
+      await sendNotification({
+        userId: String(job.contractorUserId),
+        role: "CONTRACTOR",
+        type: "POSTER_ACCEPTED",
+        title: "Assigned contractor accepted",
+        message: "The job poster accepted your assignment.",
+        entityType: "JOB",
+        entityId: jobId,
+        priority: "NORMAL",
+        createdAt: now,
+        idempotencyKey: `poster_accepted:${jobId}:${String(job.contractorUserId)}`,
+      });
+    }
   }
 
   return { success: true as const, jobId };
@@ -256,6 +273,19 @@ export async function acceptAppointmentForJobPoster(
       updated_at: now,
     })
     .where(eq(jobs.id, jobId));
+
+  await sendNotification({
+    userId: String(job.contractorUserId),
+    role: "CONTRACTOR",
+    type: "RESCHEDULE_ACCEPTED",
+    title: "Appointment accepted",
+    message: "The job poster accepted your appointment.",
+    entityType: "JOB",
+    entityId: jobId,
+    priority: "NORMAL",
+    createdAt: now,
+    idempotencyKey: `appointment_accepted:${jobId}:${String(job.contractorUserId)}`,
+  });
 
   return {
     success: true as const,

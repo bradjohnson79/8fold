@@ -16,6 +16,7 @@ import { isCompletionReady } from "@/src/utils/isCompletionReady";
 import { getOrCreatePlatformUserId } from "@/src/system/platformUser";
 import { getStripeModeFromEnv } from "@/src/stripe/mode";
 import { isRefundInitiatedOrCompleteJobPayment } from "./releaseSafetyGuards";
+import { sendBulkNotifications } from "@/src/services/v4/notifications/notificationService";
 
 type RoleLeg = "CONTRACTOR" | "ROUTER" | "PLATFORM";
 type Method = "STRIPE";
@@ -243,6 +244,7 @@ export async function releaseJobFunds(input: {
         stripePaymentIntentId: jobs.stripe_payment_intent_id,
         claimedByUserId: jobs.claimed_by_user_id,
         contractorUserId: jobs.contractor_user_id,
+        jobPosterUserId: jobs.job_poster_user_id,
         contractorCompletedAt: jobs.contractor_completed_at,
         customerApprovedAt: jobs.customer_approved_at,
         routerApprovedAt: jobs.router_approved_at,
@@ -721,7 +723,56 @@ export async function releaseJobFunds(input: {
     }
   });
 
+  if (legResults.every((r) => r.status === "SENT")) {
+    await sendBulkNotifications([
+      ...(String((snapshot.job as any).contractorUserId ?? "").trim()
+        ? [
+            {
+              userId: String((snapshot.job as any).contractorUserId),
+              role: "CONTRACTOR",
+              type: "FUNDS_RELEASED",
+              title: "Funds released",
+              message: "Your payout transfer has been released.",
+              entityType: "JOB",
+              entityId: jobId,
+              priority: "HIGH",
+              idempotencyKey: `funds_released:${jobId}:contractor`,
+            },
+          ]
+        : []),
+      ...(String((snapshot.job as any).claimedByUserId ?? "").trim()
+        ? [
+            {
+              userId: String((snapshot.job as any).claimedByUserId),
+              role: "ROUTER",
+              type: "FUNDS_RELEASED",
+              title: "Funds released",
+              message: "Job payout has been released.",
+              entityType: "JOB",
+              entityId: jobId,
+              priority: "NORMAL",
+              idempotencyKey: `funds_released:${jobId}:router`,
+            },
+          ]
+        : []),
+      ...(String((snapshot.job as any).jobPosterUserId ?? "").trim()
+        ? [
+            {
+              userId: String((snapshot.job as any).jobPosterUserId),
+              role: "JOB_POSTER",
+              type: "FUNDS_RELEASED",
+              title: "Funds released",
+              message: "Payout transfers for your job were released successfully.",
+              entityType: "JOB",
+              entityId: jobId,
+              priority: "LOW",
+              idempotencyKey: `funds_released:${jobId}:poster`,
+            },
+          ]
+        : []),
+    ]);
+  }
+
   const alreadyReleased = Boolean((snapshot.job as any).releasedAt) || String((snapshot.job as any).payoutStatus ?? "") === "RELEASED";
   return { ok: true, jobId, alreadyReleased, legs: legResults };
 }
-

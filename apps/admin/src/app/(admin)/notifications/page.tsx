@@ -23,8 +23,15 @@ type ListResp = {
   pageSize: number;
 };
 
+type PreferenceRow = {
+  type: string;
+  inApp: boolean;
+  email: boolean;
+};
+
 const PAGE_SIZE = 25;
 const LIST_ENDPOINT = "/api/admin/v4/notifications";
+const PREFS_ENDPOINT = "/api/admin/v4/notification-preferences";
 
 function priorityColor(priority: string): React.CSSProperties {
   const p = String(priority ?? "").toUpperCase();
@@ -69,8 +76,10 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<NotificationRow[]>([]);
+  const [prefs, setPrefs] = useState<PreferenceRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [savingPrefs, setSavingPrefs] = useState(false);
 
   const filters = useMemo(() => ({ priority, type, read, page }), [priority, type, read, page]);
 
@@ -79,7 +88,10 @@ export default function NotificationsPage() {
     setError(null);
     try {
       const endpoint = `${LIST_ENDPOINT}${toQuery(filters)}`;
-      const resp = await fetch(endpoint, { cache: "no-store", credentials: "include" });
+      const [resp, prefsResp] = await Promise.all([
+        fetch(endpoint, { cache: "no-store", credentials: "include" }),
+        fetch(PREFS_ENDPOINT, { cache: "no-store", credentials: "include" }),
+      ]);
       const json = await resp.json().catch(() => null);
       if (!resp.ok || !json || json.ok !== true) {
         setError(formatApiError(LIST_ENDPOINT, resp.status, json));
@@ -90,6 +102,12 @@ export default function NotificationsPage() {
       setRows(Array.isArray(data.notifications) ? data.notifications : []);
       setTotalCount(Number(data.totalCount ?? 0));
       setUnreadCount(Number(data.unreadCount ?? 0));
+
+      const prefsJson = await prefsResp.json().catch(() => null);
+      if (prefsResp.ok && prefsJson?.ok === true) {
+        const prefItems = Array.isArray(prefsJson?.data?.items) ? prefsJson.data.items : Array.isArray(prefsJson?.items) ? prefsJson.items : [];
+        setPrefs(prefItems as PreferenceRow[]);
+      }
     } catch {
       setError("Failed to load notifications");
     } finally {
@@ -116,6 +134,44 @@ export default function NotificationsPage() {
     }
   }
 
+  async function markAllRead() {
+    try {
+      const resp = await fetch("/api/admin/v4/notifications/read-all", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!resp.ok) {
+        const json = await resp.json().catch(() => null);
+        setError(formatApiError("/api/admin/v4/notifications/read-all", resp.status, json));
+        return;
+      }
+      await load();
+    } catch {
+      setError("Admin API Error (network) Endpoint: /api/admin/v4/notifications/read-all - Request failed");
+    }
+  }
+
+  async function togglePreference(type: string, inApp: boolean) {
+    setSavingPrefs(true);
+    try {
+      setPrefs((curr) => curr.map((row) => (row.type === type ? { ...row, inApp } : row)));
+      const resp = await fetch(PREFS_ENDPOINT, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ items: [{ type, inApp }] }),
+      });
+      if (!resp.ok) {
+        const json = await resp.json().catch(() => null);
+        setError(formatApiError(PREFS_ENDPOINT, resp.status, json));
+      }
+    } catch {
+      setError("Admin API Error (network) Endpoint: /api/admin/v4/notification-preferences - Request failed");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
@@ -127,6 +183,10 @@ export default function NotificationsPage() {
 
       <div style={{ marginTop: 10, color: "rgba(191,219,254,0.95)", fontWeight: 900, fontSize: 12 }}>
         Unread: {unreadCount}
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <button onClick={() => void markAllRead()} style={buttonStyle}>Mark All Read</button>
       </div>
 
       <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -217,6 +277,37 @@ export default function NotificationsPage() {
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} style={pagerStyle}>Prev</button>
           <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={pagerStyle}>Next</button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, border: "1px solid rgba(148,163,184,0.2)", borderRadius: 12, padding: 12 }}>
+        <div style={{ fontWeight: 900, fontSize: 16 }}>Notification Preferences</div>
+        <div style={{ marginTop: 4, color: "rgba(226,232,240,0.7)", fontSize: 12 }}>
+          Toggle in-app notification visibility by type.
+        </div>
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {prefs.map((pref) => (
+            <label
+              key={pref.type}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                border: "1px solid rgba(148,163,184,0.2)",
+                borderRadius: 10,
+                padding: "8px 10px",
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 900 }}>{pref.type}</span>
+              <input
+                type="checkbox"
+                checked={pref.inApp}
+                disabled={savingPrefs}
+                onChange={(e) => void togglePreference(pref.type, e.target.checked)}
+              />
+            </label>
+          ))}
+          {!prefs.length ? <div style={{ color: "rgba(226,232,240,0.65)", fontSize: 12 }}>No preference rows found.</div> : null}
         </div>
       </div>
     </div>
