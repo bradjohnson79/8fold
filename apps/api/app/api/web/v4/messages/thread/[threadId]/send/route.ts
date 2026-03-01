@@ -3,13 +3,21 @@ import { requireV4Role } from "@/src/auth/requireV4Role";
 import { sendMessage } from "@/src/services/v4/v4MessageService";
 import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
+async function requireV4MessageActor(req: Request) {
+  const contractor = await requireV4Role(req, "CONTRACTOR");
+  if (!(contractor instanceof Response)) return contractor;
+  const jobPoster = await requireV4Role(req, "JOB_POSTER");
+  if (!(jobPoster instanceof Response)) return jobPoster;
+  return contractor;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ threadId: string }> }
 ) {
   let requestId: string | undefined;
   try {
-    const role = await requireV4Role(req, "JOB_POSTER");
+    const role = await requireV4MessageActor(req);
     if (role instanceof Response) return role;
     requestId = role.requestId;
     const { threadId } = await params;

@@ -20,6 +20,7 @@ function titleForPath(pathname: string): { title: string; subtitle?: string } {
 
   if (p === "/payouts") return { title: "Payouts", subtitle: "Financial controls" };
   if (p === "/finances/stripe") return { title: "Stripe Gateway", subtitle: "Sync + reconciliation" };
+  if (p === "/finances/revenue") return { title: "Revenue", subtitle: "Integrity + gateway" };
 
   if (p === "/disputes") return { title: "Disputes" };
   if (p === "/support") return { title: "Support" };

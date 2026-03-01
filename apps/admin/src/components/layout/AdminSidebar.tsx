@@ -32,6 +32,7 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
     title: "Finance",
     items: [
       { label: "Stripe Gateway", href: "/finances/stripe", match: "prefix" },
+      { label: "Revenue", href: "/finances/revenue", match: "prefix" },
       { label: "Tax Regions", href: "/tax/regions", match: "prefix" },
       { label: "Tax Settings", href: "/tax/settings", match: "prefix" },
     ],
@@ -52,6 +53,9 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
 function isActive(pathname: string, href: string, match: NavItem["match"]): boolean {
   const m = match ?? "prefix";
   if (m === "exact") return pathname === href;
+  if (href === "/finances/revenue" && pathname.startsWith("/finances/") && !pathname.startsWith("/finances/stripe")) {
+    return true;
+  }
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }

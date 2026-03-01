@@ -5,7 +5,7 @@ import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { payoutMethods } from "@/db/schema/payoutMethod";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { users } from "@/db/schema/user";
-import { isContractorStripeVerifiedForJobAcceptance } from "@/src/services/v4/contractorStripeService";
+import { getContractorPaymentSetupState } from "@/src/services/v4/contractorStripeService";
 import { hasCurrentRoleTermsAcceptance, type CompletionRole } from "@/src/services/v4/roleTermsService";
 
 export type CompletionStep = "TERMS" | "PROFILE" | "PAYMENT";
@@ -27,6 +27,10 @@ export type RoleCompletionSnapshot = {
   hasAcceptedContractorTerms: boolean;
   hasCompletedContractorProfile: boolean;
   hasCompletedContractorPaymentSetup: boolean;
+  contractorPaymentSetupComplete: boolean;
+  contractorStripeAccountId: string | null;
+  contractorStripeOnboardingComplete: boolean;
+  contractorStripePayoutsEnabled: boolean;
   hasAcceptedRouterTerms: boolean;
   hasCompletedRouterProfile: boolean;
   hasCompletedRouterPaymentSetup: boolean;
@@ -109,7 +113,7 @@ function hasRouterProfileRequiredFields(profile: {
 }
 
 export async function getRoleCompletionSnapshot(userId: string, roleHint?: string | null): Promise<RoleCompletionSnapshot> {
-  const [userRows, contractorRows, jobPosterRows, routerRows, stripePayoutRows] = await Promise.all([
+  const [userRows, contractorRows, jobPosterRows, routerRows, stripePayoutRows, contractorPaymentSetup] = await Promise.all([
     db
       .select({
         role: users.role,
@@ -163,6 +167,7 @@ export async function getRoleCompletionSnapshot(userId: string, roleHint?: strin
       .where(and(eq(payoutMethods.userId, userId), eq(payoutMethods.provider, "STRIPE" as any), eq(payoutMethods.isActive, true)))
       .orderBy(desc(payoutMethods.createdAt))
       .limit(1),
+    getContractorPaymentSetupState(userId),
   ]);
 
   const user = userRows[0] ?? null;
@@ -189,7 +194,7 @@ export async function getRoleCompletionSnapshot(userId: string, roleHint?: strin
     String(user?.stripeStatus ?? "").trim().toUpperCase() === "CONNECTED" &&
       String(user?.stripeDefaultPaymentMethodId ?? "").trim().length > 0,
   );
-  const hasCompletedContractorPaymentSetup = await isContractorStripeVerifiedForJobAcceptance(userId);
+  const hasCompletedContractorPaymentSetup = contractorPaymentSetup.paymentSetupComplete;
   const hasCompletedRouterPaymentSetup = Boolean(
     String(stripeMethodDetails?.stripeAccountId ?? "").trim().length > 0 &&
       (parseTruthy(stripeMethodDetails?.stripePayoutsEnabled) || parseTruthy(stripeMethodDetails?.stripeSimulatedApproved)),
@@ -222,6 +227,10 @@ export async function getRoleCompletionSnapshot(userId: string, roleHint?: strin
     hasAcceptedContractorTerms,
     hasCompletedContractorProfile,
     hasCompletedContractorPaymentSetup,
+    contractorPaymentSetupComplete: contractorPaymentSetup.paymentSetupComplete,
+    contractorStripeAccountId: contractorPaymentSetup.stripeAccountId,
+    contractorStripeOnboardingComplete: contractorPaymentSetup.stripeOnboardingComplete,
+    contractorStripePayoutsEnabled: contractorPaymentSetup.stripePayoutsEnabled,
     hasAcceptedRouterTerms,
     hasCompletedRouterProfile,
     hasCompletedRouterPaymentSetup,

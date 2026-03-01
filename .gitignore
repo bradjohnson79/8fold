@@ -40,3 +40,4 @@ apps/api/drizzle.config.*
 
 .vercel/
 apps/*/.vercel/
+.vercel

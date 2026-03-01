@@ -13,7 +13,6 @@ type EligibleContractor = {
   tradeCategory: string;
   yearsExperience: number;
   city: string;
-  stripeVerified: boolean;
   distanceKm: number;
 };
 
@@ -24,18 +23,13 @@ type EligibleResponse = {
     title: string;
     city: string;
     region: string;
+    provinceCode: string;
     tradeCategory: string;
-    urbanOrRegional: string;
-    appraisalTotal: number;
-    createdAt: string;
-    radiusKm: number;
+    urbanOrRegional: "URBAN" | "REGIONAL";
+    maxDistanceKm: number;
   };
   contractors?: EligibleContractor[];
 };
-
-function formatMoney(cents: number) {
-  return `$${(Math.max(0, Number(cents) || 0) / 100).toFixed(2)}`;
-}
 
 export default function RouterRouteJobPage() {
   const params = useParams<{ jobId: string }>();
@@ -62,7 +56,7 @@ export default function RouterRouteJobPage() {
       setLoading(true);
       setError("");
       try {
-        const resp = await fetch(`/api/v4/router/jobs/${encodeURIComponent(jobId)}/eligible-contractors`, {
+        const resp = await fetch(`/api/router/jobs/${encodeURIComponent(jobId)}/contractors`, {
           cache: "no-store",
           credentials: "include",
         });
@@ -99,7 +93,7 @@ export default function RouterRouteJobPage() {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch(`/api/v4/router/jobs/${encodeURIComponent(jobId)}/route`, {
+      const resp = await fetch(`/api/router/jobs/${encodeURIComponent(jobId)}/route`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -147,7 +141,7 @@ export default function RouterRouteJobPage() {
         <p className="mt-1 text-sm text-slate-600">Select up to 5 contractors.</p>
         <div className="mt-2 text-sm text-slate-600">
           {job?.city ? `${job.city}, ` : ""}
-          {job?.region ?? ""} • {job?.urbanOrRegional ?? "Urban"} • Appraisal Total {formatMoney(job?.appraisalTotal ?? 0)}
+          {job?.region ?? ""} • {job?.provinceCode ?? ""} • {job?.urbanOrRegional ?? "URBAN"} • Max Distance {job?.maxDistanceKm ?? 0} km
         </div>
       </div>
 
@@ -179,9 +173,6 @@ export default function RouterRouteJobPage() {
                     <div className="text-sm text-slate-600">
                       {contractor.city || "Unknown city"} • {contractor.distanceKm.toFixed(1)} km away
                     </div>
-                    <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                      {contractor.stripeVerified ? "Stripe Verified" : "Stripe Unverified"}
-                    </span>
                   </div>
                 </label>
               </li>
@@ -200,7 +191,7 @@ export default function RouterRouteJobPage() {
           disabled={submitting || selectedContractorIds.length < 1 || selectedContractorIds.length > 5}
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Route Job to Selected Contractors
+          Route Job
         </button>
       </div>
 

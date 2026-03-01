@@ -2,21 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRoleCompletion } from "@/src/auth/requireRoleCompletion";
 import { requireV4Role } from "@/src/auth/requireV4Role";
-import { routeV4Job } from "@/src/services/v4/routerRouteJobService";
+import { routeStage2JobToContractors } from "@/src/services/v4/routerStage2ContractorSelectionService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 const BodySchema = z.object({
   contractorIds: z.array(z.string().min(1)).min(1).max(5),
 });
 
-function getJobIdFromUrl(req: Request): string {
-  const url = new URL(req.url);
-  const parts = url.pathname.split("/");
-  const idx = parts.indexOf("jobs") + 1;
-  return parts[idx] ?? "";
-}
-
-export async function POST(req: Request) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ jobId: string }> },
+) {
   let requestId: string | undefined;
   try {
     const authed = await requireV4Role(req, "ROUTER");
@@ -25,7 +21,7 @@ export async function POST(req: Request) {
     const completionGuard = await requireRoleCompletion(authed.userId, "ROUTER");
     if (completionGuard) return completionGuard;
 
-    const jobId = getJobIdFromUrl(req);
+    const { jobId } = await params;
     if (!jobId) {
       return NextResponse.json(
         toV4ErrorResponse({ status: 400, code: "V4_INVALID_REQUEST", message: "Invalid job ID" } as V4Error, requestId),
@@ -42,31 +38,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await routeV4Job(authed.userId, jobId, parsed.data.contractorIds);
+    const result = await routeStage2JobToContractors(authed.userId, jobId, parsed.data.contractorIds);
 
     if (result.kind === "ok") {
-      return NextResponse.json({ ok: true, created: result.created, routingStatusLabel: result.routingStatusLabel }, { status: 200 });
+      return NextResponse.json({ ok: true, created: result.created }, { status: 200 });
     }
     if (result.kind === "not_found") {
       return NextResponse.json(toV4ErrorResponse({ status: 404, code: "V4_NOT_FOUND", message: "Not found" } as V4Error, requestId), { status: 404 });
-    }
-    if (result.kind === "forbidden") {
-      return NextResponse.json(toV4ErrorResponse({ status: 403, code: "V4_FORBIDDEN", message: "Forbidden" } as V4Error, requestId), { status: 403 });
-    }
-    if (result.kind === "cross_jurisdiction_blocked") {
-      return NextResponse.json(
-        toV4ErrorResponse(
-          { status: 403, code: "V4_CROSS_JURISDICTION", message: "8Fold restricts work to within your registered state/province." } as V4Error,
-          requestId,
-        ),
-        { status: 403 },
-      );
-    }
-    if (result.kind === "job_archived") {
-      return NextResponse.json(
-        toV4ErrorResponse({ status: 409, code: "V4_JOB_ARCHIVED", message: "Archived jobs cannot be routed" } as V4Error, requestId),
-        { status: 409 },
-      );
     }
     if (result.kind === "job_not_available") {
       return NextResponse.json(
@@ -82,13 +60,13 @@ export async function POST(req: Request) {
     }
     if (result.kind === "too_many") {
       return NextResponse.json(
-        toV4ErrorResponse({ status: 409, code: "V4_TOO_MANY", message: "Max 5 contractors per job" } as V4Error, requestId),
-        { status: 409 },
+        toV4ErrorResponse({ status: 400, code: "V4_TOO_MANY", message: "Select between 1 and 5 contractors" } as V4Error, requestId),
+        { status: 400 },
       );
     }
     if (result.kind === "contractor_not_eligible") {
       return NextResponse.json(
-        toV4ErrorResponse({ status: 409, code: "V4_CONTRACTOR_NOT_ELIGIBLE", message: "Contractor not eligible" } as V4Error, requestId),
+        toV4ErrorResponse({ status: 409, code: "V4_CONTRACTOR_NOT_ELIGIBLE", message: "Contractor not eligible for this job" } as V4Error, requestId),
         { status: 409 },
       );
     }

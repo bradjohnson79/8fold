@@ -5,7 +5,7 @@
  */
 
 /** Invite status */
-export const V4_INVITE_STATUS = ["PENDING", "ACCEPTED", "REJECTED"] as const;
+export const V4_INVITE_STATUS = ["PENDING", "ACCEPTED", "REJECTED", "EXPIRED"] as const;
 export type V4InviteStatus = (typeof V4_INVITE_STATUS)[number];
 
 /** Assignment status */

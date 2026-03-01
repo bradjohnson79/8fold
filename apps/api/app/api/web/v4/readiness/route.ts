@@ -4,6 +4,12 @@ import { getV4Readiness } from "@/src/services/v4/readinessService";
 import { forbidden, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 export async function GET(req: Request) {
+  const path = new URL(req.url).pathname;
+  console.info("[RUNTIME_PROBE]", {
+    path,
+    method: req.method,
+    timestamp: Date.now(),
+  });
   let requestId: string | undefined;
   try {
     const authed = await requireAuth(req);

@@ -3,7 +3,7 @@ import { dbSchema } from "./_dbSchema";
 import { jobs } from "./job";
 import { users } from "./user";
 
-export const v4ContractorJobInviteStatusEnum = ["PENDING", "ACCEPTED", "REJECTED"] as const;
+export const v4ContractorJobInviteStatusEnum = ["PENDING", "ACCEPTED", "REJECTED", "EXPIRED"] as const;
 
 export const v4ContractorJobInvites = dbSchema.table(
   "v4_contractor_job_invites",
@@ -18,6 +18,8 @@ export const v4ContractorJobInvites = dbSchema.table(
       .references(() => users.id, { onDelete: "cascade" }),
     status: text("status").notNull().default("PENDING"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    respondedAt: timestamp("responded_at", { mode: "date" }),
   },
   (t) => ({
     jobIdx: index("v4_contractor_job_invites_job_idx").on(t.jobId),

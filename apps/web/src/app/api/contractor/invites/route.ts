@@ -2,20 +2,11 @@ import { NextResponse } from "next/server";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";
 
-export async function POST(req: Request) {
+export async function GET(req: Request) {
   try {
     await requireSession(req);
     const sessionToken = await requireApiToken();
-    const contentType = req.headers.get("content-type") ?? "application/json";
-    const body = await req.arrayBuffer();
-    const resp = await apiFetch({
-      path: "/api/web/v4/contractor/accept-invite",
-      method: "POST",
-      sessionToken,
-      headers: { "content-type": contentType },
-      body,
-      request: req,
-    });
+    const resp = await apiFetch({ path: "/api/web/v4/contractor/invites", method: "GET", sessionToken });
     const text = await resp.text();
     return new NextResponse(text, {
       status: resp.status,
