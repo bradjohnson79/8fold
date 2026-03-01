@@ -20,6 +20,13 @@ export type ContractorStripeStatus = {
   };
 };
 
+export type ContractorPaymentSetupState = {
+  stripeAccountId: string | null;
+  stripeOnboardingComplete: boolean;
+  stripePayoutsEnabled: boolean;
+  paymentSetupComplete: boolean;
+};
+
 type ContractorStripeIdentity = {
   userId: string;
   userCountry: "CA" | "US";
@@ -334,4 +341,36 @@ export async function isContractorStripeVerifiedForJobAcceptance(userId: string)
 export async function getContractorStripeSnapshot(userId: string): Promise<boolean> {
   const identity = await resolveContractorStripeIdentity(userId);
   return Boolean(identity.stripeAccountId) && Boolean(identity.stripePayoutsEnabled);
+}
+
+export async function getContractorPaymentSetupState(userId: string): Promise<ContractorPaymentSetupState> {
+  const identity = await resolveContractorStripeIdentity(userId);
+  const stripeAccountId = identity.stripeAccountId;
+  if (!stripeAccountId) {
+    return {
+      stripeAccountId: null,
+      stripeOnboardingComplete: false,
+      stripePayoutsEnabled: false,
+      paymentSetupComplete: false,
+    };
+  }
+
+  try {
+    const status = await getContractorStripeStatus(userId);
+    const stripeOnboardingComplete = status.state === "VERIFIED";
+    const stripePayoutsEnabled = Boolean(status.payoutsEnabled);
+    return {
+      stripeAccountId: status.stripeAccountId,
+      stripeOnboardingComplete,
+      stripePayoutsEnabled,
+      paymentSetupComplete: Boolean(status.stripeAccountId && stripeOnboardingComplete && stripePayoutsEnabled),
+    };
+  } catch {
+    return {
+      stripeAccountId,
+      stripeOnboardingComplete: false,
+      stripePayoutsEnabled: Boolean(identity.stripePayoutsEnabled),
+      paymentSetupComplete: false,
+    };
+  }
 }

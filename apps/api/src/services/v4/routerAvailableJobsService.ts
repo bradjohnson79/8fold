@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
+import { expireStaleInvitesAndResetJobs } from "@/src/services/v4/inviteExpirationService";
 import { badRequest } from "@/src/services/v4/v4Errors";
 
 function normalizeProvinceCode(value: string | null | undefined): string {
@@ -9,6 +10,8 @@ function normalizeProvinceCode(value: string | null | undefined): string {
 }
 
 export async function getV4RouterAvailableJobs(userId: string) {
+  await expireStaleInvitesAndResetJobs();
+
   const profileRows = await db
     .select({ provinceCode: routerProfilesV4.homeRegionCode })
     .from(routerProfilesV4)

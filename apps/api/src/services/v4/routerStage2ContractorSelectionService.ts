@@ -240,6 +240,7 @@ export async function routeStage2JobToContractors(
     if (existingRows.length > 0) return { kind: "contractor_not_eligible" as const };
 
     const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const updated = await tx
       .update(jobs)
       .set({
@@ -266,6 +267,7 @@ export async function routeStage2JobToContractors(
         contractorUserId: contractorId,
         status: "PENDING",
         createdAt: now,
+        expiresAt,
       });
     }
 

@@ -121,7 +121,7 @@ CREATE INDEX IF NOT EXISTS "v4_admin_support_tickets_created_at_idx" ON "public"
 CREATE INDEX IF NOT EXISTS "v4_admin_support_tickets_priority_idx" ON "public"."v4_admin_support_tickets" ("priority");
 
 CREATE TABLE IF NOT EXISTS "public"."v4_admin_integrity_alerts" (
-  "id" text PRIMARY KEY NOT NULL,
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "type" text NOT NULL,
   "severity" text NOT NULL DEFAULT 'MEDIUM',
   "entity_type" text NOT NULL,

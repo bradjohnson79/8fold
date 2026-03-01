@@ -24,6 +24,8 @@ export * from "./materialsReceiptFile";
 export * from "./materialsItem";
 export * from "./jobPosterCredit";
 export * from "./stripeWebhookEvent";
+export * from "./stripeGateway";
+export * from "./financialIntegrityAlert";
 export * from "./routerProfile";
 export * from "./routerReward";
 export * from "./repeatContractorRequest";

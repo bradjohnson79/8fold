@@ -315,3 +315,25 @@ export const sendBlockedReasonEnum = pgEnum("SendBlockedReason", [
   "DAILY_LIMIT_EXCEEDED",
   "INTERVAL_LIMIT_EXCEEDED",
 ]);
+
+export const financialIntegrityAlertTypeEnum = pgEnum("FinancialIntegrityAlertType", [
+  "MISSING_CHARGE",
+  "MISSING_TRANSFER",
+  "MISSING_REFUND",
+  "STRIPE_REFUND_NOT_IN_LEDGER",
+  "LEDGER_REFUND_NOT_IN_STRIPE",
+  "STRIPE_AMOUNT_MISMATCH",
+  "DOUBLE_TRANSFER",
+  "ESCROW_RELEASE_WITHOUT_STRIPE_CAPTURE",
+  "NEGATIVE_BALANCE_DRIFT",
+  "UNRECONCILED_PAYMENT_AFTER_24H",
+]);
+
+export const financialIntegritySeverityEnum = pgEnum("FinancialIntegritySeverity", ["INFO", "WARNING", "CRITICAL"]);
+
+export const financialIntegrityAlertStatusEnum = pgEnum("FinancialIntegrityAlertStatus", [
+  "OPEN",
+  "ACKNOWLEDGED",
+  "RESOLVED",
+  "IGNORED",
+]);

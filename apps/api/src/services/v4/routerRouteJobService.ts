@@ -49,6 +49,7 @@ export async function routeV4Job(
     if (existingInvites.length > 0) return { kind: "contractor_not_eligible" };
 
     const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     const lockRows = await tx.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (lockRows.length === 0) return { kind: "not_found" };
@@ -57,9 +58,12 @@ export async function routeV4Job(
     const updated = await tx
       .update(jobs)
       .set({
+        status: "INVITED" as any,
         claimed_by_user_id: routerUserId,
         claimed_at: now,
         routed_at: now,
+        routing_started_at: now,
+        routing_expires_at: expiresAt,
         routing_status: "ROUTED_BY_ROUTER" as any,
         first_routed_at: sql`coalesce(${jobs.first_routed_at}, ${now})`,
       })
@@ -77,6 +81,7 @@ export async function routeV4Job(
         routeId: routerUserId,
         status: "PENDING",
         createdAt: now,
+        expiresAt,
       });
 
       await tx.insert(v4Notifications).values({

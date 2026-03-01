@@ -1,325 +1,307 @@
 import { randomUUID } from "crypto";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
+import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
+import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
-import { jobs } from "@/db/schema/job";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
-import { v4Notifications } from "@/db/schema/v4Notification";
-import { writeEscrowAllocationLedger } from "@/src/services/escrow/ledger";
-import { computeEscrowSplitAllocations } from "@/src/services/escrow/pricing";
 import { badRequest, conflict, forbidden } from "./v4Errors";
-import { getContractorStripeSnapshot, isContractorStripeVerifiedForJobAcceptance } from "./contractorStripeService";
+import { expireStaleInvitesAndResetJobs } from "./inviteExpirationService";
 
-export async function listInvites(contractorUserId: string) {
+export type PendingInviteDto = {
+  inviteId: string;
+  jobId: string;
+  jobTitle: string;
+  jobDescription: string;
+  jobPosterFirstName: string;
+  jobPosterLastName: string;
+  tradeCategory: string;
+  availability: string;
+  contractorAmount: number;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  createdAt: string;
+  expiresAt: string;
+};
+
+function toNonEmpty(value: string | null | undefined): string {
+  return String(value ?? "").trim();
+}
+
+function toAvailability(raw: unknown, timeWindow: string | null | undefined): string {
+  const fromWindow = toNonEmpty(timeWindow);
+  if (fromWindow) return fromWindow;
+  if (typeof raw === "string") return toNonEmpty(raw);
+  if (raw == null) return "";
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return "";
+  }
+}
+
+function computeContractorAmountCents(input: {
+  contractorPayoutCents: number | null;
+  totalAmountCents: number | null;
+  amountCents: number | null;
+}): number {
+  const contractorPayoutCents = Number(input.contractorPayoutCents ?? 0);
+  if (contractorPayoutCents > 0) return contractorPayoutCents;
+  const total = Math.max(Number(input.totalAmountCents ?? 0), Number(input.amountCents ?? 0), 0);
+  return Math.round(total * 0.75);
+}
+
+export async function countPendingInvites(contractorUserId: string): Promise<number> {
+  await expireStaleInvitesAndResetJobs();
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(v4ContractorJobInvites)
+    .where(
+      and(
+        eq(v4ContractorJobInvites.contractorUserId, contractorUserId),
+        eq(v4ContractorJobInvites.status, "PENDING"),
+        sql`${v4ContractorJobInvites.expiresAt} > now()`,
+      ),
+    )
+    .limit(1);
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function listPendingInvites(contractorUserId: string): Promise<PendingInviteDto[]> {
+  await expireStaleInvitesAndResetJobs();
   const rows = await db
     .select({
-      id: v4ContractorJobInvites.id,
+      inviteId: v4ContractorJobInvites.id,
       jobId: v4ContractorJobInvites.jobId,
-      routeId: v4ContractorJobInvites.routeId,
-      status: v4ContractorJobInvites.status,
       createdAt: v4ContractorJobInvites.createdAt,
+      expiresAt: v4ContractorJobInvites.expiresAt,
       title: jobs.title,
       scope: jobs.scope,
-      region: jobs.region,
-      city: jobs.city,
       tradeCategory: jobs.trade_category,
-      amountCents: jobs.amount_cents,
-      totalAmountCents: jobs.total_amount_cents,
+      availability: jobs.availability,
+      timeWindow: jobs.time_window,
       contractorPayoutCents: jobs.contractor_payout_cents,
-      routerEarningsCents: jobs.router_earnings_cents,
-      brokerFeeCents: jobs.broker_fee_cents,
-      transactionFeeCents: jobs.transaction_fee_cents,
+      totalAmountCents: jobs.total_amount_cents,
+      amountCents: jobs.amount_cents,
+      addressFull: jobs.address_full,
+      city: jobs.city,
+      region: jobs.region,
+      lat: jobs.lat,
+      lng: jobs.lng,
+      jobPosterFirstName: jobPosterProfilesV4.firstName,
+      jobPosterLastName: jobPosterProfilesV4.lastName,
     })
     .from(v4ContractorJobInvites)
     .innerJoin(jobs, eq(jobs.id, v4ContractorJobInvites.jobId))
-    .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.status, "PENDING")))
+    .leftJoin(jobPosterProfilesV4, eq(jobPosterProfilesV4.userId, jobs.job_poster_user_id))
+    .where(
+      and(
+        eq(v4ContractorJobInvites.contractorUserId, contractorUserId),
+        eq(v4ContractorJobInvites.status, "PENDING"),
+        sql`${v4ContractorJobInvites.expiresAt} > now()`,
+      ),
+    )
     .orderBy(desc(v4ContractorJobInvites.createdAt));
 
-  const paymentReady = await getContractorStripeSnapshot(contractorUserId);
-  return {
-    invites: rows.map((row) => {
-      const contractorPayoutCents = Number(row.contractorPayoutCents ?? 0);
-      const routerEarningsCents = Number(row.routerEarningsCents ?? 0);
-      const brokerFeeCents = Number(row.brokerFeeCents ?? 0);
-      const transactionFeeCents = Number(row.transactionFeeCents ?? 0);
-      const fallbackTotal = contractorPayoutCents + routerEarningsCents + brokerFeeCents + transactionFeeCents;
-      const appraisalTotalCents =
-        Number(row.totalAmountCents ?? 0) > 0
-          ? Number(row.totalAmountCents)
-          : Number(row.amountCents ?? 0) > 0
-            ? Number(row.amountCents)
-            : fallbackTotal;
-      return {
-        ...row,
-        city: row.city ?? "",
-        tradeCategory: row.tradeCategory ?? "",
-        appraisalTotal: appraisalTotalCents,
-        appraisalTotalCents,
-        statusLabel: "INVITED" as const,
-      };
-    }),
-    paymentReady,
-  };
+  return rows.map((row) => {
+    const fallbackAddress = [toNonEmpty(row.city), toNonEmpty(row.region)].filter(Boolean).join(", ");
+    return {
+      inviteId: row.inviteId,
+      jobId: row.jobId,
+      jobTitle: toNonEmpty(row.title) || "Job",
+      jobDescription: toNonEmpty(row.scope),
+      jobPosterFirstName: toNonEmpty(row.jobPosterFirstName),
+      jobPosterLastName: toNonEmpty(row.jobPosterLastName),
+      tradeCategory: toNonEmpty(row.tradeCategory),
+      availability: toAvailability(row.availability, row.timeWindow),
+      contractorAmount: computeContractorAmountCents({
+        contractorPayoutCents: row.contractorPayoutCents,
+        totalAmountCents: row.totalAmountCents,
+        amountCents: row.amountCents,
+      }),
+      address: toNonEmpty(row.addressFull) || fallbackAddress,
+      latitude: typeof row.lat === "number" && Number.isFinite(row.lat) ? row.lat : null,
+      longitude: typeof row.lng === "number" && Number.isFinite(row.lng) ? row.lng : null,
+      createdAt: row.createdAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
+    };
+  });
+}
+
+// Backward-compatible shape consumed by legacy UI.
+export async function listInvites(contractorUserId: string): Promise<{ invites: PendingInviteDto[]; paymentReady: boolean }> {
+  const invites = await listPendingInvites(contractorUserId);
+  return { invites, paymentReady: true };
 }
 
 export async function getInviteByJob(contractorUserId: string, jobId: string) {
+  await expireStaleInvitesAndResetJobs();
   const rows = await db
     .select()
     .from(v4ContractorJobInvites)
-    .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.jobId, jobId)))
+    .where(
+      and(
+        eq(v4ContractorJobInvites.contractorUserId, contractorUserId),
+        eq(v4ContractorJobInvites.jobId, jobId),
+        sql`${v4ContractorJobInvites.expiresAt} > now()`,
+      ),
+    )
+    .orderBy(desc(v4ContractorJobInvites.createdAt))
     .limit(1);
   return rows[0] ?? null;
 }
 
-function toCurrency(job: { currency: string | null; country: string | null }): "USD" | "CAD" {
-  if (String(job.currency ?? "").toUpperCase() === "CAD") return "CAD";
-  if (String(job.country ?? "").toUpperCase() === "CA") return "CAD";
-  return "USD";
-}
-
-export async function acceptInvite(contractorUserId: string, jobId: string) {
-  const invite = await getInviteByJob(contractorUserId, jobId);
+export async function acceptInviteById(contractorUserId: string, inviteId: string): Promise<{ success: true; jobId: string }> {
+  const inviteRows = await db.select().from(v4ContractorJobInvites).where(eq(v4ContractorJobInvites.id, inviteId)).limit(1);
+  const invite = inviteRows[0] ?? null;
   if (!invite) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
-  if (invite.status !== "PENDING") throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already accepted or rejected");
+  if (invite.contractorUserId !== contractorUserId) throw forbidden("V4_INVITE_FORBIDDEN", "Invite does not belong to you");
 
-  const jobRows = await db
-    .select({ jobPosterUserId: jobs.job_poster_user_id })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-  const job = jobRows[0] ?? null;
-  const jobPosterUserId = job?.jobPosterUserId ?? null;
-  if (!jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  const now = new Date();
 
-  await db.transaction(async (tx) => {
-    const paymentReady = await isContractorStripeVerifiedForJobAcceptance(contractorUserId);
-    if (!paymentReady) {
-      await tx.insert(v4Notifications).values({
-        id: randomUUID(),
-        userId: contractorUserId,
-        role: "CONTRACTOR",
-        type: "PAYMENT_SETUP_REQUIRED",
-        title: "Payment setup required",
-        message: "You must complete Payment Setup before accepting jobs.",
-        entityType: "JOB",
-        entityId: jobId,
-        priority: "HIGH",
-        createdAt: new Date(),
-      });
-      throw forbidden("V4_PAYMENT_SETUP_REQUIRED", "You must complete Payment Setup before accepting jobs.");
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select id from jobs where id = ${invite.jobId} for update`);
+    await tx.execute(sql`select id from v4_contractor_job_invites where id = ${inviteId} for update`);
+
+    const inviteAfterLockRows = await tx
+      .select()
+      .from(v4ContractorJobInvites)
+      .where(eq(v4ContractorJobInvites.id, inviteId))
+      .limit(1);
+    const inviteAfterLock = inviteAfterLockRows[0] ?? null;
+    if (!inviteAfterLock) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
+    if (inviteAfterLock.contractorUserId !== contractorUserId) throw forbidden("V4_INVITE_FORBIDDEN", "Invite does not belong to you");
+    if (inviteAfterLock.status !== "PENDING") throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already responded");
+    if (inviteAfterLock.expiresAt.getTime() <= now.getTime()) {
+      await tx
+        .update(v4ContractorJobInvites)
+        .set({ status: "EXPIRED", respondedAt: now })
+        .where(and(eq(v4ContractorJobInvites.id, inviteId), eq(v4ContractorJobInvites.status, "PENDING")));
+      throw conflict("V4_INVITE_EXPIRED", "This invite has expired.");
     }
 
-    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
-
-    const lockedJobRows = await tx
+    const jobRows = await tx
       .select({
         id: jobs.id,
         status: jobs.status,
-        paymentStatus: jobs.payment_status,
-        amountCents: jobs.amount_cents,
-        totalAmountCents: jobs.total_amount_cents,
-        appraisalSubtotalCents: jobs.appraisal_subtotal_cents,
-        regionalFeeCents: jobs.regional_fee_cents,
-        taxAmountCents: jobs.tax_amount_cents,
-        laborTotalCents: jobs.labor_total_cents,
-        priceAdjustmentCents: jobs.price_adjustment_cents,
-        transactionFeeCents: jobs.transaction_fee_cents,
-        stripePaymentIntentId: jobs.stripe_payment_intent_id,
-        stripePaymentIntentStatus: jobs.stripe_payment_intent_status,
-        stripePaidAt: jobs.stripe_paid_at,
-        stripeRefundedAt: jobs.stripe_refunded_at,
-        country: jobs.country,
-        currency: jobs.currency,
+        jobPosterUserId: jobs.job_poster_user_id,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      .where(eq(jobs.id, inviteAfterLock.jobId))
       .limit(1);
-    const lockedJob = lockedJobRows[0] ?? null;
-    if (!lockedJob) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
-
-    if (String(lockedJob.status ?? "").toUpperCase() !== "OPEN_FOR_ROUTING") {
+    const job = jobRows[0] ?? null;
+    if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+    if (job.status === "ASSIGNED") throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
+    if (String(job.status ?? "").toUpperCase() !== "INVITED") {
       throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is no longer available for assignment");
     }
+    if (!job.jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
 
-    const now = new Date();
-
-    const existingAssignment = await tx
-      .select({ id: v4JobAssignments.id })
-      .from(v4JobAssignments)
-      .where(and(eq(v4JobAssignments.jobId, jobId), eq(v4JobAssignments.contractorUserId, contractorUserId)))
-      .limit(1);
-    if (existingAssignment.length > 0) {
-      throw conflict("V4_ASSIGNMENT_ALREADY_EXISTS", "Assignment already exists for this job");
-    }
-
-    const paymentIntentId = String(lockedJob.stripePaymentIntentId ?? "").trim();
-    if (!paymentIntentId) {
-      throw conflict("V4_PAYMENT_NOT_PAID", "Paid payment intent is required");
-    }
-    const paymentStatus = String(lockedJob.paymentStatus ?? "").toUpperCase();
-    if (paymentStatus === "REFUNDED" || lockedJob.stripeRefundedAt instanceof Date) {
-      throw conflict("V4_PAYMENT_REFUNDED", "Payment has been refunded");
-    }
-    if (!["FUNDS_SECURED", "FUNDED"].includes(paymentStatus)) {
-      throw conflict("V4_PAYMENT_NOT_PAID", "Payment must be completed before acceptance");
-    }
-    if (!(lockedJob.stripePaidAt instanceof Date)) {
-      throw conflict("V4_PAYMENT_NOT_PAID", "Payment timestamp missing");
-    }
-
-    const appraisalSubtotalCents = Math.max(
-      0,
-      Number(lockedJob.appraisalSubtotalCents ?? 0) || Number(lockedJob.laborTotalCents ?? 0),
-    );
-    const regionalFeeCents = Math.max(
-      0,
-      Number(lockedJob.regionalFeeCents ?? 0) || Number(lockedJob.priceAdjustmentCents ?? 0),
-    );
-    const taxAmountCents = Math.max(
-      0,
-      Number(lockedJob.taxAmountCents ?? 0) || Number(lockedJob.transactionFeeCents ?? 0),
-    );
-    const totalAmountCents = Math.max(0, Number(lockedJob.totalAmountCents ?? 0) || Number(lockedJob.amountCents ?? 0));
-    const split = computeEscrowSplitAllocations({
-      appraisalSubtotalCents,
-      regionalFeeCents,
-      taxAmountCents,
-    });
-    if (split.totalCents !== totalAmountCents) {
-      throw conflict("V4_PAYMENT_SPLIT_MISMATCH", "Escrow split does not match total");
-    }
+    const accepted = await tx
+      .update(v4ContractorJobInvites)
+      .set({ status: "ACCEPTED", respondedAt: now })
+      .where(and(eq(v4ContractorJobInvites.id, inviteId), eq(v4ContractorJobInvites.status, "PENDING")))
+      .returning({ id: v4ContractorJobInvites.id });
+    if (accepted.length !== 1) throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already responded");
 
     await tx
       .update(v4ContractorJobInvites)
-      .set({ status: "ACCEPTED" })
-      .where(eq(v4ContractorJobInvites.id, invite.id));
-    await tx
-      .update(v4ContractorJobInvites)
-      .set({ status: "REJECTED" })
+      .set({ status: "EXPIRED", respondedAt: now })
       .where(
         and(
-          eq(v4ContractorJobInvites.jobId, jobId),
-          ne(v4ContractorJobInvites.id, invite.id),
+          eq(v4ContractorJobInvites.jobId, inviteAfterLock.jobId),
+          ne(v4ContractorJobInvites.id, inviteId),
           eq(v4ContractorJobInvites.status, "PENDING"),
         ),
       );
 
-    const assignmentId = randomUUID();
+    const assignmentRows = await tx
+      .select({ id: v4JobAssignments.id })
+      .from(v4JobAssignments)
+      .where(eq(v4JobAssignments.jobId, inviteAfterLock.jobId))
+      .limit(1);
+    if (assignmentRows.length > 0) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
+
     await tx.insert(v4JobAssignments).values({
-      id: assignmentId,
-      jobId,
+      id: randomUUID(),
+      jobId: inviteAfterLock.jobId,
       contractorUserId,
       status: "ASSIGNED",
+      assignedAt: now,
     });
 
-    await tx
+    const updatedJob = await tx
       .update(jobs)
       .set({
         status: "ASSIGNED" as any,
         contractor_user_id: contractorUserId,
         accepted_at: now,
-        stripe_payment_intent_status: String(lockedJob.stripePaymentIntentStatus ?? "succeeded"),
-        payment_status: "FUNDS_SECURED" as any,
+        routing_started_at: null,
+        routing_expires_at: null,
         updated_at: now,
       })
-      .where(eq(jobs.id, jobId));
+      .where(and(eq(jobs.id, inviteAfterLock.jobId), eq(jobs.status, "INVITED" as any)))
+      .returning({ id: jobs.id });
+    if (updatedJob.length !== 1) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
 
-    const currency = toCurrency({ currency: lockedJob.currency ?? null, country: lockedJob.country ?? null });
+    await tx
+      .insert(v4MessageThreads)
+      .values({
+        id: randomUUID(),
+        jobId: inviteAfterLock.jobId,
+        jobPosterUserId: job.jobPosterUserId,
+        contractorUserId,
+        lastMessageAt: now,
+        createdAt: now,
+      })
+      .onConflictDoNothing();
 
-    await writeEscrowAllocationLedger(tx as any, {
-      jobId,
-      currency,
-      contractorUserId,
-      routerUserId: String(invite.routeId),
-      appraisalSubtotalCents,
-      regionalFeeCents,
-      taxAmountCents,
-      paymentIntentId,
-    });
-
-    await tx.insert(v4Notifications).values({
-      id: randomUUID(),
-      userId: jobPosterUserId,
-      role: "JOB_POSTER",
-      type: "CONTRACTOR_ASSIGNED",
-      title: "Contractor Assigned",
-      message: "A contractor has been assigned to your job.",
-      entityType: "JOB",
-      entityId: jobId,
-      priority: "NORMAL",
-      createdAt: new Date(),
-    });
-    await tx.insert(v4Notifications).values({
-      id: randomUUID(),
-      userId: String(invite.routeId),
-      role: "ROUTER",
-      type: "CONTRACTOR_ACCEPTED_ROUTE_INVITE",
-      title: "Contractor accepted routed job",
-      message: "A contractor accepted one of your routed job invites.",
-      entityType: "JOB",
-      entityId: jobId,
-      priority: "NORMAL",
-      createdAt: new Date(),
-    });
-
-    const existingThread = await tx
-      .select({ id: v4MessageThreads.id })
-      .from(v4MessageThreads)
+    await tx
+      .update(v4MessageThreads)
+      .set({ lastMessageAt: now })
       .where(
         and(
-          eq(v4MessageThreads.jobId, jobId),
-          eq(v4MessageThreads.jobPosterUserId, jobPosterUserId),
+          eq(v4MessageThreads.jobId, inviteAfterLock.jobId),
+          eq(v4MessageThreads.jobPosterUserId, job.jobPosterUserId),
           eq(v4MessageThreads.contractorUserId, contractorUserId),
         ),
-      )
-      .limit(1);
-    if (existingThread.length === 0) {
-      await tx.insert(v4MessageThreads).values({
-        id: randomUUID(),
-        jobId,
-        jobPosterUserId,
-        contractorUserId,
-      });
-    }
+      );
+
+    return { success: true as const, jobId: inviteAfterLock.jobId };
   });
 }
 
+export async function rejectInviteById(contractorUserId: string, inviteId: string): Promise<{ success: true }> {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(v4ContractorJobInvites).where(eq(v4ContractorJobInvites.id, inviteId)).limit(1);
+    const invite = rows[0] ?? null;
+    if (!invite) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
+    if (invite.contractorUserId !== contractorUserId) throw forbidden("V4_INVITE_FORBIDDEN", "Invite does not belong to you");
+    if (invite.status !== "PENDING") throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already responded");
+
+    const updated = await tx
+      .update(v4ContractorJobInvites)
+      .set({ status: "REJECTED", respondedAt: now })
+      .where(and(eq(v4ContractorJobInvites.id, inviteId), eq(v4ContractorJobInvites.status, "PENDING")))
+      .returning({ id: v4ContractorJobInvites.id });
+    if (updated.length !== 1) throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already responded");
+    return { success: true as const };
+  });
+}
+
+// Backward compatibility: legacy jobId endpoints delegate to inviteId flow.
+export async function acceptInvite(contractorUserId: string, jobId: string) {
+  const invite = await getInviteByJob(contractorUserId, jobId);
+  if (!invite) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
+  return acceptInviteById(contractorUserId, invite.id);
+}
+
+// Backward compatibility: legacy jobId endpoints delegate to inviteId flow.
 export async function rejectInvite(contractorUserId: string, jobId: string) {
   const invite = await getInviteByJob(contractorUserId, jobId);
   if (!invite) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
-  if (invite.status !== "PENDING") throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already accepted or rejected");
-
-  await db.transaction(async (tx) => {
-    await tx
-      .update(v4ContractorJobInvites)
-      .set({ status: "REJECTED" })
-      .where(eq(v4ContractorJobInvites.id, invite.id));
-
-    const summaryRows = await tx
-      .select({
-        pending: sql<number>`sum(case when ${v4ContractorJobInvites.status} = 'PENDING' then 1 else 0 end)`,
-        accepted: sql<number>`sum(case when ${v4ContractorJobInvites.status} = 'ACCEPTED' then 1 else 0 end)`,
-      })
-      .from(v4ContractorJobInvites)
-      .where(eq(v4ContractorJobInvites.jobId, jobId))
-      .limit(1);
-    const summary = summaryRows[0] ?? null;
-    const hasPending = Number(summary?.pending ?? 0) > 0;
-    const hasAccepted = Number(summary?.accepted ?? 0) > 0;
-
-    if (!hasPending && !hasAccepted) {
-      await tx
-        .update(jobs)
-        .set({
-          status: "OPEN_FOR_ROUTING" as any,
-          routing_status: "UNROUTED" as any,
-          claimed_by_user_id: null,
-          claimed_at: null,
-          routed_at: null,
-          updated_at: new Date(),
-        })
-        .where(and(eq(jobs.id, jobId), eq(jobs.status, "OPEN_FOR_ROUTING")));
-    }
-  });
+  return rejectInviteById(contractorUserId, invite.id);
 }
