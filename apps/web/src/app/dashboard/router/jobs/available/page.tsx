@@ -40,7 +40,7 @@ export default function RouterAvailableJobsPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/v4/router/available-jobs", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/router/available-jobs", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive) return;
         if (!resp.ok) {

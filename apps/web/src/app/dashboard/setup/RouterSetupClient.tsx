@@ -106,7 +106,7 @@ export function RouterSetupClient() {
     let alive = true;
     (async () => {
       try {
-        const profileResp = await fetch("/api/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const profileResp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
         const profileRes = (await profileResp.json().catch(() => null)) as any;
         if (!alive) return;
 
@@ -150,7 +150,7 @@ export function RouterSetupClient() {
         homeLongitude: 0,
       };
 
-      const profileResp = await fetch("/api/v4/router/profile", {
+      const profileResp = await fetch("/api/web/v4/router/profile", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -159,7 +159,7 @@ export function RouterSetupClient() {
       const profileJson = (await profileResp.json().catch(() => null)) as any;
       if (!profileResp.ok) throw new Error(String(profileJson?.error?.message ?? profileJson?.error ?? "Failed to save profile."));
 
-      const tosResp = await fetch("/api/v4/router/accept-tos", {
+      const tosResp = await fetch("/api/web/v4/router/accept-tos", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",

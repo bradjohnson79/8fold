@@ -42,7 +42,7 @@ export default function RouterOpenJobsPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/routable-jobs", { cache: "no-store" });
+      const resp = await fetch("/api/web/v4/router/available-jobs", { cache: "no-store" });
       const json = await resp.json().catch(() => ({} as any));
       if (!resp.ok) throw new Error(json?.error ?? "Failed to load jobs");
       const rows = Array.isArray(json?.jobs) ? (json.jobs as RoutableJob[]) : [];

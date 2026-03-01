@@ -75,7 +75,7 @@ export function DashboardShell({
           if (delay) await new Promise((r) => setTimeout(r, delay));
           if (cancelled) return;
 
-          const resp = await fetch(path.startsWith("/dashboard/job-poster") ? "/api/v4/job-poster/me" : "/api/app/me", { cache: "no-store", credentials: "include" });
+          const resp = await fetch(path.startsWith("/dashboard/job-poster") ? "/api/web/v4/job-poster/me" : "/api/app/me", { cache: "no-store", credentials: "include" });
           const json = (await resp.json().catch(() => null)) as any;
           if (cancelled) return;
 

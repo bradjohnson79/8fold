@@ -40,7 +40,7 @@ async function save(req: Request) {
 
     const identity = await getClerkIdentity(role.clerkUserId);
     await saveV4RouterProfile(role.internalUser.id, parsed.data, identity);
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json(await getV4RouterProfile(role.internalUser.id), { status: 200 });
   } catch (err) {
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ROUTER_PROFILE_SAVE_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });

@@ -158,7 +158,7 @@ export default function JobPosterMessagesPage() {
     setAccepting(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v4/job-poster/jobs/${encodeURIComponent(selectedThread.jobId)}/accept-appointment`, {
+      const resp = await fetch(`/api/web/v4/job-poster/jobs/${encodeURIComponent(selectedThread.jobId)}/accept-appointment`, {
         method: "POST",
         credentials: "include",
       });

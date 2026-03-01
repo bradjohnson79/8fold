@@ -187,7 +187,7 @@ export function RoutingWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/routable-jobs", { cache: "no-store", credentials: "include" });
+      const resp = await fetch("/api/web/v4/router/available-jobs", { cache: "no-store", credentials: "include" });
       const json = await safeJson<{ jobs: RoutableJob[]; error?: string }>(resp);
       if (!resp.ok) throw new Error(json.error || "Failed to load");
       setAvailableJobs(Array.isArray(json.jobs) ? json.jobs : []);

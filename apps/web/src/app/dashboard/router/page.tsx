@@ -65,7 +65,7 @@ export default function RouterSummaryPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/v4/router/dashboard/summary", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/router/dashboard/summary", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive) return;
         if (!resp.ok) {
@@ -86,7 +86,7 @@ export default function RouterSummaryPage() {
 
   if (loading) return <div className="p-6">Loading...</div>;
   if (error) return <div className="p-6 text-red-700">{error}</div>;
-  if (!summary) return <div className="p-6">No data</div>;
+  if (!summary) return <div className="p-6 text-slate-600">No summary data is available for this router account yet.</div>;
 
   const totalRequiredActions =
     summary.actionRequired.pendingCompletionApproval +

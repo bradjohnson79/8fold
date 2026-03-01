@@ -72,7 +72,7 @@ export default function JobPosterSummaryPage() {
     setSummaryLoading(true);
     setSummaryError(null);
     try {
-      const resp = await fetch("/api/v4/job-poster/dashboard/summary", {
+      const resp = await fetch("/api/web/v4/job-poster/dashboard/summary", {
         cache: "no-store",
         credentials: "include",
       });
@@ -96,7 +96,7 @@ export default function JobPosterSummaryPage() {
     setJobsLoading(true);
     setJobsError(null);
     try {
-      const resp = await fetch("/api/v4/job-poster/jobs", {
+      const resp = await fetch("/api/web/v4/job-poster/jobs", {
         cache: "no-store",
         credentials: "include",
       });
@@ -152,7 +152,7 @@ export default function JobPosterSummaryPage() {
     setAccepting(true);
     setActionError(null);
     try {
-      const resp = await fetch(`/api/v4/job-poster/jobs/${encodeURIComponent(jobId)}/accept-appointment`, {
+      const resp = await fetch(`/api/web/v4/job-poster/jobs/${encodeURIComponent(jobId)}/accept-appointment`, {
         method: "POST",
         credentials: "include",
       });

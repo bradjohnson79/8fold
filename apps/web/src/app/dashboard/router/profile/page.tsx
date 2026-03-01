@@ -18,8 +18,6 @@ type ProfileForm = {
   homeRegion: string;
   homeCountryCode: "US" | "CA";
   homeRegionCode: string;
-  serviceAreas: string;
-  availability: string;
   mapDisplayName: string;
   lat: number;
   lng: number;
@@ -50,8 +48,6 @@ export default function RouterProfilePage() {
     homeRegion: "",
     homeCountryCode: "US",
     homeRegionCode: "",
-    serviceAreas: "",
-    availability: "",
     mapDisplayName: "",
     lat: 0,
     lng: 0,
@@ -61,7 +57,7 @@ export default function RouterProfilePage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive) return;
         const p = json?.profile ?? {};
@@ -72,8 +68,6 @@ export default function RouterProfilePage() {
           homeRegion: String(p.homeRegion ?? "").trim(),
           homeCountryCode: (String(p.homeCountryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US") as "US" | "CA",
           homeRegionCode: String(p.homeRegionCode ?? "").trim(),
-          serviceAreas: Array.isArray(p.serviceAreas) ? p.serviceAreas.join(", ") : "",
-          availability: Array.isArray(p.availability) ? p.availability.join(", ") : "",
           lat: typeof p.homeLatitude === "number" ? p.homeLatitude : 0,
           lng: typeof p.homeLongitude === "number" ? p.homeLongitude : 0,
         }));
@@ -89,17 +83,11 @@ export default function RouterProfilePage() {
   }, []);
 
   async function onSave() {
-    const serviceAreas = form.serviceAreas.trim().split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-    const availability = form.availability.trim().split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-    if (serviceAreas.length === 0 || availability.length === 0) {
-      setError("Service areas and availability are required");
-      return;
-    }
     setSaving(true);
     setError("");
     try {
-      const resp = await fetch("/api/v4/router/profile", {
-        method: "PUT",
+      const resp = await fetch("/api/web/v4/router/profile", {
+        method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
@@ -108,8 +96,6 @@ export default function RouterProfilePage() {
           homeRegion: form.homeRegion.trim(),
           homeCountryCode: form.homeCountryCode,
           homeRegionCode: form.homeRegionCode.trim(),
-          serviceAreas,
-          availability,
           homeLatitude: form.lat,
           homeLongitude: form.lng,
         }),
@@ -134,7 +120,7 @@ export default function RouterProfilePage() {
       <div className="rounded-xl bg-white p-6 shadow dark:bg-zinc-900 space-y-4 max-w-2xl">
         <Field label="Contact Name" value={form.contactName} onChange={(v) => setForm((s) => ({ ...s, contactName: v }))} />
         <Field label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
-        <Field label="Home Region" value={form.homeRegion} onChange={(v) => setForm((s) => ({ ...s, homeRegion: v }))} />
+        <Field label="State/Province" value={form.homeRegion} onChange={(v) => setForm((s) => ({ ...s, homeRegion: v }))} />
         <label className="block">
           <span className="text-sm font-medium text-gray-700">Country</span>
           <select
@@ -159,8 +145,6 @@ export default function RouterProfilePage() {
             ))}
           </select>
         </label>
-        <Field label="Service Areas" value={form.serviceAreas} onChange={(v) => setForm((s) => ({ ...s, serviceAreas: v }))} helperText="Comma-separated" />
-        <Field label="Availability" value={form.availability} onChange={(v) => setForm((s) => ({ ...s, availability: v }))} helperText="Comma-separated" />
         <div>
           <div className="text-sm font-medium text-gray-700 mb-2">Home Location</div>
           <MapLocationSelector

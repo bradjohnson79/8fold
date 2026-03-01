@@ -9,7 +9,7 @@ type Ticket = {
   updatedAt: string;
 };
 
-export default function JobPosterSupportInboxLegacyPage() {
+export default function RouterSupportInboxPage() {
   const [tickets, setTickets] = React.useState<Ticket[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);

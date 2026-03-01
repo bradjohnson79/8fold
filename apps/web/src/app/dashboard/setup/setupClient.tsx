@@ -173,7 +173,7 @@ export function DashboardSetupClient() {
       try {
         const [meResp, profileResp] = await Promise.all([
           fetch("/api/app/me", { cache: "no-store", credentials: "include" }),
-          fetch("/api/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
         ]);
         const me = (await meResp.json().catch(() => null)) as any;
         const profileRes = (await profileResp.json().catch(() => null)) as any;
@@ -229,7 +229,7 @@ export function DashboardSetupClient() {
         latitude: form.lat,
         longitude: form.lng,
       };
-      const profileResp = await fetch("/api/v4/job-poster/profile", {
+      const profileResp = await fetch("/api/web/v4/job-poster/profile", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -238,7 +238,7 @@ export function DashboardSetupClient() {
       const profileJson = (await profileResp.json().catch(() => null)) as any;
       if (!profileResp.ok) throw new Error(String(profileJson?.error?.message ?? profileJson?.error ?? "Failed to save profile."));
 
-      const tosResp = await fetch("/api/v4/job-poster/accept-tos", {
+      const tosResp = await fetch("/api/web/v4/job-poster/accept-tos", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
