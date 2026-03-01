@@ -154,6 +154,7 @@ export const jobs = dbSchema.table(
     poster_accepted_at: timestamp("poster_accepted_at", { mode: "date" }),
     appointment_at: timestamp("appointment_at", { mode: "date" }),
     appointment_published_at: timestamp("appointment_published_at", { mode: "date" }),
+    appointment_accepted_at: timestamp("appointment_accepted_at", { mode: "date" }),
 
     contractor_completed_at: timestamp("contractor_completed_at", { mode: "date" }),
     contractor_completion_summary: text("contractor_completion_summary"),

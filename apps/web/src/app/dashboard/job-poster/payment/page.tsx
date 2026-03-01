@@ -99,9 +99,14 @@ export default function JobPosterPaymentPage() {
         method: "POST",
         credentials: "include",
       });
+      const data = await resp.json().catch(() => ({})) as { ok?: boolean; error?: string | { message?: string } };
       if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data?.error?.message ?? "Failed to simulate payment setup success");
+        const message = typeof data.error === "string" ? data.error : data.error?.message;
+        throw new Error(message ?? "Failed to simulate payment setup success");
+      }
+      if (data?.ok === false && data?.error === "STRIPE_NOT_CONFIGURED") {
+        setError("Stripe is not configured in this environment.");
+        return;
       }
       setSuccess(true);
       setCanceled(false);

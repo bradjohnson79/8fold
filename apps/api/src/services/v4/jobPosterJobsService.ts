@@ -215,3 +215,51 @@ export async function acceptAssignedContractorForJobPoster(jobId: string, userId
 
   return { success: true as const, jobId };
 }
+
+export async function acceptAppointmentForJobPoster(
+  jobId: string,
+  userId: string,
+): Promise<{ success: true; jobId: string; appointmentAcceptedAt: string }> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      jobPosterUserId: jobs.job_poster_user_id,
+      contractorUserId: jobs.contractor_user_id,
+      appointmentAt: jobs.appointment_at,
+      appointmentAcceptedAt: jobs.appointment_accepted_at,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+
+  const job = rows[0] ?? null;
+  if (!job || job.jobPosterUserId !== userId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  if (!job.contractorUserId) throw conflict("V4_JOB_NOT_ASSIGNED", "No contractor is assigned to this job");
+  if (!(job.appointmentAt instanceof Date)) {
+    throw conflict("V4_APPOINTMENT_NOT_BOOKED", "Contractor has not booked an appointment");
+  }
+
+  if (job.appointmentAcceptedAt instanceof Date) {
+    return {
+      success: true as const,
+      jobId,
+      appointmentAcceptedAt: job.appointmentAcceptedAt.toISOString(),
+    };
+  }
+
+  const now = new Date();
+  await db
+    .update(jobs)
+    .set({
+      appointment_accepted_at: now,
+      updated_at: now,
+    })
+    .where(eq(jobs.id, jobId));
+
+  return {
+    success: true as const,
+    jobId,
+    appointmentAcceptedAt: now.toISOString(),
+  };
+}
