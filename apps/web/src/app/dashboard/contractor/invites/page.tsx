@@ -19,6 +19,7 @@ type Invite = {
   latitude: number | null;
   longitude: number | null;
   createdAt: string;
+  expiresAt: string;
 };
 
 type ApiErrorBody = {
@@ -26,6 +27,11 @@ type ApiErrorBody = {
     code?: string;
     message?: string;
   };
+};
+
+type InviteListResponse = {
+  serverTime: string;
+  invites: Invite[];
 };
 
 function formatMoney(centsLike: number | null | undefined) {
@@ -38,6 +44,29 @@ function mapEmbedUrl(latitude: number | null, longitude: number | null) {
   return `https://maps.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}&z=14&output=embed`;
 }
 
+function refreshIntervalMs(remainingMs: number): number {
+  if (remainingMs <= 10 * 60 * 1000) return 60 * 1000;
+  if (remainingMs <= 15 * 60 * 1000) return 5 * 60 * 1000;
+  if (remainingMs <= 30 * 60 * 1000) return 15 * 60 * 1000;
+  if (remainingMs <= 60 * 60 * 1000) return 30 * 60 * 1000;
+  return 60 * 60 * 1000;
+}
+
+function formatCountdown(remainingMs: number): string {
+  const totalMinutes = Math.max(0, Math.ceil(remainingMs / (60 * 1000)));
+  if (totalMinutes >= 60) {
+    const hours = Math.ceil(totalMinutes / 60);
+    return `${hours} ${hours === 1 ? "Hour" : "Hours"}`;
+  }
+  return `${totalMinutes} ${totalMinutes === 1 ? "Minute" : "Minutes"}`;
+}
+
+function countdownTone(remainingMs: number): string {
+  if (remainingMs <= 10 * 60 * 1000) return "text-rose-700";
+  if (remainingMs <= 60 * 60 * 1000) return "text-amber-700";
+  return "text-slate-600";
+}
+
 export default function ContractorInvitesPage() {
   const router = useRouter();
   const [invites, setInvites] = React.useState<Invite[]>([]);
@@ -48,33 +77,79 @@ export default function ContractorInvitesPage() {
   const [redirectingJobId, setRedirectingJobId] = React.useState<string | null>(null);
   const [missingSteps, setMissingSteps] = React.useState<MissingStep[]>([]);
   const [showIncompleteModal, setShowIncompleteModal] = React.useState(false);
+  const [serverOffsetMs, setServerOffsetMs] = React.useState(0);
+  const [clockMs, setClockMs] = React.useState(() => Date.now());
+  const visibleInvites = React.useMemo(
+    () =>
+      invites.filter((invite) => {
+        const remainingMs = new Date(invite.expiresAt).getTime() - (clockMs + serverOffsetMs);
+        return Number.isFinite(remainingMs) && remainingMs > 0;
+      }),
+    [invites, clockMs, serverOffsetMs],
+  );
+
+  const loadInvites = React.useCallback(async (aliveRef?: { current: boolean }) => {
+    try {
+      const requestStartedAt = Date.now();
+      const resp = await fetch("/api/contractor/invites", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => null)) as InviteListResponse | ApiErrorBody | null;
+      if (aliveRef && !aliveRef.current) return;
+      if (!resp.ok || !data || !("invites" in data)) {
+        const message = data && "error" in data ? data?.error?.message ?? "Failed to load invites" : "Failed to load invites";
+        setError(message);
+        return;
+      }
+      const serverTimeMs = new Date(data.serverTime).getTime();
+      if (Number.isFinite(serverTimeMs)) {
+        setServerOffsetMs(serverTimeMs - requestStartedAt);
+      }
+      setInvites(Array.isArray(data.invites) ? data.invites : []);
+      setClockMs(Date.now());
+    } catch {
+      if (!aliveRef || aliveRef.current) setError("Failed to load invites");
+    } finally {
+      if (!aliveRef || aliveRef.current) setLoading(false);
+    }
+  }, []);
 
   React.useEffect(() => {
-    let alive = true;
+    const alive = { current: true };
     (async () => {
-      try {
-        const resp = await fetch("/api/contractor/invites", {
-          cache: "no-store",
-          credentials: "include",
-        });
-        const data = (await resp.json().catch(() => [])) as Invite[] | ApiErrorBody;
-        if (!alive) return;
-        if (!resp.ok) {
-          const message = Array.isArray(data) ? "Failed to load invites" : data?.error?.message ?? "Failed to load invites";
-          setError(message);
-          return;
-        }
-        setInvites(Array.isArray(data) ? data : []);
-      } catch {
-        if (alive) setError("Failed to load invites");
-      } finally {
-        if (alive) setLoading(false);
-      }
+      await loadInvites(alive);
     })();
     return () => {
-      alive = false;
+      alive.current = false;
     };
-  }, []);
+  }, [loadInvites]);
+
+  React.useEffect(() => {
+    if (invites.length === 0) return;
+    const nowMs = Date.now() + serverOffsetMs;
+    const remainingMs = invites.map((invite) => new Date(invite.expiresAt).getTime() - nowMs);
+    const active = remainingMs.filter((ms) => Number.isFinite(ms) && ms > 0);
+    if (active.length === 0) {
+      setInvites([]);
+      void loadInvites();
+      return;
+    }
+    const nextMs = Math.min(...active);
+    const delay = Math.max(10 * 1000, Math.min(refreshIntervalMs(nextMs), nextMs));
+    const timer = window.setTimeout(() => {
+      const currentServerMs = Date.now() + serverOffsetMs;
+      setClockMs(Date.now());
+      setInvites((prev) =>
+        prev.filter((invite) => {
+          const expiresMs = new Date(invite.expiresAt).getTime();
+          return Number.isFinite(expiresMs) && expiresMs > currentServerMs;
+        }),
+      );
+      if (nextMs <= delay) void loadInvites();
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [invites, loadInvites, serverOffsetMs]);
 
   React.useEffect(() => {
     if (!showSuccessModal || !redirectingJobId) return;
@@ -145,13 +220,14 @@ export default function ContractorInvitesPage() {
 
       {loading ? (
         <p className="mt-6 text-slate-600">Loading invites…</p>
-      ) : invites.length === 0 ? (
+      ) : visibleInvites.length === 0 ? (
         <p className="mt-6 text-slate-500">No pending invites.</p>
       ) : (
         <div className="mt-6 max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          {invites.map((invite) => {
+          {visibleInvites.map((invite) => {
             const mapUrl = mapEmbedUrl(invite.latitude, invite.longitude);
             const disabled = Boolean(lockedInviteId);
+            const remainingMs = new Date(invite.expiresAt).getTime() - (clockMs + serverOffsetMs);
             return (
               <article key={invite.inviteId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="text-lg font-semibold text-slate-900">{invite.jobTitle}</h2>
@@ -167,6 +243,9 @@ export default function ContractorInvitesPage() {
                     Contractor Amount: {formatMoney(invite.contractorAmount)}
                   </p>
                   <p><span className="font-medium">Address:</span> {invite.address || "Not provided"}</p>
+                  <p className={`font-medium ${countdownTone(remainingMs)}`}>
+                    Expires in: {formatCountdown(remainingMs)}
+                  </p>
                 </div>
 
                 {mapUrl ? (

@@ -10,6 +10,7 @@ type Invite = {
   jobDescription?: string;
   address?: string;
   createdAt: string;
+  expiresAt?: string;
 };
 
 type JobSummary = {
@@ -31,6 +32,11 @@ type ReadinessResponse = {
   roleCompletion?: {
     payment?: boolean;
   } | null;
+};
+
+type InviteListResponse = {
+  serverTime?: string;
+  invites?: Invite[];
 };
 
 function formatDate(value?: string) {
@@ -94,8 +100,12 @@ export default function ContractorOverviewPage() {
         }
 
         if (invResp.ok) {
-          const invData = (await invResp.json()) as Invite[];
-          const parsedInvites = Array.isArray(invData) ? invData : [];
+          const invData = (await invResp.json()) as Invite[] | InviteListResponse;
+          const parsedInvites = Array.isArray(invData)
+            ? invData
+            : Array.isArray(invData?.invites)
+              ? invData.invites
+              : [];
           setInvites(parsedInvites);
           if (!inviteCountResp.ok) setPendingInviteCount(parsedInvites.length);
         }

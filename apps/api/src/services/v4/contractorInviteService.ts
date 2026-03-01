@@ -7,6 +7,7 @@ import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { badRequest, conflict, forbidden } from "./v4Errors";
+import { expireStaleInvitesAndResetJobs } from "./inviteExpirationService";
 
 export type PendingInviteDto = {
   inviteId: string;
@@ -22,6 +23,7 @@ export type PendingInviteDto = {
   latitude: number | null;
   longitude: number | null;
   createdAt: string;
+  expiresAt: string;
 };
 
 function toNonEmpty(value: string | null | undefined): string {
@@ -52,20 +54,29 @@ function computeContractorAmountCents(input: {
 }
 
 export async function countPendingInvites(contractorUserId: string): Promise<number> {
+  await expireStaleInvitesAndResetJobs();
   const rows = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(v4ContractorJobInvites)
-    .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.status, "PENDING")))
+    .where(
+      and(
+        eq(v4ContractorJobInvites.contractorUserId, contractorUserId),
+        eq(v4ContractorJobInvites.status, "PENDING"),
+        sql`${v4ContractorJobInvites.expiresAt} > now()`,
+      ),
+    )
     .limit(1);
   return Number(rows[0]?.count ?? 0);
 }
 
 export async function listPendingInvites(contractorUserId: string): Promise<PendingInviteDto[]> {
+  await expireStaleInvitesAndResetJobs();
   const rows = await db
     .select({
       inviteId: v4ContractorJobInvites.id,
       jobId: v4ContractorJobInvites.jobId,
       createdAt: v4ContractorJobInvites.createdAt,
+      expiresAt: v4ContractorJobInvites.expiresAt,
       title: jobs.title,
       scope: jobs.scope,
       tradeCategory: jobs.trade_category,
@@ -85,7 +96,13 @@ export async function listPendingInvites(contractorUserId: string): Promise<Pend
     .from(v4ContractorJobInvites)
     .innerJoin(jobs, eq(jobs.id, v4ContractorJobInvites.jobId))
     .leftJoin(jobPosterProfilesV4, eq(jobPosterProfilesV4.userId, jobs.job_poster_user_id))
-    .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.status, "PENDING")))
+    .where(
+      and(
+        eq(v4ContractorJobInvites.contractorUserId, contractorUserId),
+        eq(v4ContractorJobInvites.status, "PENDING"),
+        sql`${v4ContractorJobInvites.expiresAt} > now()`,
+      ),
+    )
     .orderBy(desc(v4ContractorJobInvites.createdAt));
 
   return rows.map((row) => {
@@ -108,6 +125,7 @@ export async function listPendingInvites(contractorUserId: string): Promise<Pend
       latitude: typeof row.lat === "number" && Number.isFinite(row.lat) ? row.lat : null,
       longitude: typeof row.lng === "number" && Number.isFinite(row.lng) ? row.lng : null,
       createdAt: row.createdAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
     };
   });
 }
@@ -119,10 +137,17 @@ export async function listInvites(contractorUserId: string): Promise<{ invites: 
 }
 
 export async function getInviteByJob(contractorUserId: string, jobId: string) {
+  await expireStaleInvitesAndResetJobs();
   const rows = await db
     .select()
     .from(v4ContractorJobInvites)
-    .where(and(eq(v4ContractorJobInvites.contractorUserId, contractorUserId), eq(v4ContractorJobInvites.jobId, jobId)))
+    .where(
+      and(
+        eq(v4ContractorJobInvites.contractorUserId, contractorUserId),
+        eq(v4ContractorJobInvites.jobId, jobId),
+        sql`${v4ContractorJobInvites.expiresAt} > now()`,
+      ),
+    )
     .orderBy(desc(v4ContractorJobInvites.createdAt))
     .limit(1);
   return rows[0] ?? null;
@@ -149,6 +174,13 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
     if (!inviteAfterLock) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
     if (inviteAfterLock.contractorUserId !== contractorUserId) throw forbidden("V4_INVITE_FORBIDDEN", "Invite does not belong to you");
     if (inviteAfterLock.status !== "PENDING") throw conflict("V4_INVITE_ALREADY_RESPONDED", "Invite already responded");
+    if (inviteAfterLock.expiresAt.getTime() <= now.getTime()) {
+      await tx
+        .update(v4ContractorJobInvites)
+        .set({ status: "EXPIRED", respondedAt: now })
+        .where(and(eq(v4ContractorJobInvites.id, inviteId), eq(v4ContractorJobInvites.status, "PENDING")));
+      throw conflict("V4_INVITE_EXPIRED", "This invite has expired.");
+    }
 
     const jobRows = await tx
       .select({
@@ -162,7 +194,9 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
     const job = jobRows[0] ?? null;
     if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
     if (job.status === "ASSIGNED") throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
-    if (job.status !== "OPEN_FOR_ROUTING") throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is no longer available for assignment");
+    if (String(job.status ?? "").toUpperCase() !== "INVITED") {
+      throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is no longer available for assignment");
+    }
     if (!job.jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
 
     const accepted = await tx
@@ -204,9 +238,11 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         status: "ASSIGNED" as any,
         contractor_user_id: contractorUserId,
         accepted_at: now,
+        routing_started_at: null,
+        routing_expires_at: null,
         updated_at: now,
       })
-      .where(and(eq(jobs.id, inviteAfterLock.jobId), eq(jobs.status, "OPEN_FOR_ROUTING")))
+      .where(and(eq(jobs.id, inviteAfterLock.jobId), eq(jobs.status, "INVITED" as any)))
       .returning({ id: jobs.id });
     if (updatedJob.length !== 1) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
 

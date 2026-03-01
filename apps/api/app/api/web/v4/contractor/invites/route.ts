@@ -10,7 +10,10 @@ export async function GET(req: Request) {
     if (ctx instanceof Response) return ctx;
     requestId = ctx.requestId;
     const invites = await listPendingInvites(ctx.internalUser.id);
-    return NextResponse.json(invites);
+    return NextResponse.json({
+      serverTime: new Date().toISOString(),
+      invites,
+    });
   } catch (err) {
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_INVITES_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });

@@ -3,8 +3,11 @@ import { db } from "@/db/drizzle";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
+import { expireStaleInvitesAndResetJobs } from "@/src/services/v4/inviteExpirationService";
 
 export async function getV4RouterAvailableJobs(userId: string) {
+  await expireStaleInvitesAndResetJobs();
+
   const profileRows = await db
     .select({ homeCountryCode: routerProfilesV4.homeCountryCode, homeRegionCode: routerProfilesV4.homeRegionCode })
     .from(routerProfilesV4)
