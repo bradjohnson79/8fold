@@ -9,6 +9,7 @@ type Thread = {
   jobId: string;
   jobTitle: string | null;
   lastMessageAt: string;
+  jobStatus?: string | null;
   jobDescription?: string | null;
   jobPosterFirstName?: string | null;
   jobPosterLastName?: string | null;
@@ -52,6 +53,14 @@ export default function ContractorMessagesPage() {
   const [loadingMessages, setLoadingMessages] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<string | null>(null);
+  const [showAppointmentModal, setShowAppointmentModal] = React.useState(false);
+  const [showAppointmentConfirm, setShowAppointmentConfirm] = React.useState(false);
+  const [bookingAppointment, setBookingAppointment] = React.useState(false);
+  const [appointmentDate, setAppointmentDate] = React.useState("");
+  const [appointmentHour, setAppointmentHour] = React.useState("9");
+  const [appointmentMinute, setAppointmentMinute] = React.useState("00");
+  const [appointmentPeriod, setAppointmentPeriod] = React.useState<"AM" | "PM">("AM");
 
   const selectedThread = React.useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
@@ -152,6 +161,56 @@ export default function ContractorMessagesPage() {
     }
   }
 
+  function appointmentIso(): string | null {
+    if (!appointmentDate) return null;
+    const hour12 = Number(appointmentHour);
+    const minute = Number(appointmentMinute);
+    if (!Number.isFinite(hour12) || hour12 < 1 || hour12 > 12) return null;
+    if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;
+    const hour24 = appointmentPeriod === "PM" ? (hour12 % 12) + 12 : hour12 % 12;
+    const iso = `${appointmentDate}T${String(hour24).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString();
+  }
+
+  async function handleBookAppointment() {
+    const thread = selectedThread;
+    if (!thread || bookingAppointment) return;
+    const iso = appointmentIso();
+    if (!iso) {
+      setError("Please provide a valid appointment date and time.");
+      return;
+    }
+
+    setBookingAppointment(true);
+    setError(null);
+    try {
+      const resp = await fetch(`/api/v4/contractor/jobs/${encodeURIComponent(thread.jobId)}/book-appointment`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ appointmentAt: iso }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as { error?: { message?: string } | string };
+      if (!resp.ok) {
+        const message =
+          typeof data.error === "string" ? data.error : data?.error?.message ?? "Failed to book appointment";
+        setError(message);
+        return;
+      }
+      setShowAppointmentConfirm(false);
+      setShowAppointmentModal(false);
+      setToast("Appointment sent.");
+      await loadThreads();
+      if (selectedThreadId) await loadMessages(selectedThreadId);
+    } catch {
+      setError("Failed to book appointment");
+    } finally {
+      setBookingAppointment(false);
+    }
+  }
+
   const mapUrl = mapEmbedUrl(selectedThread?.latitude, selectedThread?.longitude);
 
   return (
@@ -160,6 +219,7 @@ export default function ContractorMessagesPage() {
       <p className="mt-1 text-slate-600">Communicate with your client from routed jobs.</p>
 
       {error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+      {toast ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{toast}</p> : null}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[320px,1fr]">
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -250,6 +310,23 @@ export default function ContractorMessagesPage() {
           </div>
 
           {selectedThread ? (
+            <div className="border-t border-slate-200 px-4 py-3">
+              {String(selectedThread.jobStatus ?? "").toUpperCase() === "ASSIGNED" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setToast(null);
+                    setShowAppointmentModal(true);
+                  }}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  BOOK APPOINTMENT
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {selectedThread ? (
             <details className="border-t border-slate-200 px-4 py-3">
               <summary className="cursor-pointer text-sm font-semibold text-slate-900">Job Summary</summary>
               <div className="mt-3 space-y-1 text-sm text-slate-700">
@@ -292,6 +369,104 @@ export default function ContractorMessagesPage() {
           Back to Contractor Dashboard
         </Link>
       </div>
+
+      {showAppointmentModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Book Appointment</h3>
+            <p className="mt-2 text-sm text-slate-600">Select an appointment date and time to publish this job.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Date</label>
+                <input
+                  type="date"
+                  value={appointmentDate}
+                  onChange={(event) => setAppointmentDate(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Time</label>
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  <select
+                    value={appointmentHour}
+                    onChange={(event) => setAppointmentHour(event.target.value)}
+                    className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                  >
+                    {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((hour) => (
+                      <option key={hour} value={hour}>{hour}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={appointmentMinute}
+                    onChange={(event) => setAppointmentMinute(event.target.value)}
+                    className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                  >
+                    {["00", "15", "30", "45"].map((minute) => (
+                      <option key={minute} value={minute}>{minute}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={appointmentPeriod}
+                    onChange={(event) => setAppointmentPeriod(event.target.value as "AM" | "PM")}
+                    className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAppointmentConfirm(true)}
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAppointmentModal(false);
+                  setShowAppointmentConfirm(false);
+                }}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showAppointmentConfirm ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Confirm Appointment</h3>
+            <p className="mt-2 text-sm text-slate-700">
+              Send this appointment to the client and publish the job?
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleBookAppointment()}
+                disabled={bookingAppointment}
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {bookingAppointment ? "Sending..." : "Yes, Send"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAppointmentConfirm(false)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

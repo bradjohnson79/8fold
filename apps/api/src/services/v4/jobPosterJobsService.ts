@@ -181,3 +181,37 @@ export async function refundRoutableUnassignedJobForPoster(jobId: string, userId
 
   throw conflict("V4_REFUND_FAILED", "Refund could not be processed");
 }
+
+export async function acceptAssignedContractorForJobPoster(jobId: string, userId: string): Promise<{ success: true; jobId: string }> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      jobPosterUserId: jobs.job_poster_user_id,
+      posterAcceptExpiresAt: jobs.poster_accept_expires_at,
+      posterAcceptedAt: jobs.poster_accepted_at,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+
+  const job = rows[0] ?? null;
+  if (!job || job.jobPosterUserId !== userId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  if (String(job.status ?? "").toUpperCase() !== "ASSIGNED") {
+    throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is not awaiting poster acceptance");
+  }
+
+  const now = new Date();
+  if (!job.posterAcceptExpiresAt || job.posterAcceptExpiresAt.getTime() <= now.getTime()) {
+    throw conflict("V4_POSTER_ACCEPT_WINDOW_EXPIRED", "Poster acceptance window has expired");
+  }
+
+  if (!job.posterAcceptedAt) {
+    await db
+      .update(jobs)
+      .set({ poster_accepted_at: now, updated_at: now })
+      .where(eq(jobs.id, jobId));
+  }
+
+  return { success: true as const, jobId };
+}

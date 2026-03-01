@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
@@ -142,5 +142,74 @@ export async function completeJob(contractorUserId: string, jobId: string) {
       .update(jobs)
       .set({ status: "COMPLETED" as any, contractor_completed_at: new Date(), updated_at: new Date() })
       .where(eq(jobs.id, jobId));
+  });
+}
+
+export async function bookAppointment(contractorUserId: string, jobId: string, appointmentAtRaw: string) {
+  const appointmentAt = new Date(String(appointmentAtRaw ?? ""));
+  if (Number.isNaN(appointmentAt.getTime())) {
+    throw badRequest("V4_INVALID_APPOINTMENT", "appointmentAt must be a valid ISO timestamp");
+  }
+
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
+
+    const assignmentRows = await tx
+      .select()
+      .from(v4JobAssignments)
+      .where(
+        and(
+          eq(v4JobAssignments.contractorUserId, contractorUserId),
+          eq(v4JobAssignments.jobId, jobId),
+        ),
+      )
+      .limit(1);
+    const assignment = assignmentRows[0] ?? null;
+    if (!assignment) throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+    if (String(assignment.status ?? "").toUpperCase() !== "ASSIGNED") {
+      throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job must be ASSIGNED before booking appointment");
+    }
+
+    const jobRows = await tx
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        contractorUserId: jobs.contractor_user_id,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+    const job = jobRows[0] ?? null;
+    if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+    if (String(job.status ?? "").toUpperCase() !== "ASSIGNED") {
+      throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job must be ASSIGNED before booking appointment");
+    }
+    if (String(job.contractorUserId ?? "") !== contractorUserId) {
+      throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+    }
+
+    const updatedRows = await tx
+      .update(jobs)
+      .set({
+        status: "PUBLISHED" as any,
+        appointment_at: appointmentAt,
+        appointment_published_at: now,
+        poster_accept_expires_at: null,
+        updated_at: now,
+      })
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, "ASSIGNED")))
+      .returning({ id: jobs.id });
+    if (updatedRows.length !== 1) {
+      throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job must be ASSIGNED before booking appointment");
+    }
+
+    return {
+      success: true as const,
+      jobId,
+      appointmentAt: appointmentAt.toISOString(),
+      publishedAt: now.toISOString(),
+    };
   });
 }

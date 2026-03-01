@@ -34,5 +34,26 @@ export async function expireStaleInvitesAndResetJobs(): Promise<void> {
           )`,
         ),
       );
+
+    await tx
+      .update(jobs)
+      .set({
+        status: "OPEN_FOR_ROUTING" as any,
+        contractor_user_id: null,
+        poster_accept_expires_at: null,
+        claimed_by_user_id: null,
+        claimed_at: null,
+        routed_at: null,
+        routing_status: "UNROUTED" as any,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(jobs.status, "ASSIGNED"),
+          lt(jobs.poster_accept_expires_at, new Date()),
+          sql`${jobs.appointment_at} is null`,
+          sql`${jobs.appointment_published_at} is null`,
+        ),
+      );
   });
 }
