@@ -83,7 +83,7 @@ export default function JobPosterProfilePage() {
   );
 
   const loadProfile = React.useCallback(async () => {
-    const resp = await fetch("/api/v4/job-poster/profile", {
+    const resp = await fetch("/api/web/v4/job-poster/profile", {
       cache: "no-store",
       credentials: "include",
     });
@@ -160,7 +160,7 @@ export default function JobPosterProfilePage() {
 
     setSaving(true);
     try {
-      const resp = await fetch("/api/v4/job-poster/profile", {
+      const resp = await fetch("/api/web/v4/job-poster/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",

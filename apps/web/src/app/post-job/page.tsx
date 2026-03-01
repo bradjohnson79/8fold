@@ -228,8 +228,8 @@ export default function PostJobPage() {
       try {
         const [metaResp, profileResp, paymentResp, draftResp] = await Promise.all([
           fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
-          fetch("/api/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
-          fetch("/api/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
           fetch("/api/job-draft", { cache: "no-store", credentials: "include" }),
         ]);
 

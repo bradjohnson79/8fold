@@ -14,7 +14,7 @@ export function JobPosterDashboardShell({ children }: { children: React.ReactNod
     { href: "/dashboard/job-poster/messages", label: "Messages" },
     { href: "/dashboard/job-poster/notifications", label: "Notifications" },
     { href: "/dashboard/job-poster/support", label: "Support" },
-    { href: "/dashboard/job-poster/support/inbox", label: "Support Inbox", badge: hasUnread ? ({ kind: "dot" as const } as const) : undefined },
+    { href: "/dashboard/job-poster/support-inbox", label: "Support Inbox", badge: hasUnread ? ({ kind: "dot" as const } as const) : undefined },
     { href: "/dashboard/job-poster/profile", label: "Profile" },
     { href: "/dashboard/job-poster/payment", label: "Payment Setup" },
   ];

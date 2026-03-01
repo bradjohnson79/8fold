@@ -48,7 +48,7 @@ export function HomeJobFeedClient(props: {
         }
 
         const primaryUrl =
-          props.mode === "guest_recent" ? "/api/public/jobs/recent?limit=9" : "/api/app/router/routable-jobs";
+          props.mode === "guest_recent" ? "/api/public/jobs/recent?limit=9" : "/api/web/v4/router/available-jobs";
 
         let { resp, data } = await fetchJson(primaryUrl);
 

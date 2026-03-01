@@ -15,8 +15,6 @@ type StripeConnectStatus = {
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   onboardingComplete: boolean;
-  simulationEnabled?: boolean;
-  simulatedApproved?: boolean;
 };
 
 type RouterSummary = {
@@ -52,7 +50,7 @@ export default function RouterPaymentSetupPage() {
   }
 
   async function loadSummary() {
-    const resp = await fetch("/api/v4/router/dashboard/summary", {
+    const resp = await fetch("/api/web/v4/router/dashboard/summary", {
       cache: "no-store",
       credentials: "include",
     });
@@ -104,28 +102,6 @@ export default function RouterPaymentSetupPage() {
     }
   }
 
-  async function handleSimulateApproval() {
-    setSaving(true);
-    setError(null);
-    try {
-      const resp = await fetch("/api/app/stripe/connect/create-account", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ simulateApproved: true }),
-        credentials: "include",
-      });
-      const data = (await resp.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-      if (!resp.ok || data?.ok !== true) {
-        throw new Error(String(data?.error ?? "Failed to simulate Stripe approval"));
-      }
-      await loadAll();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to simulate Stripe approval");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const badge = status?.state ?? "NOT_CONNECTED";
   const returnedFromStripe = searchParams?.get("stripe") === "return";
   const isVerified = badge === "CONNECTED";
@@ -167,7 +143,7 @@ export default function RouterPaymentSetupPage() {
                     : "bg-red-100 text-red-700"
               }`}
             >
-              {isVerified ? "VERIFIED" : isPending ? "PENDING VERIFICATION" : mismatch ? "CURRENCY MISMATCH" : "NOT CONNECTED"}
+              {isVerified ? "CONNECTED" : isPending ? "PENDING_VERIFICATION" : mismatch ? "CURRENCY_MISMATCH" : "NOT_CONNECTED"}
             </span>
           </div>
 
@@ -228,16 +204,6 @@ export default function RouterPaymentSetupPage() {
                     ? "Manage Stripe Account"
                     : "Connect Stripe Account"}
             </button>
-            {status?.simulationEnabled ? (
-              <button
-                type="button"
-                onClick={() => void handleSimulateApproval()}
-                disabled={saving || loading}
-                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving ? "Simulating…" : "Stripe Simulation Success"}
-              </button>
-            ) : null}
           </div>
         </section>
 
