@@ -161,9 +161,6 @@ export default function ContractorJobDetailPage() {
     return (
       <div className="p-6">
         <p className="text-gray-600">Job not found.</p>
-        <Link href="/dashboard/contractor/jobs" className="mt-2 inline-block text-sm text-gray-600 hover:underline">
-          ← Back to jobs
-        </Link>
       </div>
     );
   }
@@ -172,10 +169,7 @@ export default function ContractorJobDetailPage() {
 
   return (
     <div className="p-6">
-      <Link href="/dashboard/contractor/jobs" className="text-sm text-gray-600 hover:underline">
-        ← Back to jobs
-      </Link>
-      <h1 className="mt-4 text-2xl font-bold">{job.title ?? "Job"}</h1>
+      <h1 className="text-2xl font-bold">{job.title ?? "Job"}</h1>
       <p className="mt-1 text-gray-600">
         {job.region ?? ""} · {job.scope ?? ""} · {assignment.status}
       </p>

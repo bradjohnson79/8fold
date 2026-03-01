@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import React from "react";
 import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
@@ -127,9 +126,6 @@ export default function RouterRouteJobPage() {
     return (
       <div className="p-6 space-y-3">
         <p className="text-red-700">{error}</p>
-        <Link href="/dashboard/router/jobs/available" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">
-          Back to Available Jobs
-        </Link>
       </div>
     );
   }
@@ -182,9 +178,7 @@ export default function RouterRouteJobPage() {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/dashboard/router/jobs/available" className="text-sm font-medium text-slate-600 hover:text-slate-800">
-          Back
-        </Link>
+        <div />
         <button
           type="button"
           onClick={routeJob}

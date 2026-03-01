@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 
 type Message = {
   id: string;
@@ -76,10 +75,7 @@ export default function JobPosterMessageThreadPage() {
 
   return (
     <div className="p-6 max-w-2xl">
-      <Link href="/dashboard/job-poster/messages" className="text-blue-600 hover:underline text-sm">
-        ← Back to threads
-      </Link>
-      <h1 className="text-2xl font-bold mt-2">Thread</h1>
+      <h1 className="text-2xl font-bold">Thread</h1>
 
       <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
         {messages.length === 0 ? (

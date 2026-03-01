@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireV4Role } from "@/src/auth/requireV4Role";
 import { simulateJobPosterPaymentSuccess } from "@/src/services/v4/jobPosterPaymentService";
+import { stripe } from "@/src/payments/stripe";
 import { forbidden, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 function isStripeSimulationEnabled(): boolean {
@@ -20,6 +21,10 @@ export async function POST(req: Request) {
     if (!isStripeSimulationEnabled()) {
       const wrapped = forbidden("V4_STRIPE_SIM_DISABLED", "Stripe simulation mode is disabled.");
       return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    }
+
+    if (!stripe) {
+      return NextResponse.json({ ok: false, error: "STRIPE_NOT_CONFIGURED" });
     }
 
     await simulateJobPosterPaymentSuccess(role.userId);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 
 type Item = { href: string; label: string };
 type Badge = { kind: "dot" } | { kind: "count"; value: number };
@@ -304,6 +305,7 @@ export function DashboardShell({
 
         {navMode === "none" ? (
           <section className="mt-6">
+            <DashboardBreadcrumb items={items} />
             <div className="border border-gray-200 rounded-2xl p-6 shadow-sm">{children}</div>
           </section>
         ) : (
@@ -349,6 +351,7 @@ export function DashboardShell({
             </aside>
 
             <section className="lg:col-span-4">
+              <DashboardBreadcrumb items={items} />
               <div className="border border-gray-200 rounded-2xl p-6 shadow-sm">{children}</div>
             </section>
           </div>

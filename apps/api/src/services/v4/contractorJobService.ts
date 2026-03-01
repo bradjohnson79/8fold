@@ -196,6 +196,7 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
         status: "PUBLISHED" as any,
         appointment_at: appointmentAt,
         appointment_published_at: now,
+        appointment_accepted_at: null,
         poster_accept_expires_at: null,
         updated_at: now,
       })
@@ -211,5 +212,146 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
       appointmentAt: appointmentAt.toISOString(),
       publishedAt: now.toISOString(),
     };
+  });
+}
+
+async function reopenRoutingAndUnassign(
+  tx: any,
+  input: { jobId: string; contractorUserId: string; now: Date; reason: string },
+) {
+  await tx
+    .delete(v4JobAssignments)
+    .where(and(eq(v4JobAssignments.jobId, input.jobId), eq(v4JobAssignments.contractorUserId, input.contractorUserId)));
+
+  await tx
+    .update(jobs)
+    .set({
+      status: "OPEN_FOR_ROUTING" as any,
+      routing_status: "UNROUTED" as any,
+      contractor_user_id: null,
+      appointment_at: null,
+      appointment_published_at: null,
+      appointment_accepted_at: null,
+      poster_accept_expires_at: null,
+      poster_accepted_at: null,
+      completion_flag_reason: input.reason,
+      updated_at: input.now,
+    })
+    .where(eq(jobs.id, input.jobId));
+}
+
+export async function rescheduleAppointment(contractorUserId: string, jobId: string, appointmentAtRaw: string) {
+  const nextAppointmentAt = new Date(String(appointmentAtRaw ?? ""));
+  if (Number.isNaN(nextAppointmentAt.getTime())) {
+    throw badRequest("V4_INVALID_APPOINTMENT", "appointmentAt must be a valid ISO timestamp");
+  }
+
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
+
+    const assignmentRows = await tx
+      .select()
+      .from(v4JobAssignments)
+      .where(
+        and(
+          eq(v4JobAssignments.contractorUserId, contractorUserId),
+          eq(v4JobAssignments.jobId, jobId),
+          eq(v4JobAssignments.status, "ASSIGNED"),
+        ),
+      )
+      .limit(1);
+    if (!assignmentRows[0]) throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+
+    const jobRows = await tx
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        contractorUserId: jobs.contractor_user_id,
+        appointmentAt: jobs.appointment_at,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+    const job = jobRows[0] ?? null;
+    if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+    if (String(job.contractorUserId ?? "") !== contractorUserId) {
+      throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+    }
+    if (!(job.appointmentAt instanceof Date)) {
+      throw conflict("V4_APPOINTMENT_NOT_BOOKED", "Appointment must be booked before rescheduling");
+    }
+
+    const hoursUntilAppointment = (job.appointmentAt.getTime() - now.getTime()) / (60 * 60 * 1000);
+    if (hoursUntilAppointment <= 8) {
+      await reopenRoutingAndUnassign(tx, {
+        jobId,
+        contractorUserId,
+        now,
+        reason: "CONTRACTOR_REJECTED",
+      });
+      return { success: true as const, action: "UNASSIGNED_AND_REOPENED" as const };
+    }
+
+    const normalizedStatus = String(job.status ?? "").toUpperCase();
+    if (!["ASSIGNED", "PUBLISHED"].includes(normalizedStatus)) {
+      throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is not in a schedulable state");
+    }
+
+    await tx
+      .update(jobs)
+      .set({
+        status: "PUBLISHED" as any,
+        appointment_at: nextAppointmentAt,
+        appointment_published_at: now,
+        appointment_accepted_at: null,
+        updated_at: now,
+      })
+      .where(eq(jobs.id, jobId));
+
+    return {
+      success: true as const,
+      action: "RESCHEDULED" as const,
+      appointmentAt: nextAppointmentAt.toISOString(),
+    };
+  });
+}
+
+export async function cancelAssignedJob(contractorUserId: string, jobId: string) {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
+
+    const assignmentRows = await tx
+      .select()
+      .from(v4JobAssignments)
+      .where(
+        and(
+          eq(v4JobAssignments.contractorUserId, contractorUserId),
+          eq(v4JobAssignments.jobId, jobId),
+          eq(v4JobAssignments.status, "ASSIGNED"),
+        ),
+      )
+      .limit(1);
+    if (!assignmentRows[0]) throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+
+    const jobRows = await tx
+      .select({ contractorUserId: jobs.contractor_user_id })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+    if (!jobRows[0]) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+    if (String(jobRows[0].contractorUserId ?? "") !== contractorUserId) {
+      throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+    }
+
+    await reopenRoutingAndUnassign(tx, {
+      jobId,
+      contractorUserId,
+      now,
+      reason: "CONTRACTOR_REJECTED",
+    });
+
+    return { success: true as const, action: "UNASSIGNED_AND_REOPENED" as const };
   });
 }

@@ -31,6 +31,8 @@ export type ThreadSummary = {
   contractorYearsExperience?: number | null;
   contractorCity?: string | null;
   contractorRegion?: string | null;
+  appointmentAt?: string | null;
+  appointmentAcceptedAt?: string | null;
 };
 
 export type MessageRow = {
@@ -57,6 +59,8 @@ export async function listThreadsForJobPoster(userId: string): Promise<ThreadSum
       tradeCategory: jobs.trade_category,
       availability: jobs.availability,
       timeWindow: jobs.time_window,
+      appointmentAt: jobs.appointment_at,
+      appointmentAcceptedAt: jobs.appointment_accepted_at,
       contractorName: contractorProfilesV4.contactName,
       contractorBusinessName: contractorProfilesV4.businessName,
       contractorYearsExperience: contractorProfilesV4.yearsExperience,
@@ -89,6 +93,8 @@ export async function listThreadsForJobPoster(userId: string): Promise<ThreadSum
         : null,
     contractorCity: toNonEmpty(r.contractorCity) || null,
     contractorRegion: toNonEmpty(r.contractorRegion) || null,
+    appointmentAt: r.appointmentAt?.toISOString?.() ?? null,
+    appointmentAcceptedAt: r.appointmentAcceptedAt?.toISOString?.() ?? null,
   }));
 }
 
@@ -133,6 +139,8 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
       tradeCategory: jobs.trade_category,
       availability: jobs.availability,
       timeWindow: jobs.time_window,
+      appointmentAt: jobs.appointment_at,
+      appointmentAcceptedAt: jobs.appointment_accepted_at,
       contractorPayoutCents: jobs.contractor_payout_cents,
       totalAmountCents: jobs.total_amount_cents,
       amountCents: jobs.amount_cents,
@@ -173,6 +181,8 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
       address: toNonEmpty(r.address) || fallbackAddress || null,
       latitude: typeof r.latitude === "number" && Number.isFinite(r.latitude) ? r.latitude : null,
       longitude: typeof r.longitude === "number" && Number.isFinite(r.longitude) ? r.longitude : null,
+      appointmentAt: r.appointmentAt?.toISOString?.() ?? null,
+      appointmentAcceptedAt: r.appointmentAcceptedAt?.toISOString?.() ?? null,
     };
   });
 }

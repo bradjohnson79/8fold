@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 
 type JobDetail = {
   id: string;
@@ -66,19 +65,13 @@ export default function JobPosterJobDetailPage() {
       <div className="p-6">
         <h1 className="text-2xl font-bold">Job Detail</h1>
         <p className="mt-2 text-gray-600">Job not found.</p>
-        <Link href="/dashboard/job-poster/jobs" className="mt-4 text-blue-600 hover:underline">
-          ← Back to jobs
-        </Link>
       </div>
     );
   }
 
   return (
     <div className="p-6 max-w-2xl">
-      <Link href="/dashboard/job-poster/jobs" className="text-blue-600 hover:underline text-sm">
-        ← Back to jobs
-      </Link>
-      <h1 className="text-2xl font-bold mt-2">{job.title}</h1>
+      <h1 className="text-2xl font-bold">{job.title}</h1>
       <p className="mt-1 text-sm text-gray-500">
         {job.status} · {job.routingStatus} · {job.tradeCategory}
       </p>

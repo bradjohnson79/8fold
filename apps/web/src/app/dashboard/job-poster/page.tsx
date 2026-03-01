@@ -3,7 +3,15 @@
 import Link from "next/link";
 import React from "react";
 
-type PostedJob = {
+type Summary = {
+  jobsPosted: number;
+  fundsSecured: number;
+  paymentStatus: "CONNECTED" | "NOT_CONNECTED";
+  unreadMessages: number;
+  activeAssignments: number;
+};
+
+type JobItem = {
   id: string;
   title: string;
   status: string;
@@ -12,174 +20,204 @@ type PostedJob = {
   createdAt: string;
 };
 
-type AssignedContext = {
+type Thread = {
+  id: string;
   jobId: string;
-  jobTitle: string;
-  jobStatus: string;
-  posterAcceptExpiresAt: string | null;
-  contractorUserId: string;
-  contractorName: string;
-  businessName: string;
-  tradeCategory: string;
-  yearsExperience: number;
-  city: string;
-  region: string;
-  availabilitySummary: string;
+  jobTitle: string | null;
+  jobStatus?: string | null;
+  contractorName?: string | null;
+  contractorBusinessName?: string | null;
+  appointmentAt?: string | null;
+  appointmentAcceptedAt?: string | null;
 };
 
-type Summary = {
-  jobsPosted: number;
-  fundsSecuredLabel: string;
-  jobAmountPaidLabel: string;
-  activePmRequests: number;
-  unreadMessages: number;
-  paymentConnected: boolean;
-  serverTime: string;
-  postedJobs: PostedJob[];
-  assignedContext: AssignedContext | null;
-};
-
-function formatMoney(cents: number) {
-  return `$${(Math.max(0, Number(cents ?? 0)) / 100).toFixed(2)}`;
+function formatMoney(centsLike: number | null | undefined) {
+  const cents = Math.max(0, Number(centsLike ?? 0) || 0);
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatCountdown(ms: number) {
-  const totalMinutes = Math.max(0, Math.ceil(ms / (60 * 1000)));
-  if (totalMinutes >= 60) {
-    const hours = Math.ceil(totalMinutes / 60);
-    return `${hours} ${hours === 1 ? "Hour" : "Hours"}`;
-  }
-  return `${totalMinutes} ${totalMinutes === 1 ? "Minute" : "Minutes"}`;
+function toBadgeStatus(thread: Thread): "ASSIGNED" | "APPOINTMENT_BOOKED" | "APPOINTMENT_ACCEPTED" | null {
+  const status = String(thread.jobStatus ?? "").toUpperCase();
+  if (status === "ASSIGNED") return "ASSIGNED";
+  if (thread.appointmentAt && thread.appointmentAcceptedAt) return "APPOINTMENT_ACCEPTED";
+  if (thread.appointmentAt) return "APPOINTMENT_BOOKED";
+  return null;
 }
 
-function countdownTone(ms: number) {
-  if (ms <= 10 * 60 * 1000) return "text-rose-700";
-  if (ms <= 60 * 60 * 1000) return "text-amber-700";
-  return "text-slate-600";
-}
-
-function refreshIntervalMs(ms: number): number {
-  if (ms <= 10 * 60 * 1000) return 60 * 1000;
-  if (ms <= 15 * 60 * 1000) return 5 * 60 * 1000;
-  if (ms <= 30 * 60 * 1000) return 15 * 60 * 1000;
-  if (ms <= 60 * 60 * 1000) return 30 * 60 * 1000;
-  return 60 * 60 * 1000;
+function chooseAssignedThread(threads: Thread[]): Thread | null {
+  const sorted = [...threads].sort((a, b) => {
+    const aT = a.appointmentAt ? new Date(a.appointmentAt).getTime() : 0;
+    const bT = b.appointmentAt ? new Date(b.appointmentAt).getTime() : 0;
+    return bT - aT;
+  });
+  return sorted.find((t) => toBadgeStatus(t) !== null) ?? null;
 }
 
 export default function JobPosterSummaryPage() {
   const [summary, setSummary] = React.useState<Summary | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [confirmAcceptOpen, setConfirmAcceptOpen] = React.useState(false);
-  const [successOpen, setSuccessOpen] = React.useState(false);
+  const [jobs, setJobs] = React.useState<JobItem[]>([]);
+  const [assigned, setAssigned] = React.useState<Thread | null>(null);
+
+  const [summaryLoading, setSummaryLoading] = React.useState(true);
+  const [jobsLoading, setJobsLoading] = React.useState(true);
+  const [assignedLoading, setAssignedLoading] = React.useState(true);
+
+  const [summaryError, setSummaryError] = React.useState<string | null>(null);
+  const [jobsError, setJobsError] = React.useState<string | null>(null);
+  const [assignedError, setAssignedError] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [accepting, setAccepting] = React.useState(false);
-  const [serverOffsetMs, setServerOffsetMs] = React.useState(0);
-  const [clockMs, setClockMs] = React.useState(() => Date.now());
 
   const loadSummary = React.useCallback(async () => {
-    setError(null);
-    const requestStartedAt = Date.now();
-    const resp = await fetch("/api/v4/job-poster/dashboard/summary", {
-      cache: "no-store",
-      credentials: "include",
-    });
-    const data = (await resp.json().catch(() => null)) as Summary | null;
-    if (!resp.ok || !data) {
-      throw new Error("Failed to load dashboard summary");
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const resp = await fetch("/api/v4/job-poster/dashboard/summary", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => ({}))) as Summary & { error?: { message?: string } | string };
+      if (!resp.ok) {
+        const message = typeof data.error === "string" ? data.error : data?.error?.message ?? "Failed to load summary";
+        setSummaryError(message);
+        setSummary(null);
+        return;
+      }
+      setSummary(data);
+    } catch {
+      setSummaryError("Failed to load summary");
+      setSummary(null);
+    } finally {
+      setSummaryLoading(false);
     }
-    const serverTimeMs = new Date(data.serverTime).getTime();
-    if (Number.isFinite(serverTimeMs)) {
-      setServerOffsetMs(serverTimeMs - requestStartedAt);
+  }, []);
+
+  const loadJobs = React.useCallback(async () => {
+    setJobsLoading(true);
+    setJobsError(null);
+    try {
+      const resp = await fetch("/api/v4/job-poster/jobs", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => ({}))) as { jobs?: JobItem[]; error?: { message?: string } | string };
+      if (!resp.ok) {
+        const message = typeof data.error === "string" ? data.error : data?.error?.message ?? "Failed to load jobs";
+        setJobsError(message);
+        setJobs([]);
+        return;
+      }
+      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+    } catch {
+      setJobsError("Failed to load jobs");
+      setJobs([]);
+    } finally {
+      setJobsLoading(false);
     }
-    setSummary(data);
-    setClockMs(Date.now());
+  }, []);
+
+  const loadAssigned = React.useCallback(async () => {
+    setAssignedLoading(true);
+    setAssignedError(null);
+    try {
+      const resp = await fetch("/api/v4/messages/threads?role=job_poster", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => ({}))) as { threads?: Thread[]; error?: { message?: string } | string };
+      if (!resp.ok) {
+        const message = typeof data.error === "string" ? data.error : data?.error?.message ?? "Failed to load assigned context";
+        setAssignedError(message);
+        setAssigned(null);
+        return;
+      }
+      const threads = Array.isArray(data.threads) ? data.threads : [];
+      setAssigned(chooseAssignedThread(threads));
+    } catch {
+      setAssignedError("Failed to load assigned context");
+      setAssigned(null);
+    } finally {
+      setAssignedLoading(false);
+    }
   }, []);
 
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        await loadSummary();
-      } catch {
-        if (alive) setError("Failed to load dashboard summary");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [loadSummary]);
+    void loadSummary();
+    void loadJobs();
+    void loadAssigned();
+  }, [loadSummary, loadJobs, loadAssigned]);
 
-  React.useEffect(() => {
-    const expiresAt = summary?.assignedContext?.posterAcceptExpiresAt;
-    if (!expiresAt) return;
-    const remainingMs = new Date(expiresAt).getTime() - (Date.now() + serverOffsetMs);
-    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-      void loadSummary();
-      return;
-    }
-    const delay = Math.max(10 * 1000, Math.min(refreshIntervalMs(remainingMs), remainingMs));
-    const timer = window.setTimeout(() => {
-      void loadSummary();
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [summary?.assignedContext?.posterAcceptExpiresAt, loadSummary, serverOffsetMs]);
-
-  React.useEffect(() => {
-    if (!successOpen || !summary?.assignedContext?.jobId) return;
-    const timer = window.setTimeout(() => {
-      window.location.href = `/dashboard/job-poster/messages?jobId=${encodeURIComponent(summary.assignedContext!.jobId)}`;
-    }, 3000);
-    return () => window.clearTimeout(timer);
-  }, [successOpen, summary?.assignedContext?.jobId]);
-
-  async function handleAcceptAssigned() {
-    if (!summary?.assignedContext || accepting) return;
+  async function handleAcceptAppointment(jobId: string) {
+    if (accepting) return;
     setAccepting(true);
-    setError(null);
+    setActionError(null);
     try {
-      const resp = await fetch(`/api/v4/job-poster/jobs/${encodeURIComponent(summary.assignedContext.jobId)}/accept-assigned-contractor`, {
+      const resp = await fetch(`/api/v4/job-poster/jobs/${encodeURIComponent(jobId)}/accept-appointment`, {
         method: "POST",
         credentials: "include",
       });
       const payload = (await resp.json().catch(() => ({}))) as { error?: { message?: string } | string };
       if (!resp.ok) {
         const message =
-          typeof payload.error === "string" ? payload.error : payload.error?.message ?? "Failed to accept contractor";
-        setError(message);
+          typeof payload.error === "string" ? payload.error : payload.error?.message ?? "Failed to accept appointment";
+        setActionError(message);
         return;
       }
-      setConfirmAcceptOpen(false);
-      setSuccessOpen(true);
+      await loadAssigned();
       await loadSummary();
     } catch {
-      setError("Failed to accept contractor");
+      setActionError("Failed to accept appointment");
     } finally {
       setAccepting(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold">Job Poster Dashboard</h1>
-        <p className="mt-2 text-gray-600">Loading...</p>
-      </div>
-    );
-  }
+  const statCards: Array<{ title: string; value: string; subtitle: string; loading: boolean; error: string | null }> = [
+    {
+      title: "Jobs Posted",
+      value: summary ? String(summary.jobsPosted) : "Unavailable",
+      subtitle: "Total non-draft jobs",
+      loading: summaryLoading,
+      error: summaryError,
+    },
+    {
+      title: "Funds Secured",
+      value: summary ? formatMoney(summary.fundsSecured) : "Unavailable",
+      subtitle: "Captured job funds",
+      loading: summaryLoading,
+      error: summaryError,
+    },
+    {
+      title: "Payment Status",
+      value: summary ? (summary.paymentStatus === "CONNECTED" ? "Connected" : "Not Connected") : "Unavailable",
+      subtitle: "Stripe setup",
+      loading: summaryLoading,
+      error: summaryError,
+    },
+    {
+      title: "Unread Messages",
+      value: summary ? String(summary.unreadMessages) : "Unavailable",
+      subtitle: "New messages in threads",
+      loading: summaryLoading,
+      error: summaryError,
+    },
+    {
+      title: "Active Assignments",
+      value: summary ? String(summary.activeAssignments) : "Unavailable",
+      subtitle: "Assigned or scheduled jobs",
+      loading: summaryLoading,
+      error: summaryError,
+    },
+  ];
 
-  const assigned = summary?.assignedContext ?? null;
-  const remainingMs = assigned?.posterAcceptExpiresAt
-    ? new Date(assigned.posterAcceptExpiresAt).getTime() - (clockMs + serverOffsetMs)
-    : 0;
+  const assignedBadge = assigned ? toBadgeStatus(assigned) : null;
 
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Job Poster Dashboard</h1>
-          <p className="mt-1 text-slate-600">Manage posted jobs, assigned contractors, and next actions.</p>
+          <p className="mt-1 text-slate-600">Manage posted jobs, assignments, payment setup, and messages.</p>
         </div>
         <Link
           href="/post-job"
@@ -189,23 +227,36 @@ export default function JobPosterSummaryPage() {
         </Link>
       </div>
 
-      {error ? <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+      {actionError ? <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p> : null}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricCard title="Jobs Posted" value={String(summary?.jobsPosted ?? 0)} subtitle="Total non-draft jobs" />
-        <MetricCard title="Funds Secured" value={summary?.fundsSecuredLabel ?? "—"} subtitle="Captured job funds" />
-        <MetricCard title="Payment Status" value={summary?.paymentConnected ? "Connected" : "Not Connected"} subtitle="Stripe setup" />
-        <MetricCard title="Active P&M Requests" value={String(summary?.activePmRequests ?? 0)} subtitle="Pending material requests" />
-        <MetricCard title="Unread Messages" value={String(summary?.unreadMessages ?? 0)} subtitle="New messages in threads" />
-        <MetricCard title="Job Amount Paid" value={summary?.jobAmountPaidLabel ?? "Coming Soon"} subtitle="Release totals" />
+        {statCards.map((card) => (
+          <MetricCard key={card.title} title={card.title} value={card.loading ? "Loading..." : card.value} subtitle={card.subtitle} error={card.error} />
+        ))}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Posted Jobs</h2>
-          {summary?.postedJobs?.length ? (
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Posted Jobs</h2>
+            <button
+              type="button"
+              onClick={() => void loadJobs()}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {jobsError ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{jobsError}</p> : null}
+
+          {jobsLoading ? (
+            <p className="mt-3 text-sm text-slate-500">Loading posted jobs...</p>
+          ) : jobs.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">No posted jobs yet. Post your first job to start routing.</p>
+          ) : (
             <div className="mt-4 space-y-3">
-              {summary.postedJobs.map((job) => (
+              {jobs.slice(0, 12).map((job) => (
                 <article key={job.id} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -214,7 +265,7 @@ export default function JobPosterSummaryPage() {
                         {job.status} · {job.routingStatus}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
-                        Posted {job.createdAt ? new Date(job.createdAt).toLocaleString() : "—"}
+                        Posted {job.createdAt ? new Date(job.createdAt).toLocaleString() : "Date unavailable"}
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-emerald-700">{formatMoney(job.amountCents)}</span>
@@ -230,54 +281,60 @@ export default function JobPosterSummaryPage() {
                 </article>
               ))}
             </div>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">No posted jobs yet.</p>
           )}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Assigned Contractor</h2>
-          {!assigned ? (
-            <p className="mt-3 text-sm text-slate-500">No assigned contractor context right now.</p>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Assigned Contractor</h2>
+            <button
+              type="button"
+              onClick={() => void loadAssigned()}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {assignedError ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{assignedError}</p> : null}
+
+          {assignedLoading ? (
+            <p className="mt-3 text-sm text-slate-500">Loading assigned contractor context...</p>
+          ) : !assigned || !assignedBadge ? (
+            <p className="mt-3 text-sm text-slate-500">No assigned contractor context is active right now.</p>
           ) : (
-            <div className="mt-3 space-y-1 text-sm text-slate-700">
-              <p className="font-semibold text-slate-900">{assigned.jobTitle}</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">{assigned.jobTitle || `Job ${assigned.jobId.slice(0, 8)}`}</p>
               <p>
-                <span className="font-medium">Contractor:</span> {assigned.contractorName}
+                <span className="font-medium">Contractor:</span> {assigned.contractorName || "Assigned Contractor"}
               </p>
               <p>
-                <span className="font-medium">Business:</span> {assigned.businessName}
+                <span className="font-medium">Business:</span> {assigned.contractorBusinessName || "Contractor Business"}
               </p>
-              <p>
-                <span className="font-medium">Trade:</span> {assigned.tradeCategory}
-              </p>
-              <p>
-                <span className="font-medium">Experience:</span> {assigned.yearsExperience} years
-              </p>
-              <p>
-                <span className="font-medium">Location:</span> {[assigned.city, assigned.region].filter(Boolean).join(", ") || "Not provided"}
-              </p>
-              <p>
-                <span className="font-medium">Availability:</span> {assigned.availabilitySummary}
-              </p>
-              {assigned.jobStatus.toUpperCase() === "ASSIGNED" && assigned.posterAcceptExpiresAt ? (
-                <p className={`pt-2 font-semibold ${countdownTone(remainingMs)}`}>
-                  Expires in: {remainingMs > 0 ? formatCountdown(remainingMs) : "Expired"}
+              {assigned.appointmentAt ? (
+                <p>
+                  <span className="font-medium">Appointment:</span> {new Date(assigned.appointmentAt).toLocaleString()}
                 </p>
               ) : null}
+              <div className="pt-1">
+                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">
+                  {assignedBadge}
+                </span>
+              </div>
 
-              {assigned.jobStatus.toUpperCase() === "ASSIGNED" ? (
+              {assigned.appointmentAt && !assigned.appointmentAcceptedAt ? (
                 <button
                   type="button"
-                  onClick={() => setConfirmAcceptOpen(true)}
-                  className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  onClick={() => void handleAcceptAppointment(assigned.jobId)}
+                  disabled={accepting}
+                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  Accept
+                  {accepting ? "Accepting..." : "Accept Appointment"}
                 </button>
               ) : (
                 <Link
                   href={`/dashboard/job-poster/messages?jobId=${encodeURIComponent(assigned.jobId)}`}
-                  className="mt-3 inline-block rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="mt-2 inline-block rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Open Messages
                 </Link>
@@ -286,68 +343,17 @@ export default function JobPosterSummaryPage() {
           )}
         </section>
       </div>
-
-      {confirmAcceptOpen ? (
-        <ModalShell onClose={() => setConfirmAcceptOpen(false)}>
-          <h3 className="text-xl font-semibold text-slate-900">Confirm Acceptance</h3>
-          <p className="mt-2 text-sm text-slate-700">
-            Confirm you want to accept this assigned contractor and continue in messages.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => void handleAcceptAssigned()}
-              disabled={accepting}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {accepting ? "Confirming..." : "Yes, Accept"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmAcceptOpen(false)}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </ModalShell>
-      ) : null}
-
-      {successOpen ? (
-        <ModalShell onClose={() => setSuccessOpen(false)}>
-          <h3 className="text-xl font-semibold text-slate-900">Congratulations!</h3>
-          <p className="mt-2 text-sm text-slate-700">
-            Stand by while you&apos;re redirected to messages to coordinate with your contractor.
-          </p>
-        </ModalShell>
-      ) : null}
     </div>
   );
 }
 
-function MetricCard(props: { title: string; value: string; subtitle: string }) {
+function MetricCard(props: { title: string; value: string; subtitle: string; error?: string | null }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-sm font-medium text-slate-600">{props.title}</p>
       <p className="mt-2 text-2xl font-semibold text-slate-900">{props.value}</p>
       <p className="mt-1 text-xs text-slate-500">{props.subtitle}</p>
-    </div>
-  );
-}
-
-function ModalShell(props: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        {props.children}
-        <button
-          type="button"
-          onClick={props.onClose}
-          className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700"
-        >
-          Close
-        </button>
-      </div>
+      {props.error ? <p className="mt-2 text-xs text-rose-700">{props.error}</p> : null}
     </div>
   );
 }
