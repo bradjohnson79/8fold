@@ -5,6 +5,7 @@ import { cancelPaymentIntent, createPaymentIntent } from "@/src/payments/stripe"
 import { appendLedgerEntry } from "@/src/services/v4/financialLedgerService";
 import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
+import { getStripeRuntimeConfig } from "@/src/stripe/runtimeConfig";
 
 type LooseRecord = Record<string, unknown>;
 
@@ -138,6 +139,20 @@ function assertIntegerAmount(name: string, value: number): void {
 export async function POST(req: Request) {
   try {
     const user = await requireJobPoster(req);
+    const stripeConfig = getStripeRuntimeConfig();
+    if (!stripeConfig.ok) {
+      const status = stripeConfig.errorCode === "STRIPE_MODE_MISMATCH" ? 409 : 500;
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: stripeConfig.errorCode ?? "STRIPE_CONFIG_MISSING",
+            message: stripeConfig.errorMessage ?? "Stripe configuration is invalid.",
+          },
+        },
+        { status },
+      );
+    }
     const body = (await req.json().catch(() => null)) as {
       selectedPrice?: number;
       isRegional?: boolean;
@@ -214,7 +229,6 @@ export async function POST(req: Request) {
     const result = await createPaymentIntent(totalCents, {
       currency: paymentCurrency,
       captureMethod: "manual",
-      requestExtendedAuthorization: true,
       paymentMethodTypes: ["card"],
       automaticPaymentMethodsEnabled: false,
       idempotencyKey: `job-post-v4:${user.userId}:${randomUUID()}`,
@@ -236,6 +250,17 @@ export async function POST(req: Request) {
       throw Object.assign(new Error("Stripe amount invariant failed"), { status: 400 });
     }
 
+    console.log("[POST_JOB_PI_CREATE]", {
+      stripeMode: stripeConfig.stripeMode,
+      amount: totalCents,
+      currency: paymentCurrency,
+      paymentIntentId: result.paymentIntentId,
+      status: result.status,
+      onBehalfOf: null,
+      transferGroup: null,
+      stripeAccountHeaderUsed: false,
+    });
+
     await appendModelALedgerEntries({
       jobId: modelAJobId,
       paymentIntentId: result.paymentIntentId,
@@ -251,6 +276,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      stripeMode: stripeConfig.stripeMode,
       clientSecret: result.clientSecret,
       paymentIntentId: result.paymentIntentId,
       paymentStatus: result.status,
@@ -289,7 +315,7 @@ export async function POST(req: Request) {
         status = 400;
       }
     }
-    console.error("[job-draft/payment-intent] failed", {
+    console.error("[POST_JOB_PI_CREATE_FAIL]", {
       status,
       message: rawMessage,
       code: errCode,
@@ -297,6 +323,12 @@ export async function POST(req: Request) {
       stack: err instanceof Error ? err.stack : undefined,
     });
     const message = status >= 500 ? "Unable to confirm total right now. Please try again." : rawMessage;
-    return NextResponse.json({ success: false, message }, { status });
+    const code =
+      errCode === "STRIPE_MODE_MISMATCH"
+        ? "STRIPE_MODE_MISMATCH"
+        : rawMessage.toLowerCase().includes("eligible")
+          ? "STRIPE_ACCOUNT_INELIGIBLE"
+          : "STRIPE_CONFIRM_FAILED";
+    return NextResponse.json({ success: false, error: { code, message } }, { status });
   }
 }
