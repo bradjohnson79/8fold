@@ -36,7 +36,9 @@ export function getStripeRuntimeConfig(env: Record<string, string | undefined> =
   const publishableKeyPresent = publishableKey.length > 0;
   const secretKeyPresent = secretKey.length > 0;
 
-  if (!publishableKeyPresent || !secretKeyPresent) {
+  // API server authority requires only secret key presence.
+  // Publishable key may exist only on web and is validated in web proxy config route.
+  if (!secretKeyPresent) {
     return {
       ok: false,
       stripeMode,
@@ -45,7 +47,7 @@ export function getStripeRuntimeConfig(env: Record<string, string | undefined> =
       publishableKeyPresent,
       secretKeyPresent,
       errorCode: "STRIPE_CONFIG_MISSING",
-      errorMessage: "Stripe keys are missing.",
+      errorMessage: "Stripe secret key is missing.",
     };
   }
 
