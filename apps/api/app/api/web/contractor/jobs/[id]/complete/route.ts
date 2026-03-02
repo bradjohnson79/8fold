@@ -6,11 +6,11 @@ import { db } from "../../../../../../../db/drizzle";
 import { jobs } from "../../../../../../../db/schema/job";
 import { jobAssignments } from "../../../../../../../db/schema/jobAssignment";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
-import { notificationDeliveries } from "../../../../../../../db/schema/notificationDelivery";
 import { requireContractorReady } from "../../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../../src/http/errors";
 import { isJobActive } from "../../../../../../../src/utils/jobActive";
 import { getApprovedContractorForUserId } from "../../../../../../../src/services/contractorIdentity";
+import { sendBulkNotifications } from "@/src/services/v4/notifications/notificationService";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -139,15 +139,21 @@ export async function POST(req: Request) {
         });
       }
 
-      for (const n of notifications) {
-        await tx.insert(notificationDeliveries).values({
-          id: randomUUID(),
+      await sendBulkNotifications(
+        notifications.map((n) => ({
           userId: n.userId,
+          role: n.userId === String(job.jobPosterUserId ?? "") ? "JOB_POSTER" : "ROUTER",
+          type: "CONTRACTOR_COMPLETED_JOB",
           title: n.title,
-          body: n.body,
-          jobId,
-        });
-      }
+          message: n.body,
+          entityType: "JOB",
+          entityId: jobId,
+          priority: "NORMAL",
+          createdAt: now,
+          idempotencyKey: `contractor_completed_route:${jobId}:${n.userId}`,
+        })),
+        tx,
+      );
 
       return { kind: "ok" as const };
     });
@@ -175,4 +181,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
-

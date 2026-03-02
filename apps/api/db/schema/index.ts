@@ -67,6 +67,7 @@ export * from "./v4SupportTicket";
 export * from "./v4PmRequest";
 export * from "./v4PmRequestItem";
 export * from "./v4Notification";
+export * from "./v4NotificationPreference";
 export * from "./v4AdminUser";
 export * from "./v4AdminBootstrapToken";
 export * from "./v4AdminInviteToken";

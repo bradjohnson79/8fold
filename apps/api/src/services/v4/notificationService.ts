@@ -1,9 +1,12 @@
 import {
-  createNotification as createCanonicalNotification,
+  getPreferences,
   listNotifications,
   markNotificationReadById,
-  type NotificationPriority,
+  sendNotification,
+  updatePreferences,
+  type NotificationRow,
 } from "@/src/services/notifications/notificationService";
+import type { NotificationPriority } from "@/src/services/v4/notifications/notificationTypes";
 
 type CreateNotificationInput = {
   userId: string;
@@ -18,7 +21,7 @@ type CreateNotificationInput = {
 };
 
 export async function createNotification(input: CreateNotificationInput) {
-  const created = await createCanonicalNotification({
+  const created = await sendNotification({
     userId: input.userId,
     role: input.role,
     type: input.type,
@@ -30,7 +33,9 @@ export async function createNotification(input: CreateNotificationInput) {
   });
 
   if (input.read) {
-    await markNotificationReadById(created.id, { userId: input.userId });
+    if (created?.id) {
+      await markNotificationReadById(created.id, { userId: input.userId });
+    }
   }
 
   return created;
@@ -44,3 +49,29 @@ export async function listNotificationsForUser(userId: string, priority?: string
 export async function markNotificationRead(id: string, userId: string) {
   return await markNotificationReadById(id, { userId });
 }
+
+export async function listRoleNotifications(input: {
+  userId: string;
+  role: string;
+  unreadOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+  type?: string | null;
+  entityType?: string | null;
+}) {
+  return listNotifications(input);
+}
+
+export async function getRoleNotificationPreferences(input: { userId: string; role: string }) {
+  return getPreferences(input);
+}
+
+export async function updateRoleNotificationPreferences(input: {
+  userId: string;
+  role: string;
+  items: Array<{ type: string; inApp?: boolean; email?: boolean }>;
+}) {
+  return updatePreferences(input);
+}
+
+export type { NotificationRow };

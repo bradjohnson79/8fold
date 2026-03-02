@@ -4,8 +4,8 @@ import { db } from "@/db/drizzle";
 import { auditLogs } from "@/db/schema/auditLog";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
-import { v4Notifications } from "@/db/schema/v4Notification";
 import { getV4EligibleContractors } from "@/src/services/v4/routerEligibleContractorsService";
+import { sendNotification } from "@/src/services/v4/notifications/notificationService";
 
 export type RouteJobResult =
   | {
@@ -84,19 +84,21 @@ export async function routeV4Job(
         expiresAt,
       });
 
-      await tx.insert(v4Notifications).values({
-        id: randomUUID(),
-        userId: contractorId,
-        role: "CONTRACTOR",
-        type: "ROUTE_INVITE",
-        title: "New Routed Job Available",
-        message: "You have been selected for a new job.",
-        entityType: "JOB",
-        entityId: jobId,
-        read: false,
-        priority: "NORMAL",
-        createdAt: now,
-      });
+      await sendNotification(
+        {
+          userId: contractorId,
+          role: "CONTRACTOR",
+          type: "NEW_JOB_INVITE",
+          title: "New Routed Job Available",
+          message: "You have been selected for a new job.",
+          entityType: "JOB",
+          entityId: jobId,
+          priority: "NORMAL",
+          createdAt: now,
+          idempotencyKey: `new_job_invite:${jobId}:${contractorId}`,
+        },
+        tx,
+      );
 
       created.push({ inviteId, contractorId, status: "PENDING", statusLabel: "INVITED" });
     }

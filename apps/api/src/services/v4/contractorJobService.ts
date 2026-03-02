@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
+import { sendBulkNotifications, sendNotification } from "@/src/services/v4/notifications/notificationService";
 import { badRequest, conflict } from "./v4Errors";
 
 /** V4 assignment status transitions. Lifecycle authority: v4_job_assignments only. */
@@ -134,6 +135,17 @@ export async function completeJob(contractorUserId: string, jobId: string) {
   }
 
   await db.transaction(async (tx) => {
+    const jobRows = await tx
+      .select({
+        id: jobs.id,
+        jobPosterUserId: jobs.job_poster_user_id,
+        routerUserId: jobs.claimed_by_user_id,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+    const job = jobRows[0] ?? null;
+
     await tx
       .update(v4JobAssignments)
       .set({ status: "COMPLETED" })
@@ -142,6 +154,44 @@ export async function completeJob(contractorUserId: string, jobId: string) {
       .update(jobs)
       .set({ status: "COMPLETED" as any, contractor_completed_at: new Date(), updated_at: new Date() })
       .where(eq(jobs.id, jobId));
+
+    if (job?.jobPosterUserId || job?.routerUserId) {
+      await sendBulkNotifications(
+        [
+          ...(job.jobPosterUserId
+            ? [
+                {
+                  userId: String(job.jobPosterUserId),
+                  role: "JOB_POSTER",
+                  type: "CONTRACTOR_COMPLETED_JOB",
+                  title: "Contractor marked job completed",
+                  message: "Review completion details and confirm if work is complete.",
+                  entityType: "JOB",
+                  entityId: jobId,
+                  priority: "NORMAL",
+                  idempotencyKey: `contractor_completed:${jobId}:poster`,
+                },
+              ]
+            : []),
+          ...(job.routerUserId
+            ? [
+                {
+                  userId: String(job.routerUserId),
+                  role: "ROUTER",
+                  type: "CONTRACTOR_COMPLETED_JOB",
+                  title: "Contractor completed assigned job",
+                  message: "Job completion is pending job poster confirmation.",
+                  entityType: "JOB",
+                  entityId: jobId,
+                  priority: "LOW",
+                  idempotencyKey: `contractor_completed:${jobId}:router`,
+                },
+              ]
+            : []),
+        ],
+        tx,
+      );
+    }
   });
 }
 
@@ -177,6 +227,7 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
         id: jobs.id,
         status: jobs.status,
         contractorUserId: jobs.contractor_user_id,
+        jobPosterUserId: jobs.job_poster_user_id,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -206,38 +257,69 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
       throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job must be ASSIGNED before booking appointment");
     }
 
-    return {
-      success: true as const,
-      jobId,
-      appointmentAt: appointmentAt.toISOString(),
-      publishedAt: now.toISOString(),
-    };
+    if (job.jobPosterUserId) {
+      await sendNotification(
+        {
+          userId: String(job.jobPosterUserId),
+          role: "JOB_POSTER",
+          type: "APPOINTMENT_BOOKED",
+          title: "Appointment booked",
+          message: "Your contractor booked an appointment.",
+          entityType: "JOB",
+          entityId: jobId,
+          priority: "NORMAL",
+          createdAt: now,
+          idempotencyKey: `appointment_booked:${jobId}:poster`,
+        },
+        tx,
+      );
+    }
+
+    return { success: true as const, jobId, appointmentAt: appointmentAt.toISOString(), publishedAt: now.toISOString() };
   });
 }
 
-async function reopenRoutingAndUnassign(
+async function notifyCancellationActors(
   tx: any,
-  input: { jobId: string; contractorUserId: string; now: Date; reason: string },
+  input: { jobId: string; now: Date; jobPosterUserId: string | null; routerUserId: string | null; type: string; message: string },
 ) {
-  await tx
-    .delete(v4JobAssignments)
-    .where(and(eq(v4JobAssignments.jobId, input.jobId), eq(v4JobAssignments.contractorUserId, input.contractorUserId)));
-
-  await tx
-    .update(jobs)
-    .set({
-      status: "OPEN_FOR_ROUTING" as any,
-      routing_status: "UNROUTED" as any,
-      contractor_user_id: null,
-      appointment_at: null,
-      appointment_published_at: null,
-      appointment_accepted_at: null,
-      poster_accept_expires_at: null,
-      poster_accepted_at: null,
-      completion_flag_reason: input.reason,
-      updated_at: input.now,
-    })
-    .where(eq(jobs.id, input.jobId));
+  await sendBulkNotifications(
+    [
+      ...(input.jobPosterUserId
+        ? [
+            {
+              userId: String(input.jobPosterUserId),
+              role: "JOB_POSTER",
+              type: input.type,
+              title: "Contractor cancelled assignment",
+              message: input.message,
+              entityType: "JOB",
+              entityId: input.jobId,
+              priority: "HIGH",
+              createdAt: input.now,
+              idempotencyKey: `${input.type.toLowerCase()}:${input.jobId}:poster`,
+            },
+          ]
+        : []),
+      ...(input.routerUserId
+        ? [
+            {
+              userId: String(input.routerUserId),
+              role: "ROUTER",
+              type: input.type,
+              title: "Contractor cancelled assignment",
+              message: "The job returned to routing.",
+              entityType: "JOB",
+              entityId: input.jobId,
+              priority: "NORMAL",
+              createdAt: input.now,
+              idempotencyKey: `${input.type.toLowerCase()}:${input.jobId}:router`,
+            },
+          ]
+        : []),
+    ],
+    tx,
+  );
 }
 
 export async function rescheduleAppointment(contractorUserId: string, jobId: string, appointmentAtRaw: string) {
@@ -269,6 +351,8 @@ export async function rescheduleAppointment(contractorUserId: string, jobId: str
         status: jobs.status,
         contractorUserId: jobs.contractor_user_id,
         appointmentAt: jobs.appointment_at,
+        jobPosterUserId: jobs.job_poster_user_id,
+        routerUserId: jobs.claimed_by_user_id,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -290,6 +374,14 @@ export async function rescheduleAppointment(contractorUserId: string, jobId: str
         now,
         reason: "CONTRACTOR_REJECTED",
       });
+      await notifyCancellationActors(tx, {
+        jobId,
+        now,
+        jobPosterUserId: String(job.jobPosterUserId ?? "") || null,
+        routerUserId: String(job.routerUserId ?? "") || null,
+        type: "CONTRACTOR_CANCELLED",
+        message: "Contractor cancelled within 8 hours; the job returned to routing.",
+      });
       return { success: true as const, action: "UNASSIGNED_AND_REOPENED" as const };
     }
 
@@ -309,8 +401,27 @@ export async function rescheduleAppointment(contractorUserId: string, jobId: str
       })
       .where(eq(jobs.id, jobId));
 
+    if (job.jobPosterUserId) {
+      await sendNotification(
+        {
+          userId: String(job.jobPosterUserId),
+          role: "JOB_POSTER",
+          type: "RESCHEDULE_REQUEST",
+          title: "Appointment reschedule requested",
+          message: "Your contractor proposed a new appointment time.",
+          entityType: "JOB",
+          entityId: jobId,
+          priority: "NORMAL",
+          createdAt: now,
+          idempotencyKey: `reschedule_request:${jobId}:${nextAppointmentAt.toISOString()}:poster`,
+        },
+        tx,
+      );
+    }
+
     return {
       success: true as const,
+      jobId,
       action: "RESCHEDULED" as const,
       appointmentAt: nextAppointmentAt.toISOString(),
     };
@@ -336,7 +447,11 @@ export async function cancelAssignedJob(contractorUserId: string, jobId: string)
     if (!assignmentRows[0]) throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
 
     const jobRows = await tx
-      .select({ contractorUserId: jobs.contractor_user_id })
+      .select({
+        contractorUserId: jobs.contractor_user_id,
+        jobPosterUserId: jobs.job_poster_user_id,
+        routerUserId: jobs.claimed_by_user_id,
+      })
       .from(jobs)
       .where(eq(jobs.id, jobId))
       .limit(1);
@@ -351,7 +466,40 @@ export async function cancelAssignedJob(contractorUserId: string, jobId: string)
       now,
       reason: "CONTRACTOR_REJECTED",
     });
+    await notifyCancellationActors(tx, {
+      jobId,
+      now,
+      jobPosterUserId: String(jobRows[0].jobPosterUserId ?? "") || null,
+      routerUserId: String(jobRows[0].routerUserId ?? "") || null,
+      type: "CONTRACTOR_CANCELLED",
+      message: "Contractor cancelled the assignment and the job returned to routing.",
+    });
 
     return { success: true as const, action: "UNASSIGNED_AND_REOPENED" as const };
   });
+}
+
+async function reopenRoutingAndUnassign(
+  tx: any,
+  input: { jobId: string; contractorUserId: string; now: Date; reason: string },
+) {
+  await tx
+    .delete(v4JobAssignments)
+    .where(and(eq(v4JobAssignments.jobId, input.jobId), eq(v4JobAssignments.contractorUserId, input.contractorUserId)));
+
+  await tx
+    .update(jobs)
+    .set({
+      status: "OPEN_FOR_ROUTING" as any,
+      routing_status: "UNROUTED" as any,
+      contractor_user_id: null,
+      appointment_at: null,
+      appointment_published_at: null,
+      appointment_accepted_at: null,
+      poster_accept_expires_at: null,
+      poster_accepted_at: null,
+      completion_flag_reason: input.reason,
+      updated_at: input.now,
+    })
+    .where(eq(jobs.id, input.jobId));
 }

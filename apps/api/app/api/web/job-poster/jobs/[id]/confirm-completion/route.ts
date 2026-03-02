@@ -5,9 +5,9 @@ import { randomUUID } from "crypto";
 import { db } from "../../../../../../../db/drizzle";
 import { jobs } from "../../../../../../../db/schema/job";
 import { auditLogs } from "../../../../../../../db/schema/auditLog";
-import { notificationDeliveries } from "../../../../../../../db/schema/notificationDelivery";
 import { requireJobPosterReady } from "../../../../../../../src/auth/onboardingGuards";
 import { toHttpError } from "../../../../../../../src/http/errors";
+import { sendNotification } from "@/src/services/v4/notifications/notificationService";
 
 function getIdFromUrl(req: Request): string {
   const url = new URL(req.url);
@@ -107,13 +107,21 @@ export async function POST(req: Request) {
       });
 
       if (job.routerUserId) {
-        await tx.insert(notificationDeliveries).values({
-          id: randomUUID(),
-          userId: String(job.routerUserId),
-          title: "Customer confirmed job completion",
-          body: "Both contractor and customer have confirmed completion. Please confirm to release funds.",
-          jobId,
-        });
+        await sendNotification(
+          {
+            userId: String(job.routerUserId),
+            role: "ROUTER",
+            type: "CONTRACTOR_COMPLETED_JOB",
+            title: "Customer confirmed job completion",
+            message: "Both contractor and customer have confirmed completion. Please confirm to release funds.",
+            entityType: "JOB",
+            entityId: jobId,
+            priority: "NORMAL",
+            createdAt: now,
+            idempotencyKey: `completion_confirmed:${jobId}:router`,
+          },
+          tx,
+        );
       }
 
       return { kind: "ok" as const };
@@ -146,4 +154,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
-

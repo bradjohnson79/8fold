@@ -229,7 +229,22 @@ export function DashboardShell({
                   aria-label="Notifications"
                 >
                   <span className="inline-flex items-center gap-2">
-                    <span aria-hidden>🔔</span>
+                    <span aria-hidden className="inline-flex items-center justify-center w-5 h-5">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-5 h-5 text-gray-900"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={1.8}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 01-6 0"
+                        />
+                      </svg>
+                    </span>
                     {bellUnread + (extraUnreadCount ?? 0) > 0 ? (
                       <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1 rounded-full bg-8fold-green text-white text-xs font-bold">
                         {bellUnread + (extraUnreadCount ?? 0) > 99 ? "99+" : bellUnread + (extraUnreadCount ?? 0)}

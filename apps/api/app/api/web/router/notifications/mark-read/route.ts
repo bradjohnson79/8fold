@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db } from "../../../../../../db/drizzle";
-import { notificationDeliveries } from "../../../../../../db/schema/notificationDelivery";
 import { requireRouterReady } from "../../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../../src/http/errors";
 import { z } from "zod";
+import { markRead } from "@/src/services/v4/notifications/notificationService";
 
 const BodySchema = z.object({
   ids: z.array(z.string().trim().min(1)).min(1).max(200),
@@ -12,6 +10,10 @@ const BodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    console.warn("[NOTIFICATIONS_LEGACY_ROUTE_DEPRECATED]", {
+      path: "/api/web/router/notifications/mark-read",
+      method: "POST",
+    });
     const authed = await requireRouterReady(req);
     if (authed instanceof Response) return authed;
     const u = authed;
@@ -24,17 +26,11 @@ export async function POST(req: Request) {
     const body = BodySchema.safeParse(raw);
     if (!body.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
-    const now = new Date();
-    await db
-      .update(notificationDeliveries)
-      .set({ readAt: now })
-      .where(
-        and(
-          eq(notificationDeliveries.userId, u.userId),
-          inArray(notificationDeliveries.id, body.data.ids),
-          isNull(notificationDeliveries.readAt),
-        ),
-      );
+    await markRead({
+      userId: u.userId,
+      role: "ROUTER",
+      ids: body.data.ids,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -42,4 +38,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-
