@@ -22,22 +22,22 @@ export type OverviewCardsPayload = {
     };
     regionOptions: string[];
   };
-  latestJobs: Array<{ jobId: string; city: string | null; regionCode: string | null; status: string; postedAt: string | null }>;
-  overdueRouting: Array<{ jobId: string; city: string | null; regionCode: string | null; postedAt: string | null; assignedRouterName: string | null }>;
+  latestJobs: Array<{ jobId: string; jobTitle: string | null; city: string | null; regionCode: string | null; status: string; postedAt: string | null }>;
+  overdueRouting: Array<{ jobId: string; jobTitle: string | null; city: string | null; regionCode: string | null; postedAt: string | null; assignedRouterName: string | null }>;
   openSupportMessages: Array<{ ticketId: string; category: string; userRole: string; createdAt: string; status: string }>;
   openDisputes: Array<{ disputeId: string; jobId: string; userRole: string; createdAt: string; status: string }>;
   newestJobPosters: Array<{ userId: string; name: string | null; city: string | null; regionCode: string | null; joinedAt: string }>;
   newestContractors: Array<{ userId: string; name: string | null; trade: string | null; city: string | null; regionCode: string | null; joinedAt: string }>;
   newestRouters: Array<{ userId: string; name: string | null; region: string | null; joinedAt: string }>;
-  payoutsPending: Array<{ jobId: string; contractor: string | null; amountCents: number; inProgressSince: string | null }>;
-  payoutsPaid: Array<{ jobId: string; contractor: string | null; amountCents: number; paidAt: string | null }>;
+  payoutsPending: Array<{ jobId: string; jobTitle: string | null; contractor: string | null; amountCents: number; inProgressSince: string | null }>;
+  payoutsPaid: Array<{ jobId: string; jobTitle: string | null; contractor: string | null; amountCents: number; paidAt: string | null }>;
   revenue: {
     contractor: { totalCents: number; jobsCount: number };
     router: { totalCents: number; jobsCount: number };
     platform: {
       totalCents: number;
       jobsCount: number;
-      topJobs: Array<{ jobId: string; city: string | null; regionCode: string | null; amountCents: number; paidAt: string | null }>;
+      topJobs: Array<{ jobId: string; jobTitle: string | null; city: string | null; regionCode: string | null; amountCents: number; paidAt: string | null }>;
     };
   };
 };
@@ -68,6 +68,11 @@ function toSince(value: string | null | undefined): string {
 function locationLabel(city: string | null, region: string | null): string {
   const parts = [city, region].filter((x) => Boolean(String(x ?? "").trim()));
   return parts.length ? parts.join(", ") : "—";
+}
+
+function jobTitle(value: string | null | undefined, jobId: string): string {
+  const title = String(value ?? "").trim();
+  return title || `Job ${jobId}`;
 }
 
 export default function OverviewCardsClient({ payload }: { payload: OverviewCardsPayload | null }) {
@@ -120,7 +125,10 @@ export default function OverviewCardsClient({ payload }: { payload: OverviewCard
             {payload.latestJobs.length === 0 ? <Empty /> : null}
             {payload.latestJobs.map((row) => (
               <div key={row.jobId} className={styles.row}>
-                <div className={styles.rowMain}>{row.jobId}</div>
+                <Link href={`/jobs/${encodeURIComponent(row.jobId)}`} className={styles.rowLink}>
+                  {jobTitle(row.jobTitle, row.jobId)}
+                </Link>
+                <div className={styles.rowMeta}>Job ID: {row.jobId}</div>
                 <div className={styles.rowMeta}>{locationLabel(row.city, row.regionCode)}</div>
                 <div className={styles.rowMeta}>
                   {row.status} · Posted {toStamp(row.postedAt)}
@@ -153,7 +161,10 @@ export default function OverviewCardsClient({ payload }: { payload: OverviewCard
             {payload.overdueRouting.length === 0 ? <Empty /> : null}
             {payload.overdueRouting.map((row) => (
               <div key={row.jobId} className={styles.row}>
-                <div className={styles.rowMain}>{row.jobId}</div>
+                <Link href={`/jobs/${encodeURIComponent(row.jobId)}`} className={styles.rowLink}>
+                  {jobTitle(row.jobTitle, row.jobId)}
+                </Link>
+                <div className={styles.rowMeta}>Job ID: {row.jobId}</div>
                 <div className={styles.rowMeta}>{locationLabel(row.city, row.regionCode)}</div>
                 <div className={styles.rowMeta}>Posted {toSince(row.postedAt)} ago</div>
                 <div className={styles.rowMeta}>Router: {row.assignedRouterName || "Unassigned"}</div>
@@ -322,7 +333,10 @@ export default function OverviewCardsClient({ payload }: { payload: OverviewCard
             {payload.payoutsPending.length === 0 ? <Empty /> : null}
             {payload.payoutsPending.map((row) => (
               <div key={row.jobId} className={styles.row}>
-                <div className={styles.rowMain}>{row.jobId}</div>
+                <Link href={`/jobs/${encodeURIComponent(row.jobId)}`} className={styles.rowLink}>
+                  {jobTitle(row.jobTitle, row.jobId)}
+                </Link>
+                <div className={styles.rowMeta}>Job ID: {row.jobId}</div>
                 <div className={styles.rowMeta}>
                   {row.contractor || "—"} · {toMoney(row.amountCents)}
                 </div>
@@ -355,7 +369,10 @@ export default function OverviewCardsClient({ payload }: { payload: OverviewCard
             {payload.payoutsPaid.length === 0 ? <Empty /> : null}
             {payload.payoutsPaid.map((row) => (
               <div key={row.jobId} className={styles.row}>
-                <div className={styles.rowMain}>{row.jobId}</div>
+                <Link href={`/jobs/${encodeURIComponent(row.jobId)}`} className={styles.rowLink}>
+                  {jobTitle(row.jobTitle, row.jobId)}
+                </Link>
+                <div className={styles.rowMeta}>Job ID: {row.jobId}</div>
                 <div className={styles.rowMeta}>
                   {row.contractor || "—"} · {toMoney(row.amountCents)}
                 </div>
@@ -421,9 +438,11 @@ export default function OverviewCardsClient({ payload }: { payload: OverviewCard
             {payload.revenue.platform.topJobs.length === 0 ? <Empty /> : null}
             {payload.revenue.platform.topJobs.map((row) => (
               <div key={row.jobId} className={styles.row}>
-                <div className={styles.rowMain}>
-                  {row.jobId} · {toMoney(row.amountCents)}
-                </div>
+                <Link href={`/jobs/${encodeURIComponent(row.jobId)}`} className={styles.rowLink}>
+                  {jobTitle(row.jobTitle, row.jobId)}
+                </Link>
+                <div className={styles.rowMeta}>Job ID: {row.jobId}</div>
+                <div className={styles.rowMeta}>{toMoney(row.amountCents)}</div>
                 <div className={styles.rowMeta}>{locationLabel(row.city, row.regionCode)}</div>
                 <div className={styles.rowMeta}>Paid {toStamp(row.paidAt)}</div>
               </div>

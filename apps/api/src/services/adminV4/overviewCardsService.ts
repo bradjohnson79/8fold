@@ -43,6 +43,7 @@ export type OverviewCardsPayload = {
   };
   latestJobs: Array<{
     jobId: string;
+    jobTitle: string | null;
     city: string | null;
     regionCode: string | null;
     status: string;
@@ -50,6 +51,7 @@ export type OverviewCardsPayload = {
   }>;
   overdueRouting: Array<{
     jobId: string;
+    jobTitle: string | null;
     city: string | null;
     regionCode: string | null;
     postedAt: string | null;
@@ -92,12 +94,14 @@ export type OverviewCardsPayload = {
   }>;
   payoutsPending: Array<{
     jobId: string;
+    jobTitle: string | null;
     contractor: string | null;
     amountCents: number;
     inProgressSince: string | null;
   }>;
   payoutsPaid: Array<{
     jobId: string;
+    jobTitle: string | null;
     contractor: string | null;
     amountCents: number;
     paidAt: string | null;
@@ -108,6 +112,7 @@ export type OverviewCardsPayload = {
     platform: RevenueSummary & {
       topJobs: Array<{
         jobId: string;
+        jobTitle: string | null;
         city: string | null;
         regionCode: string | null;
         amountCents: number;
@@ -219,6 +224,7 @@ async function listLatestJobs(selectedRegion: string) {
   const rows = await db
     .select({
       jobId: jobs.id,
+      jobTitle: jobs.title,
       city: jobs.city,
       regionCode: regionExpr,
       status: jobs.status,
@@ -231,6 +237,7 @@ async function listLatestJobs(selectedRegion: string) {
 
   return rows.map((r) => ({
     jobId: r.jobId,
+    jobTitle: r.jobTitle,
     city: r.city,
     regionCode: r.regionCode,
     status: String(r.status ?? ""),
@@ -246,6 +253,7 @@ async function listOverdueRouting(selectedRegion: string) {
   const rows = await db
     .select({
       jobId: jobs.id,
+      jobTitle: jobs.title,
       city: jobs.city,
       regionCode: regionExpr,
       postedAt: jobs.posted_at,
@@ -265,6 +273,7 @@ async function listOverdueRouting(selectedRegion: string) {
 
   return rows.map((r) => ({
     jobId: r.jobId,
+    jobTitle: r.jobTitle,
     city: r.city,
     regionCode: r.regionCode,
     postedAt: asIso(r.postedAt),
@@ -396,6 +405,7 @@ async function listPayoutsPending(selectedRegion: string) {
   const rows = await db
     .select({
       jobId: jobs.id,
+      jobTitle: jobs.title,
       contractor: contractorUser.name,
       amountCents: jobs.contractor_payout_cents,
       inProgressSince: sql<Date | null>`coalesce(${jobs.routing_started_at}, ${jobs.accepted_at}, ${jobs.updated_at})`,
@@ -414,6 +424,7 @@ async function listPayoutsPending(selectedRegion: string) {
 
   return rows.map((r) => ({
     jobId: r.jobId,
+    jobTitle: r.jobTitle,
     contractor: r.contractor ?? null,
     amountCents: Number(r.amountCents ?? 0),
     inProgressSince: asIso(r.inProgressSince),
@@ -426,6 +437,7 @@ async function listPayoutsPaid(selectedRegion: string) {
   const rows = await db
     .select({
       jobId: jobs.id,
+      jobTitle: jobs.title,
       contractor: contractorUser.name,
       amountCents: jobs.contractor_payout_cents,
       paidAt: sql<Date | null>`coalesce(${jobs.released_at}, ${jobs.stripe_paid_at})`,
@@ -438,6 +450,7 @@ async function listPayoutsPaid(selectedRegion: string) {
 
   return rows.map((r) => ({
     jobId: r.jobId,
+    jobTitle: r.jobTitle,
     contractor: r.contractor ?? null,
     amountCents: Number(r.amountCents ?? 0),
     paidAt: asIso(r.paidAt),
@@ -476,6 +489,7 @@ async function listPlatformTopJobs(range: RevenueRangeKey) {
   const rows = await db
     .select({
       jobId: jobs.id,
+      jobTitle: jobs.title,
       city: jobs.city,
       regionCode: regionExpr,
       amountCents: jobs.broker_fee_cents,
@@ -488,6 +502,7 @@ async function listPlatformTopJobs(range: RevenueRangeKey) {
 
   return rows.map((r) => ({
     jobId: r.jobId,
+    jobTitle: r.jobTitle,
     city: r.city,
     regionCode: r.regionCode,
     amountCents: Number(r.amountCents ?? 0),
