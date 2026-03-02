@@ -13,6 +13,9 @@ type TxLike = {
 export type V4FinancialLedgerType =
   | "JOB_SUBTOTAL_EST"
   | "JOB_SUBTOTAL"
+  | "CONTRACTOR_PAYOUT_EST"
+  | "ROUTER_FEE_EST"
+  | "PLATFORM_FEE_EST"
   | "TAX_COLLECTED_EST"
   | "PROCESSING_FEE_EST"
   | "TOTAL_CHARGED_EST"
@@ -78,34 +81,19 @@ export async function appendLedgerEntry(input: {
 
   const id = randomUUID();
   try {
-    const inserted = dedupeKey
-      ? await executor
-          .insert(v4FinancialLedger)
-          .values({
-            id,
-            jobId,
-            type,
-            amountCents,
-            currency,
-            stripeRef,
-            dedupeKey,
-            metaJson: input.meta ?? null,
-          })
-          .onConflictDoNothing({ target: v4FinancialLedger.dedupeKey })
-          .returning({ id: v4FinancialLedger.id })
-      : await executor
-          .insert(v4FinancialLedger)
-          .values({
-            id,
-            jobId,
-            type,
-            amountCents,
-            currency,
-            stripeRef,
-            dedupeKey: null,
-            metaJson: input.meta ?? null,
-          })
-          .returning({ id: v4FinancialLedger.id });
+    const inserted = await executor
+      .insert(v4FinancialLedger)
+      .values({
+        id,
+        jobId,
+        type,
+        amountCents,
+        currency,
+        stripeRef,
+        dedupeKey,
+        metaJson: input.meta ?? null,
+      })
+      .returning({ id: v4FinancialLedger.id });
     const rowId = inserted[0]?.id ? String(inserted[0].id) : null;
     if (!rowId && dedupeKey) {
       const existing = await executor
