@@ -83,5 +83,7 @@ export * from "./v4ContractorStrike";
 export * from "./v4ContractorSuspension";
 export * from "./v4TaxRegion";
 export * from "./v4TaxSetting";
+export * from "./v4FinancialLedger";
+export * from "./v4PaymentFeeConfig";
 export * from "./admin";
 export * from "./roleTermsAcceptance";

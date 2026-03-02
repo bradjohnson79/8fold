@@ -16,6 +16,7 @@ import { generateActionToken, hashActionToken } from "../../../../../../../src/j
 import { getOrCreatePlatformUserId } from "../../../../../../../src/system/platformUser";
 import { ensureActiveAccountTx } from "../../../../../../../src/server/accountGuard";
 import { stripe } from "@/src/payments/stripe";
+import { reconcileStripeFeeForPaymentIntent } from "@/src/services/v4/stripeFeeReconciliationService";
 
 const BodySchema = z.object({
   decision: z.enum(["accept", "decline"]),
@@ -136,6 +137,7 @@ export async function POST(req: Request) {
       }
 
       const currentPayment = String(dispatch.job_paymentStatus ?? "").toUpperCase();
+      let reconcilePaymentIntentId: string | null = null;
       if (currentPayment !== "FUNDS_SECURED") {
         const piId = String(dispatch.job_stripePaymentIntentId ?? "").trim();
         if (!piId || !stripe) return { kind: "payment_not_authorized" as const };
@@ -146,8 +148,11 @@ export async function POST(req: Request) {
               idempotencyKey: `job-accept-capture:${dispatch.jobId}`,
             });
             if (captured.status !== "succeeded") return { kind: "payment_not_authorized" as const };
+            reconcilePaymentIntentId = captured.id;
           } else if (pi.status !== "succeeded") {
             return { kind: "payment_not_authorized" as const };
+          } else {
+            reconcilePaymentIntentId = pi.id;
           }
         } catch {
           return { kind: "payment_not_authorized" as const };
@@ -241,7 +246,7 @@ export async function POST(req: Request) {
           ? { contractorToken, customerToken }
           : undefined;
 
-      return { kind: "ok_accepted" as const, tokens: tokensToReturn };
+      return { kind: "ok_accepted" as const, tokens: tokensToReturn, reconcilePaymentIntentId };
     });
 
     if (result.kind === "no_contractor") return NextResponse.json({ ok: true, status: "NO_CONTRACTOR_PROFILE" }, { status: 200 });
@@ -257,10 +262,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Payment hold is not capturable." }, { status: 409 });
     }
     if (result.kind === "ok_declined") return NextResponse.json({ ok: true, status: "DECLINED" });
+
+    const reconcilePaymentIntentId = (result as any)?.reconcilePaymentIntentId as string | null | undefined;
+    if (reconcilePaymentIntentId && stripe) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(reconcilePaymentIntentId);
+        const reconciled = await reconcileStripeFeeForPaymentIntent({
+          pi,
+          stripeClient: stripe,
+          source: "capture_route_web",
+        });
+        if (!reconciled.ok) {
+          console.warn("[contractor/dispatches/respond] fee reconciliation skipped", {
+            paymentIntentId: reconcilePaymentIntentId,
+            code: reconciled.code,
+            reason: reconciled.reason,
+            jobId: reconciled.jobId ?? null,
+          });
+        }
+      } catch (reconcileErr) {
+        console.warn("[contractor/dispatches/respond] fee reconciliation failed", {
+          paymentIntentId: reconcilePaymentIntentId,
+          message: reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr),
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true, status: "ACCEPTED", tokens: (result as any).tokens });
   } catch (err) {
     const { status, message } = toHttpError(err);
     return NextResponse.json({ error: message }, { status });
   }
 }
-

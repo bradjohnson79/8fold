@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { releaseJobFunds } from "@/src/payouts/releaseJobFunds";
+import { releaseFundsForJob } from "@/src/services/v4/payouts/releaseFundsService";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { eq } from "drizzle-orm";
@@ -21,6 +21,7 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden;
 
   try {
+    console.warn("[PAYOUT_LEGACY_RELEASE_DEPRECATED]", { route: "/api/admin/jobs/[id]/release" });
     const jobId = getIdFromUrl(req);
     if (!jobId) return NextResponse.json({ ok: false, error: "Invalid job id" }, { status: 400 });
 
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const out = await releaseJobFunds({ jobId, triggeredByUserId: identity.userId });
+    const out = await releaseFundsForJob({ jobId, actorRole: "ADMIN", actorId: identity.userId });
     await adminAuditLog(req, { userId: identity.userId, role: "ADMIN", authSource: identity.authSource }, {
       action: "ADMIN_JOB_MANUAL_RELEASE",
       entityType: "Job",
@@ -89,4 +90,3 @@ export async function POST(req: Request) {
     return handleApiError(err, "POST /api/admin/jobs/[id]/release", { userId: identity.userId });
   }
 }
-

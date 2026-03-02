@@ -2,7 +2,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
-import { sendBulkNotifications } from "@/src/services/v4/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 export async function expireStaleInvitesAndResetJobs(): Promise<void> {
   await db.transaction(async (tx) => {
@@ -22,22 +22,21 @@ export async function expireStaleInvitesAndResetJobs(): Promise<void> {
       .where(and(eq(v4ContractorJobInvites.status, "PENDING"), lt(v4ContractorJobInvites.expiresAt, now)));
 
     if (expiredInviteRows.length > 0) {
-      await sendBulkNotifications(
-        expiredInviteRows.map((row) => ({
-          userId: row.contractorUserId,
-          role: "CONTRACTOR",
-          type: "INVITE_EXPIRED",
-          title: "Invite expired",
-          message: "A routed job invite expired before response.",
-          entityType: "INVITE",
-          entityId: row.id,
-          priority: "NORMAL",
-          createdAt: now,
-          idempotencyKey: `invite_expired:${row.id}`,
-          metadata: { jobId: row.jobId, inviteId: row.id },
-        })),
-        tx,
-      );
+      for (const row of expiredInviteRows) {
+        await emitDomainEvent(
+          {
+            type: "CONTRACTOR_INVITE_EXPIRED",
+            payload: {
+              inviteId: row.id,
+              jobId: row.jobId,
+              contractorId: row.contractorUserId,
+              createdAt: now,
+              dedupeKey: `invite_expired:${row.id}`,
+            },
+          },
+          { tx },
+        );
+      }
     }
 
     const routedExpiredRows = await tx
@@ -74,23 +73,24 @@ export async function expireStaleInvitesAndResetJobs(): Promise<void> {
       .where(and(eq(jobs.status, "INVITED" as any), lt(jobs.routing_expires_at, now)));
 
     if (routedExpiredRows.length > 0) {
-      await sendBulkNotifications(
-        routedExpiredRows
-          .filter((row) => String(row.routerUserId ?? "").trim().length > 0)
-          .map((row) => ({
-            userId: String(row.routerUserId),
-            role: "ROUTER",
-            type: "ROUTING_WINDOW_EXPIRED",
-            title: "Routing window expired",
-            message: "A routed job returned to the queue because no contractor accepted in time.",
-            entityType: "JOB",
-            entityId: row.id,
-            priority: "NORMAL",
-            createdAt: now,
-            idempotencyKey: `routing_window_expired:${row.id}`,
-          })),
-        tx,
-      );
+      for (const row of routedExpiredRows) {
+        const routerId = String(row.routerUserId ?? "").trim();
+        if (!routerId) continue;
+        await emitDomainEvent(
+          {
+            type: "CONTRACTOR_INVITE_EXPIRED",
+            payload: {
+              inviteId: `routing-window:${row.id}`,
+              jobId: row.id,
+              contractorId: null,
+              routerId,
+              createdAt: now,
+              dedupeKey: `routing_window_expired:${row.id}`,
+            },
+          },
+          { tx },
+        );
+      }
     }
 
     await tx

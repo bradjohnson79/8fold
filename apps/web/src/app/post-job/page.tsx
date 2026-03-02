@@ -32,8 +32,14 @@ type PaymentIntentResult = {
   paymentIntentId: string;
   appraisalPriceCents: number;
   regionalFeeCents: number;
+  baseSplitCents: number;
+  subtotalCents: number;
   taxCents: number;
+  estimatedProcessingFeeCents: number;
   totalCents: number;
+  contractorPayoutCents: number;
+  routerFeeCents: number;
+  platformFeeCents: number;
   currency: "USD" | "CAD";
   message?: string;
 };
@@ -106,9 +112,33 @@ function HoldConfirm(props: {
                 elements: elements!,
                 redirect: "if_required",
               });
+              const status = result.paymentIntent?.status ?? null;
+              const nextAction = (result.paymentIntent as any)?.next_action ?? null;
+              const errorPayload = result.error
+                ? {
+                    type: result.error.type,
+                    code: result.error.code,
+                    message: result.error.message,
+                    param: (result.error as any).param,
+                    decline_code: (result.error as any).decline_code,
+                  }
+                : null;
+              console.log("TEMP_STRIPE_DEBUG_CONFIRM_RESULT", {
+                status,
+                id: result.paymentIntent?.id ?? null,
+                next_action: nextAction,
+                error: errorPayload,
+              });
               if (result.error) throw new Error(result.error.message || "Payment confirmation failed.");
-              if (result.paymentIntent?.status !== "requires_capture") {
-                throw new Error("Payment hold not secured. Status is not requires_capture.");
+              if (status === "requires_action") {
+                console.warn("TEMP_STRIPE_DEBUG_CONFIRM_REQUIRES_ACTION", { next_action: nextAction });
+                throw new Error("Payment requires additional action before it can be confirmed.");
+              }
+              if (status === "succeeded") {
+                throw new Error("Payment captured immediately. Expected requires_capture (manual capture mode).");
+              }
+              if (status !== "requires_capture") {
+                throw new Error(`Payment hold not secured. Unexpected status: ${status ?? "unknown"}.`);
               }
               props.onConfirmed();
             } catch (e) {
@@ -184,6 +214,12 @@ export default function PostJobPage() {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     return pk ? loadStripe(pk) : null;
   }, []);
+  useEffect(() => {
+    const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+    console.log("TEMP_STRIPE_DEBUG_MODE_WEB", {
+      publishableMode: pk?.startsWith("pk_test_") ? "TEST" : pk?.startsWith("pk_live_") ? "LIVE" : "UNKNOWN",
+    });
+  }, []);
 
   const apiOrigin = useMemo(() => {
     const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
@@ -217,10 +253,21 @@ export default function PostJobPage() {
   const summaryCurrency: "USD" | "CAD" = activeAddress.country === "CA" ? "CAD" : "USD";
   const taxRate = appraisal ? Number(appraisal.taxRate ?? 0) : 0;
   const summaryTaxCents = summaryCurrency === "CAD" ? Math.max(0, Math.round((appraisalPriceCents + regionalFeeCents) * taxRate)) : 0;
-  const summaryTotalCents = appraisalPriceCents + regionalFeeCents + summaryTaxCents;
+  const summaryProcessingFeeCents = 0;
+  const summaryTotalCents = appraisalPriceCents + regionalFeeCents + summaryTaxCents + summaryProcessingFeeCents;
+  const fallbackSubtotalCents = appraisalPriceCents + regionalFeeCents;
+  const displaySubtotalCents = paymentSummary?.subtotalCents ?? paymentSummary?.baseSplitCents ?? fallbackSubtotalCents;
+  const displayTaxCents = paymentSummary?.taxCents ?? summaryTaxCents;
+  const displayProcessingFeeCents = paymentSummary?.estimatedProcessingFeeCents ?? summaryProcessingFeeCents;
+  const displayTotalCents = paymentSummary?.totalCents ?? summaryTotalCents;
+  const displayCurrency: "USD" | "CAD" = paymentSummary?.currency ?? summaryCurrency;
 
   const isLower = appraisal ? appraisalPriceCents < baseMedianCents : false;
   const isHigher = appraisal ? appraisalPriceCents > baseMedianCents : false;
+  useEffect(() => {
+    if (!paymentSummary) return;
+    console.log("TEMP_STRIPE_DEBUG_UI_TOTALS", paymentSummary);
+  }, [paymentSummary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -541,9 +588,15 @@ export default function PostJobPage() {
         }),
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
+      const debugPrepareBody = {
+        ...json,
+        clientSecret: json?.clientSecret ? "[redacted]" : undefined,
+      };
       if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
+        console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
         throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
       }
+      console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
       setPaymentSummary(json);
       setClientSecret(json.clientSecret);
       setPaymentIntentId(json.paymentIntentId);
@@ -845,20 +898,20 @@ export default function PostJobPage() {
 
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span>Appraisal Price</span>
-                <span>{formatMoney(appraisalPriceCents, summaryCurrency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Regional Fee</span>
-                <span>{formatMoney(regionalFeeCents, summaryCurrency)}</span>
+                <span>Subtotal</span>
+                <span>{formatMoney(displaySubtotalCents, displayCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Applicable Tax (Canada only)</span>
-                <span>{formatMoney(summaryTaxCents, summaryCurrency)}</span>
+                <span>{formatMoney(displayTaxCents, displayCurrency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Processing Fee (Stripe)</span>
+                <span>{formatMoney(displayProcessingFeeCents, displayCurrency)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold">
                 <span>Total Charge</span>
-                <span>{formatMoney(summaryTotalCents, summaryCurrency)}</span>
+                <span>{formatMoney(displayTotalCents, displayCurrency)}</span>
               </div>
             </div>
 

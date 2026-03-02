@@ -5,14 +5,12 @@ import { db } from "@/db/drizzle";
 import { jobDraft } from "@/db/schema/jobDraft";
 import { requireJobPoster } from "@/src/auth/rbac";
 import { createPaymentIntent, stripe } from "@/src/payments/stripe";
-import { computeEscrowPricing } from "@/src/services/escrow/pricing";
+import { appendLedgerEntry } from "@/src/services/v4/financialLedgerService";
+import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
+import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
 
 type DraftData = Record<string, any>;
 export const runtime = "nodejs";
-
-function isPreConfirmStatus(status: string): boolean {
-  return status === "requires_payment_method" || status === "requires_confirmation" || status === "requires_action";
-}
 
 function isAcceptableStatus(status: string): boolean {
   return (
@@ -20,7 +18,8 @@ function isAcceptableStatus(status: string): boolean {
     status === "requires_confirmation" ||
     status === "requires_action" ||
     status === "processing" ||
-    status === "succeeded"
+    status === "succeeded" ||
+    status === "requires_capture"
   );
 }
 
@@ -70,6 +69,59 @@ function normalizeProvince(countryCode: "US" | "CA", region: string): string {
   const upper = String(region ?? "").trim().toUpperCase();
   if (countryCode !== "CA") return upper;
   return CA_PROVINCE_ALIASES[upper] ?? upper;
+}
+
+async function appendModelALedgerEntries(input: {
+  jobId: string;
+  paymentIntentId: string;
+  baseSplitCents: number;
+  taxCents: number;
+  estimatedProcessingFeeCents: number;
+  totalCents: number;
+  currency: "USD" | "CAD";
+}) {
+  const baseDedupe = `est:${input.jobId}:${input.paymentIntentId}`;
+  // Transition-safe: keep JOB_SUBTOTAL for legacy readers while standardizing on JOB_SUBTOTAL_EST.
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "JOB_SUBTOTAL_EST",
+    amountCents: input.baseSplitCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:JOB_SUBTOTAL_EST`,
+  });
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "JOB_SUBTOTAL",
+    amountCents: input.baseSplitCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:JOB_SUBTOTAL`,
+  });
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "TAX_COLLECTED_EST",
+    amountCents: input.taxCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:TAX_COLLECTED_EST`,
+  });
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "PROCESSING_FEE_EST",
+    amountCents: input.estimatedProcessingFeeCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:PROCESSING_FEE_EST`,
+  });
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "TOTAL_CHARGED_EST",
+    amountCents: input.totalCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:TOTAL_CHARGED_EST`,
+  });
 }
 
 export async function POST(req: Request) {
@@ -125,49 +177,83 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "At least one availability selection is required." }, { status: 400 });
     }
 
-    const computed = await computeEscrowPricing({
+    const feeConfig = await getFeeConfig("card");
+    const computed = await computeModelAPricing({
       appraisalSubtotalCents: appraisalPriceCents,
       isRegional,
       country: countryCode,
       province: regionCode,
+      percentBps: feeConfig.percentBps,
+      fixedCents: feeConfig.fixedCents,
     });
-    const taxCents = computed.taxAmountCents;
-    const totalCents = computed.totalAmountCents;
 
-    const existingPiId = String(data?.payment?.paymentIntentId ?? "").trim();
+    const subtotalCents = computed.baseSplitCents;
+    const taxCents = computed.taxCents;
+    const estimatedProcessingFeeCents = computed.estimatedProcessingFeeCents;
+    const totalCents = computed.totalChargeCents;
+    const paymentCurrency = computed.paymentCurrency;
+
+    console.log("TEMP_STRIPE_DEBUG_TOTALS", {
+      baseSplitCents: subtotalCents,
+      subtotalCents,
+      taxCents,
+      estimatedProcessingFeeCents,
+      totalCents,
+      currency: paymentCurrency,
+      province: computed.province,
+      country: computed.country,
+      taxRateBps: computed.taxRateBps,
+      feePercentBps: feeConfig.percentBps,
+      feeFixedCents: feeConfig.fixedCents,
+    });
+    if (computed.country === "CA" && computed.taxRateBps > 0 && taxCents === 0) {
+      console.warn("TEMP_STRIPE_DEBUG_TAX_WARNING", {
+        country: computed.country,
+        province: computed.province,
+        taxRateBps: computed.taxRateBps,
+      });
+    }
+
+    const paymentData = asObject(data.payment);
+    const modelAJobId = String(paymentData.modelAJobId ?? paymentData.provisionalJobId ?? "").trim() || randomUUID();
+    const existingPiId = String(paymentData.paymentIntentId ?? "").trim();
+
+    const responseBase = {
+      appraisalPriceCents,
+      regionalFeeCents: computed.regionalFeeCents,
+      baseSplitCents: subtotalCents,
+      subtotalCents,
+      taxRateBps: computed.taxRateBps,
+      taxCents,
+      estimatedProcessingFeeCents,
+      totalCents,
+      contractorPayoutCents: computed.contractorPayoutCents,
+      routerFeeCents: computed.routerFeeCents,
+      platformFeeCents: computed.platformFeeCents,
+      currency: computed.currency,
+    };
 
     if (existingPiId && stripe) {
       try {
         const pi = await stripe.paymentIntents.retrieve(existingPiId);
-        const nextCurrency = computed.paymentCurrency;
         const status = String(pi.status ?? "").toLowerCase();
-        const currencyMismatch = String(pi.currency ?? "").toLowerCase() !== nextCurrency;
-        const amountMismatch = pi.amount !== totalCents;
-        const mismatched = currencyMismatch || amountMismatch;
+        const piCurrency = String(pi.currency ?? "").toLowerCase();
+        const amountMatches = pi.amount === totalCents;
+        const currencyMatches = piCurrency === paymentCurrency;
+        const statusAcceptable = isAcceptableStatus(status);
+        console.log("TEMP_STRIPE_DEBUG_EXISTING_PI", {
+          id: pi.id,
+          amount: pi.amount,
+          expectedAmount: totalCents,
+          currency: piCurrency,
+          expectedCurrency: paymentCurrency,
+          status,
+          statusAcceptable,
+          amountMatches,
+          currencyMatches,
+        });
 
-        if (mismatched && isPreConfirmStatus(status)) {
-          await stripe.paymentIntents.update(pi.id, {
-            amount: totalCents,
-            metadata: {
-              ...(pi.metadata ?? {}),
-              scope: "job-draft-v4",
-              draftId: String(draft.id),
-              userId: user.userId,
-              jobPosterId: user.userId,
-              country: computed.country,
-              province: computed.province ?? "",
-              taxRateBps: String(computed.taxRateBps),
-              splitBaseCents: String(computed.splitBaseCents),
-            },
-          });
-        }
-
-        const refreshed = await stripe.paymentIntents.retrieve(pi.id);
-        const refreshedStatus = String(refreshed.status ?? "").toLowerCase();
-        const refreshedMismatched =
-          String(refreshed.currency ?? "").toLowerCase() !== nextCurrency || refreshed.amount !== totalCents;
-
-        if (!refreshedMismatched && isAcceptableStatus(refreshedStatus)) {
+        if (amountMatches && currencyMatches && statusAcceptable && pi.client_secret) {
           const nextData = {
             ...data,
             pricing: {
@@ -177,35 +263,55 @@ export async function POST(req: Request) {
               isRegional,
               regionalFeeCents: computed.regionalFeeCents,
               taxRateBps: computed.taxRateBps,
-              taxCents: computed.taxAmountCents,
-              subtotalCents: computed.splitBaseCents,
-              totalCents: computed.totalAmountCents,
+              taxCents,
+              estimatedProcessingFeeCents,
+              baseSplitCents: subtotalCents,
+              subtotalCents,
+              totalCents,
+              contractorPayoutCents: computed.contractorPayoutCents,
+              routerFeeCents: computed.routerFeeCents,
+              platformFeeCents: computed.platformFeeCents,
               countryCode: computed.country,
               regionCode: computed.province,
             },
             payment: {
-              ...(asObject(data.payment)),
-              paymentIntentId: refreshed.id,
-              paymentStatus: refreshed.status,
+              ...paymentData,
+              modelAJobId,
+              paymentIntentId: pi.id,
+              paymentStatus: pi.status,
             },
           };
           await db
             .update(jobDraft)
             .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
             .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
-          return NextResponse.json({
-            success: true,
-            clientSecret: refreshed.client_secret,
-            paymentIntentId: refreshed.id,
-            paymentStatus: refreshed.status,
-            appraisalPriceCents,
-            regionalFeeCents: computed.regionalFeeCents,
-            taxRateBps: computed.taxRateBps,
-            taxCents: computed.taxAmountCents,
-            totalCents: computed.totalAmountCents,
+
+          await appendModelALedgerEntries({
+            jobId: modelAJobId,
+            paymentIntentId: pi.id,
+            baseSplitCents: subtotalCents,
+            taxCents,
+            estimatedProcessingFeeCents,
+            totalCents,
             currency: computed.currency,
           });
+
+          return NextResponse.json({
+            success: true,
+            clientSecret: pi.client_secret,
+            paymentIntentId: pi.id,
+            paymentStatus: pi.status,
+            ...responseBase,
+            traceId: randomUUID(),
+          });
         }
+        console.log("TEMP_STRIPE_DEBUG_REUSE_SKIPPED", {
+          existingPiId,
+          amountMatches,
+          currencyMatches,
+          statusAcceptable,
+          hasClientSecret: Boolean(pi.client_secret),
+        });
       } catch (existingPiErr) {
         console.warn("[job-draft/payment-intent] existing intent lookup failed; creating a fresh intent", {
           existingPiId,
@@ -215,23 +321,40 @@ export async function POST(req: Request) {
       }
     }
 
-    const result = await createPaymentIntent(totalCents, {
-      currency: computed.paymentCurrency,
-      captureMethod: "manual",
+    const stripeIntentParams = {
+      amount: totalCents,
+      currency: paymentCurrency,
+      captureMethod: "manual" as const,
+      paymentMethodTypes: ["card"] as const,
+    };
+    if (stripeIntentParams.amount !== totalCents) {
+      throw Object.assign(new Error("Stripe amount mismatch with backend totalCents"), { status: 500 });
+    }
+
+    const result = await createPaymentIntent(stripeIntentParams.amount, {
+      currency: stripeIntentParams.currency,
+      captureMethod: stripeIntentParams.captureMethod,
       requestExtendedAuthorization: true,
-      idempotencyKey: `job-draft-v4:${draft.id}:${computed.paymentCurrency}:${totalCents}`,
+      paymentMethodTypes: [...stripeIntentParams.paymentMethodTypes],
+      automaticPaymentMethodsEnabled: false,
+      idempotencyKey: `job-draft-v4:${draft.id}:${paymentCurrency}:${totalCents}`,
       metadata: {
         scope: "job-draft-v4",
         draftId: String(draft.id),
         userId: user.userId,
         jobPosterId: user.userId,
+        modelAJobId,
         country: computed.country,
         province: computed.province ?? "",
         taxRateBps: String(computed.taxRateBps),
-        splitBaseCents: String(computed.splitBaseCents),
+        splitBaseCents: String(subtotalCents),
+        estimatedProcessingFeeCents: String(estimatedProcessingFeeCents),
       },
       description: "8Fold Job Poster Charge",
     });
+    if (String(result.currency ?? "").toLowerCase() !== paymentCurrency) {
+      throw Object.assign(new Error("Stripe currency mismatch with backend payment currency"), { status: 409 });
+    }
 
     const nextData = {
       ...data,
@@ -242,14 +365,20 @@ export async function POST(req: Request) {
         isRegional,
         regionalFeeCents: computed.regionalFeeCents,
         taxRateBps: computed.taxRateBps,
-        taxCents: computed.taxAmountCents,
-        subtotalCents: computed.splitBaseCents,
-        totalCents: computed.totalAmountCents,
+        taxCents,
+        estimatedProcessingFeeCents,
+        baseSplitCents: subtotalCents,
+        subtotalCents,
+        totalCents,
+        contractorPayoutCents: computed.contractorPayoutCents,
+        routerFeeCents: computed.routerFeeCents,
+        platformFeeCents: computed.platformFeeCents,
         countryCode: computed.country,
         regionCode: computed.province,
       },
       payment: {
-        ...(asObject(data.payment)),
+        ...paymentData,
+        modelAJobId,
         paymentIntentId: result.paymentIntentId,
         paymentStatus: result.status,
       },
@@ -259,17 +388,22 @@ export async function POST(req: Request) {
       .set({ data: nextData, updatedAt: new Date(), step: "PAYMENT" })
       .where(and(eq(jobDraft.id, draft.id), eq(jobDraft.userId, user.userId)));
 
+    await appendModelALedgerEntries({
+      jobId: modelAJobId,
+      paymentIntentId: result.paymentIntentId,
+      baseSplitCents: subtotalCents,
+      taxCents,
+      estimatedProcessingFeeCents,
+      totalCents,
+      currency: computed.currency,
+    });
+
     return NextResponse.json({
       success: true,
       clientSecret: result.clientSecret,
       paymentIntentId: result.paymentIntentId,
       paymentStatus: result.status,
-      appraisalPriceCents,
-      regionalFeeCents: computed.regionalFeeCents,
-      taxRateBps: computed.taxRateBps,
-      taxCents: computed.taxAmountCents,
-      totalCents: computed.totalAmountCents,
-      currency: computed.currency,
+      ...responseBase,
       traceId: randomUUID(),
     });
   } catch (err) {
@@ -283,9 +417,6 @@ export async function POST(req: Request) {
       stack: err instanceof Error ? err.stack : undefined,
     });
     const message = status >= 500 ? "Unable to confirm total right now. Please try again." : rawMessage;
-    return NextResponse.json(
-      { success: false, message },
-      { status }
-    );
+    return NextResponse.json({ success: false, message }, { status });
   }
 }

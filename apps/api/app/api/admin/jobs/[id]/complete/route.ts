@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { badRequest, fail, ok } from "@/src/lib/api/respond";
 import { assertJobTransition } from "../../../../../../src/jobs/jobTransitions";
-import { releaseJobFunds } from "../../../../../../src/payouts/releaseJobFunds";
+import { releaseFundsForJob } from "../../../../../../src/services/v4/payouts/releaseFundsService";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -28,6 +28,7 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden;
 
   try {
+    console.warn("[PAYOUT_LEGACY_RELEASE_DEPRECATED]", { route: "/api/admin/jobs/[id]/complete" });
     const jobId = getIdFromUrl(req);
     const url = new URL(req.url);
     const dryRun = String(url.searchParams.get("dryRun") ?? "").toLowerCase() === "true";
@@ -164,7 +165,11 @@ export async function POST(req: Request) {
 
     // Release funds (best-effort; completion approval is authoritative even if payout fails).
     try {
-      await releaseJobFunds({ jobId: String((result as any).job?.id ?? jobId), triggeredByUserId: identity.userId });
+      await releaseFundsForJob({
+        jobId: String((result as any).job?.id ?? jobId),
+        actorRole: "ADMIN",
+        actorId: identity.userId,
+      });
     } catch {
       // Failure is reflected via TransferRecord + Job.payoutStatus.
     }
@@ -177,4 +182,3 @@ export async function POST(req: Request) {
     });
   }
 }
-

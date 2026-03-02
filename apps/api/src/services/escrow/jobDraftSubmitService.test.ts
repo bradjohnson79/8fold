@@ -25,12 +25,15 @@ function installDbSelectQueue(queue: unknown[]) {
 }
 
 function installPricingMock() {
-  vi.doMock("@/src/services/escrow/pricing", () => ({
-    computeEscrowPricing: vi.fn(),
-    computeEscrowSplitAllocations: vi.fn(),
+  vi.doMock("@/src/services/v4/modelAPricingService", () => ({
+    computeModelAPricing: vi.fn(),
+  }));
+  vi.doMock("@/src/services/v4/paymentFeeConfigService", () => ({
+    getFeeConfig: vi.fn(),
   }));
   vi.doMock("@/src/services/escrow/ledger", () => ({
     writeChargeLedger: vi.fn(),
+    writeAuthHoldLedger: vi.fn(),
   }));
 }
 

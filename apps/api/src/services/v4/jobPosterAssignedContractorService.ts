@@ -3,6 +3,7 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
+import { mapLegacyStatusForExecution, promoteDuePublishedJobsForJobPoster } from "./jobExecutionService";
 
 export type AssignedContractorPayload = {
   id: string;
@@ -17,6 +18,7 @@ export type AssignedContractorPayload = {
 
 export async function getAssignedContractorForJobPoster(userId: string): Promise<AssignedContractorPayload | null> {
   try {
+    await promoteDuePublishedJobsForJobPoster(userId);
     const rows = await db
       .select({
         jobId: jobs.id,
@@ -34,7 +36,7 @@ export async function getAssignedContractorForJobPoster(userId: string): Promise
         and(
           eq(jobs.job_poster_user_id, userId),
           isNotNull(jobs.contractor_user_id),
-          inArray(jobs.status, ["ASSIGNED", "PUBLISHED", "IN_PROGRESS", "CONTRACTOR_COMPLETED", "COMPLETED"]),
+          inArray(jobs.status, ["ASSIGNED", "PUBLISHED", "JOB_STARTED", "IN_PROGRESS", "CONTRACTOR_COMPLETED", "COMPLETED"]),
         ),
       )
       .orderBy(desc(jobs.appointment_at), desc(jobs.updated_at), desc(jobs.created_at))
@@ -47,7 +49,7 @@ export async function getAssignedContractorForJobPoster(userId: string): Promise
       id: top.jobId,
       jobId: top.jobId,
       jobTitle: top.jobTitle ?? null,
-      jobStatus: top.jobStatus,
+      jobStatus: mapLegacyStatusForExecution(String(top.jobStatus ?? "")),
       contractorName: top.contractorName ?? null,
       contractorBusinessName: top.contractorBusinessName ?? null,
       appointmentAt: top.appointmentAt?.toISOString?.() ?? null,

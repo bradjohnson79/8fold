@@ -26,6 +26,7 @@ import {
   finalizePmFundingFromPaymentIntent,
   requirePmEscrowMetadata,
 } from "@/src/pm/finalizePmFunding";
+import { reconcileStripeFeeForPaymentIntent } from "@/src/services/v4/stripeFeeReconciliationService";
 import {
   logStripeEventIfNew,
   markStripeEventProcessed,
@@ -50,6 +51,7 @@ export const config = {
 /** Events we process. Unknown types return 200 { ok: true, ignored: true }. */
 const SUPPORTED_EVENTS = new Set<string>([
   "payment_intent.succeeded",
+  "charge.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
   "refund.updated",
@@ -192,6 +194,7 @@ async function handleWebhook(req: Request) {
   console.info("[STRIPE_WEBHOOK_RECEIVED]", { eventId: event.id, eventType: event.type });
 
   const now = new Date();
+  const postCommitTasks: Array<() => Promise<void>> = [];
   let duplicateEvent = false;
   let ignoredEvent = false;
 
@@ -311,6 +314,84 @@ async function handleWebhook(req: Request) {
               },
             });
           }
+
+          postCommitTasks.push(async () => {
+            const reconciled = await reconcileStripeFeeForPaymentIntent({
+              pi,
+              stripeClient: s,
+              source: "webhook",
+              webhookEventId: event.id,
+            });
+            if (!reconciled.ok) {
+              logEvent({
+                level: "warn",
+                event: "stripe.webhook_fee_reconciliation_skipped",
+                route: "/api/webhooks/stripe",
+                method: "POST",
+                status: 200,
+                code: reconciled.code,
+                context: {
+                  eventId: event.id,
+                  paymentIntentId: pi.id,
+                  jobId: reconciled.jobId ?? null,
+                  reason: reconciled.reason,
+                },
+              });
+            }
+          });
+          return;
+        }
+        case "charge.succeeded": {
+          const charge = event.data.object as Stripe.Charge;
+          const paymentIntentId =
+            typeof charge.payment_intent === "string"
+              ? charge.payment_intent
+              : (charge.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
+          if (!paymentIntentId) return;
+
+          postCommitTasks.push(async () => {
+            try {
+              const pi = await s.paymentIntents.retrieve(paymentIntentId);
+              const reconciled = await reconcileStripeFeeForPaymentIntent({
+                pi,
+                stripeClient: s,
+                source: "webhook_charge_succeeded",
+                webhookEventId: event.id,
+              });
+              if (!reconciled.ok) {
+                logEvent({
+                  level: "warn",
+                  event: "stripe.webhook_fee_reconciliation_skipped",
+                  route: "/api/webhooks/stripe",
+                  method: "POST",
+                  status: 200,
+                  code: reconciled.code,
+                  context: {
+                    eventId: event.id,
+                    chargeId: charge.id,
+                    paymentIntentId,
+                    jobId: reconciled.jobId ?? null,
+                    reason: reconciled.reason,
+                  },
+                });
+              }
+            } catch (error) {
+              logEvent({
+                level: "warn",
+                event: "stripe.webhook_fee_reconciliation_error",
+                route: "/api/webhooks/stripe",
+                method: "POST",
+                status: 200,
+                code: "V4_RECON_CHARGE_SUCCEEDED_FAILED",
+                context: {
+                  eventId: event.id,
+                  chargeId: charge.id,
+                  paymentIntentId,
+                  reason: error instanceof Error ? error.message : "unknown",
+                },
+              });
+            }
+          });
           return;
         }
         case "payment_intent.payment_failed": {
@@ -645,6 +726,26 @@ async function handleWebhook(req: Request) {
       }
     });
     await markStripeEventProcessed(event.id).catch(() => {});
+
+    for (const task of postCommitTasks) {
+      try {
+        await task();
+      } catch (taskErr) {
+        logEvent({
+          level: "warn",
+          event: "stripe.webhook_post_commit_task_failed",
+          route: "/api/webhooks/stripe",
+          method: "POST",
+          status: 200,
+          code: "STRIPE_WEBHOOK_POST_COMMIT_FAILED",
+          context: {
+            eventId: event?.id,
+            eventType: event?.type,
+            message: taskErr instanceof Error ? taskErr.message : "unknown",
+          },
+        });
+      }
+    }
   } catch (err) {
     const ref = `stripe_wh_${randomUUID()}`;
     webhookLog("FAILED", {

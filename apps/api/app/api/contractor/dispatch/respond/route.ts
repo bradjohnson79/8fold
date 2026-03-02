@@ -15,6 +15,7 @@ import { users } from "../../../../../db/schema/user";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { ensureActiveAccountTx } from "../../../../../src/server/accountGuard";
 import { stripe } from "../../../../../src/payments/stripe";
+import { reconcileStripeFeeForPaymentIntent } from "@/src/services/v4/stripeFeeReconciliationService";
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
@@ -147,6 +148,7 @@ export async function POST(req: Request) {
       }
 
       const currentPayment = String(dispatch.job_paymentStatus ?? "").toUpperCase();
+      let reconcilePaymentIntentId: string | null = null;
       if (currentPayment !== "FUNDS_SECURED") {
         const piId = String(dispatch.job_stripePaymentIntentId ?? "").trim();
         if (!piId || !stripe) return { kind: "payment_not_authorized" as const };
@@ -157,8 +159,11 @@ export async function POST(req: Request) {
               idempotencyKey: `job-accept-capture:${dispatch.jobId}`,
             });
             if (captured.status !== "succeeded") return { kind: "payment_not_authorized" as const };
+            reconcilePaymentIntentId = captured.id;
           } else if (pi.status !== "succeeded") {
             return { kind: "payment_not_authorized" as const };
+          } else {
+            reconcilePaymentIntentId = pi.id;
           }
         } catch {
           return { kind: "payment_not_authorized" as const };
@@ -240,6 +245,7 @@ export async function POST(req: Request) {
         jobId: dispatch.jobId,
         jobPosterUserId: dispatch.job_jobPosterUserId ?? null,
         contractorId: dispatch.contractorId,
+        reconcilePaymentIntentId,
       };
     });
 
@@ -292,10 +298,34 @@ export async function POST(req: Request) {
       // ignore (best-effort only)
     }
 
+    const reconcilePaymentIntentId = (result as any)?.reconcilePaymentIntentId as string | null | undefined;
+    if (reconcilePaymentIntentId && stripe) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(reconcilePaymentIntentId);
+        const reconciled = await reconcileStripeFeeForPaymentIntent({
+          pi,
+          stripeClient: stripe,
+          source: "capture_route_legacy",
+        });
+        if (!reconciled.ok) {
+          console.warn("[contractor/dispatch/respond] fee reconciliation skipped", {
+            paymentIntentId: reconcilePaymentIntentId,
+            code: reconciled.code,
+            reason: reconciled.reason,
+            jobId: reconciled.jobId ?? null,
+          });
+        }
+      } catch (reconcileErr) {
+        console.warn("[contractor/dispatch/respond] fee reconciliation failed", {
+          paymentIntentId: reconcilePaymentIntentId,
+          message: reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr),
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true, status: "ACCEPTED", tokens: (result as any).tokens });
   } catch (err) {
     const { status, message } = toHttpError(err);
     return NextResponse.json({ error: message }, { status });
   }
 }
-

@@ -1,0 +1,931 @@
+import { isNull } from "drizzle-orm";
+import { admins } from "@/db/schema/admin";
+import { db } from "@/db/drizzle";
+import type {
+  DomainEvent,
+  DomainEventDispatchMode,
+  DomainEventType,
+  NotificationEntityType,
+} from "@/src/events/domainEventTypes";
+import { MAPPED_DOMAIN_EVENT_TYPES } from "@/src/events/domainEventRegistry";
+import { sendNotification } from "./notificationService";
+
+export function getMappedDomainEventTypes(): DomainEventType[] {
+  return [...MAPPED_DOMAIN_EVENT_TYPES];
+}
+
+async function safeNotify(
+  eventType: DomainEventType,
+  payload: Record<string, unknown>,
+  input: Parameters<typeof sendNotification>[0],
+  tx?: any,
+): Promise<void> {
+  try {
+    await sendNotification(input, tx);
+  } catch (error) {
+    console.error("[NOTIFICATION_EVENT_MAPPER_ERROR]", {
+      eventType,
+      dedupeKey: input.idempotencyKey ?? input.dedupeKey ?? null,
+      userId: input.userId,
+      role: input.role,
+      payload,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function getActiveAdminIds(tx?: any): Promise<string[]> {
+  try {
+    const exec = tx ?? db;
+    const rows = await exec.select({ id: admins.id }).from(admins).where(isNull(admins.disabledAt));
+    return rows.map((row: { id: string }) => String(row.id));
+  } catch (error) {
+    console.error("[NOTIFICATION_EVENT_MAPPER_ERROR]", {
+      eventType: "ADMIN_RECIPIENT_LOOKUP",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+function asDate(input: Date | undefined): Date {
+  return input instanceof Date ? input : new Date();
+}
+
+function asEntity(entityType: NotificationEntityType): NotificationEntityType {
+  return entityType;
+}
+
+export async function notificationEventMapper(
+  event: DomainEvent,
+  options?: { tx?: any; mode?: DomainEventDispatchMode },
+): Promise<void> {
+  const tx = options?.tx;
+  const mode = options?.mode ?? "within_tx";
+
+  const run = async () => {
+    switch (event.type) {
+      case "ROUTER_JOB_ROUTED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "NEW_JOB_INVITE",
+            title: "New Routed Job Available",
+            message: "You have been selected for a new job.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "CONTRACTOR_INVITE_EXPIRED": {
+        const p = event.payload;
+        if (p.contractorId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "INVITE_EXPIRED",
+              title: "Invite expired",
+              message: "A routed job invite expired before response.",
+              entityType: asEntity("INVITE"),
+              entityId: p.inviteId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: p.dedupeKey,
+              idempotencyKey: p.dedupeKey,
+              metadata: { jobId: p.jobId, inviteId: p.inviteId },
+            },
+            tx,
+          );
+        }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "ROUTING_WINDOW_EXPIRED",
+              title: "Routing window expired",
+              message: "A routed job returned to the queue because no contractor accepted in time.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKey}:router`,
+              idempotencyKey: `${p.dedupeKey}:router`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "CONTRACTOR_ACCEPTED_INVITE": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "JOB_ASSIGNED",
+            title: "Job assigned",
+            message: "You accepted the invite and are now assigned to this job.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: `${p.dedupeKeyBase}:contractor`,
+            idempotencyKey: `${p.dedupeKeyBase}:contractor`,
+          },
+          tx,
+        );
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.jobPosterId,
+            role: "JOB_POSTER",
+            type: "CONTRACTOR_ACCEPTED",
+            title: "Contractor accepted",
+            message: "A contractor accepted your routed job invite.",
+            entityType: asEntity("INVITE"),
+            entityId: p.inviteId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: `${p.dedupeKeyBase}:poster`,
+            idempotencyKey: `${p.dedupeKeyBase}:poster`,
+          },
+          tx,
+        );
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "CONTRACTOR_ACCEPTED",
+              title: "Contractor accepted",
+              message: "A contractor accepted one of your routed invites.",
+              entityType: asEntity("INVITE"),
+              entityId: p.inviteId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "CONTRACTOR_REJECTED_INVITE": {
+        const p = event.payload;
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "JOB_REJECTED",
+              title: "Invite rejected",
+              message: "A contractor rejected a routed invite.",
+              entityType: asEntity("INVITE"),
+              entityId: p.inviteId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "JOB_REJECTED",
+              title: "Invite declined",
+              message: "A contractor declined this job invite.",
+              entityType: asEntity("INVITE"),
+              entityId: p.inviteId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "POSTER_ACCEPTED_CONTRACTOR": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "POSTER_ACCEPTED",
+            title: "Assigned contractor accepted",
+            message: "The job poster accepted your assignment.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "APPOINTMENT_BOOKED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.jobPosterId,
+            role: "JOB_POSTER",
+            type: "APPOINTMENT_BOOKED",
+            title: "Appointment booked",
+            message: "Your contractor booked an appointment.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "APPOINTMENT_ACCEPTED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "RESCHEDULE_ACCEPTED",
+            title: "Appointment accepted",
+            message: "The job poster accepted your appointment.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "RESCHEDULE_REQUESTED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.jobPosterId,
+            role: "JOB_POSTER",
+            type: "RESCHEDULE_REQUEST",
+            title: "Appointment reschedule requested",
+            message: "Your contractor proposed a new appointment time.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+            metadata: { appointmentAt: p.appointmentAt },
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "JOB_PUBLISHED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.jobPosterId,
+            role: "JOB_POSTER",
+            type: "JOB_PUBLISHED",
+            title: "Job published",
+            message: "Your job is now published.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "LOW",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "CUSTOMER_CANCELLED": {
+        const p = event.payload;
+        if (p.contractorId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "JOB_CANCELLED_BY_CUSTOMER",
+              title: "Job cancelled",
+              message: "The customer cancelled this job.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:contractor`,
+              idempotencyKey: `${p.dedupeKeyBase}:contractor`,
+            },
+            tx,
+          );
+        }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "JOB_CANCELLED_BY_CUSTOMER",
+              title: "Job cancelled",
+              message: "A customer cancelled a routed job.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "CONTRACTOR_CANCELLED": {
+        const p = event.payload;
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "CONTRACTOR_CANCELLED",
+              title: "Contractor cancelled assignment",
+              message: p.message,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            },
+            tx,
+          );
+        }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "CONTRACTOR_CANCELLED",
+              title: "Contractor cancelled assignment",
+              message: "The job returned to routing.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "BREACH_APPLIED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "BREACH_PENALTY_APPLIED",
+            title: "Breach penalty applied",
+            message: "A breach penalty has been applied to your account.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "HIGH",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "SUSPENSION_APPLIED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "SUSPENSION_APPLIED",
+            title: "Suspension applied",
+            message: "Your account has been suspended.",
+            entityType: asEntity("SYSTEM"),
+            entityId: p.contractorId,
+            priority: "HIGH",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "PAYMENT_CAPTURED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.jobPosterId,
+            role: "JOB_POSTER",
+            type: "PAYMENT_RECEIVED",
+            title: "Payment received",
+            message: "Your payment is secured and your job is ready for routing.",
+            entityType: asEntity("PAYMENT"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: `${p.dedupeKeyBase}:poster`,
+            idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            metadata: p.metadata ?? {},
+          },
+          tx,
+        );
+        const adminIds = p.adminIds?.length ? p.adminIds : await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "PAYMENT_RECEIVED",
+              title: "Payment received",
+              message: `Job ${p.jobId} payment is now secured.`,
+              entityType: asEntity("PAYMENT"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+              metadata: p.metadata ?? {},
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "REFUND_ISSUED": {
+        const p = event.payload;
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "JOB_REFUNDED",
+              title: "Job refunded",
+              message: "A refund has been issued for your job payment.",
+              entityType: asEntity("PAYMENT"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+              metadata: p.metadata ?? {},
+            },
+            tx,
+          );
+        }
+        const adminIds = p.adminIds?.length ? p.adminIds : await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "JOB_REFUNDED",
+              title: "Job refunded",
+              message: `Refund issued for job ${p.jobId}.`,
+              entityType: asEntity("PAYMENT"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+              metadata: p.metadata ?? {},
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "FUNDS_RELEASED": {
+        const p = event.payload;
+        if (p.contractorId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "FUNDS_RELEASED",
+              title: "Funds released",
+              message: "Your payout transfer has been released.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:contractor`,
+              idempotencyKey: `${p.dedupeKeyBase}:contractor`,
+            },
+            tx,
+          );
+        }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "FUNDS_RELEASED",
+              title: "Funds released",
+              message: "Job payout has been released.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "FUNDS_RELEASED",
+              title: "Funds released",
+              message: "Payout transfers for your job were released successfully.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "FUNDS_RELEASE_ELIGIBLE": {
+        const p = event.payload;
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "SYSTEM_ALERT",
+              title: "Funds release eligible",
+              message: `Job ${p.jobId} is now eligible for release review.`,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "CONTRACTOR_COMPLETED": {
+        const p = event.payload;
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "CONTRACTOR_COMPLETED_JOB",
+              title: "Contractor marked job completed",
+              message: "Review completion details and confirm if work is complete.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            },
+            tx,
+          );
+        }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "CONTRACTOR_COMPLETED_JOB",
+              title: "Contractor completed assigned job",
+              message: "Job completion is pending job poster confirmation.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "JOB_STARTED": {
+        const p = event.payload;
+        if (p.contractorId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "JOB_STARTED",
+              title: "Job started",
+              message: "The appointment window is open. You can now mark this job complete once work is done.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:contractor`,
+              idempotencyKey: `${p.dedupeKeyBase}:contractor`,
+            },
+            tx,
+          );
+        }
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "JOB_STARTED",
+              title: "Job started",
+              message: "Your scheduled job has started.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "CONTRACTOR_MARKED_COMPLETE": {
+        const p = event.payload;
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "CONTRACTOR_COMPLETED_JOB",
+              title: "Contractor marked complete",
+              message: "The contractor marked this job complete. Review and confirm to finalize.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:poster`,
+              idempotencyKey: `${p.dedupeKeyBase}:poster`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "POSTER_MARKED_COMPLETE": {
+        const p = event.payload;
+        if (p.contractorId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "POSTER_ACCEPTED",
+              title: "Job poster confirmed completion",
+              message: "The job poster confirmed completion on this job.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:contractor`,
+              idempotencyKey: `${p.dedupeKeyBase}:contractor`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "JOB_COMPLETED_FINALIZED": {
+        const p = event.payload;
+        if (p.contractorId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "CONTRACTOR_COMPLETED_JOB",
+              title: "Job completion finalized",
+              message: "Both parties marked this job complete.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:contractor`,
+              idempotencyKey: `${p.dedupeKeyBase}:contractor`,
+            },
+            tx,
+          );
+        }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "CONTRACTOR_COMPLETED_JOB",
+              title: "Job completion finalized",
+              message: "A routed job has reached dual-confirm completion.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "SYSTEM_ALERT",
+              title: "Job completion finalized",
+              message: `Job ${p.jobId} reached dual-confirm completion.`,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKeyBase}:admin:${adminId}`,
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "NEW_MESSAGE": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.recipientUserId,
+            role: p.recipientRole,
+            type: "NEW_MESSAGE",
+            title: "New message",
+            message: "You received a new message on a job thread.",
+            entityType: asEntity("THREAD"),
+            entityId: p.threadId,
+            priority: "LOW",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+            metadata: { threadId: p.threadId, messageId: p.messageId, jobId: p.jobId },
+          },
+          tx,
+        );
+        return;
+      }
+
+      default: {
+        const _never: never = event;
+        return _never;
+      }
+    }
+  };
+
+  if (mode === "best_effort") {
+    try {
+      await run();
+    } catch (error) {
+      console.error("[NOTIFICATION_EVENT_MAPPER_ERROR]", {
+        eventType: event.type,
+        payload: event.payload,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  await run();
+}

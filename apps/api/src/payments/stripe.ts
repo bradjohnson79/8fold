@@ -7,6 +7,7 @@ export type PaymentIntentResult = {
   clientSecret: string;
   paymentIntentId: string;
   status: Stripe.PaymentIntent.Status;
+  currency: string;
 };
 
 /**
@@ -22,6 +23,8 @@ export async function createPaymentIntent(
     captureMethod?: "automatic" | "manual";
     confirmationMethod?: "automatic" | "manual";
     requestExtendedAuthorization?: boolean;
+    paymentMethodTypes?: Stripe.PaymentIntentCreateParams["payment_method_types"];
+    automaticPaymentMethodsEnabled?: boolean;
   }
 ): Promise<PaymentIntentResult> {
   if (!stripe) {
@@ -47,15 +50,21 @@ export async function createPaymentIntent(
           },
         }
       : undefined,
+  };
+
+  const hasExplicitPaymentMethodTypes = Array.isArray(opts.paymentMethodTypes) && opts.paymentMethodTypes.length > 0;
+  if (hasExplicitPaymentMethodTypes) {
+    createParams.payment_method_types = opts.paymentMethodTypes;
+  } else if (opts.automaticPaymentMethodsEnabled ?? true) {
     // Escrow-style approach:
     // - We capture funds into the platform account
     // - We DO NOT split at charge time (transfers happen later, controlled by backend)
-    automatic_payment_methods: { enabled: true },
-  };
+    createParams.automatic_payment_methods = { enabled: true };
+  }
 
   // Stripe can reject requests that combine automatic_payment_methods with explicit confirmation_method.
   // Keep this unset by default; only send when a caller explicitly asks for non-default behavior.
-  if (opts.confirmationMethod && opts.confirmationMethod !== "automatic") {
+  if (opts.confirmationMethod && opts.confirmationMethod !== "automatic" && !createParams.automatic_payment_methods) {
     createParams.confirmation_method = opts.confirmationMethod;
   }
 
@@ -68,7 +77,8 @@ export async function createPaymentIntent(
   return {
     clientSecret: paymentIntent.client_secret,
     paymentIntentId: paymentIntent.id,
-    status: paymentIntent.status
+    status: paymentIntent.status,
+    currency: String(paymentIntent.currency ?? ""),
   };
 }
 

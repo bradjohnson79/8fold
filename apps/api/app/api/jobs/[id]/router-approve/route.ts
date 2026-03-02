@@ -3,7 +3,7 @@ import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { getOrCreatePlatformUserId } from "../../../../../src/system/platformUser";
-import { releaseJobFunds } from "../../../../../src/payouts/releaseJobFunds";
+import { releaseFundsForJob } from "../../../../../src/services/v4/payouts/releaseFundsService";
 import { maybeCreateRouterReferralRewardForUser, trySettleRouterReward } from "../../../../../src/rewards/routerRewards";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
@@ -230,7 +230,7 @@ export async function POST(req: Request) {
     }
     // Release funds (Stripe Connect transfers). Best-effort: completion approval is authoritative even if payout fails.
     try {
-      await releaseJobFunds({ jobId: id, triggeredByUserId: user.userId });
+      await releaseFundsForJob({ jobId: id, actorRole: "ROUTER", actorId: user.userId });
     } catch {
       // Failure is reflected via TransferRecord + Job.payoutStatus; client can retry or admin can force retry.
     }
@@ -241,4 +241,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

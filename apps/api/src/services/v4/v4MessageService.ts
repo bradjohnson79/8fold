@@ -7,7 +7,7 @@ import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4Messages } from "@/db/schema/v4Message";
 import { jobs } from "@/db/schema/job";
-import { sendNotification } from "@/src/services/v4/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 export type ThreadSummary = {
   id: string;
@@ -268,18 +268,17 @@ export async function sendMessage(
     .set({ lastMessageAt: now })
     .where(eq(v4MessageThreads.id, threadId));
 
-  await sendNotification({
-    userId: toUserId,
-    role: fromUserId === t.jobPosterUserId ? "CONTRACTOR" : "JOB_POSTER",
+  await emitDomainEvent({
     type: "NEW_MESSAGE",
-    title: "New message",
-    message: "You received a new message on a job thread.",
-    entityType: "JOB",
-    entityId: t.jobId,
-    priority: "LOW",
-    createdAt: now,
-    idempotencyKey: `new_message:${id}:${toUserId}`,
-    metadata: { threadId, messageId: id },
+    payload: {
+      jobId: t.jobId,
+      threadId,
+      messageId: id,
+      recipientUserId: toUserId,
+      recipientRole: fromUserId === t.jobPosterUserId ? "CONTRACTOR" : "JOB_POSTER",
+      createdAt: now,
+      dedupeKey: `new_message:${id}:${toUserId}`,
+    },
   });
 
   return { id };
