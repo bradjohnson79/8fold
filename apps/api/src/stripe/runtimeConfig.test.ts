@@ -30,4 +30,16 @@ describe("getStripeRuntimeConfig", () => {
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe("STRIPE_CONFIG_MISSING");
   });
+
+  it("returns ok when secret key is present but publishable key is absent on API", () => {
+    const result = getStripeRuntimeConfig({
+      STRIPE_SECRET_KEY: "sk_test_123",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.skMode).toBe("test");
+    expect(result.pkMode).toBe("unknown");
+    expect(result.secretKeyPresent).toBe(true);
+    expect(result.publishableKeyPresent).toBe(false);
+  });
 });
