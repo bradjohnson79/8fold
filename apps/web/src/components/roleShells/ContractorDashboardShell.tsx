@@ -11,7 +11,7 @@ export function ContractorDashboardShell({ children }: { children: React.ReactNo
     { href: "/app/contractor", label: "Overview" },
     { href: "/app/contractor/jobs", label: "Job assignments" },
     { href: "/app/contractor/repeat-requests", label: "Repeat requests" },
-    { href: "/app/contractor/messages", label: "Messages" },
+    { href: "/app/contractor/messages", label: "Messenger" },
     { href: "/app/contractor/incentives", label: "Incentives" },
     { href: "/app/contractor/support", label: "Support" },
     { href: "/app/contractor/support/inbox", label: "Support Inbox", badge: hasUnread ? ({ kind: "dot" as const } as const) : undefined },

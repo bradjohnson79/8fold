@@ -91,7 +91,7 @@ export default function ContractorJobDetailPage() {
     setProgressError(null);
     setProgressAction("complete");
     try {
-      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(jobId)}/complete`, {
+      const resp = await fetch(`/api/web/v4/contractor/jobs/${encodeURIComponent(jobId)}/mark-complete`, {
         method: "POST",
         credentials: "include",
       });

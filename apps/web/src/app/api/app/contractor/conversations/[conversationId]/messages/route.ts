@@ -1,29 +1,23 @@
-import { NextResponse } from "next/server";
-import { requireApiToken, requireSession } from "@/server/auth/requireSession";
-import { apiFetch } from "@/server/api/apiClient";
+import { legacyRouteFrozen } from "@/lib/legacyFreeze";
 
-export async function POST(req: Request) {
-  try {
-    await requireSession(req);
-    const token = await requireApiToken();
+const NEXT_ROUTE = "/api/web/v4/contractor/messages/thread/{threadId}/send";
 
-    const conversationId = new URL(req.url).pathname.split("/").slice(-2)[0] ?? "";
-    const contentType = req.headers.get("content-type") ?? "application/json";
-    const body = await req.arrayBuffer();
-    const resp = await apiFetch({
-      path: `/api/web/contractor/conversations/${encodeURIComponent(conversationId)}/messages`,
-      method: "POST",
-      sessionToken: token,
-      headers: { "content-type": contentType },
-      body,
-    });
-    const text = await resp.text();
-    return new NextResponse(text, {
-      status: resp.status,
-      headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
-    });
-  } catch (err) {
-    const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Failed" }, { status });
-  }
+export async function GET() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
+
+export async function POST() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
+
+export async function PUT() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
+
+export async function PATCH() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
+
+export async function DELETE() {
+  return legacyRouteFrozen(NEXT_ROUTE);
 }

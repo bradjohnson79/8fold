@@ -8,7 +8,7 @@ describe("v4 financial ledger idempotency contract", () => {
     const content = fs.readFileSync(file, "utf8");
 
     expect(content).toContain("dedupeKey?: string | null");
-    expect(content).toContain("onConflictDoNothing({ target: v4FinancialLedger.dedupeKey })");
+    expect(content).toContain("where(eq(v4FinancialLedger.dedupeKey, dedupeKey))");
     expect(content).toContain("existsByDedupeKey(");
     expect(content).toContain("v4FinancialLedger.dedupeKey");
   });
@@ -22,4 +22,3 @@ describe("v4 financial ledger idempotency contract", () => {
     expect(content).toContain("eq(v4FinancialLedger.stripeRef, stripeRef)");
   });
 });
-

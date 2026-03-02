@@ -31,6 +31,17 @@ type Thread = {
   appointmentAcceptedAt?: string | null;
 };
 
+type ScoreAppraisalState = {
+  pending: boolean;
+  jobsEvaluated: number;
+  minimumRequired: number;
+  appraisal?: {
+    avgCooperation: number | null;
+    avgCommunication: number | null;
+    totalScore: number | null;
+  };
+} | null;
+
 function formatMoney(centsLike: number | null | undefined) {
   const cents = Math.max(0, Number(centsLike ?? 0) || 0);
   return `$${(cents / 100).toFixed(2)}`;
@@ -48,14 +59,17 @@ export default function JobPosterSummaryPage() {
   const [summary, setSummary] = React.useState<Summary | null>(null);
   const [jobs, setJobs] = React.useState<JobItem[]>([]);
   const [assigned, setAssigned] = React.useState<Thread | null>(null);
+  const [scoreAppraisal, setScoreAppraisal] = React.useState<ScoreAppraisalState>(null);
 
   const [summaryLoading, setSummaryLoading] = React.useState(true);
   const [jobsLoading, setJobsLoading] = React.useState(true);
   const [assignedLoading, setAssignedLoading] = React.useState(true);
+  const [appraisalLoading, setAppraisalLoading] = React.useState(true);
 
   const [summaryError, setSummaryError] = React.useState<string | null>(null);
   const [jobsError, setJobsError] = React.useState<string | null>(null);
   const [assignedError, setAssignedError] = React.useState<string | null>(null);
+  const [appraisalError, setAppraisalError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [accepting, setAccepting] = React.useState(false);
 
@@ -131,11 +145,35 @@ export default function JobPosterSummaryPage() {
     }
   }, []);
 
+  const loadAppraisal = React.useCallback(async () => {
+    setAppraisalLoading(true);
+    setAppraisalError(null);
+    try {
+      const resp = await fetch("/api/web/v4/score-appraisal/me", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = (await resp.json().catch(() => ({}))) as { appraisal?: ScoreAppraisalState; error?: string };
+      if (!resp.ok) {
+        setAppraisalError(data.error ?? "Failed to load appraisal");
+        setScoreAppraisal(null);
+        return;
+      }
+      setScoreAppraisal(data.appraisal ?? null);
+    } catch {
+      setAppraisalError("Failed to load appraisal");
+      setScoreAppraisal(null);
+    } finally {
+      setAppraisalLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     void loadSummary();
     void loadJobs();
     void loadAssigned();
-  }, [loadSummary, loadJobs, loadAssigned]);
+    void loadAppraisal();
+  }, [loadSummary, loadJobs, loadAssigned, loadAppraisal]);
 
   async function handleAcceptAppointment(jobId: string) {
     if (accepting) return;
@@ -197,6 +235,17 @@ export default function JobPosterSummaryPage() {
       subtitle: "Assigned or scheduled jobs",
       loading: summaryLoading,
       error: summaryError,
+    },
+    {
+      title: "AI Score Appraisal",
+      value: appraisalLoading
+        ? "Loading..."
+        : scoreAppraisal?.pending
+          ? `Pending (${scoreAppraisal.jobsEvaluated}/${scoreAppraisal.minimumRequired})`
+          : `${scoreAppraisal?.appraisal?.totalScore ?? "—"} / 10`,
+      subtitle: "Internal only",
+      loading: false,
+      error: appraisalError,
     },
   ];
 

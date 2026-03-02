@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/db/drizzle";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
@@ -15,6 +15,8 @@ export type ThreadSummary = {
   jobTitle: string | null;
   jobPosterUserId: string;
   contractorUserId: string;
+  status: string;
+  endedAt: string | null;
   lastMessageAt: string;
   unreadCount?: number;
   jobStatus?: string | null;
@@ -38,66 +40,15 @@ export type ThreadSummary = {
 
 export type MessageRow = {
   id: string;
+  threadId: string | null;
   jobId: string;
-  fromUserId: string;
-  toUserId: string;
+  fromUserId: string | null;
+  toUserId: string | null;
+  senderRole: string;
   body: string;
   createdAt: Date;
   readAt: Date | null;
 };
-
-export async function listThreadsForJobPoster(userId: string): Promise<ThreadSummary[]> {
-  const rows = await db
-    .select({
-      id: v4MessageThreads.id,
-      jobId: v4MessageThreads.jobId,
-      jobPosterUserId: v4MessageThreads.jobPosterUserId,
-      contractorUserId: v4MessageThreads.contractorUserId,
-      lastMessageAt: v4MessageThreads.lastMessageAt,
-      jobTitle: jobs.title,
-      jobStatus: jobs.status,
-      jobDescription: jobs.scope,
-      tradeCategory: jobs.trade_category,
-      availability: jobs.availability,
-      timeWindow: jobs.time_window,
-      appointmentAt: jobs.appointment_at,
-      appointmentAcceptedAt: jobs.appointment_accepted_at,
-      contractorName: contractorProfilesV4.contactName,
-      contractorBusinessName: contractorProfilesV4.businessName,
-      contractorYearsExperience: contractorProfilesV4.yearsExperience,
-      contractorCity: contractorProfilesV4.city,
-      contractorRegion: contractorAccounts.regionCode,
-    })
-    .from(v4MessageThreads)
-    .innerJoin(jobs, eq(jobs.id, v4MessageThreads.jobId))
-    .leftJoin(contractorProfilesV4, eq(contractorProfilesV4.userId, v4MessageThreads.contractorUserId))
-    .leftJoin(contractorAccounts, eq(contractorAccounts.userId, v4MessageThreads.contractorUserId))
-    .where(eq(v4MessageThreads.jobPosterUserId, userId))
-    .orderBy(desc(v4MessageThreads.lastMessageAt));
-
-  return rows.map((r) => ({
-    id: r.id,
-    jobId: r.jobId,
-    jobTitle: r.jobTitle ?? null,
-    jobPosterUserId: r.jobPosterUserId,
-    contractorUserId: r.contractorUserId,
-    lastMessageAt: r.lastMessageAt.toISOString(),
-    jobStatus: r.jobStatus ?? null,
-    jobDescription: r.jobDescription ?? null,
-    tradeCategory: r.tradeCategory ?? null,
-    availability: toAvailability(r.availability, r.timeWindow),
-    contractorName: toNonEmpty(r.contractorName) || "Assigned Contractor",
-    contractorBusinessName: toNonEmpty(r.contractorBusinessName) || "Contractor Business",
-    contractorYearsExperience:
-      typeof r.contractorYearsExperience === "number" && Number.isFinite(r.contractorYearsExperience)
-        ? r.contractorYearsExperience
-        : null,
-    contractorCity: toNonEmpty(r.contractorCity) || null,
-    contractorRegion: toNonEmpty(r.contractorRegion) || null,
-    appointmentAt: r.appointmentAt?.toISOString?.() ?? null,
-    appointmentAcceptedAt: r.appointmentAcceptedAt?.toISOString?.() ?? null,
-  }));
-}
 
 function toNonEmpty(value: string | null | undefined): string {
   return String(value ?? "").trim();
@@ -126,6 +77,85 @@ function computeContractorAmountCents(input: {
   return Math.round(total * 0.75);
 }
 
+function mapThreadBase<T extends {
+  id: string;
+  jobId: string;
+  jobTitle: string | null;
+  jobPosterUserId: string;
+  contractorUserId: string;
+  status: string;
+  endedAt: Date | null;
+  lastMessageAt: Date;
+  jobStatus: string | null;
+  jobDescription: string | null;
+  tradeCategory: string | null;
+  availability: unknown;
+  timeWindow: string | null;
+  appointmentAt: Date | null;
+  appointmentAcceptedAt: Date | null;
+}>(r: T) {
+  return {
+    id: r.id,
+    jobId: r.jobId,
+    jobTitle: r.jobTitle ?? null,
+    jobPosterUserId: r.jobPosterUserId,
+    contractorUserId: r.contractorUserId,
+    status: String(r.status ?? "ACTIVE"),
+    endedAt: r.endedAt?.toISOString?.() ?? null,
+    lastMessageAt: r.lastMessageAt.toISOString(),
+    jobStatus: r.jobStatus ?? null,
+    jobDescription: r.jobDescription ?? null,
+    tradeCategory: r.tradeCategory ?? null,
+    availability: toAvailability(r.availability, r.timeWindow),
+    appointmentAt: r.appointmentAt?.toISOString?.() ?? null,
+    appointmentAcceptedAt: r.appointmentAcceptedAt?.toISOString?.() ?? null,
+  };
+}
+
+export async function listThreadsForJobPoster(userId: string): Promise<ThreadSummary[]> {
+  const rows = await db
+    .select({
+      id: v4MessageThreads.id,
+      jobId: v4MessageThreads.jobId,
+      jobPosterUserId: v4MessageThreads.jobPosterUserId,
+      contractorUserId: v4MessageThreads.contractorUserId,
+      status: v4MessageThreads.status,
+      endedAt: v4MessageThreads.endedAt,
+      lastMessageAt: v4MessageThreads.lastMessageAt,
+      jobTitle: jobs.title,
+      jobStatus: jobs.status,
+      jobDescription: jobs.scope,
+      tradeCategory: jobs.trade_category,
+      availability: jobs.availability,
+      timeWindow: jobs.time_window,
+      appointmentAt: jobs.appointment_at,
+      appointmentAcceptedAt: jobs.appointment_accepted_at,
+      contractorName: contractorProfilesV4.contactName,
+      contractorBusinessName: contractorProfilesV4.businessName,
+      contractorYearsExperience: contractorProfilesV4.yearsExperience,
+      contractorCity: contractorProfilesV4.city,
+      contractorRegion: contractorAccounts.regionCode,
+    })
+    .from(v4MessageThreads)
+    .innerJoin(jobs, eq(jobs.id, v4MessageThreads.jobId))
+    .leftJoin(contractorProfilesV4, eq(contractorProfilesV4.userId, v4MessageThreads.contractorUserId))
+    .leftJoin(contractorAccounts, eq(contractorAccounts.userId, v4MessageThreads.contractorUserId))
+    .where(eq(v4MessageThreads.jobPosterUserId, userId))
+    .orderBy(desc(v4MessageThreads.lastMessageAt));
+
+  return rows.map((r) => ({
+    ...mapThreadBase(r),
+    contractorName: toNonEmpty(r.contractorName) || "Assigned Contractor",
+    contractorBusinessName: toNonEmpty(r.contractorBusinessName) || "Contractor Business",
+    contractorYearsExperience:
+      typeof r.contractorYearsExperience === "number" && Number.isFinite(r.contractorYearsExperience)
+        ? r.contractorYearsExperience
+        : null,
+    contractorCity: toNonEmpty(r.contractorCity) || null,
+    contractorRegion: toNonEmpty(r.contractorRegion) || null,
+  }));
+}
+
 export async function listThreadsForContractor(userId: string): Promise<ThreadSummary[]> {
   const rows = await db
     .select({
@@ -133,6 +163,8 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
       jobId: v4MessageThreads.jobId,
       jobPosterUserId: v4MessageThreads.jobPosterUserId,
       contractorUserId: v4MessageThreads.contractorUserId,
+      status: v4MessageThreads.status,
+      endedAt: v4MessageThreads.endedAt,
       lastMessageAt: v4MessageThreads.lastMessageAt,
       jobTitle: jobs.title,
       jobStatus: jobs.status,
@@ -162,18 +194,9 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
   return rows.map((r) => {
     const fallbackAddress = [toNonEmpty(r.city), toNonEmpty(r.region)].filter(Boolean).join(", ");
     return {
-      id: r.id,
-      jobId: r.jobId,
-      jobTitle: r.jobTitle ?? null,
-      jobPosterUserId: r.jobPosterUserId,
-      contractorUserId: r.contractorUserId,
-      lastMessageAt: r.lastMessageAt.toISOString(),
-      jobStatus: r.jobStatus ?? null,
-      jobDescription: r.jobDescription ?? null,
+      ...mapThreadBase(r),
       jobPosterFirstName: r.jobPosterFirstName ?? null,
       jobPosterLastName: r.jobPosterLastName ?? null,
-      tradeCategory: r.tradeCategory ?? null,
-      availability: toAvailability(r.availability, r.timeWindow),
       contractorAmount: computeContractorAmountCents({
         contractorPayoutCents: r.contractorPayoutCents,
         totalAmountCents: r.totalAmountCents,
@@ -182,16 +205,16 @@ export async function listThreadsForContractor(userId: string): Promise<ThreadSu
       address: toNonEmpty(r.address) || fallbackAddress || null,
       latitude: typeof r.latitude === "number" && Number.isFinite(r.latitude) ? r.latitude : null,
       longitude: typeof r.longitude === "number" && Number.isFinite(r.longitude) ? r.longitude : null,
-      appointmentAt: r.appointmentAt?.toISOString?.() ?? null,
-      appointmentAcceptedAt: r.appointmentAcceptedAt?.toISOString?.() ?? null,
     };
   });
 }
 
-export async function getThreadMessagesByThreadId(threadId: string, userId: string): Promise<MessageRow[]> {
+async function resolveParticipantThread(threadId: string, userId: string) {
   const thread = await db
     .select({
+      id: v4MessageThreads.id,
       jobId: v4MessageThreads.jobId,
+      status: v4MessageThreads.status,
       jobPosterUserId: v4MessageThreads.jobPosterUserId,
       contractorUserId: v4MessageThreads.contractorUserId,
     })
@@ -199,31 +222,113 @@ export async function getThreadMessagesByThreadId(threadId: string, userId: stri
     .where(eq(v4MessageThreads.id, threadId))
     .limit(1);
 
-  const t = thread[0];
-  if (!t || (t.jobPosterUserId !== userId && t.contractorUserId !== userId)) {
-    return [];
+  const t = thread[0] ?? null;
+  if (!t || (t.jobPosterUserId !== userId && t.contractorUserId !== userId)) return null;
+  return t;
+}
+
+export async function getThreadMessagesByThreadId(threadId: string, userId: string): Promise<MessageRow[]> {
+  const thread = await resolveParticipantThread(threadId, userId);
+  if (!thread) return [];
+
+  const byThreadRows = await db
+    .select({
+      id: v4Messages.id,
+      threadId: v4Messages.threadId,
+      jobId: v4Messages.jobId,
+      fromUserId: v4Messages.fromUserId,
+      toUserId: v4Messages.toUserId,
+      senderRole: v4Messages.senderRole,
+      body: v4Messages.body,
+      createdAt: v4Messages.createdAt,
+      readAt: v4Messages.readAt,
+    })
+    .from(v4Messages)
+    .where(eq(v4Messages.threadId, thread.id))
+    .orderBy(asc(v4Messages.createdAt));
+
+  if (byThreadRows.length > 0) {
+    return byThreadRows.map((m) => ({
+      id: m.id,
+      threadId: m.threadId,
+      jobId: m.jobId,
+      fromUserId: m.fromUserId,
+      toUserId: m.toUserId,
+      senderRole: m.senderRole,
+      body: m.body,
+      createdAt: m.createdAt,
+      readAt: m.readAt,
+    }));
   }
 
-  const participants = new Set([t.jobPosterUserId, t.contractorUserId]);
-  const allMsgs = await db
-    .select()
+  const participants = new Set([thread.jobPosterUserId, thread.contractorUserId]);
+  const fallbackRows = await db
+    .select({
+      id: v4Messages.id,
+      threadId: v4Messages.threadId,
+      jobId: v4Messages.jobId,
+      fromUserId: v4Messages.fromUserId,
+      toUserId: v4Messages.toUserId,
+      senderRole: v4Messages.senderRole,
+      body: v4Messages.body,
+      createdAt: v4Messages.createdAt,
+      readAt: v4Messages.readAt,
+    })
     .from(v4Messages)
-    .where(eq(v4Messages.jobId, t.jobId))
-    .orderBy(v4Messages.createdAt);
+    .where(eq(v4Messages.jobId, thread.jobId))
+    .orderBy(asc(v4Messages.createdAt));
 
-  const filtered = allMsgs.filter(
-    (m) => participants.has(m.fromUserId) && participants.has(m.toUserId)
-  );
+  return fallbackRows
+    .filter((m) => {
+      if (!m.fromUserId || !m.toUserId) return false;
+      return participants.has(m.fromUserId) && participants.has(m.toUserId);
+    })
+    .map((m) => ({
+      id: m.id,
+      threadId: m.threadId,
+      jobId: m.jobId,
+      fromUserId: m.fromUserId,
+      toUserId: m.toUserId,
+      senderRole: m.senderRole,
+      body: m.body,
+      createdAt: m.createdAt,
+      readAt: m.readAt,
+    }));
+}
 
-  return filtered.map((m) => ({
-    id: m.id,
-    jobId: m.jobId,
-    fromUserId: m.fromUserId,
-    toUserId: m.toUserId,
-    body: m.body,
-    createdAt: m.createdAt,
-    readAt: m.readAt,
-  }));
+export async function appendSystemMessage(threadId: string, body: string): Promise<{ id: string }> {
+  const trimmed = String(body ?? "").trim();
+  if (!trimmed) throw new Error("System message body required");
+
+  const thread = await db
+    .select({ id: v4MessageThreads.id, jobId: v4MessageThreads.jobId })
+    .from(v4MessageThreads)
+    .where(eq(v4MessageThreads.id, threadId))
+    .limit(1);
+
+  const t = thread[0] ?? null;
+  if (!t) throw new Error("Thread not found");
+
+  const id = randomUUID();
+  const now = new Date();
+
+  await db.insert(v4Messages).values({
+    id,
+    threadId: t.id,
+    jobId: t.jobId,
+    fromUserId: null,
+    toUserId: null,
+    senderRole: "SYSTEM",
+    body: trimmed,
+    createdAt: now,
+  });
+
+  await db
+    .update(v4MessageThreads)
+    .set({ lastMessageAt: now })
+    .where(eq(v4MessageThreads.id, t.id));
+
+  return { id };
 }
 
 export async function sendMessage(
@@ -236,7 +341,9 @@ export async function sendMessage(
 
   const thread = await db
     .select({
+      id: v4MessageThreads.id,
       jobId: v4MessageThreads.jobId,
+      status: v4MessageThreads.status,
       jobPosterUserId: v4MessageThreads.jobPosterUserId,
       contractorUserId: v4MessageThreads.contractorUserId,
     })
@@ -244,21 +351,30 @@ export async function sendMessage(
     .where(eq(v4MessageThreads.id, threadId))
     .limit(1);
 
-  const t = thread[0];
+  const t = thread[0] ?? null;
   if (!t) throw new Error("Thread not found");
   if (t.jobPosterUserId !== fromUserId && t.contractorUserId !== fromUserId) {
     throw new Error("Not a participant");
   }
+  if (String(t.status ?? "").toUpperCase() === "ENDED") {
+    throw Object.assign(new Error("Conversation Ended"), {
+      status: 403,
+      code: "V4_CONVERSATION_ENDED",
+    });
+  }
 
   const toUserId = fromUserId === t.jobPosterUserId ? t.contractorUserId : t.jobPosterUserId;
+  const senderRole = fromUserId === t.jobPosterUserId ? "POSTER" : "CONTRACTOR";
   const id = randomUUID();
   const now = new Date();
 
   await db.insert(v4Messages).values({
     id,
+    threadId: t.id,
     jobId: t.jobId,
     fromUserId,
     toUserId,
+    senderRole,
     body: trimmed,
     createdAt: now,
   });
@@ -266,7 +382,7 @@ export async function sendMessage(
   await db
     .update(v4MessageThreads)
     .set({ lastMessageAt: now })
-    .where(eq(v4MessageThreads.id, threadId));
+    .where(eq(v4MessageThreads.id, t.id));
 
   await emitDomainEvent({
     type: "NEW_MESSAGE",
@@ -310,6 +426,8 @@ export async function getOrCreateThread(
     jobId,
     jobPosterUserId,
     contractorUserId,
+    status: "ACTIVE",
+    endedAt: null,
     lastMessageAt: now,
     createdAt: now,
   });

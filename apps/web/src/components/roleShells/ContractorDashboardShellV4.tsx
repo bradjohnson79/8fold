@@ -9,7 +9,7 @@ export function ContractorDashboardShellV4({ children }: { children: React.React
     { href: "/dashboard/contractor/invites", label: "Invites" },
     { href: "/dashboard/contractor/jobs", label: "Jobs" },
     { href: "/dashboard/contractor/account-status", label: "Account Status" },
-    { href: "/dashboard/contractor/messages", label: "Messages" },
+    { href: "/dashboard/contractor/messages", label: "Messenger" },
     { href: "/dashboard/contractor/notifications", label: "Notifications" },
     { href: "/dashboard/contractor/profile", label: "Profile" },
     { href: "/dashboard/contractor/payment", label: "Payment Setup" },

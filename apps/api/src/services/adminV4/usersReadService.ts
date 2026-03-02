@@ -22,6 +22,9 @@ import {
   payoutMethods,
   routerProfilesV4,
   routers,
+  scoreAppraisals,
+  aiEnforcementEvents,
+  disputes,
   users,
   v4ContractorStrikes,
   jobDispatches,
@@ -479,6 +482,69 @@ async function enforcementForUser(userId: string, includeStrikes: boolean) {
   return { flags, strikes };
 }
 
+async function scoreAppraisalForUser(userId: string, role: "CONTRACTOR" | "POSTER") {
+  const rows = await db
+    .select({
+      jobsEvaluated: scoreAppraisals.jobsEvaluated,
+      avgPunctuality: scoreAppraisals.avgPunctuality,
+      avgCommunication: scoreAppraisals.avgCommunication,
+      avgQuality: scoreAppraisals.avgQuality,
+      avgCooperation: scoreAppraisals.avgCooperation,
+      totalScore: scoreAppraisals.totalScore,
+      version: scoreAppraisals.version,
+      updatedAt: scoreAppraisals.updatedAt,
+    })
+    .from(scoreAppraisals)
+    .where(and(eq(scoreAppraisals.userId, userId), eq(scoreAppraisals.role, role)))
+    .limit(1);
+
+  const row = rows[0] ?? null;
+  if (!row || Number(row.jobsEvaluated ?? 0) < 3 || row.totalScore == null) {
+    return {
+      pending: true,
+      jobsEvaluated: Number(row?.jobsEvaluated ?? 0),
+      minimumRequired: 3,
+    };
+  }
+
+  return {
+    pending: false,
+    jobsEvaluated: Number(row.jobsEvaluated ?? 0),
+    minimumRequired: 3,
+    appraisal: {
+      avgPunctuality: row.avgPunctuality ?? null,
+      avgCommunication: row.avgCommunication ?? null,
+      avgQuality: row.avgQuality ?? null,
+      avgCooperation: row.avgCooperation ?? null,
+      totalScore: row.totalScore ?? null,
+    },
+    version: row.version,
+    updatedAt: row.updatedAt?.toISOString?.() ?? null,
+  };
+}
+
+async function aiEnforcementForUser(userId: string) {
+  const [eventRows, disputeRows] = await Promise.all([
+    db
+      .select({
+        total: count(),
+        latestActionTaken: sql<string | null>`max(${aiEnforcementEvents.actionTaken})`,
+      })
+      .from(aiEnforcementEvents)
+      .where(eq(aiEnforcementEvents.userId, userId)),
+    db
+      .select({ total: count() })
+      .from(disputes)
+      .where(eq(disputes.userId, userId)),
+  ]);
+
+  return {
+    events: Number(eventRows[0]?.total ?? 0),
+    disputes: Number(disputeRows[0]?.total ?? 0),
+    latestActionTaken: eventRows[0]?.latestActionTaken ?? null,
+  };
+}
+
 function accountStatusFromUser(user: {
   status: string;
   suspendedUntil: Date | null;
@@ -588,10 +654,12 @@ export async function getContractorDetail(userId: string): Promise<AdminRoleDeta
     Boolean(stripeMethod?.payoutsEnabled) ||
     ["ACTIVE", "VERIFIED", "READY"].includes(String(row.payoutStatus ?? "").toUpperCase());
 
-  const [recentJobs, payoutReadiness, enforcement] = await Promise.all([
+  const [recentJobs, payoutReadiness, enforcement, scoreAppraisal, aiEnforcement] = await Promise.all([
     recentJobsForContractor(userId),
     payoutReadinessForUser(userId, String(row.status ?? "ACTIVE"), stripeConnected),
     enforcementForUser(userId, true),
+    scoreAppraisalForUser(userId, "CONTRACTOR"),
+    aiEnforcementForUser(userId),
   ]);
 
   const profile: AdminUserProfile = {
@@ -631,6 +699,8 @@ export async function getContractorDetail(userId: string): Promise<AdminRoleDeta
     accountStatus: accountStatusFromUser(row),
     recentJobs,
     payoutReadiness,
+    scoreAppraisal,
+    aiEnforcement,
     enforcement: {
       strikes: enforcement.strikes,
       flags: enforcement.flags,
@@ -692,10 +762,12 @@ export async function getJobPosterDetail(userId: string): Promise<AdminRoleDetai
   const stripeVerified =
     stripeConnected &&
     ["CONNECTED", "ACTIVE"].includes(String(row.stripeStatus ?? "").toUpperCase());
-  const [recentJobs, payoutReadiness, enforcement] = await Promise.all([
+  const [recentJobs, payoutReadiness, enforcement, scoreAppraisal, aiEnforcement] = await Promise.all([
     recentJobsForJobPoster(userId),
     payoutReadinessForUser(userId, String(row.status ?? "ACTIVE"), stripeConnected),
     enforcementForUser(userId, false),
+    scoreAppraisalForUser(userId, "POSTER"),
+    aiEnforcementForUser(userId),
   ]);
 
   const profile: AdminUserProfile = {
@@ -733,6 +805,8 @@ export async function getJobPosterDetail(userId: string): Promise<AdminRoleDetai
     accountStatus: accountStatusFromUser(row),
     recentJobs,
     payoutReadiness,
+    scoreAppraisal,
+    aiEnforcement,
     enforcement: {
       flags: enforcement.flags,
       suspendedUntil: asIso(row.suspendedUntil),

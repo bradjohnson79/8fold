@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { payoutMethods } from "@/db/schema/payoutMethod";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
+import { scoreAppraisals } from "@/db/schema/scoreAppraisal";
 import { users } from "@/db/schema/user";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { haversineKm } from "@/src/jobs/geo";
@@ -183,6 +184,23 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
           .orderBy(desc(payoutMethods.createdAt))
       : [];
 
+  const scoreRows =
+    candidateUserIds.length > 0
+      ? await db
+          .select({
+            userId: scoreAppraisals.userId,
+            totalScore: scoreAppraisals.totalScore,
+          })
+          .from(scoreAppraisals)
+          .where(
+            and(
+              inArray(scoreAppraisals.userId, candidateUserIds as any),
+              eq(scoreAppraisals.role, "CONTRACTOR"),
+              gte(scoreAppraisals.jobsEvaluated, 3),
+            ),
+          )
+      : [];
+
   const payoutByUserId = new Map<
     string,
     {
@@ -199,9 +217,16 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
     });
   }
 
+  const scoreByUserId = new Map<string, number | null>();
+  for (const row of scoreRows) {
+    if (scoreByUserId.has(row.userId)) continue;
+    const v = Number(row.totalScore ?? NaN);
+    scoreByUserId.set(row.userId, Number.isFinite(v) ? v : null);
+  }
+
   const jobTradeCategory = String(job.tradeCategory ?? "").trim().toUpperCase();
 
-  const contractors: EligibleContractor[] = [];
+  const ranked: Array<EligibleContractor & { internalScore: number | null }> = [];
   for (const candidate of candidateRows) {
     if (invitedUserIds.has(candidate.userId)) continue;
     if (candidate.userStatus !== "ACTIVE") continue;
@@ -242,7 +267,10 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
     );
     if (distanceKm > radiusKm) continue;
 
-    contractors.push({
+    const internalScore = scoreByUserId.get(candidate.userId) ?? null;
+    if (internalScore != null && internalScore < 5) continue;
+
+    ranked.push({
       contractorId: candidate.userId,
       businessName: candidate.businessName?.trim() || candidate.contactName?.trim() || "Contractor",
       contactName: candidate.contactName?.trim() || candidate.businessName?.trim() || "Contractor",
@@ -251,10 +279,22 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
       city: candidate.city?.trim() || "",
       stripeVerified: true,
       distanceKm,
+      internalScore,
     });
   }
 
-  contractors.sort((a, b) => a.distanceKm - b.distanceKm || a.businessName.localeCompare(b.businessName));
+  ranked.sort((a, b) => {
+    const tier = (score: number | null) => {
+      if (score == null) return 1; // pending (<3 jobs) stays neutral
+      if (score >= 7) return 0; // top of list
+      return 2; // 5.0 - 6.9 bottom bucket
+    };
+    const tierDiff = tier(a.internalScore) - tier(b.internalScore);
+    if (tierDiff !== 0) return tierDiff;
+    return a.distanceKm - b.distanceKm || a.businessName.localeCompare(b.businessName);
+  });
+
+  const contractors: EligibleContractor[] = ranked.map(({ internalScore: _internalScore, ...publicRow }) => publicRow);
 
   const contractorPayoutCents = Number(job.contractorPayoutCents ?? 0);
   const routerEarningsCents = Number(job.routerEarningsCents ?? 0);

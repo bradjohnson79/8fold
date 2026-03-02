@@ -17,9 +17,11 @@ export async function GET(
       ok: true,
       messages: messages.map((m) => ({
         id: m.id,
+        threadId: m.threadId,
         jobId: m.jobId,
         fromUserId: m.fromUserId,
         toUserId: m.toUserId,
+        senderRole: m.senderRole,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
         readAt: m.readAt?.toISOString() ?? null,
