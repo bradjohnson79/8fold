@@ -138,65 +138,101 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   const uploadIds = images.map((i) => i.uploadId);
 
   const now = new Date();
-  const jobId = String(payment.modelAJobId ?? payment.provisionalJobId ?? "").trim() || randomUUID();
+  const requestedJobId = String(payment.modelAJobId ?? payment.provisionalJobId ?? "").trim();
+  let jobId = requestedJobId || randomUUID();
   const stripeChargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null;
+  if (requestedJobId) {
+    const existingByIdRows = await db
+      .select({
+        id: jobs.id,
+        jobPosterUserId: jobs.job_poster_user_id,
+        stripePaymentIntentId: jobs.stripe_payment_intent_id,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, requestedJobId))
+      .limit(1);
+    const existingById = existingByIdRows[0] ?? null;
+    if (existingById?.id) {
+      if (existingById.stripePaymentIntentId === paymentIntentId) {
+        if (existingById.jobPosterUserId !== userId) {
+          throw Object.assign(new Error("Payment intent already mapped to a different user."), { status: 409 });
+        }
+        return { jobId: existingById.id, created: false };
+      }
+      // Retry-safe: avoid duplicate PK if a provisional ID was re-used across attempts.
+      jobId = randomUUID();
+    }
+  }
 
   await db.transaction(async (tx) => {
-    await tx.insert(jobs).values({
-      id: jobId,
-      status: "OPEN_FOR_ROUTING" as any,
-      archived: false,
-      title,
-      scope,
-      region,
-      country: countryCode as any,
-      country_code: countryCode as any,
-      state_code: stateCode,
-      region_code: stateCode,
-      city,
-      postal_code: postalCode,
-      address_full: address,
-      lat,
-      lng: lon,
-      province: stateCode,
-      is_regional: isRegional,
-      currency: pricingResult.currency as any,
-      payment_currency: pricingResult.paymentCurrency,
-      appraisal_subtotal_cents: pricingResult.appraisalSubtotalCents,
-      regional_fee_cents: pricingResult.regionalFeeCents,
-      tax_rate_bps: pricingResult.taxRateBps,
-      tax_amount_cents: pricingResult.taxCents,
-      total_amount_cents: pricingResult.totalChargeCents,
-      amount_cents: pricingResult.totalChargeCents,
-      labor_total_cents: pricingResult.legacy.laborTotalCents,
-      materials_total_cents: 0,
-      transaction_fee_cents: pricingResult.estimatedProcessingFeeCents,
-      price_adjustment_cents: pricingResult.legacy.priceAdjustmentCents,
-      stripe_payment_intent_id: paymentIntentId,
-      stripe_payment_intent_status: String(pi.status ?? ""),
-      stripe_charge_id: stripeChargeId,
-      payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
-      stripe_authorized_at: now,
-      stripe_paid_at: isCapturedCharge ? now : null,
-      escrow_locked_at: isCapturedCharge ? now : null,
-      funds_secured_at: isCapturedCharge ? now : null,
-      funded_at: isCapturedCharge ? now : null,
-      payment_captured_at: isCapturedCharge ? now : null,
-      job_poster_user_id: userId,
-      job_type: (isRegional ? "regional" : "urban") as any,
-      trade_category: tradeCategory as any,
-      service_type: "handyman",
-      availability: availability as any,
-      posted_at: now,
-      published_at: now,
-      created_at: now,
-      updated_at: now,
-      price_median_cents: pricingResult.appraisalSubtotalCents,
-      contractor_payout_cents: pricingResult.contractorPayoutCents,
-      router_earnings_cents: pricingResult.routerFeeCents,
-      broker_fee_cents: pricingResult.platformFeeCents,
-      routing_status: "UNROUTED" as any,
-    });
+    try {
+      await tx.insert(jobs).values({
+        id: jobId,
+        status: "OPEN_FOR_ROUTING" as any,
+        archived: false,
+        title,
+        scope,
+        region,
+        country: countryCode as any,
+        country_code: countryCode as any,
+        state_code: stateCode,
+        region_code: stateCode,
+        city,
+        postal_code: postalCode,
+        address_full: address,
+        lat,
+        lng: lon,
+        province: stateCode,
+        is_regional: isRegional,
+        currency: pricingResult.currency as any,
+        payment_currency: pricingResult.paymentCurrency,
+        appraisal_subtotal_cents: pricingResult.appraisalSubtotalCents,
+        regional_fee_cents: pricingResult.regionalFeeCents,
+        tax_rate_bps: pricingResult.taxRateBps,
+        tax_amount_cents: pricingResult.taxCents,
+        total_amount_cents: pricingResult.totalChargeCents,
+        amount_cents: pricingResult.totalChargeCents,
+        labor_total_cents: pricingResult.legacy.laborTotalCents,
+        materials_total_cents: 0,
+        transaction_fee_cents: pricingResult.estimatedProcessingFeeCents,
+        price_adjustment_cents: pricingResult.legacy.priceAdjustmentCents,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_payment_intent_status: String(pi.status ?? ""),
+        stripe_charge_id: stripeChargeId,
+        payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
+        stripe_authorized_at: now,
+        stripe_paid_at: isCapturedCharge ? now : null,
+        escrow_locked_at: isCapturedCharge ? now : null,
+        funds_secured_at: isCapturedCharge ? now : null,
+        funded_at: isCapturedCharge ? now : null,
+        payment_captured_at: isCapturedCharge ? now : null,
+        job_poster_user_id: userId,
+        job_type: (isRegional ? "regional" : "urban") as any,
+        trade_category: tradeCategory as any,
+        service_type: "handyman",
+        availability: availability as any,
+        posted_at: now,
+        published_at: now,
+        created_at: now,
+        updated_at: now,
+        price_median_cents: pricingResult.appraisalSubtotalCents,
+        contractor_payout_cents: pricingResult.contractorPayoutCents,
+        router_earnings_cents: pricingResult.routerFeeCents,
+        broker_fee_cents: pricingResult.platformFeeCents,
+        routing_status: "UNROUTED" as any,
+      });
+    } catch (err) {
+      const dbErr = err as any;
+      console.error("JOB_INSERT_FAILED", {
+        jobId,
+        paymentIntentId,
+        code: dbErr?.code,
+        detail: dbErr?.detail,
+        constraint: dbErr?.constraint,
+        table: dbErr?.table,
+      });
+      throw err;
+    }
 
     const existingPaymentRows = await tx
       .select({ id: jobPayments.id })
