@@ -5,24 +5,20 @@ import { useSearchParams } from "next/navigation";
 
 type ConnectStatus = {
   ok: true;
-  state: "NOT_CONNECTED" | "PENDING_VERIFICATION" | "CONNECTED" | "CURRENCY_MISMATCH";
+  state: "NOT_CONNECTED" | "PENDING_VERIFICATION" | "VERIFIED";
   stripeAccountId: string | null;
-  payoutCurrency: "CAD" | "USD";
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
-  onboardingComplete: boolean;
-  countryMismatch?: boolean;
-  currencyMismatch?: boolean;
-  message?: string;
-  simulationEnabled?: boolean;
-  simulatedApproved?: boolean;
+  requirements: {
+    currentlyDue: string[];
+    pastDue: string[];
+  };
 };
 
 export function StripeExpressPayoutSetup() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
-  const [accountType, setAccountType] = React.useState<"AUTO" | "INDIVIDUAL" | "COMPANY">("AUTO");
   const [error, setError] = React.useState("");
   const [status, setStatus] = React.useState<ConnectStatus | null>(null);
 
@@ -30,10 +26,10 @@ export function StripeExpressPayoutSetup() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/stripe/connect/create-account", { cache: "no-store", credentials: "include" });
+      const resp = await fetch("/api/v4/contractor/stripe/status", { cache: "no-store", credentials: "include" });
       const json = (await resp.json().catch(() => null)) as ConnectStatus | { error?: string } | null;
       if (!resp.ok || !json || (json as any).ok !== true) {
-        throw new Error(String((json as any)?.error ?? "Failed to load Stripe Connect status"));
+        throw new Error(String((json as any)?.error?.message ?? (json as any)?.error ?? "Failed to load Stripe status"));
       }
       setStatus(json as ConnectStatus);
     } catch (e) {
@@ -52,31 +48,15 @@ export function StripeExpressPayoutSetup() {
     setSaving(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/stripe/connect/create-account", {
+      const resp = await fetch("/api/v4/contractor/stripe/onboard", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          accountType:
-            accountType === "INDIVIDUAL" ? "individual" : accountType === "COMPANY" ? "company" : "auto",
-        }),
+        body: JSON.stringify({}),
         credentials: "include",
       });
       const json = (await resp.json().catch(() => null)) as any;
       if (!resp.ok) {
-        if (json?.state === "CURRENCY_MISMATCH") {
-          setStatus((s) =>
-            s
-              ? {
-                  ...s,
-                  state: "CURRENCY_MISMATCH",
-                  countryMismatch: Boolean(json?.countryMismatch),
-                  currencyMismatch: Boolean(json?.currencyMismatch),
-                  message: "Currency mismatch detected. Contact support.",
-                }
-              : null,
-          );
-        }
-        throw new Error(String(json?.error ?? "Failed to initialize Stripe onboarding"));
+        throw new Error(String(json?.error?.message ?? json?.error ?? "Failed to initialize Stripe onboarding"));
       }
       if (typeof json?.url === "string" && json.url.trim()) {
         window.location.href = json.url.trim();
@@ -85,28 +65,6 @@ export function StripeExpressPayoutSetup() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to initialize Stripe onboarding");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function simulateApproval() {
-    setSaving(true);
-    setError("");
-    try {
-      const resp = await fetch("/api/app/stripe/connect/create-account", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ simulateApproved: true }),
-        credentials: "include",
-      });
-      const json = (await resp.json().catch(() => null)) as any;
-      if (!resp.ok || String(json?.ok) !== "true") {
-        throw new Error(String(json?.error ?? "Failed to simulate Stripe approval"));
-      }
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to simulate Stripe approval");
     } finally {
       setSaving(false);
     }
@@ -126,7 +84,7 @@ export function StripeExpressPayoutSetup() {
       {error ? <div className="mt-3 text-sm text-red-700">{error}</div> : null}
       {!error && returnedFromStripe && !loading ? (
         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          {mode === "CONNECTED"
+          {mode === "VERIFIED"
             ? "Stripe setup is active."
             : "Returned from Stripe. If setup is incomplete, continue onboarding below."}
         </div>
@@ -136,16 +94,6 @@ export function StripeExpressPayoutSetup() {
 
       {!loading && mode === "NOT_CONNECTED" ? (
         <div className="mt-4">
-          <div className="text-sm text-gray-700 mb-2">Account type</div>
-          <select
-            value={accountType}
-            onChange={(e) => setAccountType(e.target.value as "AUTO" | "INDIVIDUAL" | "COMPANY")}
-            className="w-full max-w-sm rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
-          >
-            <option value="AUTO">Let Stripe decide during onboarding</option>
-            <option value="INDIVIDUAL">Personal (Individual)</option>
-            <option value="COMPANY">Business (Company)</option>
-          </select>
           <div className="text-sm text-gray-700">No Stripe account is connected yet.</div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -156,16 +104,6 @@ export function StripeExpressPayoutSetup() {
             >
               {saving ? "Redirecting…" : "Connect with Stripe"}
             </button>
-            {status?.simulationEnabled ? (
-              <button
-                type="button"
-                onClick={() => void simulateApproval()}
-                disabled={saving}
-                className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
-              >
-                {saving ? "Simulating…" : "Stripe Simulation Success"}
-              </button>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -182,24 +120,13 @@ export function StripeExpressPayoutSetup() {
             >
               {saving ? "Redirecting…" : "Complete Stripe Setup"}
             </button>
-            {status?.simulationEnabled ? (
-              <button
-                type="button"
-                onClick={() => void simulateApproval()}
-                disabled={saving}
-                className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
-              >
-                {saving ? "Simulating…" : "Stripe Simulation Success"}
-              </button>
-            ) : null}
           </div>
         </div>
       ) : null}
 
-      {!loading && mode === "CONNECTED" && status ? (
+      {!loading && mode === "VERIFIED" && status ? (
         <div className="mt-4">
           <div className="text-sm font-semibold text-green-700">Stripe Connected ✓</div>
-          <div className="mt-2 text-sm text-gray-700">Payout currency: {status.payoutCurrency}</div>
           <div className="text-sm text-gray-700">Charges enabled: {String(status.chargesEnabled)}</div>
           <div className="text-sm text-gray-700">Payouts enabled: {String(status.payoutsEnabled)}</div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -211,22 +138,8 @@ export function StripeExpressPayoutSetup() {
             >
               {saving ? "Redirecting…" : "Manage in Stripe"}
             </button>
-            {status?.simulationEnabled ? (
-              <button
-                type="button"
-                onClick={() => void simulateApproval()}
-                disabled={saving}
-                className="bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-500 font-semibold px-4 py-2 rounded-lg"
-              >
-                {saving ? "Simulating…" : "Stripe Simulation Success"}
-              </button>
-            ) : null}
           </div>
         </div>
-      ) : null}
-
-      {!loading && mode === "CURRENCY_MISMATCH" ? (
-        <div className="mt-4 text-sm text-red-700 font-semibold">Currency mismatch detected. Contact support.</div>
       ) : null}
     </div>
   );
