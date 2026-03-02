@@ -19,6 +19,7 @@ type AppraisalResult = {
   median: number;
   high: number;
   confidence: "LOW" | "MEDIUM" | "HIGH";
+  rationale: string;
   taxRate: number;
   currency: "USD" | "CAD";
   appraisalToken: string;
@@ -30,6 +31,7 @@ type PaymentIntentResult = {
   success: boolean;
   clientSecret: string;
   paymentIntentId: string;
+  modelAJobId?: string;
   appraisalPriceCents: number;
   regionalFeeCents: number;
   baseSplitCents: number;
@@ -214,6 +216,11 @@ export default function PostJobPage() {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     return pk ? loadStripe(pk) : null;
   }, []);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   useEffect(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     console.log("TEMP_STRIPE_DEBUG_MODE_WEB", {
@@ -273,17 +280,15 @@ export default function PostJobPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const [metaResp, profileResp, paymentResp, draftResp] = await Promise.all([
+        const [metaResp, profileResp, paymentResp] = await Promise.all([
           fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
           fetch("/api/web/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
-          fetch("/api/job-draft", { cache: "no-store", credentials: "include" }),
         ]);
 
         const metaJson = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profileJson = (await profileResp.json().catch(() => ({}))) as any;
         const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean; providerReady?: boolean };
-        const draftJson = (await draftResp.json().catch(() => ({}))) as any;
 
         if (cancelled) return;
 
@@ -305,73 +310,6 @@ export default function PostJobPage() {
             lat: Number(profile.latitude),
             lon: Number(profile.longitude),
           });
-        }
-
-        const draftData = draftJson?.draft?.data ?? null;
-        if (draftData && typeof draftData === "object") {
-          const details = (draftData.details ?? {}) as Record<string, any>;
-          const nextTrade = String(details.tradeCategory ?? "").trim();
-          if (nextTrade) setTradeCategory(nextTrade);
-          if (String(details.title ?? "")) setTitle(String(details.title));
-          if (String(details.description ?? "")) setDescription(String(details.description));
-          const isRegional = Boolean(details.isRegional);
-          setUrbanOrRegional(isRegional ? "regional" : "urban");
-
-          setAddress(String(details.address ?? ""));
-          setCity(String(details.city ?? ""));
-          setPostalCode(String(details.postalCode ?? ""));
-          setRegion(String(details.stateCode ?? details.region ?? ""));
-          setCountry(String(details.countryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US");
-
-          const dLat = Number(details.lat);
-          const dLon = Number(details.lon);
-          setLat(Number.isFinite(dLat) ? dLat : null);
-          setLon(Number.isFinite(dLon) ? dLon : null);
-
-          if (draftData.availability && typeof draftData.availability === "object") {
-            setAvailability(draftData.availability as AvailabilityJson);
-          }
-
-          const draftImages = Array.isArray(draftData.images) ? draftData.images : [];
-          setImages(
-            draftImages
-              .map((img: any) => ({
-                uploadId: String(img?.uploadId ?? "").trim(),
-                url: String(img?.url ?? "").trim(),
-              }))
-              .filter((img: UploadedImage) => img.uploadId && img.url),
-          );
-
-          const draftAppraisal = draftData.appraisal as Partial<AppraisalResult> | undefined;
-          const pricing = (draftData.pricing ?? {}) as Record<string, unknown>;
-          if (
-            draftAppraisal &&
-            Number.isFinite(Number(draftAppraisal.low)) &&
-            Number.isFinite(Number(draftAppraisal.median)) &&
-            Number.isFinite(Number(draftAppraisal.high))
-          ) {
-            const normalized: AppraisalResult = {
-              low: Number(draftAppraisal.low),
-              median: Number(draftAppraisal.median),
-              high: Number(draftAppraisal.high),
-              confidence: String(draftAppraisal.confidence ?? "LOW").toUpperCase() === "HIGH"
-                ? "HIGH"
-                : String(draftAppraisal.confidence ?? "LOW").toUpperCase() === "MEDIUM"
-                  ? "MEDIUM"
-                  : "LOW",
-              taxRate: Number(draftAppraisal.taxRate ?? 0),
-              currency: String(draftAppraisal.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
-              appraisalToken: String(draftAppraisal.appraisalToken ?? ""),
-              modelUsed: String(draftAppraisal.modelUsed ?? "gpt-5-nano"),
-              usedFallback: Boolean(draftAppraisal.usedFallback),
-            };
-            setAppraisal(normalized);
-            const medianCents = normalized.median * 100;
-            const selected = Number(pricing.appraisalPriceCents ?? pricing.selectedPriceCents ?? medianCents);
-            const offset = Math.round((selected - medianCents) / 100);
-            setBaseMedianCents(medianCents);
-            setSliderOffsetDollars(Math.max(normalized.low - normalized.median, Math.min(normalized.high - normalized.median, offset)));
-          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -442,48 +380,6 @@ export default function PostJobPage() {
     setImages((prev) => prev.filter((img) => img.uploadId !== uploadId));
   }
 
-  async function persistDraft(step: "DETAILS" | "PRICING" | "PAYMENT") {
-    const payload = {
-      step,
-      dataPatch: {
-        details: {
-          tradeCategory,
-          title,
-          description,
-          isRegional: urbanOrRegional === "regional",
-          urbanOrRegional,
-          address: activeAddress.address,
-          city: activeAddress.city,
-          postalCode: activeAddress.postalCode,
-          stateCode: activeAddress.region,
-          region: activeAddress.region,
-          countryCode: activeAddress.country,
-          lat: activeAddress.lat,
-          lon: activeAddress.lon,
-        },
-        availability,
-        images,
-        appraisal,
-        pricing: {
-          appraisalPriceCents,
-          selectedPriceCents: appraisalPriceCents,
-          appraisalAnchorCents: baseMedianCents,
-          sliderOffsetDollars,
-          isRegional: urbanOrRegional === "regional",
-        },
-      },
-    };
-
-    const resp = await fetch("/api/job-draft", {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const json = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error(getApiErrorMessage(json, "Failed to save job draft."));
-  }
-
   function validateBeforeAppraisal() {
     if (!tradeCategory) return "Trade category is required.";
     if (!title.trim()) return "Title is required.";
@@ -504,18 +400,20 @@ export default function PostJobPage() {
     setIsAppraising(true);
     try {
       const authHeader = await getApiAuthHeader();
-      const resp = await fetch(apiUrl("/api/job-draft/pricing-preview"), {
+      const resp = await fetch(apiUrl("/api/web/v4/job/appraise-preview"), {
         method: "POST",
         headers: {
           ...authHeader,
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          country: activeAddress.country,
-          province: activeAddress.region.trim().toUpperCase(),
-          tradeCategory: tradeCategory.trim().toUpperCase(),
           title: title.trim(),
           description: description.trim(),
+          tradeCategory: tradeCategory.trim().toUpperCase(),
+          provinceState: activeAddress.region.trim().toUpperCase(),
+          latitude: Number(activeAddress.lat),
+          longitude: Number(activeAddress.lon),
+          isRegionalRequested: urbanOrRegional === "regional",
         }),
       });
       const json = (await resp.json().catch(() => ({}))) as Partial<AppraisalResult> & { error?: string; message?: string };
@@ -533,6 +431,7 @@ export default function PostJobPage() {
           : String(json.confidence ?? "LOW").toUpperCase() === "MEDIUM"
             ? "MEDIUM"
             : "LOW",
+        rationale: String(json.rationale ?? "").trim(),
         taxRate: Number(json.taxRate ?? 0),
         currency: String(json.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
         appraisalToken: String(json.appraisalToken ?? ""),
@@ -544,8 +443,6 @@ export default function PostJobPage() {
       setBaseMedianCents(next.median * 100);
       setSliderOffsetDollars(0);
       resetPaymentConfirmationState();
-      // Pricing draft persistence should not block appraisal UX.
-      void persistDraft("PRICING").catch(() => {});
     } catch (e) {
       setError(getErrorMessage(e, "Failed to appraise job."));
     } finally {
@@ -574,7 +471,6 @@ export default function PostJobPage() {
 
     setWorking(true);
     try {
-      await persistDraft("PAYMENT");
       const authHeader = await getApiAuthHeader();
       const resp = await fetch(apiUrl("/api/job-draft/payment-intent"), {
         method: "POST",
@@ -585,6 +481,19 @@ export default function PostJobPage() {
         body: JSON.stringify({
           selectedPrice: appraisalPriceCents,
           isRegional: urbanOrRegional === "regional",
+          details: {
+            tradeCategory,
+            title,
+            description,
+            address: activeAddress.address,
+            city: activeAddress.city,
+            postalCode: activeAddress.postalCode,
+            stateCode: activeAddress.region,
+            countryCode: activeAddress.country,
+            lat: activeAddress.lat,
+            lon: activeAddress.lon,
+          },
+          availability,
         }),
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
@@ -617,11 +526,38 @@ export default function PostJobPage() {
 
     setWorking(true);
     try {
-      await persistDraft("PAYMENT");
       const authHeader = await getApiAuthHeader();
-      const resp = await fetch(apiUrl("/api/job-draft/submit"), {
+      const resp = await fetch(apiUrl("/api/web/v4/job-poster/jobs"), {
         method: "POST",
-        headers: authHeader,
+        headers: {
+          ...authHeader,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          details: {
+            tradeCategory,
+            title,
+            description,
+            isRegional: urbanOrRegional === "regional",
+            address: activeAddress.address,
+            city: activeAddress.city,
+            postalCode: activeAddress.postalCode,
+            stateCode: activeAddress.region,
+            countryCode: activeAddress.country,
+            lat: activeAddress.lat,
+            lon: activeAddress.lon,
+          },
+          availability,
+          images,
+          pricing: {
+            selectedPriceCents: appraisalPriceCents,
+            isRegional: urbanOrRegional === "regional",
+          },
+          payment: {
+            paymentIntentId,
+            modelAJobId: paymentSummary?.modelAJobId,
+          },
+        }),
       });
       const json = (await resp.json().catch(() => ({}))) as {
         success?: boolean;
@@ -863,6 +799,16 @@ export default function PostJobPage() {
                   <div className="rounded border border-gray-200 p-3">Suggested Median: <span className="font-semibold">{formatMoney(baseMedianCents, summaryCurrency)}</span></div>
                   <div className="rounded border border-gray-200 p-3">High Estimate: <span className="font-semibold">{formatMoney(appraisal.high * 100, summaryCurrency)}</span></div>
                 </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Rationale</p>
+                  <textarea
+                    value={appraisal.rationale}
+                    readOnly
+                    rows={3}
+                    className="w-full resize-none rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+                  />
+                  <p className="text-xs text-gray-500">Confidence: {appraisal.confidence}</p>
+                </div>
 
                 <input
                   type="range"
@@ -885,7 +831,6 @@ export default function PostJobPage() {
                 <p className="text-sm font-medium text-gray-800">Selected Price: {formatMoney(appraisalPriceCents, summaryCurrency)}</p>
                 {isLower ? <p className="text-sm text-amber-700">Lower pricing may delay contractor acceptance.</p> : null}
                 {isHigher ? <p className="text-sm text-green-700">Increased pricing may speed up contractor routing.</p> : null}
-                <p className="text-xs text-gray-500">Confidence: {appraisal.confidence}</p>
               </div>
             ) : null}
 
