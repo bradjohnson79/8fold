@@ -4,6 +4,7 @@ import { jobs } from "@/db/schema/job";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
+import { logEvent } from "@/src/server/observability/log";
 import {
   computeExecutionEligibility,
   mapLegacyStatusForExecution,
@@ -25,7 +26,18 @@ export type JobListItem = {
 };
 
 export async function listJobsForJobPoster(userId: string): Promise<JobListItem[]> {
-  await promoteDuePublishedJobsForJobPoster(userId);
+  try {
+    await promoteDuePublishedJobsForJobPoster(userId);
+  } catch (error) {
+    logEvent({
+      level: "error",
+      event: "job_poster.dashboard.promote_due_failed",
+      userId,
+      context: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
   const rows = await db
     .select({
       id: jobs.id,

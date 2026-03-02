@@ -3,16 +3,45 @@ import { requireV4Role } from "@/src/auth/requireV4Role";
 import { getJobPosterSummary } from "@/src/services/v4/jobPosterSummaryService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
+const logger = {
+  error(message: string, meta: Record<string, unknown>) {
+    console.error(message, meta);
+  },
+};
+
+const FALLBACK_ERROR = "Partial failure, please retry";
+
 export async function GET(req: Request) {
   let requestId: string | undefined;
+  let userId: string | undefined;
   try {
     const role = await requireV4Role(req, "JOB_POSTER");
     if (role instanceof Response) return role;
     requestId = role.requestId;
+    userId = role.userId;
     const summary = await getJobPosterSummary(role.userId);
     return NextResponse.json(summary);
   } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_SUMMARY_FAILED");
-    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 500;
+    logger.error("job-poster dashboard summary error", {
+      error: err instanceof Error ? err.message : String(err),
+      userId,
+      requestId,
+      status,
+    });
+
+    if (status === 401 || status === 403) {
+      const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_SUMMARY_FAILED");
+      return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
+    }
+
+    return NextResponse.json(
+      {
+        summary: {},
+        jobs: [],
+        error: FALLBACK_ERROR,
+      },
+      { status: 200 },
+    );
   }
 }
