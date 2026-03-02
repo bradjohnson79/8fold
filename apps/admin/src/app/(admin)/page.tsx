@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { adminApiFetch } from "@/server/adminApiV4";
+import OverviewCardsClient, { type OverviewCardsPayload } from "./OverviewCardsClient";
 
 type Overview = {
   totalJobs: number;
@@ -13,31 +13,27 @@ type Overview = {
   integrityAlerts: number;
 };
 
-type JobRow = {
-  id: string;
-  title: string;
-  status: string;
-  country: string;
-  province: string | null;
-  city: string | null;
-  trade: string;
-  createdAt: string;
-};
-
 function money(cents: number) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
 }
 
-export default async function OverviewPage() {
-  const [overview, jobs, disputes, support] = await Promise.all([
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const params = new URLSearchParams();
+  for (const [key, rawValue] of Object.entries(sp)) {
+    const value = String(Array.isArray(rawValue) ? rawValue[0] : rawValue ?? "").trim();
+    if (!value) continue;
+    params.set(key, value);
+  }
+  const cardsQuery = params.toString();
+
+  const [overview, cardsPayload] = await Promise.all([
     adminApiFetch<Overview>("/api/admin/v4/overview").catch(() => null),
-    adminApiFetch<{ jobs: JobRow[] }>("/api/admin/v4/jobs?limit=8").then((r) => r.jobs ?? []).catch(() => []),
-    adminApiFetch<{ disputes: Array<{ id: string; status: string; disputeReason: string }> }>("/api/admin/v4/disputes?take=6")
-      .then((r) => r.disputes ?? [])
-      .catch(() => []),
-    adminApiFetch<{ tickets: Array<{ id: string; status: string; priority: string; subject: string }> }>("/api/admin/v4/support/tickets?take=6")
-      .then((r) => r.tickets ?? [])
-      .catch(() => []),
+    adminApiFetch<OverviewCardsPayload>(`/api/admin/v4/overview/cards${cardsQuery ? `?${cardsQuery}` : ""}`).catch(() => null),
   ]);
 
   return (
@@ -63,40 +59,7 @@ export default async function OverviewPage() {
         </div>
       ) : null}
 
-      <div style={{ marginTop: 18, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
-        <section style={panelStyle}>
-          <div style={panelTitle}>Latest Jobs</div>
-          {jobs.length === 0 ? <div style={emptyStyle}>No jobs found.</div> : null}
-          {jobs.map((j) => (
-            <div key={j.id} style={rowStyle}>
-              <Link href={`/jobs/${encodeURIComponent(j.id)}`} style={linkStyle}>{j.title || j.id}</Link>
-              <div style={metaStyle}>{j.status} · {j.trade} · {j.country}/{j.province || "-"}</div>
-            </div>
-          ))}
-        </section>
-
-        <section style={panelStyle}>
-          <div style={panelTitle}>Open Disputes</div>
-          {disputes.length === 0 ? <div style={emptyStyle}>No disputes.</div> : null}
-          {disputes.map((d) => (
-            <div key={d.id} style={rowStyle}>
-              <Link href={`/disputes/${encodeURIComponent(d.id)}`} style={linkStyle}>{d.id}</Link>
-              <div style={metaStyle}>{d.status} · {d.disputeReason}</div>
-            </div>
-          ))}
-        </section>
-
-        <section style={panelStyle}>
-          <div style={panelTitle}>Open Support Tickets</div>
-          {support.length === 0 ? <div style={emptyStyle}>No tickets.</div> : null}
-          {support.map((t) => (
-            <div key={t.id} style={rowStyle}>
-              <Link href={`/support/${encodeURIComponent(t.id)}`} style={linkStyle}>{t.subject || t.id}</Link>
-              <div style={metaStyle}>{t.status} · {t.priority}</div>
-            </div>
-          ))}
-        </section>
-      </div>
+      <OverviewCardsClient payload={cardsPayload} />
     </div>
   );
 }
@@ -109,15 +72,3 @@ function Card({ title, value }: { title: string; value: string }) {
     </div>
   );
 }
-
-const panelStyle: React.CSSProperties = {
-  border: "1px solid rgba(148,163,184,0.2)",
-  borderRadius: 14,
-  padding: 12,
-  background: "rgba(2,6,23,0.3)",
-};
-const panelTitle: React.CSSProperties = { fontWeight: 900, marginBottom: 10 };
-const rowStyle: React.CSSProperties = { padding: "8px 0", borderBottom: "1px solid rgba(148,163,184,0.1)" };
-const emptyStyle: React.CSSProperties = { color: "rgba(226,232,240,0.72)", fontSize: 13 };
-const metaStyle: React.CSSProperties = { color: "rgba(226,232,240,0.65)", fontSize: 12, marginTop: 4 };
-const linkStyle: React.CSSProperties = { color: "rgba(125,211,252,0.95)", textDecoration: "none", fontWeight: 900 };
