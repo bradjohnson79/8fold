@@ -15,6 +15,22 @@ export type PaymentStatus = {
   simulationEnabled?: boolean;
 };
 
+function deriveConnection(input: {
+  stripeDefaultPaymentMethodId: string | null | undefined;
+  stripeStatus: string | null | undefined;
+}): { connected: boolean; normalizedStripeStatus: "CONNECTED" | "NOT_CONNECTED"; paymentMethodId: string | null } {
+  const paymentMethodId = String(input.stripeDefaultPaymentMethodId ?? "").trim() || null;
+  const stripeStatusUpper = String(input.stripeStatus ?? "").trim().toUpperCase();
+  const connectedStatuses = new Set(["CONNECTED", "ACTIVE"]);
+
+  const connected = Boolean(paymentMethodId && (stripeStatusUpper === "" || connectedStatuses.has(stripeStatusUpper)));
+  return {
+    connected,
+    normalizedStripeStatus: connected ? "CONNECTED" : "NOT_CONNECTED",
+    paymentMethodId,
+  };
+}
+
 function setupCurrencyForCountry(country: string | null | undefined): "usd" | "cad" {
   return String(country ?? "").toUpperCase() === "CA" ? "cad" : "usd";
 }
@@ -66,12 +82,16 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
     .limit(1);
 
   const u = rows[0] ?? null;
-  const connected = Boolean(u?.stripeDefaultPaymentMethodId && u?.stripeStatus === "CONNECTED");
+  const derived = deriveConnection({
+    stripeDefaultPaymentMethodId: u?.stripeDefaultPaymentMethodId,
+    stripeStatus: u?.stripeStatus,
+  });
+  const connected = derived.connected;
   let lastFour: string | undefined;
 
-  if (connected && u?.stripeDefaultPaymentMethodId && stripe) {
+  if (connected && derived.paymentMethodId && stripe) {
     try {
-      const pm = await stripe.paymentMethods.retrieve(u.stripeDefaultPaymentMethodId);
+      const pm = await stripe.paymentMethods.retrieve(derived.paymentMethodId);
       lastFour = (pm as any).card?.last4 ?? undefined;
     } catch {
       /* ignore */
@@ -81,7 +101,7 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
   return {
     connected,
     providerReady: Boolean(stripe),
-    stripeStatus: (u?.stripeStatus as "CONNECTED" | "NOT_CONNECTED") ?? "NOT_CONNECTED",
+    stripeStatus: derived.normalizedStripeStatus,
     lastFour,
     stripeUpdatedAt: u?.stripeUpdatedAt?.toISOString?.() ?? null,
     simulationEnabled: isStripeSimulationEnabled(),

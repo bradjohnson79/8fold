@@ -217,7 +217,13 @@ export default function JobPosterSummaryPage() {
     },
     {
       title: "Payment Status",
-      value: summary ? (summary.paymentStatus === "CONNECTED" ? "Connected" : "Not Connected") : "Unavailable",
+      value: summary
+        ? summary.paymentStatus === "CONNECTED"
+          ? "Connected"
+          : summary.paymentStatus === "NOT_CONNECTED"
+            ? "Not Connected"
+            : "Unavailable"
+        : "Unavailable",
       subtitle: "Stripe setup",
       loading: summaryLoading,
       error: summaryError,

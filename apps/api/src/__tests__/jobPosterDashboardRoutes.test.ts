@@ -82,6 +82,13 @@ describe("job poster dashboard routes", () => {
         activeAssignments: 1,
       })),
     }));
+    vi.doMock("@/src/services/v4/jobPosterPaymentService", () => ({
+      getJobPosterPaymentStatus: vi.fn(async () => ({
+        connected: true,
+        providerReady: true,
+        stripeStatus: "CONNECTED",
+      })),
+    }));
 
     const { GET } = await import("@/app/api/web/v4/job-poster/dashboard/summary/route");
     const res = await GET(new Request("http://localhost/api/web/v4/job-poster/dashboard/summary"));
@@ -134,6 +141,13 @@ describe("job poster dashboard routes", () => {
         throw new Error("schema mismatch");
       }),
     }));
+    vi.doMock("@/src/services/v4/jobPosterPaymentService", () => ({
+      getJobPosterPaymentStatus: vi.fn(async () => ({
+        connected: true,
+        providerReady: true,
+        stripeStatus: "CONNECTED",
+      })),
+    }));
 
     const { GET } = await import("@/app/api/web/v4/job-poster/dashboard/summary/route");
     const res = await GET(new Request("http://localhost/api/web/v4/job-poster/dashboard/summary"));
@@ -141,8 +155,11 @@ describe("job poster dashboard routes", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({
-      summary: {},
-      jobs: [],
+      jobsPosted: 0,
+      fundsSecured: 0,
+      paymentStatus: "CONNECTED",
+      unreadMessages: 0,
+      activeAssignments: 0,
       error: "Partial failure, please retry",
     });
   });
