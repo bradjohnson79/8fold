@@ -20,7 +20,9 @@ export const JobStatusSchema = z.enum([
   // Legacy/compat status (added to Postgres enum as additive value; treated as terminal).
   "COMPLETED",
   // Dispute hold status (blocks release; treated as terminal until dispute resolution).
-  "DISPUTED"
+  "DISPUTED",
+  // Execution lifecycle status (appointment reached, work can be completed).
+  "JOB_STARTED",
 ]);
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
@@ -51,8 +53,9 @@ export const JobAllowedTransitions: Readonly<
 > = {
   DRAFT: ["OPEN_FOR_ROUTING", "PUBLISHED"],
   OPEN_FOR_ROUTING: ["ASSIGNED"],
-  PUBLISHED: ["ASSIGNED"],
-  ASSIGNED: ["IN_PROGRESS"],
+  PUBLISHED: ["ASSIGNED", "JOB_STARTED"],
+  ASSIGNED: ["IN_PROGRESS", "JOB_STARTED"],
+  JOB_STARTED: ["CONTRACTOR_COMPLETED"],
   IN_PROGRESS: ["CONTRACTOR_COMPLETED"],
   CONTRACTOR_COMPLETED: ["CUSTOMER_APPROVED", "CUSTOMER_REJECTED"],
   CUSTOMER_APPROVED: ["COMPLETED_APPROVED", "COMPLETION_FLAGGED"],
@@ -72,4 +75,3 @@ export const PayoutRequestAllowedTransitions: Readonly<
   PAID: [],
   CANCELLED: []
 } as const;
-

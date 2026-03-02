@@ -9,6 +9,7 @@ import { loadPmRouteContext } from "@/src/pm/routeHelpers";
 import { toHttpError } from "@/src/http/errors";
 import { logEvent } from "@/src/server/observability/log";
 import { stripe } from "@/src/stripe/stripe";
+import { reconcileStripeFeeForPaymentIntent } from "@/src/services/v4/stripeFeeReconciliationService";
 
 const BodySchema = z.object({
   pmRequestId: z.string().uuid(),
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Receipts can only be uploaded after payment hold/charge.", traceId: ctx.traceId }, { status: 400 });
     }
 
+    let reconcilePaymentIntentId: string | null = null;
     if (pm.status === "PAYMENT_PENDING") {
       const piId = String(pm.stripePaymentIntentId ?? "").trim();
       if (!piId || !stripe) {
@@ -60,11 +62,14 @@ export async function POST(req: Request) {
       }
       const pi = await stripe.paymentIntents.retrieve(piId);
       if (pi.status === "requires_capture") {
-        await stripe.paymentIntents.capture(piId, undefined, {
+        const captured = await stripe.paymentIntents.capture(piId, undefined, {
           idempotencyKey: `pm-receipt-capture:${body.pmRequestId}`,
         });
+        reconcilePaymentIntentId = captured.id;
       } else if (pi.status !== "succeeded") {
         return NextResponse.json({ error: "Payment hold is not capturable.", traceId: ctx.traceId }, { status: 409 });
+      } else {
+        reconcilePaymentIntentId = pi.id;
       }
       await db
         .update(pmRequests)
@@ -73,6 +78,30 @@ export async function POST(req: Request) {
           updatedAt: new Date(),
         })
         .where(eq(pmRequests.id, pm.id));
+    }
+
+    if (reconcilePaymentIntentId && stripe) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(reconcilePaymentIntentId);
+        const reconciled = await reconcileStripeFeeForPaymentIntent({
+          pi,
+          stripeClient: stripe,
+          source: "capture_route_pm_upload",
+        });
+        if (!reconciled.ok) {
+          console.warn("[pm/upload-receipt] fee reconciliation skipped", {
+            paymentIntentId: reconcilePaymentIntentId,
+            code: reconciled.code,
+            reason: reconciled.reason,
+            jobId: reconciled.jobId ?? null,
+          });
+        }
+      } catch (reconcileErr) {
+        console.warn("[pm/upload-receipt] fee reconciliation failed", {
+          paymentIntentId: reconcilePaymentIntentId,
+          message: reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr),
+        });
+      }
     }
 
     const receiptId = randomUUID();

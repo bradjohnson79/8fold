@@ -20,10 +20,26 @@ function getStripeSecretKey(): string | null {
   return key ? key : null;
 }
 
+function isNonProdLiveKey(key: string | null): boolean {
+  if (!key) return false;
+  const nodeEnv = String(process.env.NODE_ENV ?? "").trim().toLowerCase();
+  return nodeEnv !== "production" && key.startsWith("sk_live_");
+}
+
 export function assertStripeEnv(): void {
   if (envChecked) return;
   envChecked = true;
   const stripeSecretKey = getStripeSecretKey();
+  // eslint-disable-next-line no-console
+  console.log("TEMP_STRIPE_DEBUG_MODE", {
+    secretMode: stripeSecretKey?.startsWith("sk_test_") ? "TEST" : stripeSecretKey?.startsWith("sk_live_") ? "LIVE" : "UNKNOWN",
+  });
+  if (isNonProdLiveKey(stripeSecretKey)) {
+    throw Object.assign(new Error("Live Stripe secret key is not allowed in non-production environments"), {
+      code: "STRIPE_NONPROD_LIVE_KEY",
+      status: 500,
+    });
+  }
   const stripeMode = getStripeModeFromEnv();
   logStripeModeOnce(stripeMode);
   assertStripeKeysMatchMode({
@@ -105,4 +121,3 @@ async function verifyWebhookEndpointInDev(): Promise<void> {
     }),
   );
 }
-

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleApiError } from "@/src/lib/errorHandler";
-import { releaseJobFunds } from "@/src/payouts/releaseJobFunds";
+import { releaseFundsForJob } from "@/src/services/v4/payouts/releaseFundsService";
 import { adminAuditLog } from "@/src/audit/adminAudit";
 import { enforceTier, requireAdminIdentityWithTier } from "../../../_lib/adminTier";
 
@@ -18,10 +18,11 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden;
 
   try {
+    console.warn("[PAYOUT_LEGACY_RELEASE_DEPRECATED]", { route: "/api/admin/jobs/[id]/release-funds" });
     const jobId = getIdFromUrl(req);
     if (!jobId) return NextResponse.json({ ok: false, error: "Invalid job id" }, { status: 400 });
 
-    const out = await releaseJobFunds({ jobId, triggeredByUserId: identity.userId });
+    const out = await releaseFundsForJob({ jobId, actorRole: "ADMIN", actorId: identity.userId });
     await adminAuditLog(
       req,
       {
@@ -44,4 +45,3 @@ export async function POST(req: Request) {
     return handleApiError(err, "POST /api/admin/jobs/[id]/release-funds", { userId: identity.userId });
   }
 }
-

@@ -7,7 +7,7 @@ import { jobPayments } from "../../db/schema/jobPayment";
 import { escrows } from "../../db/schema/escrow";
 import { auditLogs } from "../../db/schema/auditLog";
 import { logEvent } from "../server/observability/log";
-import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 type FinalizeOpts = {
   route: string;
@@ -244,46 +244,24 @@ export async function finalizeJobFundingFromPaymentIntent(
       } as any,
     });
 
-    await createNotification(
+    await emitDomainEvent(
       {
-        userId: String(job.jobPosterUserId),
-        role: "JOB_POSTER",
-        type: "PAYMENT_RECEIVED",
-        title: "Payment received",
-        message: "Your payment is secured and your job is ready for routing.",
-        entityType: "PAYMENT",
-        entityId: job.id,
-        priority: "NORMAL",
-        metadata: {
+        type: "PAYMENT_CAPTURED",
+        payload: {
           jobId: job.id,
-          paymentIntentId: pi.id,
-          amountCents: incomingAmount,
-          source: opts.source,
-          webhookEventId: opts.webhookEventId ?? null,
+          jobPosterId: String(job.jobPosterUserId),
+          createdAt: now,
+          dedupeKeyBase: `payment_received:${job.id}:${pi.id}`,
+          metadata: {
+            jobId: job.id,
+            paymentIntentId: pi.id,
+            amountCents: incomingAmount,
+            source: opts.source,
+            webhookEventId: opts.webhookEventId ?? null,
+          },
         },
-        idempotencyKey: `payment_received:${job.id}:${pi.id}:poster`,
       },
-      tx,
-    );
-
-    await createAdminNotifications(
-      {
-        type: "PAYMENT_RECEIVED",
-        title: "Payment received",
-        message: `Job ${job.id} payment is now secured.`,
-        entityType: "PAYMENT",
-        entityId: job.id,
-        priority: "LOW",
-        metadata: {
-          jobId: job.id,
-          paymentIntentId: pi.id,
-          amountCents: incomingAmount,
-          source: opts.source,
-          webhookEventId: opts.webhookEventId ?? null,
-        },
-        idempotencyKey: `payment_received:${job.id}:${pi.id}`,
-      },
-      tx,
+      { tx },
     );
 
     return {

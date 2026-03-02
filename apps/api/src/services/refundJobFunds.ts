@@ -20,7 +20,7 @@ import { disputeCases } from "../../db/schema/disputeCase";
 import { jobs } from "../../db/schema/job";
 import { jobPayments } from "../../db/schema/jobPayment";
 import { transferRecords } from "../../db/schema/transferRecord";
-import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 function requireStripe() {
   if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
@@ -137,44 +137,22 @@ export async function refundJobFunds(jobId: string): Promise<RefundJobFundsKind>
       } as any)
       .where(and(eq(jobPayments.jobId, jobId), isNull(jobPayments.refundedAt)));
 
-    if (job.jobPosterUserId) {
-      await createNotification(
-        {
-          userId: String(job.jobPosterUserId),
-          role: "JOB_POSTER",
-          type: "JOB_REFUNDED",
-          title: "Job refunded",
-          message: "A refund has been issued for your job payment.",
-          entityType: "REFUND",
-          entityId: jobId,
-          priority: "HIGH",
+    await emitDomainEvent(
+      {
+        type: "REFUND_ISSUED",
+        payload: {
+          jobId,
+          refundId: refund.id,
+          jobPosterId: job.jobPosterUserId ? String(job.jobPosterUserId) : null,
+          dedupeKeyBase: `job_refunded:${jobId}:${refund.id}`,
           metadata: {
             jobId,
             refundId: refund.id,
             source: "manual_or_workflow",
           },
-          idempotencyKey: `job_refunded:${jobId}:${refund.id}:poster`,
         },
-        tx,
-      );
-    }
-
-    await createAdminNotifications(
-      {
-        type: "JOB_REFUNDED",
-        title: "Job refunded",
-        message: `Refund issued for job ${jobId}.`,
-        entityType: "REFUND",
-        entityId: jobId,
-        priority: "HIGH",
-        metadata: {
-          jobId,
-          refundId: refund.id,
-          source: "manual_or_workflow",
-        },
-        idempotencyKey: `job_refunded:${jobId}:${refund.id}`,
       },
-      tx,
+      { tx },
     );
 
     return { kind: "ok" as const, refundId: refund.id, status: refund.status ?? "unknown" };

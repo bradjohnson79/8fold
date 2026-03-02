@@ -7,9 +7,10 @@ import { jobPhotos } from "@/db/schema/jobPhoto";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { v4JobUploads } from "@/db/schema/v4JobUpload";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
-import { computeEscrowPricing, computeEscrowSplitAllocations } from "@/src/services/escrow/pricing";
 import { stripe } from "@/src/payments/stripe";
-import { writeChargeLedger } from "@/src/services/escrow/ledger";
+import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
+import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
+import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
 
 type DraftData = Record<string, any>;
 
@@ -82,8 +83,9 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
 
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
   const piStatus = String(pi.status ?? "").toLowerCase();
+  const isAuthorizedHold = piStatus === "requires_capture";
   const isCapturedCharge = piStatus === "succeeded";
-  if (!isCapturedCharge) {
+  if (!isAuthorizedHold && !isCapturedCharge) {
     throw Object.assign(new Error("Payment not completed. Complete Stripe confirmation first."), { status: 409 });
   }
 
@@ -101,11 +103,14 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   const isRegional = Boolean(pricing.isRegional ?? details.isRegional);
 
   const appraisalSubtotalCents = Number(pricing.appraisalPriceCents ?? pricing.selectedPriceCents ?? 0);
-  const pricingResult = await computeEscrowPricing({
+  const feeConfig = await getFeeConfig("card");
+  const pricingResult = await computeModelAPricing({
     appraisalSubtotalCents,
     isRegional,
     country: countryCode,
     province: stateCode,
+    percentBps: feeConfig.percentBps,
+    fixedCents: feeConfig.fixedCents,
   });
 
   if (!tradeCategory || !TRADE_CATEGORIES_CANONICAL.includes(tradeCategory as any)) {
@@ -126,12 +131,12 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   if (
     !Number.isInteger(pricingResult.appraisalSubtotalCents) ||
     pricingResult.appraisalSubtotalCents <= 0 ||
-    !Number.isInteger(pricingResult.totalAmountCents) ||
-    pricingResult.totalAmountCents <= 0
+    !Number.isInteger(pricingResult.totalChargeCents) ||
+    pricingResult.totalChargeCents <= 0
   ) {
     throw Object.assign(new Error("Invalid appraisal or total price."), { status: 400 });
   }
-  if (pi.amount !== pricingResult.totalAmountCents) {
+  if (pi.amount !== pricingResult.totalChargeCents) {
     throw Object.assign(new Error("Stripe amount does not match the computed total."), { status: 409 });
   }
   if (String(pi.currency ?? "").toLowerCase() !== pricingResult.paymentCurrency) {
@@ -142,13 +147,8 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   const uploadIds = images.map((i) => i.uploadId);
 
   const now = new Date();
-  const split = computeEscrowSplitAllocations({
-    appraisalSubtotalCents: pricingResult.appraisalSubtotalCents,
-    regionalFeeCents: pricingResult.regionalFeeCents,
-    taxAmountCents: pricingResult.taxAmountCents,
-  });
-
-  const jobId = randomUUID();
+  const jobId = String(payment.modelAJobId ?? payment.provisionalJobId ?? "").trim() || randomUUID();
+  const stripeChargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null;
 
   await db.transaction(async (tx) => {
     await tx.insert(jobs).values({
@@ -174,22 +174,23 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
       appraisal_subtotal_cents: pricingResult.appraisalSubtotalCents,
       regional_fee_cents: pricingResult.regionalFeeCents,
       tax_rate_bps: pricingResult.taxRateBps,
-      tax_amount_cents: pricingResult.taxAmountCents,
-      total_amount_cents: pricingResult.totalAmountCents,
-      amount_cents: pricingResult.totalAmountCents,
+      tax_amount_cents: pricingResult.taxCents,
+      total_amount_cents: pricingResult.totalChargeCents,
+      amount_cents: pricingResult.totalChargeCents,
       labor_total_cents: pricingResult.legacy.laborTotalCents,
       materials_total_cents: 0,
-      transaction_fee_cents: pricingResult.legacy.transactionFeeCents,
+      transaction_fee_cents: pricingResult.estimatedProcessingFeeCents,
       price_adjustment_cents: pricingResult.legacy.priceAdjustmentCents,
       stripe_payment_intent_id: paymentIntentId,
       stripe_payment_intent_status: String(pi.status ?? ""),
-      stripe_charge_id: typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null,
-      payment_status: "FUNDS_SECURED" as any,
-      stripe_paid_at: now,
-      escrow_locked_at: now,
-      funds_secured_at: now,
-      funded_at: now,
-      payment_captured_at: now,
+      stripe_charge_id: stripeChargeId,
+      payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
+      stripe_authorized_at: now,
+      stripe_paid_at: isCapturedCharge ? now : null,
+      escrow_locked_at: isCapturedCharge ? now : null,
+      funds_secured_at: isCapturedCharge ? now : null,
+      funded_at: isCapturedCharge ? now : null,
+      payment_captured_at: isCapturedCharge ? now : null,
       job_poster_user_id: userId,
       job_type: (isRegional ? "regional" : "urban") as any,
       trade_category: tradeCategory as any,
@@ -200,9 +201,9 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
       created_at: now,
       updated_at: now,
       price_median_cents: pricingResult.appraisalSubtotalCents,
-      contractor_payout_cents: split.contractorCents,
-      router_earnings_cents: split.routerCents,
-      broker_fee_cents: split.platformCents,
+      contractor_payout_cents: pricingResult.contractorPayoutCents,
+      router_earnings_cents: pricingResult.routerFeeCents,
+      broker_fee_cents: pricingResult.platformFeeCents,
       routing_status: "UNROUTED" as any,
     });
 
@@ -212,18 +213,18 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
       .where(eq(jobPayments.jobId, jobId))
       .limit(1);
     const existingPayment = existingPaymentRows[0] ?? null;
-    const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id ?? null;
+
     if (existingPayment?.id) {
       await tx
         .update(jobPayments)
         .set({
           stripePaymentIntentId: paymentIntentId,
           stripePaymentIntentStatus: String(pi.status ?? ""),
-          stripeChargeId: chargeId,
-          amountCents: pricingResult.totalAmountCents,
-          status: "CAPTURED",
-          escrowLockedAt: now,
-          paymentCapturedAt: now,
+          stripeChargeId,
+          amountCents: pricingResult.totalChargeCents,
+          status: isCapturedCharge ? "CAPTURED" : "PENDING",
+          escrowLockedAt: isCapturedCharge ? now : null,
+          paymentCapturedAt: isCapturedCharge ? now : null,
           updatedAt: now,
         } as any)
         .where(eq(jobPayments.id, existingPayment.id));
@@ -233,11 +234,11 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
         jobId,
         stripePaymentIntentId: paymentIntentId,
         stripePaymentIntentStatus: String(pi.status ?? ""),
-        stripeChargeId: chargeId,
-        amountCents: pricingResult.totalAmountCents,
-        status: "CAPTURED",
-        escrowLockedAt: now,
-        paymentCapturedAt: now,
+        stripeChargeId,
+        amountCents: pricingResult.totalChargeCents,
+        status: isCapturedCharge ? "CAPTURED" : "PENDING",
+        escrowLockedAt: isCapturedCharge ? now : null,
+        paymentCapturedAt: isCapturedCharge ? now : null,
         createdAt: now,
         updatedAt: now,
       } as any);
@@ -269,12 +270,21 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
         .where(and(inArray(v4JobUploads.id, uploadIds), eq(v4JobUploads.userId, userId)));
     }
 
-    await writeChargeLedger(tx as any, {
-      jobId,
-      totalAmountCents: pricingResult.totalAmountCents,
-      currency: pricingResult.currency,
-      paymentIntentId,
-    });
+    if (isCapturedCharge) {
+      await writeChargeLedger(tx as any, {
+        jobId,
+        totalAmountCents: pricingResult.totalChargeCents,
+        currency: pricingResult.currency,
+        paymentIntentId,
+      });
+    } else {
+      await writeAuthHoldLedger(tx as any, {
+        jobId,
+        totalAmountCents: pricingResult.totalChargeCents,
+        currency: pricingResult.currency,
+        paymentIntentId,
+      });
+    }
 
     await tx
       .update(jobDraft)
@@ -294,6 +304,9 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
         jobPosterUserId: userId,
         country: countryCode,
         province: stateCode,
+        splitBaseCents: String(pricingResult.baseSplitCents),
+        taxCents: String(pricingResult.taxCents),
+        estimatedProcessingFeeCents: String(pricingResult.estimatedProcessingFeeCents),
       },
     });
   } catch {

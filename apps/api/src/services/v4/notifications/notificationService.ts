@@ -15,6 +15,151 @@ import {
 
 type Executor = typeof db | any;
 
+class NotificationSchemaError extends Error {
+  code = "NOTIFICATION_SCHEMA_ERROR";
+  status = 500;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "NotificationSchemaError";
+  }
+}
+
+function isMissingPreferencesTableError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return code === "42P01" || /v4_notification_preferences/i.test(message);
+}
+
+function isMissingNotificationsDedupeColumnError(error: unknown): boolean {
+  const root = error as { code?: string; message?: string; cause?: { code?: string; message?: string } } | null;
+  const code = root?.code;
+  const causeCode = root?.cause?.code;
+  const message = [root?.message ?? String(error ?? ""), root?.cause?.message ?? ""].join(" ");
+  if ((code === "42703" || causeCode === "42703") && /dedupe_key/i.test(message)) return true;
+  return /insert into \"v4_notifications\"/i.test(message) && /dedupe_key/i.test(message);
+}
+
+function handleMissingPreferencesTable(error: unknown): never {
+  const msg = "v4_notification_preferences table missing — migration required.";
+  if (process.env.NODE_ENV === "production") {
+    console.error("[NOTIFICATION_SCHEMA_ERROR]", {
+      message: msg,
+      dbError: error instanceof Error ? error.message : String(error),
+    });
+  }
+  throw new NotificationSchemaError(msg);
+}
+
+let preferencesSchemaCheckPromise: Promise<void> | null = null;
+let dedupeColumnCheckPromise: Promise<boolean> | null = null;
+
+async function ensurePreferencesSchemaReady(exec: Executor): Promise<void> {
+  if (preferencesSchemaCheckPromise) {
+    return preferencesSchemaCheckPromise;
+  }
+  preferencesSchemaCheckPromise = (async () => {
+    try {
+      await exec.execute(sql`select 1 from ${v4NotificationPreferences} limit 1`);
+    } catch (error) {
+      preferencesSchemaCheckPromise = null;
+      if (isMissingPreferencesTableError(error)) {
+        handleMissingPreferencesTable(error);
+      }
+      throw error;
+    }
+  })();
+  return preferencesSchemaCheckPromise;
+}
+
+async function hasNotificationsDedupeColumn(exec: Executor): Promise<boolean> {
+  if (dedupeColumnCheckPromise) {
+    return dedupeColumnCheckPromise;
+  }
+  dedupeColumnCheckPromise = (async () => {
+    const res = await exec.execute(sql`
+      select exists (
+        select 1
+        from information_schema.columns
+        where table_schema = current_schema()
+          and table_name = 'v4_notifications'
+          and column_name = 'dedupe_key'
+      ) as exists
+    `);
+    const rows = (res as { rows?: Array<{ exists?: boolean | string | number }> }).rows ?? [];
+    return Boolean(rows[0]?.exists);
+  })().catch((error) => {
+    dedupeColumnCheckPromise = null;
+    throw error;
+  });
+  return dedupeColumnCheckPromise;
+}
+
+type NotificationInsertBase = {
+  id: string;
+  userId: string;
+  role: NotificationRole;
+  type: NotificationType;
+  title: string;
+  message: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: Record<string, unknown>;
+  read: boolean;
+  readAt: Date | null;
+  priority: NotificationPriority;
+  createdAt: Date;
+};
+
+async function insertWithoutDedupeColumn(exec: Executor, values: NotificationInsertBase): Promise<NotificationRow | null> {
+  await exec.execute(sql`
+    insert into "v4_notifications" (
+      "id",
+      "user_id",
+      "role",
+      "type",
+      "title",
+      "message",
+      "entity_type",
+      "entity_id",
+      "metadata",
+      "read",
+      "read_at",
+      "priority",
+      "created_at"
+    ) values (
+      ${values.id},
+      ${values.userId},
+      ${values.role},
+      ${values.type},
+      ${values.title},
+      ${values.message},
+      ${values.entityType},
+      ${values.entityId},
+      ${values.metadata},
+      ${values.read},
+      ${values.readAt},
+      ${values.priority},
+      ${values.createdAt}
+    )
+  `);
+  const inserted = await exec
+    .select(notificationSelect)
+    .from(v4Notifications)
+    .where(eq(v4Notifications.id, values.id))
+    .limit(1);
+  return (inserted[0] as NotificationRow | undefined) ?? null;
+}
+
+async function findByMetadataDedupe(exec: Executor, userId: string, dedupeKey: string): Promise<NotificationRow | null> {
+  const rows = await exec
+    .select(notificationSelect)
+    .from(v4Notifications)
+    .where(and(eq(v4Notifications.userId, userId), sql`${v4Notifications.metadata} ->> '_dedupeKey' = ${dedupeKey}`))
+    .limit(1);
+  return (rows[0] as NotificationRow | undefined) ?? null;
+}
+
 export type NotificationRow = {
   id: string;
   userId: string;
@@ -144,6 +289,8 @@ export async function sendNotification(
     const userId = String(input.userId ?? "").trim();
     if (!userId) return null;
 
+    await ensurePreferencesSchemaReady(exec);
+
     const role = normalizeNotificationRole(input.role);
     const type = normalizeNotificationType(input.type);
     const priority = normalizeNotificationPriority(input.priority);
@@ -154,44 +301,80 @@ export async function sendNotification(
       console.info("[NOTIFICATION_EMAIL_INTENT]", { userId, role, type });
     }
     if (!pref.inApp) return null;
+    const dedupeColumnAvailable = await hasNotificationsDedupeColumn(exec);
+    const resolvedDedupeKey = input.dedupeKey ?? input.idempotencyKey ?? null;
+    if (resolvedDedupeKey && !dedupeColumnAvailable) {
+      const existingByMetadata = await findByMetadataDedupe(exec, userId, resolvedDedupeKey);
+      if (existingByMetadata) return existingByMetadata;
+    }
 
     const createdAt = input.createdAt ?? new Date();
-    const values = {
-      id: input.id ?? randomUUID(),
+    const notificationId = input.id ?? randomUUID();
+    const valuesBase: NotificationInsertBase = {
+      id: notificationId,
       userId,
       role,
       type,
       title: String(input.title ?? "").trim() || "Notification",
       message: String(input.message ?? "").trim() || "You have a new notification.",
       entityType: String(input.entityType ?? "SYSTEM").trim().toUpperCase() || "SYSTEM",
-      entityId: input.entityId ?? null,
-      metadata: input.metadata ?? {},
+      entityId: input.entityId ?? notificationId,
+      metadata:
+        resolvedDedupeKey && !dedupeColumnAvailable
+          ? { ...(input.metadata ?? {}), _dedupeKey: resolvedDedupeKey }
+          : (input.metadata ?? {}),
       read: false,
       readAt: null,
       priority,
-      dedupeKey: input.dedupeKey ?? input.idempotencyKey ?? null,
       createdAt,
     } as const;
+    const values = resolvedDedupeKey ? { ...valuesBase, dedupeKey: resolvedDedupeKey } : valuesBase;
 
-    if (values.dedupeKey) {
-      const inserted = await exec
-        .insert(v4Notifications)
-        .values(values)
-        .onConflictDoNothing({ target: v4Notifications.dedupeKey })
-        .returning(notificationSelect);
-      if (inserted[0]) return inserted[0] as NotificationRow;
+    if (resolvedDedupeKey && dedupeColumnAvailable) {
+      try {
+        const inserted = await exec
+          .insert(v4Notifications)
+          .values(values)
+          .onConflictDoNothing({ target: v4Notifications.dedupeKey })
+          .returning(notificationSelect);
+        if (inserted[0]) return inserted[0] as NotificationRow;
 
-      const existing = await exec
-        .select(notificationSelect)
-        .from(v4Notifications)
-        .where(eq(v4Notifications.dedupeKey, values.dedupeKey))
-        .limit(1);
-      return (existing[0] as NotificationRow | undefined) ?? null;
+        const existing = await exec
+          .select(notificationSelect)
+          .from(v4Notifications)
+          .where(eq(v4Notifications.dedupeKey, resolvedDedupeKey))
+          .limit(1);
+        return (existing[0] as NotificationRow | undefined) ?? null;
+      } catch (error) {
+        if (isMissingNotificationsDedupeColumnError(error)) {
+          console.error("[NOTIFICATION_SCHEMA_ERROR]", {
+            message: "v4_notifications.dedupe_key missing — falling back to insert without dedupe.",
+          });
+          return insertWithoutDedupeColumn(exec, valuesBase);
+        }
+        throw error;
+      }
     }
 
-    const inserted = await exec.insert(v4Notifications).values(values).returning(notificationSelect);
-    return (inserted[0] as NotificationRow | undefined) ?? null;
+    try {
+      const inserted = await exec.insert(v4Notifications).values(values).returning(notificationSelect);
+      return (inserted[0] as NotificationRow | undefined) ?? null;
+    } catch (error) {
+      if (isMissingNotificationsDedupeColumnError(error)) {
+        console.error("[NOTIFICATION_SCHEMA_ERROR]", {
+          message: "v4_notifications.dedupe_key missing — falling back to insert without dedupe.",
+        });
+        return insertWithoutDedupeColumn(exec, valuesBase);
+      }
+      throw error;
+    }
   } catch (error) {
+    if (error instanceof NotificationSchemaError || isMissingPreferencesTableError(error)) {
+      if (!(error instanceof NotificationSchemaError)) {
+        handleMissingPreferencesTable(error);
+      }
+      throw error;
+    }
     console.error("[NOTIFICATION_SEND_ERROR]", {
       userId: String(input.userId ?? ""),
       role: String(input.role ?? ""),

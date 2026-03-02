@@ -6,7 +6,7 @@ import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
-import { sendBulkNotifications, sendNotification } from "@/src/services/v4/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict, forbidden } from "./v4Errors";
 import { expireStaleInvitesAndResetJobs } from "./inviteExpirationService";
 
@@ -273,53 +273,20 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         ),
       );
 
-    const notifications = [
+    await emitDomainEvent(
       {
-        userId: contractorUserId,
-        role: "CONTRACTOR",
-        type: "JOB_ASSIGNED",
-        title: "Job assigned",
-        message: "You accepted the invite and are now assigned to this job.",
-        entityType: "JOB",
-        entityId: inviteAfterLock.jobId,
-        priority: "NORMAL",
-        createdAt: now,
-        idempotencyKey: `job_assigned:${inviteAfterLock.jobId}:${contractorUserId}`,
+        type: "CONTRACTOR_ACCEPTED_INVITE",
+        payload: {
+          jobId: inviteAfterLock.jobId,
+          inviteId,
+          contractorId: contractorUserId,
+          jobPosterId: String(job.jobPosterUserId),
+          routerId: job.routerUserId ? String(job.routerUserId) : null,
+          createdAt: now,
+          dedupeKeyBase: `contractor_accepted:${inviteId}`,
+        },
       },
-      {
-        userId: String(job.jobPosterUserId),
-        role: "JOB_POSTER",
-        type: "CONTRACTOR_ACCEPTED",
-        title: "Contractor accepted",
-        message: "A contractor accepted your routed job invite.",
-        entityType: "INVITE",
-        entityId: inviteId,
-        priority: "NORMAL",
-        createdAt: now,
-        idempotencyKey: `contractor_accepted:${inviteId}:poster`,
-      },
-    ] as const;
-    await sendBulkNotifications(
-      [
-        ...notifications,
-        ...(job.routerUserId
-          ? [
-              {
-                userId: String(job.routerUserId),
-                role: "ROUTER",
-                type: "CONTRACTOR_ACCEPTED",
-                title: "Contractor accepted",
-                message: "A contractor accepted one of your routed invites.",
-                entityType: "INVITE",
-                entityId: inviteId,
-                priority: "NORMAL",
-                createdAt: now,
-                idempotencyKey: `contractor_accepted:${inviteId}:router`,
-              },
-            ]
-          : []),
-      ],
-      tx,
+      { tx },
     );
 
     return { success: true as const, jobId: inviteAfterLock.jobId };
@@ -350,43 +317,23 @@ export async function rejectInviteById(contractorUserId: string, inviteId: strin
       .from(jobs)
       .where(eq(jobs.id, invite.jobId))
       .limit(1);
-    const job = jobRows[0] ?? null;
-    if (job) {
-      if (job.routerUserId) {
-        await sendNotification(
-          {
-            userId: String(job.routerUserId),
-            role: "ROUTER",
-            type: "JOB_REJECTED",
-            title: "Invite rejected",
-            message: "A contractor rejected a routed invite.",
-            entityType: "INVITE",
-            entityId: inviteId,
-            priority: "NORMAL",
+      const job = jobRows[0] ?? null;
+      if (job) {
+      await emitDomainEvent(
+        {
+          type: "CONTRACTOR_REJECTED_INVITE",
+          payload: {
+            inviteId,
+            jobId: invite.jobId,
+            routerId: job.routerUserId ? String(job.routerUserId) : null,
+            jobPosterId: job.jobPosterUserId ? String(job.jobPosterUserId) : null,
             createdAt: now,
-            idempotencyKey: `invite_rejected:${inviteId}:router`,
+            dedupeKeyBase: `invite_rejected:${inviteId}`,
           },
-          tx,
-        );
+        },
+        { tx },
+      );
       }
-      if (job.jobPosterUserId) {
-        await sendNotification(
-          {
-            userId: String(job.jobPosterUserId),
-            role: "JOB_POSTER",
-            type: "JOB_REJECTED",
-            title: "Invite declined",
-            message: "A contractor declined this job invite.",
-            entityType: "INVITE",
-            entityId: inviteId,
-            priority: "LOW",
-            createdAt: now,
-            idempotencyKey: `invite_rejected:${inviteId}:poster`,
-          },
-          tx,
-        );
-      }
-    }
     return { success: true as const };
   });
 }

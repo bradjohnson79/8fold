@@ -58,9 +58,9 @@ WITH notification_types AS (
 user_targets AS (
   SELECT
     u."id"::text AS user_id,
-    upper(coalesce(u."role", ''))::text AS role
-  FROM "public"."users" u
-  WHERE upper(coalesce(u."role", '')) IN ('CONTRACTOR', 'JOB_POSTER', 'ROUTER', 'ADMIN')
+    upper(coalesce(u."role"::text, ''))::text AS role
+  FROM "public"."User" u
+  WHERE upper(coalesce(u."role"::text, '')) IN ('CONTRACTOR', 'JOB_POSTER', 'ROUTER', 'ADMIN')
 
   UNION
 

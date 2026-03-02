@@ -2,8 +2,13 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
-import { sendNotification } from "@/src/services/v4/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
+import {
+  computeExecutionEligibility,
+  mapLegacyStatusForExecution,
+  promoteDuePublishedJobsForJobPoster,
+} from "./jobExecutionService";
 
 export type JobListItem = {
   id: string;
@@ -12,9 +17,15 @@ export type JobListItem = {
   routingStatus: string;
   amountCents: number;
   createdAt: string;
+  canMarkComplete: boolean;
+  contractorMarkedCompleteAt: string | null;
+  posterMarkedCompleteAt: string | null;
+  completedAt: string | null;
+  executionStatus: string;
 };
 
 export async function listJobsForJobPoster(userId: string): Promise<JobListItem[]> {
+  await promoteDuePublishedJobsForJobPoster(userId);
   const rows = await db
     .select({
       id: jobs.id,
@@ -23,19 +34,41 @@ export async function listJobsForJobPoster(userId: string): Promise<JobListItem[
       routingStatus: jobs.routing_status,
       amountCents: jobs.amount_cents,
       createdAt: jobs.created_at,
+      appointmentAt: jobs.appointment_at,
+      completedAt: jobs.completed_at,
+      contractorMarkedCompleteAt: jobs.contractor_marked_complete_at,
+      posterMarkedCompleteAt: jobs.poster_marked_complete_at,
     })
     .from(jobs)
     .where(and(eq(jobs.job_poster_user_id, userId), ne(jobs.status, "DRAFT")))
     .orderBy(desc(jobs.created_at));
 
-  return rows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    status: String(r.status ?? ""),
-    routingStatus: String(r.routingStatus ?? ""),
-    amountCents: Number(r.amountCents ?? 0),
-    createdAt: r.createdAt?.toISOString?.() ?? "",
-  }));
+  return rows.map((r) => {
+    const eligibility = computeExecutionEligibility(
+      {
+        id: r.id,
+        status: mapLegacyStatusForExecution(String(r.status ?? "")),
+        appointment_at: r.appointmentAt ?? null,
+        completed_at: r.completedAt ?? null,
+        contractor_marked_complete_at: r.contractorMarkedCompleteAt ?? null,
+        poster_marked_complete_at: r.posterMarkedCompleteAt ?? null,
+      },
+      new Date(),
+    );
+    return {
+      id: r.id,
+      title: r.title,
+      status: mapLegacyStatusForExecution(String(r.status ?? "")),
+      routingStatus: String(r.routingStatus ?? ""),
+      amountCents: Number(r.amountCents ?? 0),
+      createdAt: r.createdAt?.toISOString?.() ?? "",
+      canMarkComplete: eligibility.canMarkComplete,
+      contractorMarkedCompleteAt: r.contractorMarkedCompleteAt?.toISOString?.() ?? null,
+      posterMarkedCompleteAt: r.posterMarkedCompleteAt?.toISOString?.() ?? null,
+      completedAt: r.completedAt?.toISOString?.() ?? null,
+      executionStatus: eligibility.executionStatus,
+    };
+  });
 }
 
 export type JobDetail = {
@@ -48,9 +81,15 @@ export type JobDetail = {
   addressFull: string | null;
   tradeCategory: string;
   createdAt: string;
+  canMarkComplete: boolean;
+  executionStatus: string;
+  contractorMarkedCompleteAt: string | null;
+  posterMarkedCompleteAt: string | null;
+  completedAt: string | null;
 };
 
 export async function getJobDetailForJobPoster(jobId: string, userId: string): Promise<JobDetail | null> {
+  await promoteDuePublishedJobsForJobPoster(userId);
   const rows = await db
     .select({
       id: jobs.id,
@@ -63,6 +102,10 @@ export async function getJobDetailForJobPoster(jobId: string, userId: string): P
       trade_category: jobs.trade_category,
       createdAt: jobs.created_at,
       jobPosterUserId: jobs.job_poster_user_id,
+      appointmentAt: jobs.appointment_at,
+      completedAt: jobs.completed_at,
+      contractorMarkedCompleteAt: jobs.contractor_marked_complete_at,
+      posterMarkedCompleteAt: jobs.poster_marked_complete_at,
     })
     .from(jobs)
     .where(eq(jobs.id, jobId))
@@ -71,16 +114,32 @@ export async function getJobDetailForJobPoster(jobId: string, userId: string): P
   const r = rows[0];
   if (!r || r.jobPosterUserId !== userId) return null;
 
+  const eligibility = computeExecutionEligibility(
+    {
+      id: r.id,
+      status: mapLegacyStatusForExecution(String(r.status ?? "")),
+      appointment_at: r.appointmentAt ?? null,
+      completed_at: r.completedAt ?? null,
+      contractor_marked_complete_at: r.contractorMarkedCompleteAt ?? null,
+      poster_marked_complete_at: r.posterMarkedCompleteAt ?? null,
+    },
+    new Date(),
+  );
   return {
     id: r.id,
     title: r.title,
     scope: r.scope,
-    status: String(r.status ?? ""),
+    status: mapLegacyStatusForExecution(String(r.status ?? "")),
     routingStatus: String(r.routingStatus ?? ""),
     amountCents: Number(r.amountCents ?? 0),
     addressFull: r.address_full ?? null,
     tradeCategory: String(r.trade_category ?? ""),
     createdAt: r.createdAt?.toISOString?.() ?? "",
+    canMarkComplete: eligibility.canMarkComplete,
+    executionStatus: eligibility.executionStatus,
+    contractorMarkedCompleteAt: r.contractorMarkedCompleteAt?.toISOString?.() ?? null,
+    posterMarkedCompleteAt: r.posterMarkedCompleteAt?.toISOString?.() ?? null,
+    completedAt: r.completedAt?.toISOString?.() ?? null,
   };
 }
 
@@ -215,17 +274,14 @@ export async function acceptAssignedContractorForJobPoster(jobId: string, userId
       .where(eq(jobs.id, jobId));
 
     if (job.contractorUserId) {
-      await sendNotification({
-        userId: String(job.contractorUserId),
-        role: "CONTRACTOR",
-        type: "POSTER_ACCEPTED",
-        title: "Assigned contractor accepted",
-        message: "The job poster accepted your assignment.",
-        entityType: "JOB",
-        entityId: jobId,
-        priority: "NORMAL",
-        createdAt: now,
-        idempotencyKey: `poster_accepted:${jobId}:${String(job.contractorUserId)}`,
+      await emitDomainEvent({
+        type: "POSTER_ACCEPTED_CONTRACTOR",
+        payload: {
+          jobId,
+          contractorId: String(job.contractorUserId),
+          createdAt: now,
+          dedupeKey: `poster_accepted:${jobId}:${String(job.contractorUserId)}`,
+        },
       });
     }
   }
@@ -274,17 +330,14 @@ export async function acceptAppointmentForJobPoster(
     })
     .where(eq(jobs.id, jobId));
 
-  await sendNotification({
-    userId: String(job.contractorUserId),
-    role: "CONTRACTOR",
-    type: "RESCHEDULE_ACCEPTED",
-    title: "Appointment accepted",
-    message: "The job poster accepted your appointment.",
-    entityType: "JOB",
-    entityId: jobId,
-    priority: "NORMAL",
-    createdAt: now,
-    idempotencyKey: `appointment_accepted:${jobId}:${String(job.contractorUserId)}`,
+  await emitDomainEvent({
+    type: "APPOINTMENT_ACCEPTED",
+    payload: {
+      jobId,
+      contractorId: String(job.contractorUserId),
+      createdAt: now,
+      dedupeKey: `appointment_accepted:${jobId}:${String(job.contractorUserId)}`,
+    },
   });
 
   return {

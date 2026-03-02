@@ -2,8 +2,13 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
-import { sendBulkNotifications, sendNotification } from "@/src/services/v4/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict } from "./v4Errors";
+import {
+  applyJobStartedTransitionIfDue,
+  contractorMarkComplete,
+  promoteDuePublishedJobsForContractor,
+} from "./jobExecutionService";
 
 /** V4 assignment status transitions. Lifecycle authority: v4_job_assignments only. */
 export const V4_ASSIGNMENT_TRANSITIONS = {
@@ -15,6 +20,7 @@ export const V4_ASSIGNMENT_TRANSITIONS = {
 export type JobListStatus = "assigned" | "completed";
 
 export async function listJobs(contractorUserId: string, status: JobListStatus) {
+  await promoteDuePublishedJobsForContractor(contractorUserId);
   const assignmentStatuses = status === "assigned" ? ["ASSIGNED", "IN_PROGRESS"] : ["COMPLETED"];
   const assignmentRows = await db
     .select({ jobId: v4JobAssignments.jobId, status: v4JobAssignments.status, assignedAt: v4JobAssignments.assignedAt })
@@ -42,6 +48,7 @@ export async function listJobs(contractorUserId: string, status: JobListStatus) 
 }
 
 export async function getJobById(contractorUserId: string, jobId: string) {
+  await promoteDuePublishedJobsForContractor(contractorUserId);
   const assignmentRows = await db
     .select()
     .from(v4JobAssignments)
@@ -93,13 +100,45 @@ export async function startJob(contractorUserId: string, jobId: string) {
   }
 
   await db.transaction(async (tx) => {
+    const jobRows = await tx
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        appointmentAt: jobs.appointment_at,
+        contractorUserId: jobs.contractor_user_id,
+        jobPosterUserId: jobs.job_poster_user_id,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+    const job = jobRows[0] ?? null;
+    if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+    if (String(job.contractorUserId ?? "") !== contractorUserId) {
+      throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
+    }
+
+    const promoted = await applyJobStartedTransitionIfDue(
+      tx,
+      {
+        id: job.id,
+        status: job.status,
+        appointmentAt: job.appointmentAt,
+        contractorUserId: job.contractorUserId,
+        jobPosterUserId: job.jobPosterUserId,
+      },
+      { tx },
+    );
+    if (!promoted && (!(job.appointmentAt instanceof Date) || job.appointmentAt.getTime() > Date.now())) {
+      throw conflict("V4_APPOINTMENT_NOT_REACHED", "Cannot start job before appointment time");
+    }
+
     await tx
       .update(v4JobAssignments)
       .set({ status: "IN_PROGRESS" })
       .where(eq(v4JobAssignments.id, assignment.id));
     await tx
       .update(jobs)
-      .set({ status: "IN_PROGRESS" as any, updated_at: new Date() })
+      .set({ status: "JOB_STARTED" as any, updated_at: new Date() })
       .where(eq(jobs.id, jobId));
   });
 }
@@ -109,90 +148,7 @@ export async function startJob(contractorUserId: string, jobId: string) {
  * Only assigned contractor may transition. No legacy tables written.
  */
 export async function completeJob(contractorUserId: string, jobId: string) {
-  const assignmentRows = await db
-    .select()
-    .from(v4JobAssignments)
-    .where(
-      and(
-        eq(v4JobAssignments.contractorUserId, contractorUserId),
-        eq(v4JobAssignments.jobId, jobId)
-      )
-    )
-    .limit(1);
-  const assignment = assignmentRows[0] ?? null;
-  if (!assignment) throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
-
-  const allowed =
-    V4_ASSIGNMENT_TRANSITIONS[assignment.status as keyof typeof V4_ASSIGNMENT_TRANSITIONS] as readonly string[];
-  if (!allowed?.includes("COMPLETED")) {
-    if (assignment.status === "COMPLETED") {
-      return; // Idempotent: already completed
-    }
-    throw conflict("V4_INVALID_STATUS_TRANSITION", `Cannot complete from ${assignment.status}`, {
-      currentStatus: assignment.status,
-      allowedTransitions: allowed ?? [],
-    });
-  }
-
-  await db.transaction(async (tx) => {
-    const jobRows = await tx
-      .select({
-        id: jobs.id,
-        jobPosterUserId: jobs.job_poster_user_id,
-        routerUserId: jobs.claimed_by_user_id,
-      })
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-    const job = jobRows[0] ?? null;
-
-    await tx
-      .update(v4JobAssignments)
-      .set({ status: "COMPLETED" })
-      .where(eq(v4JobAssignments.id, assignment.id));
-    await tx
-      .update(jobs)
-      .set({ status: "COMPLETED" as any, contractor_completed_at: new Date(), updated_at: new Date() })
-      .where(eq(jobs.id, jobId));
-
-    if (job?.jobPosterUserId || job?.routerUserId) {
-      await sendBulkNotifications(
-        [
-          ...(job.jobPosterUserId
-            ? [
-                {
-                  userId: String(job.jobPosterUserId),
-                  role: "JOB_POSTER",
-                  type: "CONTRACTOR_COMPLETED_JOB",
-                  title: "Contractor marked job completed",
-                  message: "Review completion details and confirm if work is complete.",
-                  entityType: "JOB",
-                  entityId: jobId,
-                  priority: "NORMAL",
-                  idempotencyKey: `contractor_completed:${jobId}:poster`,
-                },
-              ]
-            : []),
-          ...(job.routerUserId
-            ? [
-                {
-                  userId: String(job.routerUserId),
-                  role: "ROUTER",
-                  type: "CONTRACTOR_COMPLETED_JOB",
-                  title: "Contractor completed assigned job",
-                  message: "Job completion is pending job poster confirmation.",
-                  entityType: "JOB",
-                  entityId: jobId,
-                  priority: "LOW",
-                  idempotencyKey: `contractor_completed:${jobId}:router`,
-                },
-              ]
-            : []),
-        ],
-        tx,
-      );
-    }
-  });
+  await contractorMarkComplete({ contractorUserId, jobId });
 }
 
 export async function bookAppointment(contractorUserId: string, jobId: string, appointmentAtRaw: string) {
@@ -258,20 +214,17 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
     }
 
     if (job.jobPosterUserId) {
-      await sendNotification(
+      await emitDomainEvent(
         {
-          userId: String(job.jobPosterUserId),
-          role: "JOB_POSTER",
           type: "APPOINTMENT_BOOKED",
-          title: "Appointment booked",
-          message: "Your contractor booked an appointment.",
-          entityType: "JOB",
-          entityId: jobId,
-          priority: "NORMAL",
-          createdAt: now,
-          idempotencyKey: `appointment_booked:${jobId}:poster`,
+          payload: {
+            jobId,
+            jobPosterId: String(job.jobPosterUserId),
+            createdAt: now,
+            dedupeKey: `appointment_booked:${jobId}:poster`,
+          },
         },
-        tx,
+        { tx },
       );
     }
 
@@ -283,42 +236,19 @@ async function notifyCancellationActors(
   tx: any,
   input: { jobId: string; now: Date; jobPosterUserId: string | null; routerUserId: string | null; type: string; message: string },
 ) {
-  await sendBulkNotifications(
-    [
-      ...(input.jobPosterUserId
-        ? [
-            {
-              userId: String(input.jobPosterUserId),
-              role: "JOB_POSTER",
-              type: input.type,
-              title: "Contractor cancelled assignment",
-              message: input.message,
-              entityType: "JOB",
-              entityId: input.jobId,
-              priority: "HIGH",
-              createdAt: input.now,
-              idempotencyKey: `${input.type.toLowerCase()}:${input.jobId}:poster`,
-            },
-          ]
-        : []),
-      ...(input.routerUserId
-        ? [
-            {
-              userId: String(input.routerUserId),
-              role: "ROUTER",
-              type: input.type,
-              title: "Contractor cancelled assignment",
-              message: "The job returned to routing.",
-              entityType: "JOB",
-              entityId: input.jobId,
-              priority: "NORMAL",
-              createdAt: input.now,
-              idempotencyKey: `${input.type.toLowerCase()}:${input.jobId}:router`,
-            },
-          ]
-        : []),
-    ],
-    tx,
+  await emitDomainEvent(
+    {
+      type: "CONTRACTOR_CANCELLED",
+      payload: {
+        jobId: input.jobId,
+        jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
+        routerId: input.routerUserId ? String(input.routerUserId) : null,
+        message: input.message,
+        createdAt: input.now,
+        dedupeKeyBase: `${input.type.toLowerCase()}:${input.jobId}`,
+      },
+    },
+    { tx },
   );
 }
 
@@ -402,20 +332,18 @@ export async function rescheduleAppointment(contractorUserId: string, jobId: str
       .where(eq(jobs.id, jobId));
 
     if (job.jobPosterUserId) {
-      await sendNotification(
+      await emitDomainEvent(
         {
-          userId: String(job.jobPosterUserId),
-          role: "JOB_POSTER",
-          type: "RESCHEDULE_REQUEST",
-          title: "Appointment reschedule requested",
-          message: "Your contractor proposed a new appointment time.",
-          entityType: "JOB",
-          entityId: jobId,
-          priority: "NORMAL",
-          createdAt: now,
-          idempotencyKey: `reschedule_request:${jobId}:${nextAppointmentAt.toISOString()}:poster`,
+          type: "RESCHEDULE_REQUESTED",
+          payload: {
+            jobId,
+            jobPosterId: String(job.jobPosterUserId),
+            appointmentAt: nextAppointmentAt.toISOString(),
+            createdAt: now,
+            dedupeKey: `reschedule_request:${jobId}:${nextAppointmentAt.toISOString()}:poster`,
+          },
         },
-        tx,
+        { tx },
       );
     }
 

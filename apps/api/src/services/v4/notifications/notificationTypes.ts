@@ -39,6 +39,7 @@ export const NOTIFICATION_TYPES = [
   "HIGH_VALUE_JOB_CANCELLED",
   "SYSTEM_ERROR_EVENT",
   // Existing live/system compatibility
+  "JOB_STARTED",
   "CONTRACTOR_COMPLETED_JOB",
   "FUNDS_RELEASED",
   "NEW_MESSAGE",

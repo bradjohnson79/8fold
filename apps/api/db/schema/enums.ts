@@ -61,6 +61,8 @@ export const jobStatusEnum = pgEnum("JobStatus", [
   "COMPLETED",
   // NOTE: Added to Postgres via add-only ALTER TYPE on 2026-02-14.
   "DISPUTED",
+  // NOTE: Added to Postgres via add-only ALTER TYPE on 2026-03-02.
+  "JOB_STARTED",
 ]);
 
 export const publicJobStatusEnum = pgEnum("PublicJobStatus", ["OPEN", "IN_PROGRESS"]);

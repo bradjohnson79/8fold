@@ -3,8 +3,10 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routers } from "@/db/schema/router";
 import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
+import { promoteDuePublishedJobsForRouter } from "./jobExecutionService";
 
 export async function getV4RouterSummary(userId: string) {
+  await promoteDuePublishedJobsForRouter(userId);
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -15,7 +17,7 @@ export async function getV4RouterSummary(userId: string) {
     db
       .select({
         totalRouted: sql<number>`count(*)::int`,
-        activeRoutes: sql<number>`count(*) filter (where ${jobs.status} in ('ASSIGNED', 'IN_PROGRESS'))::int`,
+        activeRoutes: sql<number>`count(*) filter (where ${jobs.status} in ('ASSIGNED', 'JOB_STARTED', 'IN_PROGRESS'))::int`,
         awaitingContractorAcceptance: sql<number>`count(*) filter (where ${jobs.status} = 'OPEN_FOR_ROUTING' and ${jobs.routing_status} = 'ROUTED_BY_ROUTER')::int`,
         pendingCompletionApproval: sql<number>`count(*) filter (where ${jobs.contractor_completed_at} is not null and ${jobs.router_approved_at} is null)::int`,
         completedThisMonth: sql<number>`count(*) filter (where ${jobs.router_approved_at} >= ${monthStart})::int`,
@@ -69,7 +71,7 @@ export async function getV4RouterSummary(userId: string) {
     let event = "Job Updated";
     if (routingStatus === "ROUTED_BY_ROUTER" && status === "OPEN_FOR_ROUTING") event = "Awaiting Contractor Response";
     else if (status === "ASSIGNED") event = "Assigned to Contractor";
-    else if (status === "IN_PROGRESS") event = "In Progress";
+    else if (status === "JOB_STARTED" || status === "IN_PROGRESS") event = "In Progress";
     else if (status === "CONTRACTOR_COMPLETED") event = "Awaiting Completion Approval";
     else if (status === "CUSTOMER_APPROVED" || status === "CUSTOMER_REJECTED") event = "Completion Finalized";
 
