@@ -164,87 +164,102 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
     }
   }
 
-  await db.transaction(async (tx) => {
-    try {
-      await tx.insert(jobs).values({
-        id: jobId,
-        status: "OPEN_FOR_ROUTING" as any,
-        archived: false,
-        title,
-        scope,
-        region,
-        country: countryCode as any,
-        country_code: countryCode as any,
-        state_code: stateCode,
-        region_code: stateCode,
-        city,
-        postal_code: postalCode,
-        address_full: address,
-        lat,
-        lng: lon,
-        province: stateCode,
-        is_regional: isRegional,
-        currency: pricingResult.currency as any,
-        payment_currency: pricingResult.paymentCurrency,
-        appraisal_subtotal_cents: pricingResult.appraisalSubtotalCents,
-        regional_fee_cents: pricingResult.regionalFeeCents,
-        tax_rate_bps: pricingResult.taxRateBps,
-        tax_amount_cents: pricingResult.taxCents,
-        total_amount_cents: pricingResult.totalChargeCents,
-        amount_cents: pricingResult.totalChargeCents,
-        labor_total_cents: pricingResult.legacy.laborTotalCents,
-        materials_total_cents: 0,
-        transaction_fee_cents: pricingResult.estimatedProcessingFeeCents,
-        price_adjustment_cents: pricingResult.legacy.priceAdjustmentCents,
-        stripe_payment_intent_id: paymentIntentId,
-        stripe_payment_intent_status: String(pi.status ?? ""),
-        stripe_charge_id: stripeChargeId,
-        payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
-        stripe_authorized_at: now,
-        stripe_paid_at: isCapturedCharge ? now : null,
-        escrow_locked_at: isCapturedCharge ? now : null,
-        funds_secured_at: isCapturedCharge ? now : null,
-        funded_at: isCapturedCharge ? now : null,
-        payment_captured_at: isCapturedCharge ? now : null,
-        job_poster_user_id: userId,
-        job_type: (isRegional ? "regional" : "urban") as any,
-        trade_category: tradeCategory as any,
-        service_type: "handyman",
-        availability: availability as any,
-        posted_at: now,
-        published_at: now,
-        created_at: now,
-        updated_at: now,
-        price_median_cents: pricingResult.appraisalSubtotalCents,
-        contractor_payout_cents: pricingResult.contractorPayoutCents,
-        router_earnings_cents: pricingResult.routerFeeCents,
-        broker_fee_cents: pricingResult.platformFeeCents,
-        routing_status: "UNROUTED" as any,
-      });
-    } catch (err) {
-      const dbErr = err as any;
-      console.error("JOB_INSERT_FAILED", {
-        jobId,
-        paymentIntentId,
-        code: dbErr?.code,
-        detail: dbErr?.detail,
-        constraint: dbErr?.constraint,
-        table: dbErr?.table,
-      });
-      throw err;
-    }
+  try {
+    await db.transaction(async (tx) => {
+      try {
+        await tx.insert(jobs).values({
+          id: jobId,
+          status: "OPEN_FOR_ROUTING" as any,
+          archived: false,
+          title,
+          scope,
+          region,
+          country: countryCode as any,
+          country_code: countryCode as any,
+          state_code: stateCode,
+          region_code: stateCode,
+          city,
+          postal_code: postalCode,
+          address_full: address,
+          lat,
+          lng: lon,
+          province: stateCode,
+          is_regional: isRegional,
+          currency: pricingResult.currency as any,
+          payment_currency: pricingResult.paymentCurrency,
+          appraisal_subtotal_cents: pricingResult.appraisalSubtotalCents,
+          regional_fee_cents: pricingResult.regionalFeeCents,
+          tax_rate_bps: pricingResult.taxRateBps,
+          tax_amount_cents: pricingResult.taxCents,
+          total_amount_cents: pricingResult.totalChargeCents,
+          amount_cents: pricingResult.totalChargeCents,
+          labor_total_cents: pricingResult.legacy.laborTotalCents,
+          materials_total_cents: 0,
+          transaction_fee_cents: pricingResult.estimatedProcessingFeeCents,
+          price_adjustment_cents: pricingResult.legacy.priceAdjustmentCents,
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_payment_intent_status: String(pi.status ?? ""),
+          stripe_charge_id: stripeChargeId,
+          payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
+          stripe_authorized_at: now,
+          stripe_paid_at: isCapturedCharge ? now : null,
+          escrow_locked_at: isCapturedCharge ? now : null,
+          funds_secured_at: isCapturedCharge ? now : null,
+          funded_at: isCapturedCharge ? now : null,
+          payment_captured_at: isCapturedCharge ? now : null,
+          job_poster_user_id: userId,
+          job_type: (isRegional ? "regional" : "urban") as any,
+          trade_category: tradeCategory as any,
+          service_type: "handyman",
+          availability: availability as any,
+          posted_at: now,
+          published_at: now,
+          created_at: now,
+          updated_at: now,
+          price_median_cents: pricingResult.appraisalSubtotalCents,
+          contractor_payout_cents: pricingResult.contractorPayoutCents,
+          router_earnings_cents: pricingResult.routerFeeCents,
+          broker_fee_cents: pricingResult.platformFeeCents,
+          routing_status: "UNROUTED" as any,
+        });
+      } catch (err) {
+        const dbErr = err as any;
+        console.error("JOB_INSERT_FAILED", {
+          jobId,
+          paymentIntentId,
+          code: dbErr?.code,
+          detail: dbErr?.detail,
+          constraint: dbErr?.constraint,
+          table: dbErr?.table,
+        });
+        throw err;
+      }
 
-    const existingPaymentRows = await tx
-      .select({ id: jobPayments.id })
-      .from(jobPayments)
-      .where(eq(jobPayments.jobId, jobId))
-      .limit(1);
-    const existingPayment = existingPaymentRows[0] ?? null;
+      const existingPaymentRows = await tx
+        .select({ id: jobPayments.id })
+        .from(jobPayments)
+        .where(eq(jobPayments.jobId, jobId))
+        .limit(1);
+      const existingPayment = existingPaymentRows[0] ?? null;
 
-    if (existingPayment?.id) {
-      await tx
-        .update(jobPayments)
-        .set({
+      if (existingPayment?.id) {
+        await tx
+          .update(jobPayments)
+          .set({
+            stripePaymentIntentId: paymentIntentId,
+            stripePaymentIntentStatus: String(pi.status ?? ""),
+            stripeChargeId,
+            amountCents: pricingResult.totalChargeCents,
+            status: isCapturedCharge ? "CAPTURED" : "PENDING",
+            escrowLockedAt: isCapturedCharge ? now : null,
+            paymentCapturedAt: isCapturedCharge ? now : null,
+            updatedAt: now,
+          } as any)
+          .where(eq(jobPayments.id, existingPayment.id));
+      } else {
+        await tx.insert(jobPayments).values({
+          id: randomUUID(),
+          jobId,
           stripePaymentIntentId: paymentIntentId,
           stripePaymentIntentStatus: String(pi.status ?? ""),
           stripeChargeId,
@@ -252,67 +267,71 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
           status: isCapturedCharge ? "CAPTURED" : "PENDING",
           escrowLockedAt: isCapturedCharge ? now : null,
           paymentCapturedAt: isCapturedCharge ? now : null,
+          createdAt: now,
           updatedAt: now,
-        } as any)
-        .where(eq(jobPayments.id, existingPayment.id));
-    } else {
-      await tx.insert(jobPayments).values({
-        id: randomUUID(),
-        jobId,
-        stripePaymentIntentId: paymentIntentId,
-        stripePaymentIntentStatus: String(pi.status ?? ""),
-        stripeChargeId,
-        amountCents: pricingResult.totalChargeCents,
-        status: isCapturedCharge ? "CAPTURED" : "PENDING",
-        escrowLockedAt: isCapturedCharge ? now : null,
-        paymentCapturedAt: isCapturedCharge ? now : null,
-        createdAt: now,
-        updatedAt: now,
-      } as any);
-    }
-
-    if (uploadIds.length > 0) {
-      const uploadRows = await tx
-        .select({ id: v4JobUploads.id, url: v4JobUploads.url })
-        .from(v4JobUploads)
-        .where(and(inArray(v4JobUploads.id, uploadIds), eq(v4JobUploads.userId, userId), isNull(v4JobUploads.usedAt)));
-
-      if (uploadRows.length !== uploadIds.length) {
-        throw Object.assign(new Error("Unknown or unowned uploadIds."), { status: 400 });
+        } as any);
       }
 
-      for (const upload of uploadRows) {
-        await tx.insert(jobPhotos).values({
-          id: randomUUID(),
+      if (uploadIds.length > 0) {
+        const uploadRows = await tx
+          .select({ id: v4JobUploads.id, url: v4JobUploads.url })
+          .from(v4JobUploads)
+          .where(and(inArray(v4JobUploads.id, uploadIds), eq(v4JobUploads.userId, userId), isNull(v4JobUploads.usedAt)));
+
+        if (uploadRows.length !== uploadIds.length) {
+          throw Object.assign(new Error("Unknown or unowned uploadIds."), { status: 400 });
+        }
+
+        for (const upload of uploadRows) {
+          await tx.insert(jobPhotos).values({
+            id: randomUUID(),
+            jobId,
+            kind: "CUSTOMER_SCOPE",
+            actor: "CUSTOMER",
+            url: upload.url,
+          });
+        }
+
+        await tx
+          .update(v4JobUploads)
+          .set({ usedAt: now })
+          .where(and(inArray(v4JobUploads.id, uploadIds), eq(v4JobUploads.userId, userId)));
+      }
+
+      if (isCapturedCharge) {
+        await writeChargeLedger(tx as any, {
           jobId,
-          kind: "CUSTOMER_SCOPE",
-          actor: "CUSTOMER",
-          url: upload.url,
+          totalAmountCents: pricingResult.totalChargeCents,
+          currency: pricingResult.currency,
+          paymentIntentId,
+        });
+      } else {
+        await writeAuthHoldLedger(tx as any, {
+          jobId,
+          totalAmountCents: pricingResult.totalChargeCents,
+          currency: pricingResult.currency,
+          paymentIntentId,
         });
       }
-
-      await tx
-        .update(v4JobUploads)
-        .set({ usedAt: now })
-        .where(and(inArray(v4JobUploads.id, uploadIds), eq(v4JobUploads.userId, userId)));
+    });
+  } catch (err) {
+    const dbErr = err as any;
+    if (String(dbErr?.code ?? "") === "23505") {
+      const existingRows = await db
+        .select({ id: jobs.id, jobPosterUserId: jobs.job_poster_user_id })
+        .from(jobs)
+        .where(eq(jobs.stripe_payment_intent_id, paymentIntentId))
+        .limit(1);
+      const existing = existingRows[0] ?? null;
+      if (existing?.id) {
+        if (existing.jobPosterUserId !== userId) {
+          throw Object.assign(new Error("Payment intent already mapped to a different user."), { status: 409 });
+        }
+        return { jobId: existing.id, created: false };
+      }
     }
-
-    if (isCapturedCharge) {
-      await writeChargeLedger(tx as any, {
-        jobId,
-        totalAmountCents: pricingResult.totalChargeCents,
-        currency: pricingResult.currency,
-        paymentIntentId,
-      });
-    } else {
-      await writeAuthHoldLedger(tx as any, {
-        jobId,
-        totalAmountCents: pricingResult.totalChargeCents,
-        currency: pricingResult.currency,
-        paymentIntentId,
-      });
-    }
-  });
+    throw err;
+  }
 
   try {
     await stripe.paymentIntents.update(paymentIntentId, {
