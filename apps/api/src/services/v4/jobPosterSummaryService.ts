@@ -4,6 +4,7 @@ import { jobs } from "@/db/schema/job";
 import { v4Messages } from "@/db/schema/v4Message";
 import { getJobPosterPaymentStatus } from "./jobPosterPaymentService";
 import { promoteDuePublishedJobsForJobPoster } from "./jobExecutionService";
+import { logEvent } from "@/src/server/observability/log";
 
 export type JobPosterSummary = {
   jobsPosted: number;
@@ -14,7 +15,18 @@ export type JobPosterSummary = {
 };
 
 export async function getJobPosterSummary(userId: string): Promise<JobPosterSummary> {
-  await promoteDuePublishedJobsForJobPoster(userId);
+  try {
+    await promoteDuePublishedJobsForJobPoster(userId);
+  } catch (error) {
+    logEvent({
+      level: "error",
+      event: "job_poster.dashboard.promote_due_failed",
+      userId,
+      context: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
   const jobsPostedRows = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(jobs)
@@ -61,7 +73,19 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
     );
   const activeAssignments = Number(activeAssignmentRows[0]?.count ?? 0);
 
-  const paymentStatus = await getJobPosterPaymentStatus(userId);
+  let paymentStatus: { connected: boolean } = { connected: false };
+  try {
+    paymentStatus = await getJobPosterPaymentStatus(userId);
+  } catch (error) {
+    logEvent({
+      level: "error",
+      event: "job_poster.dashboard.payment_status_failed",
+      userId,
+      context: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
 
   return {
     jobsPosted,
