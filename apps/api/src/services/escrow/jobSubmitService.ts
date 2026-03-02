@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { jobPayments } from "@/db/schema/jobPayment";
@@ -18,6 +18,20 @@ type SubmitResult = {
   jobId: string;
   created: boolean;
 };
+
+const REQUIRED_JOB_SUBMIT_COLUMNS = [
+  "total_amount_cents",
+  "amount_cents",
+  "currency",
+  "job_poster_user_id",
+  "status",
+  "routing_status",
+  "stripe_payment_intent_id",
+] as const;
+
+const REQUIRED_NON_NULL_OR_DEFAULT_COLUMNS = ["total_amount_cents", "amount_cents", "currency", "status", "routing_status"] as const;
+
+let jobsSubmitSchemaColumns: Set<string> | null = null;
 
 function asObject(v: unknown): LooseRecord {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as LooseRecord) : {};
@@ -43,6 +57,53 @@ function parseImages(value: unknown): UploadInput[] {
     out.push({ uploadId, url });
   }
   return out;
+}
+
+function toIntegerOrNull(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+async function assertJobSubmitSchemaGuard(): Promise<Set<string>> {
+  if (jobsSubmitSchemaColumns) return jobsSubmitSchemaColumns;
+
+  const result = (await db.execute(
+    sql`select column_name, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'jobs'`,
+  )) as any;
+  const rows = Array.isArray(result) ? result : Array.isArray(result?.rows) ? result.rows : [];
+  const present = new Set<string>(rows.map((r: any) => String(r?.column_name ?? "")));
+  const byName = new Map<string, { isNullable: boolean; columnDefault: unknown }>(
+    rows.map((r: any) => [
+      String(r?.column_name ?? ""),
+      {
+        isNullable: String(r?.is_nullable ?? "").toUpperCase() === "YES",
+        columnDefault: r?.column_default ?? null,
+      },
+    ]),
+  );
+  const missing = REQUIRED_JOB_SUBMIT_COLUMNS.filter((columnName) => !present.has(columnName));
+  const invalidNullability = REQUIRED_NON_NULL_OR_DEFAULT_COLUMNS.filter((columnName) => {
+    const meta = byName.get(columnName);
+    if (!meta) return false;
+    return meta.isNullable && meta.columnDefault == null;
+  });
+
+  if (missing.length > 0 || invalidNullability.length > 0) {
+    console.error("[JOB_SUBMIT_SCHEMA_DRIFT]", {
+      table: "jobs",
+      missingColumns: missing,
+      invalidNullability,
+      requiredColumns: REQUIRED_JOB_SUBMIT_COLUMNS,
+    });
+    throw Object.assign(new Error("Jobs schema drift detected. Missing required submit columns."), {
+      status: 500,
+      code: "JOBS_SCHEMA_DRIFT",
+      details: { missingColumns: missing, invalidNullability },
+    });
+  }
+
+  jobsSubmitSchemaColumns = present;
+  return jobsSubmitSchemaColumns;
 }
 
 export async function submitJobFromPayload(userId: string, payload: unknown): Promise<SubmitResult> {
@@ -127,12 +188,41 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   ) {
     throw Object.assign(new Error("Invalid appraisal or total price."), { status: 400 });
   }
-  if (pi.amount !== pricingResult.totalChargeCents) {
-    throw Object.assign(new Error("Stripe amount does not match the computed total."), { status: 409 });
+  const piMetadata = (pi.metadata ?? {}) as Record<string, string | undefined>;
+  const metadataSplitBaseCents = toIntegerOrNull(piMetadata.splitBaseCents);
+  const metadataTaxCents = toIntegerOrNull(piMetadata.taxCents);
+  const metadataTaxRateBps = toIntegerOrNull(piMetadata.taxRateBps);
+  const metadataProcessingFeeCents = toIntegerOrNull(piMetadata.estimatedProcessingFeeCents);
+
+  const resolvedSplitBaseCents = metadataSplitBaseCents ?? pricingResult.baseSplitCents;
+  const resolvedTaxCents =
+    metadataTaxCents ??
+    (metadataTaxRateBps != null ? Math.round((resolvedSplitBaseCents * metadataTaxRateBps) / 10000) : pricingResult.taxCents);
+  const resolvedProcessingFeeCents = metadataProcessingFeeCents ?? pricingResult.estimatedProcessingFeeCents;
+  const resolvedTotalCents = resolvedSplitBaseCents + resolvedTaxCents + resolvedProcessingFeeCents;
+
+  const stripeAmountCents =
+    Number.isInteger(pi.amount_received) && Number(pi.amount_received) > 0
+      ? Number(pi.amount_received)
+      : Number.isInteger(pi.amount)
+        ? Number(pi.amount)
+        : 0;
+  if (stripeAmountCents !== resolvedTotalCents) {
+    throw Object.assign(new Error("Stripe amount does not match canonical total."), {
+      status: 409,
+      code: "TOTAL_MISMATCH",
+      details: {
+        expectedTotalCents: resolvedTotalCents,
+        stripeAmountCents,
+        diffCents: stripeAmountCents - resolvedTotalCents,
+      },
+    });
   }
   if (String(pi.currency ?? "").toLowerCase() !== pricingResult.paymentCurrency) {
     throw Object.assign(new Error("Stripe currency does not match country pricing."), { status: 409 });
   }
+
+  const jobSubmitColumns = await assertJobSubmitSchemaGuard();
 
   const images = parseImages(body.images);
   const uploadIds = images.map((i) => i.uploadId);
@@ -164,73 +254,75 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
     }
   }
 
+  const jobInsertValues: Record<string, unknown> = {
+    id: jobId,
+    status: "OPEN_FOR_ROUTING",
+    archived: false,
+    title,
+    scope,
+    region,
+    country: countryCode,
+    country_code: countryCode,
+    state_code: stateCode,
+    city,
+    postal_code: postalCode,
+    address_full: address,
+    currency: pricingResult.currency,
+    payment_currency: pricingResult.paymentCurrency,
+    service_type: "handyman",
+    trade_category: tradeCategory,
+    lat,
+    lng: lon,
+    routing_status: "UNROUTED",
+    job_poster_user_id: userId,
+    stripe_payment_intent_id: paymentIntentId,
+    stripe_payment_intent_status: String(pi.status ?? ""),
+    payment_status: isCapturedCharge ? "FUNDS_SECURED" : "AUTHORIZED",
+    amount_cents: resolvedTotalCents,
+    total_amount_cents: resolvedTotalCents,
+    tax_amount_cents: resolvedTaxCents,
+    transaction_fee_cents: resolvedProcessingFeeCents,
+    job_type: isRegional ? "regional" : "urban",
+  };
+  const setIfPresent = (columnName: string, value: unknown) => {
+    if (!jobSubmitColumns.has(columnName)) return;
+    jobInsertValues[columnName] = value;
+  };
+  setIfPresent("region_code", stateCode);
+  setIfPresent("region_name", stateCode);
+  setIfPresent("province", stateCode);
+  setIfPresent("is_regional", isRegional);
+  setIfPresent("availability", availability as any);
+  setIfPresent("appraisal_subtotal_cents", pricingResult.appraisalSubtotalCents);
+  setIfPresent("regional_fee_cents", pricingResult.regionalFeeCents);
+  setIfPresent("tax_rate_bps", pricingResult.taxRateBps);
+  setIfPresent("labor_total_cents", pricingResult.legacy.laborTotalCents);
+  setIfPresent("price_adjustment_cents", pricingResult.legacy.priceAdjustmentCents);
+  setIfPresent("price_median_cents", pricingResult.appraisalSubtotalCents);
+  setIfPresent("contractor_payout_cents", pricingResult.contractorPayoutCents);
+  setIfPresent("router_earnings_cents", pricingResult.routerFeeCents);
+  setIfPresent("broker_fee_cents", pricingResult.platformFeeCents);
+  setIfPresent("posted_at", now);
+  setIfPresent("published_at", now);
+  setIfPresent("created_at", now);
+  setIfPresent("updated_at", now);
+  if (stripeChargeId) setIfPresent("stripe_charge_id", stripeChargeId);
+
   try {
     await db.transaction(async (tx) => {
       try {
-        await tx.insert(jobs).values({
-          id: jobId,
-          status: "OPEN_FOR_ROUTING" as any,
-          archived: false,
-          title,
-          scope,
-          region,
-          country: countryCode as any,
-          country_code: countryCode as any,
-          state_code: stateCode,
-          region_code: stateCode,
-          city,
-          postal_code: postalCode,
-          address_full: address,
-          lat,
-          lng: lon,
-          province: stateCode,
-          is_regional: isRegional,
-          currency: pricingResult.currency as any,
-          payment_currency: pricingResult.paymentCurrency,
-          appraisal_subtotal_cents: pricingResult.appraisalSubtotalCents,
-          regional_fee_cents: pricingResult.regionalFeeCents,
-          tax_rate_bps: pricingResult.taxRateBps,
-          tax_amount_cents: pricingResult.taxCents,
-          total_amount_cents: pricingResult.totalChargeCents,
-          amount_cents: pricingResult.totalChargeCents,
-          labor_total_cents: pricingResult.legacy.laborTotalCents,
-          materials_total_cents: 0,
-          transaction_fee_cents: pricingResult.estimatedProcessingFeeCents,
-          price_adjustment_cents: pricingResult.legacy.priceAdjustmentCents,
-          stripe_payment_intent_id: paymentIntentId,
-          stripe_payment_intent_status: String(pi.status ?? ""),
-          stripe_charge_id: stripeChargeId,
-          payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
-          stripe_authorized_at: now,
-          stripe_paid_at: isCapturedCharge ? now : null,
-          escrow_locked_at: isCapturedCharge ? now : null,
-          funds_secured_at: isCapturedCharge ? now : null,
-          funded_at: isCapturedCharge ? now : null,
-          payment_captured_at: isCapturedCharge ? now : null,
-          job_poster_user_id: userId,
-          job_type: (isRegional ? "regional" : "urban") as any,
-          trade_category: tradeCategory as any,
-          service_type: "handyman",
-          availability: availability as any,
-          posted_at: now,
-          published_at: now,
-          created_at: now,
-          updated_at: now,
-          price_median_cents: pricingResult.appraisalSubtotalCents,
-          contractor_payout_cents: pricingResult.contractorPayoutCents,
-          router_earnings_cents: pricingResult.routerFeeCents,
-          broker_fee_cents: pricingResult.platformFeeCents,
-          routing_status: "UNROUTED" as any,
-        });
+        await tx.insert(jobs).values(jobInsertValues as any);
       } catch (err) {
         const dbErr = err as any;
-        console.error("JOB_INSERT_FAILED", {
+        console.error("[JOB_SUBMIT_INSERT_FAILED]", {
           jobId,
           paymentIntentId,
           code: dbErr?.code,
+          message: dbErr?.message,
           detail: dbErr?.detail,
           constraint: dbErr?.constraint,
           table: dbErr?.table,
+          column: dbErr?.column,
         });
         throw err;
       }
@@ -249,7 +341,7 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
             stripePaymentIntentId: paymentIntentId,
             stripePaymentIntentStatus: String(pi.status ?? ""),
             stripeChargeId,
-            amountCents: pricingResult.totalChargeCents,
+            amountCents: resolvedTotalCents,
             status: isCapturedCharge ? "CAPTURED" : "PENDING",
             escrowLockedAt: isCapturedCharge ? now : null,
             paymentCapturedAt: isCapturedCharge ? now : null,
@@ -263,7 +355,7 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
           stripePaymentIntentId: paymentIntentId,
           stripePaymentIntentStatus: String(pi.status ?? ""),
           stripeChargeId,
-          amountCents: pricingResult.totalChargeCents,
+          amountCents: resolvedTotalCents,
           status: isCapturedCharge ? "CAPTURED" : "PENDING",
           escrowLockedAt: isCapturedCharge ? now : null,
           paymentCapturedAt: isCapturedCharge ? now : null,
@@ -301,14 +393,14 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
       if (isCapturedCharge) {
         await writeChargeLedger(tx as any, {
           jobId,
-          totalAmountCents: pricingResult.totalChargeCents,
+          totalAmountCents: resolvedTotalCents,
           currency: pricingResult.currency,
           paymentIntentId,
         });
       } else {
         await writeAuthHoldLedger(tx as any, {
           jobId,
-          totalAmountCents: pricingResult.totalChargeCents,
+          totalAmountCents: resolvedTotalCents,
           currency: pricingResult.currency,
           paymentIntentId,
         });
@@ -344,9 +436,9 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
         jobPosterUserId: userId,
         country: countryCode,
         province: stateCode,
-        splitBaseCents: String(pricingResult.baseSplitCents),
-        taxCents: String(pricingResult.taxCents),
-        estimatedProcessingFeeCents: String(pricingResult.estimatedProcessingFeeCents),
+        splitBaseCents: String(resolvedSplitBaseCents),
+        taxCents: String(resolvedTaxCents),
+        estimatedProcessingFeeCents: String(resolvedProcessingFeeCents),
       },
     });
   } catch {
