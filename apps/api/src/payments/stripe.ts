@@ -8,6 +8,7 @@ export type PaymentIntentResult = {
   paymentIntentId: string;
   status: Stripe.PaymentIntent.Status;
   currency: string;
+  amountCents: number;
 };
 
 /**
@@ -79,6 +80,7 @@ export async function createPaymentIntent(
     paymentIntentId: paymentIntent.id,
     status: paymentIntent.status,
     currency: String(paymentIntent.currency ?? ""),
+    amountCents: Number(paymentIntent.amount ?? 0),
   };
 }
 

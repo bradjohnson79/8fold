@@ -3,8 +3,8 @@ import { requireJobPoster } from "@/src/auth/rbac";
 
 function gone() {
   // eslint-disable-next-line no-console
-  console.warn("[JOB_DRAFT_DEPRECATED]");
-  return NextResponse.json({ success: false, message: "Draft system deprecated" }, { status: 410 });
+  console.warn("[JOB_DRAFT_ROUTE_DEPRECATED]");
+  return NextResponse.json({ error: "Draft system deprecated" }, { status: 410 });
 }
 
 export async function GET(req: Request) {
@@ -13,10 +13,7 @@ export async function GET(req: Request) {
     return gone();
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json(
-      { success: false, message: err instanceof Error ? err.message : "Draft system deprecated" },
-      { status },
-    );
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Draft system deprecated" }, { status });
   }
 }
 
@@ -26,9 +23,6 @@ export async function PATCH(req: Request) {
     return gone();
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
-    return NextResponse.json(
-      { success: false, message: err instanceof Error ? err.message : "Draft system deprecated" },
-      { status },
-    );
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Draft system deprecated" }, { status });
   }
 }

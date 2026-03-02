@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { requireJobPoster } from "@/src/auth/rbac";
-import { createPaymentIntent } from "@/src/payments/stripe";
+import { cancelPaymentIntent, createPaymentIntent } from "@/src/payments/stripe";
 import { appendLedgerEntry } from "@/src/services/v4/financialLedgerService";
 import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
@@ -62,6 +62,9 @@ async function appendModelALedgerEntries(input: {
   jobId: string;
   paymentIntentId: string;
   baseSplitCents: number;
+  contractorPayoutCents: number;
+  routerFeeCents: number;
+  platformFeeCents: number;
   taxCents: number;
   estimatedProcessingFeeCents: number;
   totalCents: number;
@@ -78,11 +81,27 @@ async function appendModelALedgerEntries(input: {
   });
   await appendLedgerEntry({
     jobId: input.jobId,
-    type: "JOB_SUBTOTAL",
-    amountCents: input.baseSplitCents,
+    type: "CONTRACTOR_PAYOUT_EST",
+    amountCents: input.contractorPayoutCents,
     currency: input.currency,
     stripeRef: input.paymentIntentId,
-    dedupeKey: `${baseDedupe}:JOB_SUBTOTAL`,
+    dedupeKey: `${baseDedupe}:CONTRACTOR_PAYOUT_EST`,
+  });
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "ROUTER_FEE_EST",
+    amountCents: input.routerFeeCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:ROUTER_FEE_EST`,
+  });
+  await appendLedgerEntry({
+    jobId: input.jobId,
+    type: "PLATFORM_FEE_EST",
+    amountCents: input.platformFeeCents,
+    currency: input.currency,
+    stripeRef: input.paymentIntentId,
+    dedupeKey: `${baseDedupe}:PLATFORM_FEE_EST`,
   });
   await appendLedgerEntry({
     jobId: input.jobId,
@@ -108,6 +127,12 @@ async function appendModelALedgerEntries(input: {
     stripeRef: input.paymentIntentId,
     dedupeKey: `${baseDedupe}:TOTAL_CHARGED_EST`,
   });
+}
+
+function assertIntegerAmount(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw Object.assign(new Error(`${name} must be a non-negative integer`), { status: 400 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -160,10 +185,28 @@ export async function POST(req: Request) {
     });
 
     const subtotalCents = computed.baseSplitCents;
+    const contractorPayoutCents = computed.contractorPayoutCents;
+    const routerFeeCents = computed.routerFeeCents;
+    const platformFeeCents = computed.platformFeeCents;
     const taxCents = computed.taxCents;
     const estimatedProcessingFeeCents = computed.estimatedProcessingFeeCents;
     const totalCents = computed.totalChargeCents;
     const paymentCurrency = computed.paymentCurrency;
+
+    assertIntegerAmount("baseSplitCents", subtotalCents);
+    assertIntegerAmount("contractorPayoutCents", contractorPayoutCents);
+    assertIntegerAmount("routerFeeCents", routerFeeCents);
+    assertIntegerAmount("platformFeeCents", platformFeeCents);
+    assertIntegerAmount("taxCents", taxCents);
+    assertIntegerAmount("estimatedProcessingFeeCents", estimatedProcessingFeeCents);
+    assertIntegerAmount("totalCents", totalCents);
+
+    if (contractorPayoutCents + routerFeeCents + platformFeeCents !== subtotalCents) {
+      throw Object.assign(new Error("Split invariant failed"), { status: 400 });
+    }
+    if (subtotalCents + taxCents + estimatedProcessingFeeCents !== totalCents) {
+      throw Object.assign(new Error("Total invariant failed"), { status: 400 });
+    }
 
     const payment = asObject(body?.payment);
     const modelAJobId = String(payment.modelAJobId ?? payment.provisionalJobId ?? "").trim() || randomUUID();
@@ -188,11 +231,18 @@ export async function POST(req: Request) {
       },
       description: "8Fold Job Poster Charge",
     });
+    if (result.amountCents !== totalCents) {
+      await cancelPaymentIntent(result.paymentIntentId).catch(() => undefined);
+      throw Object.assign(new Error("Stripe amount invariant failed"), { status: 400 });
+    }
 
     await appendModelALedgerEntries({
       jobId: modelAJobId,
       paymentIntentId: result.paymentIntentId,
       baseSplitCents: subtotalCents,
+      contractorPayoutCents,
+      routerFeeCents,
+      platformFeeCents,
       taxCents,
       estimatedProcessingFeeCents,
       totalCents,
@@ -213,19 +263,36 @@ export async function POST(req: Request) {
       taxCents,
       estimatedProcessingFeeCents,
       totalCents,
-      contractorPayoutCents: computed.contractorPayoutCents,
-      routerFeeCents: computed.routerFeeCents,
-      platformFeeCents: computed.platformFeeCents,
+      contractorPayoutCents,
+      routerFeeCents,
+      platformFeeCents,
       currency: computed.currency,
       traceId: randomUUID(),
     });
   } catch (err) {
-    const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
     const rawMessage = err instanceof Error ? err.message : "Failed to create payment intent.";
+    const errCode = String((err as any)?.code ?? "");
+    let status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
+    if (status >= 500) {
+      const normalized = rawMessage.toLowerCase();
+      if (
+        normalized.includes("invariant") ||
+        normalized.includes("invalid amount") ||
+        normalized.includes("must be a non-negative integer") ||
+        normalized.includes("payment fee config") ||
+        normalized.includes("tax")
+      ) {
+        status = 400;
+      }
+      if (errCode === "42P01") {
+        // Missing config/table is a predictable setup validation failure for this endpoint.
+        status = 400;
+      }
+    }
     console.error("[job-draft/payment-intent] failed", {
       status,
       message: rawMessage,
-      code: (err as any)?.code,
+      code: errCode,
       envKeyPresent: !!process.env.STRIPE_SECRET_KEY,
       stack: err instanceof Error ? err.stack : undefined,
     });

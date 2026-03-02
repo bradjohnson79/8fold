@@ -46,6 +46,22 @@ type PaymentIntentResult = {
   message?: string;
 };
 
+function hasValidServerTotals(payload: PaymentIntentResult): boolean {
+  const required = [
+    payload.baseSplitCents,
+    payload.contractorPayoutCents,
+    payload.routerFeeCents,
+    payload.platformFeeCents,
+    payload.taxCents,
+    payload.estimatedProcessingFeeCents,
+    payload.totalCents,
+  ];
+  if (required.some((value) => !Number.isInteger(value) || value < 0)) return false;
+  if (payload.contractorPayoutCents + payload.routerFeeCents + payload.platformFeeCents !== payload.baseSplitCents) return false;
+  if (payload.baseSplitCents + payload.taxCents + payload.estimatedProcessingFeeCents !== payload.totalCents) return false;
+  return true;
+}
+
 type AvailabilityJson = Record<string, { morning: boolean; afternoon: boolean; evening: boolean }>;
 
 type UploadedImage = {
@@ -68,6 +84,10 @@ function hasAvailabilitySelection(value: AvailabilityJson): boolean {
 
 function formatMoney(cents: number, currency: "USD" | "CAD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+}
+
+function formatMoneyMaybe(cents: number | null, currency: "USD" | "CAD") {
+  return cents == null ? "—" : formatMoney(cents, currency);
 }
 
 function getApiErrorMessage(payload: unknown, fallback: string): string {
@@ -256,17 +276,11 @@ export default function PostJobPage() {
   const maxOffsetDollars = appraisal ? appraisal.high - appraisal.median : 0;
   const appraisalPriceCents = Math.max(0, baseMedianCents + sliderOffsetDollars * 100);
 
-  const regionalFeeCents = urbanOrRegional === "regional" ? 2000 : 0;
   const summaryCurrency: "USD" | "CAD" = activeAddress.country === "CA" ? "CAD" : "USD";
-  const taxRate = appraisal ? Number(appraisal.taxRate ?? 0) : 0;
-  const summaryTaxCents = summaryCurrency === "CAD" ? Math.max(0, Math.round((appraisalPriceCents + regionalFeeCents) * taxRate)) : 0;
-  const summaryProcessingFeeCents = 0;
-  const summaryTotalCents = appraisalPriceCents + regionalFeeCents + summaryTaxCents + summaryProcessingFeeCents;
-  const fallbackSubtotalCents = appraisalPriceCents + regionalFeeCents;
-  const displaySubtotalCents = paymentSummary?.subtotalCents ?? paymentSummary?.baseSplitCents ?? fallbackSubtotalCents;
-  const displayTaxCents = paymentSummary?.taxCents ?? summaryTaxCents;
-  const displayProcessingFeeCents = paymentSummary?.estimatedProcessingFeeCents ?? summaryProcessingFeeCents;
-  const displayTotalCents = paymentSummary?.totalCents ?? summaryTotalCents;
+  const displaySubtotalCents = paymentSummary?.baseSplitCents ?? null;
+  const displayTaxCents = paymentSummary?.taxCents ?? null;
+  const displayProcessingFeeCents = paymentSummary?.estimatedProcessingFeeCents ?? null;
+  const displayTotalCents = paymentSummary?.totalCents ?? null;
   const displayCurrency: "USD" | "CAD" = paymentSummary?.currency ?? summaryCurrency;
 
   const isLower = appraisal ? appraisalPriceCents < baseMedianCents : false;
@@ -504,6 +518,10 @@ export default function PostJobPage() {
       if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
         console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
         throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
+      }
+      if (!hasValidServerTotals(json)) {
+        console.error("POST_JOB_INVALID_TOTALS_FROM_BACKEND", debugPrepareBody);
+        throw new Error("Server returned invalid totals. Please retry.");
       }
       console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
       setPaymentSummary(json);
@@ -844,21 +862,40 @@ export default function PostJobPage() {
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>{formatMoney(displaySubtotalCents, displayCurrency)}</span>
+                <span>{formatMoneyMaybe(displaySubtotalCents, displayCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Applicable Tax (Canada only)</span>
-                <span>{formatMoney(displayTaxCents, displayCurrency)}</span>
+                <span>{formatMoneyMaybe(displayTaxCents, displayCurrency)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Processing Fee (Stripe)</span>
-                <span>{formatMoney(displayProcessingFeeCents, displayCurrency)}</span>
+                <span>{formatMoneyMaybe(displayProcessingFeeCents, displayCurrency)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold">
                 <span>Total Charge</span>
-                <span>{formatMoney(displayTotalCents, displayCurrency)}</span>
+                <span>{formatMoneyMaybe(displayTotalCents, displayCurrency)}</span>
               </div>
             </div>
+            {paymentSummary ? (
+              <details className="mt-3 rounded-md border border-gray-200 p-3 text-sm">
+                <summary className="cursor-pointer font-medium text-gray-700">Split Breakdown</summary>
+                <div className="mt-2 space-y-1 text-gray-700">
+                  <div className="flex justify-between">
+                    <span>Contractor Payout (75%)</span>
+                    <span>{formatMoney(paymentSummary.contractorPayoutCents, paymentSummary.currency)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Router Fee (15%)</span>
+                    <span>{formatMoney(paymentSummary.routerFeeCents, paymentSummary.currency)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Platform Fee (10%)</span>
+                    <span>{formatMoney(paymentSummary.platformFeeCents, paymentSummary.currency)}</span>
+                  </div>
+                </div>
+              </details>
+            ) : null}
 
             {!clientSecret ? (
               <button

@@ -3,8 +3,8 @@ import { requireV4Role } from "@/src/auth/requireV4Role";
 
 function gone() {
   // eslint-disable-next-line no-console
-  console.warn("[JOB_DRAFT_DEPRECATED]");
-  return NextResponse.json({ success: false, message: "Draft system deprecated" }, { status: 410 });
+  console.warn("[JOB_DRAFT_ROUTE_DEPRECATED]");
+  return NextResponse.json({ error: "Draft system deprecated" }, { status: 410 });
 }
 
 export async function GET(req: Request) {
