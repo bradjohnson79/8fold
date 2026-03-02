@@ -72,8 +72,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, jobId: result.jobId, created: result.created });
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
+    const code = typeof (err as any)?.code === "string" ? String((err as any).code) : undefined;
+    const details = (err as any)?.details && typeof (err as any).details === "object" ? (err as any).details : undefined;
+    const message = err instanceof Error ? err.message : "Failed to submit job.";
     return NextResponse.json(
-      { success: false, message: err instanceof Error ? err.message : "Failed to submit job." },
+      {
+        success: false,
+        message,
+        ...(code || details ? { error: { code: code ?? "SUBMIT_FAILED", message, ...(details ? { details } : {}) } } : {}),
+      },
       { status },
     );
   }
