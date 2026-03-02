@@ -112,6 +112,13 @@
   font-weight: 900;
 }
 
+.rowLink {
+  color: rgba(191, 219, 254, 0.96);
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .rowMeta {
   margin-top: 4px;
   color: rgba(226, 232, 240, 0.68);
