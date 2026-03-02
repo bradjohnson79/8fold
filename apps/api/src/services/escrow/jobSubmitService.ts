@@ -82,7 +82,9 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   const scope = String(details.description ?? "").trim();
   const tradeCategory = String(details.tradeCategory ?? "").trim().toUpperCase();
   const countryCode = String(details.countryCode ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US";
-  const stateCode = String(details.stateCode ?? details.region ?? "").trim().toUpperCase();
+  const stateCode = String((pi.metadata as Record<string, string> | null | undefined)?.province ?? details.stateCode ?? details.region ?? "")
+    .trim()
+    .toUpperCase();
   const region = stateCode.toLowerCase();
   const city = String(details.city ?? "").trim();
   const postalCode = String(details.postalCode ?? "").trim();
