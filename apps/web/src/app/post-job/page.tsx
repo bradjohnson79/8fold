@@ -29,6 +29,7 @@ type AppraisalResult = {
 
 type PaymentIntentResult = {
   success: boolean;
+  stripeMode?: "test" | "live";
   clientSecret: string;
   paymentIntentId: string;
   modelAJobId?: string;
@@ -44,6 +45,17 @@ type PaymentIntentResult = {
   platformFeeCents: number;
   currency: "USD" | "CAD";
   message?: string;
+  error?: { code?: string; message?: string; details?: Record<string, unknown> };
+};
+
+type StripeConfigResult = {
+  ok: boolean;
+  stripeMode?: "test" | "live";
+  pkMode?: "test" | "live" | "unknown";
+  skMode?: "test" | "live" | "unknown";
+  publishableKeyPresent?: boolean;
+  secretKeyPresent?: boolean;
+  error?: { code?: string; message?: string };
 };
 
 function hasValidServerTotals(payload: PaymentIntentResult): boolean {
@@ -112,6 +124,22 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function mapStripeConfirmError(input: {
+  message: string;
+  code?: string | null;
+  type?: string | null;
+}): { code: "STRIPE_MODE_MISMATCH" | "STRIPE_CONFIRM_FAILED" | "STRIPE_PI_INVALID" | "STRIPE_ACCOUNT_INELIGIBLE"; message: string } {
+  const normalized = String(input.message ?? "").toLowerCase();
+  const code = String(input.code ?? "").toLowerCase();
+  if (code.includes("payment_intent") || normalized.includes("paymentintent")) {
+    return { code: "STRIPE_PI_INVALID", message: input.message };
+  }
+  if (normalized.includes("eligible") || normalized.includes("ineligible")) {
+    return { code: "STRIPE_ACCOUNT_INELIGIBLE", message: input.message };
+  }
+  return { code: "STRIPE_CONFIRM_FAILED", message: input.message };
+}
+
 function HoldConfirm(props: {
   onConfirmed: () => void;
   onError: (message: string) => void;
@@ -151,7 +179,14 @@ function HoldConfirm(props: {
                 next_action: nextAction,
                 error: errorPayload,
               });
-              if (result.error) throw new Error(result.error.message || "Payment confirmation failed.");
+              if (result.error) {
+                const mapped = mapStripeConfirmError({
+                  message: result.error.message || "Payment confirmation failed.",
+                  code: result.error.code,
+                  type: result.error.type,
+                });
+                throw new Error(`${mapped.code}: ${mapped.message}`);
+              }
               if (status === "requires_action") {
                 console.warn("TEMP_STRIPE_DEBUG_CONFIRM_REQUIRES_ACTION", { next_action: nextAction });
                 throw new Error("Payment requires additional action before it can be confirmed.");
@@ -221,6 +256,7 @@ export default function PostJobPage() {
 
   const [paymentConnected, setPaymentConnected] = useState<boolean | null>(null);
   const [paymentProviderReady, setPaymentProviderReady] = useState<boolean | null>(null);
+  const [stripeConfig, setStripeConfig] = useState<StripeConfigResult | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentIntentResult | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
@@ -242,11 +278,17 @@ export default function PostJobPage() {
   }, []);
 
   useEffect(() => {
-    const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+    if (!stripeConfig) return;
     console.log("TEMP_STRIPE_DEBUG_MODE_WEB", {
-      publishableMode: pk?.startsWith("pk_test_") ? "TEST" : pk?.startsWith("pk_live_") ? "LIVE" : "UNKNOWN",
+      publishableMode: String(stripeConfig.pkMode ?? "unknown").toUpperCase(),
+      secretMode: String(stripeConfig.skMode ?? "unknown").toUpperCase(),
+      stripeMode: stripeConfig.stripeMode,
+      ok: stripeConfig.ok,
     });
-  }, []);
+  }, [stripeConfig]);
+
+  const stripeModeMismatch = stripeConfig?.ok === false && stripeConfig?.error?.code === "STRIPE_MODE_MISMATCH";
+  const stripeConfigBlockingError = stripeConfig?.ok === false ? stripeConfig?.error?.message ?? "Stripe configuration is invalid." : null;
 
   const apiOrigin = useMemo(() => {
     const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
@@ -294,15 +336,17 @@ export default function PostJobPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const [metaResp, profileResp, paymentResp] = await Promise.all([
+        const [metaResp, profileResp, paymentResp, stripeConfigResp] = await Promise.all([
           fetch("/api/v4/meta/trade-categories", { cache: "no-store" }),
           fetch("/api/web/v4/job-poster/profile", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/stripe/config", { cache: "no-store", credentials: "include" }),
         ]);
 
         const metaJson = (await metaResp.json().catch(() => ({}))) as Partial<TradeMeta>;
         const profileJson = (await profileResp.json().catch(() => ({}))) as any;
         const paymentJson = (await paymentResp.json().catch(() => ({}))) as { connected?: boolean; providerReady?: boolean };
+        const stripeConfigJson = (await stripeConfigResp.json().catch(() => ({}))) as StripeConfigResult;
 
         if (cancelled) return;
 
@@ -312,6 +356,7 @@ export default function PostJobPage() {
         });
         setPaymentConnected(typeof paymentJson.connected === "boolean" ? paymentJson.connected : null);
         setPaymentProviderReady(typeof paymentJson.providerReady === "boolean" ? paymentJson.providerReady : null);
+        setStripeConfig(stripeConfigJson);
 
         const profile = profileJson?.profile ?? null;
         if (profile && typeof profile.latitude === "number" && typeof profile.longitude === "number") {
@@ -466,6 +511,16 @@ export default function PostJobPage() {
 
   async function preparePaymentIntent() {
     setError(null);
+    if (!stripeConfig || stripeConfig.ok !== true) {
+      const code = stripeConfig?.error?.code ?? "STRIPE_CONFIG_MISSING";
+      const message = stripeConfig?.error?.message ?? "Stripe configuration is unavailable.";
+      setError(`${code}: ${message}`);
+      return;
+    }
+    if (stripeConfig.pkMode !== stripeConfig.skMode) {
+      setError("STRIPE_MODE_MISMATCH: Publishable and secret Stripe keys are configured for different modes.");
+      return;
+    }
     if (paymentProviderReady === false) {
       setError("Stripe service is currently unavailable. Please try again shortly.");
       return;
@@ -518,6 +573,9 @@ export default function PostJobPage() {
       if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
         console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
         throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
+      }
+      if (json.stripeMode && json.stripeMode !== stripeConfig.stripeMode) {
+        throw new Error("STRIPE_MODE_MISMATCH: Payment intent mode does not match Stripe config.");
       }
       if (!hasValidServerTotals(json)) {
         console.error("POST_JOB_INVALID_TOTALS_FROM_BACKEND", debugPrepareBody);
@@ -858,6 +916,18 @@ export default function PostJobPage() {
           <section className="rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900">Stripe Confirmation</h2>
             <p className="mt-2 text-sm text-gray-600">Stripe Integration Summary</p>
+            {stripeConfig?.stripeMode === "test" && stripeConfig.ok ? (
+              <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                <p className="font-semibold">Stripe Test Mode Active</p>
+                <p className="mt-1">Use test card `4242 4242 4242 4242`, any future expiry, any CVC, and any postal code.</p>
+              </div>
+            ) : null}
+            {stripeConfigBlockingError ? (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {stripeConfig?.error?.code ? `${stripeConfig.error.code}: ` : ""}
+                {stripeConfigBlockingError}
+              </div>
+            ) : null}
 
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
@@ -901,12 +971,12 @@ export default function PostJobPage() {
               <button
                 type="button"
                 onClick={() => void preparePaymentIntent()}
-                disabled={working || appraisalPriceCents <= 0 || !appraisal}
+                disabled={working || appraisalPriceCents <= 0 || !appraisal || Boolean(stripeConfigBlockingError)}
                 className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
               >
                 {working ? "Preparing..." : "Confirm Total"}
               </button>
-            ) : stripePromise ? (
+            ) : stripePromise && !stripeConfigBlockingError ? (
               <div className="mt-4">
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
                   <HoldConfirm
@@ -922,7 +992,9 @@ export default function PostJobPage() {
                 ) : null}
               </div>
             ) : (
-              <p className="mt-4 text-sm text-red-700">Stripe publishable key is missing.</p>
+              <p className="mt-4 text-sm text-red-700">
+                {stripeConfigBlockingError ? "Stripe checkout is blocked until configuration is corrected." : "Stripe publishable key is missing."}
+              </p>
             )}
           </section>
 
