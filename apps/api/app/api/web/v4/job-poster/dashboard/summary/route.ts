@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireV4Role } from "@/src/auth/requireV4Role";
 import { getJobPosterSummary } from "@/src/services/v4/jobPosterSummaryService";
+import { getJobPosterPaymentStatus } from "@/src/services/v4/jobPosterPaymentService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 
 const logger = {
@@ -35,10 +36,28 @@ export async function GET(req: Request) {
       return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
     }
 
+    let fallbackPaymentStatus: "CONNECTED" | "NOT_CONNECTED" = "NOT_CONNECTED";
+    if (userId) {
+      try {
+        const payment = await getJobPosterPaymentStatus(userId);
+        fallbackPaymentStatus = payment.connected ? "CONNECTED" : "NOT_CONNECTED";
+      } catch (paymentErr) {
+        logger.error("job-poster payment status mismatch", {
+          error: paymentErr instanceof Error ? paymentErr.message : String(paymentErr),
+          userId,
+          summaryStatus: null,
+          paymentStatus: null,
+        });
+      }
+    }
+
     return NextResponse.json(
       {
-        summary: {},
-        jobs: [],
+        jobsPosted: 0,
+        fundsSecured: 0,
+        paymentStatus: fallbackPaymentStatus,
+        unreadMessages: 0,
+        activeAssignments: 0,
         error: FALLBACK_ERROR,
       },
       { status: 200 },
