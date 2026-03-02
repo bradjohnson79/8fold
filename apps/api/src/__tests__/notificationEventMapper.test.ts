@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const sendNotificationMock = vi.fn(async () => null);
+const sendNotificationMock = vi.fn(async (..._args: any[]) => null);
 
 vi.mock("@/src/services/v4/notifications/notificationService", () => ({
-  sendNotification: (...args: unknown[]) => sendNotificationMock(...args),
+  sendNotification: (input: any, tx?: any) => sendNotificationMock(input, tx),
 }));
 
 function ensureDatabaseUrl() {
@@ -43,7 +43,7 @@ describe("notificationEventMapper", () => {
     });
 
     expect(sendNotificationMock).toHaveBeenCalledTimes(3);
-    const calls = sendNotificationMock.mock.calls.map((c) => c[0]);
+    const calls = sendNotificationMock.mock.calls.map((c: any[]) => c[0] as any);
     expect(calls.some((c) => c.userId === "ctr_1" && c.type === "JOB_ASSIGNED")).toBe(true);
     expect(calls.some((c) => c.userId === "jp_1" && c.type === "CONTRACTOR_ACCEPTED")).toBe(true);
     expect(calls.some((c) => c.userId === "rt_1" && c.type === "CONTRACTOR_ACCEPTED")).toBe(true);
@@ -64,7 +64,8 @@ describe("notificationEventMapper", () => {
     });
 
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
-    expect(sendNotificationMock.mock.calls[0]?.[0]).toMatchObject({
+    const firstCall = (sendNotificationMock.mock.calls as any[][])[0]?.[0];
+    expect(firstCall).toMatchObject({
       userId: "user_1",
       role: "CONTRACTOR",
       type: "NEW_MESSAGE",

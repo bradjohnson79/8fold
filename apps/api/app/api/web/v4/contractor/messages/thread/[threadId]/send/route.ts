@@ -18,7 +18,9 @@ export async function POST(
     if (!threadId) return NextResponse.json({ ok: false, error: "threadId required" }, { status: 400 });
     const { id } = await sendMessage(threadId, role.userId, body);
     return NextResponse.json({ ok: true, id });
-  } catch {
-    return NextResponse.json({ ok: false, error: "Failed to send message" }, { status: 400 });
+  } catch (err) {
+    const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 400;
+    const message = err instanceof Error ? err.message : "Failed to send message";
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

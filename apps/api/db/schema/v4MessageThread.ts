@@ -16,6 +16,8 @@ export const v4MessageThreads = dbSchema.table(
     contractorUserId: text("contractor_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("ACTIVE"),
+    endedAt: timestamp("ended_at", { mode: "date" }),
     lastMessageAt: timestamp("last_message_at", { mode: "date" }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
@@ -27,5 +29,6 @@ export const v4MessageThreads = dbSchema.table(
     ),
     jobPosterIdx: index("v4_message_threads_job_poster_idx").on(t.jobPosterUserId),
     contractorIdx: index("v4_message_threads_contractor_idx").on(t.contractorUserId),
+    statusIdx: index("v4_message_threads_status_idx").on(t.status),
   })
 );

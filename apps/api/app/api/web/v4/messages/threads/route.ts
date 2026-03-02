@@ -1,33 +1,23 @@
-import { NextResponse } from "next/server";
-import { requireV4Role } from "@/src/auth/requireV4Role";
-import { listThreadsForContractor, listThreadsForJobPoster } from "@/src/services/v4/v4MessageService";
-import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
+import { legacyRouteFrozen } from "@/src/lib/api/legacyFreeze";
 
-export async function GET(req: Request) {
-  let requestId: string | undefined;
-  try {
-    const url = new URL(req.url);
-    const roleParam = url.searchParams.get("role");
+const NEXT_ROUTE = "/api/web/v4/{role}/messages/threads";
 
-    if (roleParam === "job_poster") {
-      const role = await requireV4Role(req, "JOB_POSTER");
-      if (role instanceof Response) return role;
-      requestId = role.requestId;
-      const threads = await listThreadsForJobPoster(role.userId);
-      return NextResponse.json({ threads });
-    }
+export async function GET() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
 
-    if (roleParam === "contractor") {
-      const role = await requireV4Role(req, "CONTRACTOR");
-      if (role instanceof Response) return role;
-      requestId = role.requestId;
-      const threads = await listThreadsForContractor(role.userId);
-      return NextResponse.json({ threads });
-    }
+export async function POST() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
 
-    return NextResponse.json({ error: "role=job_poster|contractor required" }, { status: 400 });
-  } catch (err) {
-    const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_MESSAGES_THREADS_FAILED");
-    return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
-  }
+export async function PUT() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
+
+export async function PATCH() {
+  return legacyRouteFrozen(NEXT_ROUTE);
+}
+
+export async function DELETE() {
+  return legacyRouteFrozen(NEXT_ROUTE);
 }

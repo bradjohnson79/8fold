@@ -4,6 +4,7 @@ import React, { useState } from "react";
 
 export default function ContractorSupportPage() {
   const [subject, setSubject] = useState("");
+  const [category, setCategory] = useState("GENERAL INQUIRY");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -22,7 +23,7 @@ export default function ContractorSupportPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ subject: subject.trim(), body: body.trim() }),
+        body: JSON.stringify({ subject: subject.trim(), category, body: body.trim() }),
       });
       const data = (await resp.json().catch(() => ({}))) as { id?: string; error?: string };
       if (resp.ok && data.id) {
@@ -77,6 +78,20 @@ export default function ContractorSupportPage() {
           />
         </div>
         <div>
+          <label className="block text-sm font-medium text-gray-700">Category</label>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+          >
+            <option value="GENERAL INQUIRY">GENERAL INQUIRY</option>
+            <option value="TECHNICAL INQUIRY">TECHNICAL INQUIRY</option>
+            <option value="REPORT A BUG">REPORT A BUG</option>
+            <option value="REPORT A NO-SHOW">REPORT A NO-SHOW</option>
+            <option value="DISPUTE">DISPUTE</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-gray-700">Message</label>
           <textarea
             value={body}
@@ -93,6 +108,9 @@ export default function ContractorSupportPage() {
         >
           {submitting ? "Submitting…" : "Submit Ticket"}
         </button>
+        <p className="text-xs text-gray-500">
+          `DISPUTE` routes directly to Admin Disputes. `REPORT A NO-SHOW` routes to Support for office review.
+        </p>
       </form>
     </div>
   );

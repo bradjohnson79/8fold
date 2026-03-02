@@ -182,6 +182,25 @@ export type AdminRoleDetail = {
   accountStatus: AdminAccountStatus;
   recentJobs: AdminUserJobRef[];
   payoutReadiness: AdminPayoutReadiness;
+  scoreAppraisal?: {
+    pending: boolean;
+    jobsEvaluated: number;
+    minimumRequired: number;
+    appraisal?: {
+      avgPunctuality: number | null;
+      avgCommunication: number | null;
+      avgQuality: number | null;
+      avgCooperation: number | null;
+      totalScore: number | null;
+    };
+    version?: string;
+    updatedAt?: string | null;
+  };
+  aiEnforcement?: {
+    events: number;
+    disputes: number;
+    latestActionTaken: string | null;
+  };
   enforcement: {
     strikes?: number;
     flags?: number;

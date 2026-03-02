@@ -34,6 +34,18 @@ type ReadinessResponse = {
   } | null;
 };
 
+type ScoreAppraisalState = {
+  pending: boolean;
+  jobsEvaluated: number;
+  minimumRequired: number;
+  appraisal?: {
+    avgPunctuality: number | null;
+    avgCommunication: number | null;
+    avgQuality: number | null;
+    totalScore: number | null;
+  };
+} | null;
+
 type InviteListResponse = {
   serverTime?: string;
   invites?: Invite[];
@@ -80,18 +92,20 @@ export default function ContractorOverviewPage() {
   const [completedJobs, setCompletedJobs] = useState<JobSummary[]>([]);
   const [paymentSetupComplete, setPaymentSetupComplete] = useState<boolean>(false);
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
+  const [scoreAppraisal, setScoreAppraisal] = useState<ScoreAppraisalState>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [inviteCountResp, invResp, assignedResp, completedResp, statusResp, readinessResp] = await Promise.all([
+        const [inviteCountResp, invResp, assignedResp, completedResp, statusResp, readinessResp, appraisalResp] = await Promise.all([
           fetch("/api/contractor/invites/count", { cache: "no-store", credentials: "include" }),
           fetch("/api/contractor/invites", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/contractor/jobs?status=assigned", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/contractor/jobs?status=completed", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/contractor/account-status", { cache: "no-store", credentials: "include" }),
           fetch("/api/web/v4/readiness", { cache: "no-store", credentials: "include" }),
+          fetch("/api/web/v4/score-appraisal/me", { cache: "no-store", credentials: "include" }),
         ]);
 
         if (inviteCountResp.ok) {
@@ -132,6 +146,13 @@ export default function ContractorOverviewPage() {
         } else {
           setPaymentSetupComplete(false);
         }
+
+        if (appraisalResp.ok) {
+          const data = (await appraisalResp.json()) as { appraisal?: ScoreAppraisalState };
+          setScoreAppraisal(data?.appraisal ?? null);
+        } else {
+          setScoreAppraisal(null);
+        }
       } catch {
         setInvites([]);
         setPendingInviteCount(0);
@@ -139,6 +160,7 @@ export default function ContractorOverviewPage() {
         setCompletedJobs([]);
         setPaymentSetupComplete(false);
         setAccountStatus(null);
+        setScoreAppraisal(null);
       } finally {
         setLoading(false);
       }
@@ -257,6 +279,14 @@ export default function ContractorOverviewPage() {
           <h2 className="text-lg font-semibold text-slate-900">Performance Snapshot</h2>
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <Metric label="⭐ Rating" value="Coming soon" />
+            <Metric
+              label="AI Score Appraisal"
+              value={
+                scoreAppraisal?.pending
+                  ? `Pending (${scoreAppraisal.jobsEvaluated}/${scoreAppraisal.minimumRequired})`
+                  : `${scoreAppraisal?.appraisal?.totalScore ?? "—"} / 10`
+              }
+            />
             <Metric label="🕒 On-Time Rate" value={onTimeRate} />
             <Metric label="🛠 Completion Rate" value={`${completionRate}%`} />
             <Metric
