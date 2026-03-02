@@ -2,11 +2,7 @@ import { and, asc, desc, eq, gte, inArray, ne, notInArray, sql } from "drizzle-o
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/server/db/drizzle";
 import {
-  contractorAccounts,
-  contractors,
-  jobPosters,
   jobs,
-  routers,
   users,
   v4AdminDisputes,
   v4AdminSupportTickets,
@@ -197,31 +193,29 @@ export function parseOverviewCardsFilters(searchParams: URLSearchParams): Overvi
 }
 
 async function listRegionOptions(): Promise<string[]> {
-  const rows = await db.execute(sql`
-    select distinct upper(region_code) as code
-    from (
-      select nullif(trim(${jobs.region_code}), '') as region_code from ${jobs}
-      union
-      select nullif(trim(${jobs.state_code}), '') as region_code from ${jobs}
-      union
-      select nullif(trim(${users.stateCode}), '') as region_code from ${users}
-      union
-      select nullif(trim(${jobPosters.defaultRegion}), '') as region_code from ${jobPosters}
-      union
-      select nullif(trim(${contractorAccounts.regionCode}), '') as region_code from ${contractorAccounts}
-      union
-      select nullif(trim(${routers.homeRegionCode}), '') as region_code from ${routers}
-    ) all_regions
-    where region_code is not null
-    order by code asc
-  `);
+  try {
+    const rows = await db.execute(sql`
+      select distinct upper(region_code) as code
+      from (
+        select nullif(trim(${jobs.region_code}), '') as region_code from ${jobs}
+        union
+        select nullif(trim(${jobs.state_code}), '') as region_code from ${jobs}
+        union
+        select nullif(trim(${users.stateCode}), '') as region_code from ${users}
+      ) all_regions
+      where region_code is not null
+      order by code asc
+    `);
 
-  const values = (rows.rows as Array<{ code: string | null }>).map((r) => String(r.code ?? "").trim()).filter(Boolean);
-  return ["ALL", ...values];
+    const values = (rows.rows as Array<{ code: string | null }>).map((r) => String(r.code ?? "").trim()).filter(Boolean);
+    return ["ALL", ...values];
+  } catch {
+    return ["ALL"];
+  }
 }
 
 async function listLatestJobs(selectedRegion: string) {
-  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code}, ${jobs.province})`;
+  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code})`;
   const rows = await db
     .select({
       jobId: jobs.id,
@@ -246,7 +240,7 @@ async function listLatestJobs(selectedRegion: string) {
 
 async function listOverdueRouting(selectedRegion: string) {
   const routerUser = alias(users, "router_user");
-  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code}, ${jobs.province})`;
+  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code})`;
   const overdueCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const rows = await db
@@ -325,7 +319,7 @@ async function listOpenDisputes() {
 }
 
 async function listNewestJobPosters(selectedRegion: string) {
-  const regionExpr = sql<string | null>`coalesce(${jobPosters.defaultRegion}, ${users.stateCode})`;
+  const regionExpr = sql<string | null>`coalesce(${users.stateCode}, '')`;
   const rows = await db
     .select({
       userId: users.id,
@@ -335,7 +329,6 @@ async function listNewestJobPosters(selectedRegion: string) {
       joinedAt: users.createdAt,
     })
     .from(users)
-    .leftJoin(jobPosters, eq(jobPosters.userId, users.id))
     .where(and(eq(users.role, "JOB_POSTER" as any), regionWhere(selectedRegion, regionExpr)))
     .orderBy(desc(users.createdAt))
     .limit(MAX_ITEMS);
@@ -350,19 +343,17 @@ async function listNewestJobPosters(selectedRegion: string) {
 }
 
 async function listNewestContractors(selectedRegion: string) {
-  const regionExpr = sql<string | null>`coalesce(${contractorAccounts.regionCode}, ${users.stateCode})`;
+  const regionExpr = sql<string | null>`coalesce(${users.stateCode}, '')`;
   const rows = await db
     .select({
       userId: users.id,
-      name: sql<string | null>`coalesce(${users.name}, ${contractorAccounts.businessName}, ${contractors.contactName})`,
-      trade: contractors.trade,
-      city: sql<string | null>`coalesce(${contractorAccounts.city}, ${users.legalCity})`,
+      name: users.name,
+      trade: sql<string | null>`null`,
+      city: users.legalCity,
       regionCode: regionExpr,
       joinedAt: users.createdAt,
     })
     .from(users)
-    .leftJoin(contractorAccounts, eq(contractorAccounts.userId, users.id))
-    .leftJoin(contractors, eq(contractors.email, users.email))
     .where(and(eq(users.role, "CONTRACTOR" as any), regionWhere(selectedRegion, regionExpr)))
     .orderBy(desc(users.createdAt))
     .limit(MAX_ITEMS);
@@ -378,7 +369,7 @@ async function listNewestContractors(selectedRegion: string) {
 }
 
 async function listNewestRouters(selectedRegion: string) {
-  const regionExpr = sql<string | null>`coalesce(${routers.homeRegionCode}, ${users.stateCode})`;
+  const regionExpr = sql<string | null>`coalesce(${users.stateCode}, '')`;
   const rows = await db
     .select({
       userId: users.id,
@@ -387,7 +378,6 @@ async function listNewestRouters(selectedRegion: string) {
       joinedAt: users.createdAt,
     })
     .from(users)
-    .leftJoin(routers, eq(routers.userId, users.id))
     .where(and(eq(users.role, "ROUTER" as any), regionWhere(selectedRegion, regionExpr)))
     .orderBy(desc(users.createdAt))
     .limit(MAX_ITEMS);
@@ -402,7 +392,7 @@ async function listNewestRouters(selectedRegion: string) {
 
 async function listPayoutsPending(selectedRegion: string) {
   const contractorUser = alias(users, "contractor_user");
-  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code}, ${jobs.province})`;
+  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code})`;
   const rows = await db
     .select({
       jobId: jobs.id,
@@ -432,7 +422,7 @@ async function listPayoutsPending(selectedRegion: string) {
 
 async function listPayoutsPaid(selectedRegion: string) {
   const contractorUser = alias(users, "contractor_user");
-  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code}, ${jobs.province})`;
+  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code})`;
   const rows = await db
     .select({
       jobId: jobs.id,
@@ -481,7 +471,7 @@ async function revenueSummary(range: RevenueRangeKey, amountExpr: ReturnType<typ
 async function listPlatformTopJobs(range: RevenueRangeKey) {
   const since = sinceForRange(range);
   const paidAtExpr = sql<Date | null>`coalesce(${jobs.released_at}, ${jobs.stripe_paid_at})`;
-  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code}, ${jobs.province})`;
+  const regionExpr = sql<string | null>`coalesce(${jobs.region_code}, ${jobs.state_code})`;
 
   const rows = await db
     .select({
@@ -506,6 +496,14 @@ async function listPlatformTopJobs(range: RevenueRangeKey) {
 }
 
 export async function getOverviewCardsPayload(filters: OverviewCardsFilters): Promise<OverviewCardsPayload> {
+  const safe = async <T>(loader: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await loader();
+    } catch {
+      return fallback;
+    }
+  };
+
   const [
     regionOptions,
     latestJobs,
@@ -522,20 +520,29 @@ export async function getOverviewCardsPayload(filters: OverviewCardsFilters): Pr
     platformRevenue,
     platformTopJobs,
   ] = await Promise.all([
-    listRegionOptions(),
-    listLatestJobs(filters.latestJobsRegion),
-    listOverdueRouting(filters.overdueRoutingRegion),
-    listOpenSupportMessages(),
-    listOpenDisputes(),
-    listNewestJobPosters(filters.newestJobPostersRegion),
-    listNewestContractors(filters.newestContractorsRegion),
-    listNewestRouters(filters.newestRoutersRegion),
-    listPayoutsPending(filters.payoutsPendingRegion),
-    listPayoutsPaid(filters.payoutsPaidRegion),
-    revenueSummary(filters.contractorRevenueRange, sql<number>`coalesce(${jobs.contractor_payout_cents}, 0)`, true),
-    revenueSummary(filters.routerRevenueRange, sql<number>`coalesce(${jobs.router_earnings_cents}, 0)`, true),
-    revenueSummary(filters.platformRevenueRange, sql<number>`coalesce(${jobs.broker_fee_cents}, 0)`, true),
-    listPlatformTopJobs(filters.platformRevenueRange),
+    safe(() => listRegionOptions(), ["ALL"]),
+    safe(() => listLatestJobs(filters.latestJobsRegion), []),
+    safe(() => listOverdueRouting(filters.overdueRoutingRegion), []),
+    safe(() => listOpenSupportMessages(), []),
+    safe(() => listOpenDisputes(), []),
+    safe(() => listNewestJobPosters(filters.newestJobPostersRegion), []),
+    safe(() => listNewestContractors(filters.newestContractorsRegion), []),
+    safe(() => listNewestRouters(filters.newestRoutersRegion), []),
+    safe(() => listPayoutsPending(filters.payoutsPendingRegion), []),
+    safe(() => listPayoutsPaid(filters.payoutsPaidRegion), []),
+    safe(() => revenueSummary(filters.contractorRevenueRange, sql<number>`coalesce(${jobs.contractor_payout_cents}, 0)`, true), {
+      totalCents: 0,
+      jobsCount: 0,
+    }),
+    safe(() => revenueSummary(filters.routerRevenueRange, sql<number>`coalesce(${jobs.router_earnings_cents}, 0)`, true), {
+      totalCents: 0,
+      jobsCount: 0,
+    }),
+    safe(() => revenueSummary(filters.platformRevenueRange, sql<number>`coalesce(${jobs.broker_fee_cents}, 0)`, true), {
+      totalCents: 0,
+      jobsCount: 0,
+    }),
+    safe(() => listPlatformTopJobs(filters.platformRevenueRange), []),
   ]);
 
   return {
