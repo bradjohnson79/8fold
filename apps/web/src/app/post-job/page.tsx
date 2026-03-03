@@ -594,6 +594,8 @@ export default function PostJobPage() {
   }
 
   async function submitJob() {
+    console.log("SUBMIT_CLICKED", Date.now());
+    if (working) return;
     setError(null);
     if (!paymentConfirmed) {
       setError("Stripe payment confirmation is required before submitting.");
@@ -601,6 +603,7 @@ export default function PostJobPage() {
     }
 
     setWorking(true);
+    console.log("SUBMIT_FETCH_START");
     try {
       const authHeader = await getApiAuthHeader();
       const resp = await fetch(apiUrl("/api/web/v4/job-poster/jobs"), {

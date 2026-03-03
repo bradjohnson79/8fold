@@ -292,7 +292,9 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
     });
   } catch (err) {
     const dbErr = err as any;
-    if (String(dbErr?.code ?? "") === "23505") {
+    const pgCode = String(dbErr?.details?.code ?? dbErr?.code ?? "");
+    if (pgCode === "23505") {
+      console.warn("[JOB_CREATE_IDEMPOTENT_HIT]", { paymentIntentId });
       const existingRows = await db
         .select({ id: jobs.id, jobPosterUserId: jobs.job_poster_user_id })
         .from(jobs)
