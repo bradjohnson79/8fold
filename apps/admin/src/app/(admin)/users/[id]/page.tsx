@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { adminApiFetch } from "@/server/adminApiV4";
 
 type UserDetail = {
@@ -78,6 +79,72 @@ async function doAddNote(userId: string, formData: FormData) {
     method: "POST",
     body: JSON.stringify({ note }),
   }).catch(() => null);
+  redirect(`/users/${encodeURIComponent(userId)}`);
+}
+
+async function doSuperSuspend(userId: string, formData: FormData) {
+  "use server";
+  const duration = String(formData.get("duration") ?? "1m").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason) return;
+  try {
+    await adminApiFetch(`/api/admin/v4/super/users/${encodeURIComponent(userId)}/suspend`, {
+      method: "POST",
+      body: JSON.stringify({ duration, reason }),
+    });
+  } catch {
+    // 403 if not ADMIN_SUPER
+  }
+  revalidatePath(`/users/${encodeURIComponent(userId)}`);
+  redirect(`/users/${encodeURIComponent(userId)}`);
+}
+
+async function doSuperArchive(userId: string, formData: FormData) {
+  "use server";
+  const reason = String(formData.get("reason") ?? "").trim();
+  try {
+    await adminApiFetch(`/api/admin/v4/super/users/${encodeURIComponent(userId)}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || "Archived by super admin" }),
+    });
+  } catch {
+    // 403 if not ADMIN_SUPER
+  }
+  revalidatePath(`/users/${encodeURIComponent(userId)}`);
+  redirect(`/users/${encodeURIComponent(userId)}`);
+}
+
+async function doSuperDelete(userId: string, formData: FormData) {
+  "use server";
+  const confirm = String(formData.get("confirm") ?? "").trim();
+  if (confirm !== "DELETE USER") return;
+  try {
+    await adminApiFetch(`/api/admin/v4/super/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+  } catch {
+    // 403 or blocked
+  }
+  redirect("/users");
+}
+
+async function doSuperEdit(userId: string, formData: FormData) {
+  "use server";
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const accountStatus = String(formData.get("accountStatus") ?? "").trim();
+  if (!name && !email && !accountStatus) return;
+  const payload: Record<string, string> = {};
+  if (name) payload.name = name;
+  if (email) payload.email = email;
+  if (accountStatus) payload.accountStatus = accountStatus;
+  try {
+    await adminApiFetch(`/api/admin/v4/super/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // 403 if not ADMIN_SUPER
+  }
+  revalidatePath(`/users/${encodeURIComponent(userId)}`);
   redirect(`/users/${encodeURIComponent(userId)}`);
 }
 
@@ -366,6 +433,71 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
                 ))}
               </div>
             )}
+          </div>
+        </Card>
+
+        <Card title="">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div style={{ fontWeight: 950, color: "rgba(226,232,240,0.95)" }}>Super Admin Controls</div>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.5,
+                padding: "4px 8px",
+                borderRadius: 8,
+                background: "rgba(251,191,36,0.2)",
+                color: "rgba(253,224,71,0.95)",
+              }}
+            >
+              SUPER ADMIN
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Edit</div>
+              <form action={doSuperEdit.bind(null, u.id)} style={{ display: "grid", gap: 6 }}>
+                <input name="name" placeholder="Name" defaultValue={u.name ?? ""} style={{ ...inputStyle, width: "100%" }} />
+                <input name="email" placeholder="Email" type="email" defaultValue={u.email ?? ""} style={{ ...inputStyle, width: "100%" }} />
+                <input name="accountStatus" placeholder="Account status" defaultValue={u.status} style={{ ...inputStyle, width: "100%" }} />
+                <button type="submit" style={buttonStyle}>
+                  Save
+                </button>
+              </form>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Suspend</div>
+              <form action={doSuperSuspend.bind(null, u.id)} style={{ display: "grid", gap: 6 }}>
+                <select name="duration" style={{ ...inputStyle, width: "100%" }}>
+                  <option value="1w">1 week</option>
+                  <option value="1m">1 month</option>
+                  <option value="3m">3 months</option>
+                  <option value="6m">6 months</option>
+                </select>
+                <textarea name="reason" placeholder="Reason (required)" rows={2} style={inputStyle} />
+                <button type="submit" style={dangerButtonStyle}>
+                  Suspend
+                </button>
+              </form>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Archive</div>
+              <form action={doSuperArchive.bind(null, u.id)} style={{ display: "grid", gap: 6 }}>
+                <textarea name="reason" placeholder="Reason (optional)" rows={2} style={inputStyle} />
+                <button type="submit" style={dangerButtonStyle}>
+                  Archive
+                </button>
+              </form>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(254,202,202,0.95)", marginBottom: 6 }}>Delete</div>
+              <form action={doSuperDelete.bind(null, u.id)} style={{ display: "grid", gap: 6 }}>
+                <input name="confirm" placeholder='Type "DELETE USER" to confirm' style={inputStyle} />
+                <button type="submit" style={dangerButtonStyle}>
+                  Delete User
+                </button>
+              </form>
+            </div>
           </div>
         </Card>
       </div>

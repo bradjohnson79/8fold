@@ -31,7 +31,13 @@ export const jobs = dbSchema.table(
   {
     id: text("id").primaryKey(),
     status: jobStatusEnum("status").notNull().default("PUBLISHED"),
+    // archived boolean kept for legacy compatibility.
+    // archived_at is the authoritative field moving forward.
     archived: boolean("archived").notNull().default(false),
+    archived_at: timestamp("archived_at", { mode: "date", withTimezone: true }),
+    archived_by_admin_id: text("archived_by_admin_id"),
+    suspended_until: timestamp("suspended_until", { mode: "date", withTimezone: true }),
+    suspension_reason: text("suspension_reason"),
 
     title: text("title").notNull(),
     scope: text("scope").notNull(),
