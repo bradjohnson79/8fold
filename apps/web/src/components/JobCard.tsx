@@ -25,6 +25,7 @@ interface JobCardProps {
     transactionFeeCents?: number
     status: string
     image?: string
+    imageUrl?: string
   }
   isAuthenticated?: boolean
 }
@@ -230,9 +231,9 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
       {/* Image */}
       <div className="px-6">
         <div className="relative h-48 bg-gray-100 rounded-xl overflow-hidden">
-          {job.image && !imageError ? (
+          {(job.image ?? job.imageUrl) && !imageError ? (
             <Image
-              src={job.image}
+              src={job.image ?? job.imageUrl ?? ""}
               alt={job.title}
               fill
               className="object-cover"
