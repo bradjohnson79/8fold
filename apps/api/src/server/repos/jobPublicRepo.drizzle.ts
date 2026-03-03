@@ -124,63 +124,39 @@ export async function listCitiesByRegion(
 
 export type PublicNewestJobRow = {
   id: string;
-  title: string;
-  status: string;
-  region: string;
-  country: string;
+  title: string | null;
+  trade_category: string | null;
+  region: string | null;
   city: string | null;
-  tradeCategory: string | null;
-  createdAt: Date;
-  laborTotalCents: number;
-  contractorPayoutCents: number;
-  routerEarningsCents: number;
-  brokerFeeCents: number;
-  materialsTotalCents: number;
-  transactionFeeCents: number;
-  amountCents: number;
-  paymentStatus: string;
-  publicStatus: string;
+  created_at: Date | string | null;
 };
 
 export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[]> {
   const take = Math.max(1, Math.min(50, Math.trunc(limit || 9)));
   await maybeLogPublicDiscoveryDiagnostics();
-  const result = await db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      status: jobs.status,
-      region: jobs.region,
-      country: jobs.country,
-      city: jobs.city,
-      tradeCategory: jobs.trade_category,
-      createdAt: jobs.created_at,
-      laborTotalCents: jobs.labor_total_cents,
-      contractorPayoutCents: jobs.contractor_payout_cents,
-      routerEarningsCents: jobs.router_earnings_cents,
-      brokerFeeCents: jobs.broker_fee_cents,
-      materialsTotalCents: jobs.materials_total_cents,
-      transactionFeeCents: jobs.transaction_fee_cents,
-      amountCents: jobs.amount_cents,
-      paymentStatus: jobs.payment_status,
-      publicStatus: jobs.public_status,
-    })
-    .from(jobs)
-    .where(publicEligibility())
-    .orderBy(desc(jobs.created_at), desc(jobs.id))
-    .limit(take);
-
-  if (process.env.NODE_ENV !== "production") {
-    for (const row of result) {
-      if (row.laborTotalCents === undefined) {
-        throw new Error(
-          "Public jobs query missing laborTotalCents — financial schema drift detected.",
-        );
-      }
-    }
+  try {
+    const res = await db.execute<PublicNewestJobRow>(
+      sql`
+        SELECT id, title, trade_category, region, city, created_at
+        FROM jobs
+        WHERE archived = false
+          AND (status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${take}
+      `,
+    );
+    const rows = (res as { rows?: PublicNewestJobRow[] })?.rows ?? [];
+    return rows;
+  } catch (err: unknown) {
+    const pg = (err as { cause?: Record<string, unknown>; code?: string; column?: string }) ?? {};
+    const cause = (pg.cause ?? pg) as Record<string, unknown>;
+    console.error("[PUBLIC_JOBS_RECENT] select_failed", {
+      code: cause.code ?? pg.code,
+      column: cause.column ?? pg.column,
+      message: cause.message ?? (err as Error)?.message,
+    });
+    throw err;
   }
-
-  return result;
 }
 
 export async function countEligiblePublicJobs(): Promise<number> {
@@ -192,11 +168,20 @@ export async function countEligiblePublicJobs(): Promise<number> {
   return Number(rows[0]?.count ?? 0);
 }
 
+export type PublicJobMinimalRow = {
+  id: string;
+  title: string | null;
+  trade_category: string | null;
+  region: string | null;
+  city: string | null;
+  created_at: Date | string | null;
+};
+
 export async function listJobsByLocation(opts: {
   country: CountryCode2;
   regionCode: string;
   city: string;
-}): Promise<Array<typeof jobs.$inferSelect>> {
+}): Promise<PublicJobMinimalRow[]> {
   const rc = opts.regionCode.trim().toUpperCase();
   const city = opts.city.trim();
   if (!rc || !city) return [];
@@ -206,22 +191,33 @@ export async function listJobsByLocation(opts: {
   }
   const regionSlug = `${slugCity(city)}-${rc.toLowerCase()}`;
 
-  // Country param is accepted for signature parity; current behavior is regionCode-driven.
   void opts.country;
 
-  return await db
-    .select()
-    .from(jobs)
-    .where(
-      and(
-        publicEligibility(),
-        isNotNull(jobs.region_code),
-        eq(jobs.region_code, rc),
-        // Legacy behavior: match either explicit city (case-insensitive) OR region slug
-        sql`(lower(${jobs.city}) = lower(${city}) OR ${jobs.region} = ${regionSlug})`,
-      ),
-    )
-    .orderBy(desc(jobs.published_at), desc(jobs.id))
-    .limit(200);
+  try {
+    const res = await db.execute<PublicJobMinimalRow>(
+      sql`
+        SELECT id, title, trade_category, region, city, created_at
+        FROM jobs
+        WHERE archived = false
+          AND (status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+          AND region_code IS NOT NULL
+          AND region_code = ${rc}
+          AND (lower(city) = lower(${city}) OR region = ${regionSlug})
+        ORDER BY published_at DESC, id DESC
+        LIMIT 200
+      `,
+    );
+    const rows = (res as { rows?: PublicJobMinimalRow[] })?.rows ?? [];
+    return rows;
+  } catch (err: unknown) {
+    const pg = (err as { cause?: Record<string, unknown>; code?: string; column?: string }) ?? {};
+    const cause = (pg.cause ?? pg) as Record<string, unknown>;
+    console.error("[PUBLIC_JOBS_BY_LOCATION] select_failed", {
+      code: cause.code ?? pg.code,
+      column: cause.column ?? pg.column,
+      message: cause.message ?? (err as Error)?.message,
+    });
+    throw err;
+  }
 }
 

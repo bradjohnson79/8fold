@@ -32,15 +32,14 @@ describe("job poster dashboard routes", () => {
       {
         id: "job_1",
         title: "Fix outlet",
+        tradeCategory: "ELECTRICAL",
         status: "PUBLISHED",
         routingStatus: "UNROUTED",
         amountCents: 12000,
+        currency: "USD",
+        region: "ontario",
+        city: null,
         createdAt: "2026-03-02T00:00:00.000Z",
-        canMarkComplete: false,
-        contractorMarkedCompleteAt: null,
-        posterMarkedCompleteAt: null,
-        completedAt: null,
-        executionStatus: "PUBLISHED",
       },
     ];
 

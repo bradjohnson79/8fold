@@ -13,11 +13,11 @@ type Summary = {
 
 type JobItem = {
   id: string;
-  title: string;
-  status: string;
-  routingStatus: string;
-  amountCents: number;
-  createdAt: string;
+  title?: string;
+  status?: string;
+  routingStatus?: string;
+  amountCents?: number;
+  createdAt?: string;
 };
 
 type Thread = {
@@ -305,9 +305,9 @@ export default function JobPosterSummaryPage() {
                 <article key={job.id} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold text-slate-900">{job.title}</h3>
+                      <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled"}</h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        {job.status} · {job.routingStatus}
+                        {job.status ?? "—"} · {job.routingStatus ?? "—"}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
                         Posted {job.createdAt ? new Date(job.createdAt).toLocaleString() : "Date unavailable"}

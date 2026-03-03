@@ -6,24 +6,26 @@ import { JobCard } from "../../../../../components/JobCard";
 
 type PublicJob = {
   id: string;
-  status: string;
-  title: string;
-  scope: string;
-  regionName: string | null;
+  status?: string;
+  title?: string;
+  scope?: string;
+  regionName?: string | null;
   city: string | null;
+  region: string;
   regionCode: string;
   country: "US" | "CA";
-  currency: "USD" | "CAD";
-  publicStatus: "OPEN" | "IN_PROGRESS";
-  serviceType: string;
-  tradeCategory: string;
-  routerEarningsCents: number;
-  brokerFeeCents: number;
-  contractorPayoutCents: number;
-  laborTotalCents: number;
-  materialsTotalCents: number;
-  transactionFeeCents: number;
-  publishedAt: string;
+  currency?: "USD" | "CAD";
+  publicStatus?: "OPEN" | "IN_PROGRESS";
+  serviceType?: string;
+  tradeCategory?: string;
+  routerEarningsCents?: number;
+  brokerFeeCents?: number;
+  contractorPayoutCents?: number;
+  laborTotalCents?: number;
+  materialsTotalCents?: number;
+  transactionFeeCents?: number;
+  publishedAt?: string;
+  createdAt?: string;
   photos: Array<{ id: string; kind: string; url: string | null }>;
 };
 
@@ -103,21 +105,21 @@ export function CityJobsClient(props: { country: string; regionCode: string; cit
                   key={j.id}
                   job={{
                     id: j.id,
-                    title: j.title,
-                    region: regionSlug,
+                    title: j.title ?? "Untitled",
+                    region: j.region ?? regionSlug,
                     country: j.country,
-                    currency: (j as any).currency ?? (j.country === "CA" ? "CAD" : "USD"),
-                    isMock: (j as any).isMock ?? false,
-                    serviceType: j.serviceType,
-                    tradeCategory: j.tradeCategory,
+                    currency: ((j as { currency?: string }).currency ?? (j.country === "CA" ? "CAD" : "USD")) as "USD" | "CAD",
+                    isMock: (j as { isMock?: boolean }).isMock ?? false,
+                    serviceType: j.serviceType ?? "handyman",
+                    tradeCategory: j.tradeCategory ?? "",
                     timeWindow: undefined,
-                    routerEarningsCents: j.routerEarningsCents,
-                    brokerFeeCents: j.brokerFeeCents,
-                    contractorPayoutCents: j.contractorPayoutCents,
-                    laborTotalCents: j.laborTotalCents,
-                    materialsTotalCents: j.materialsTotalCents,
-                    transactionFeeCents: j.transactionFeeCents,
-                    status: j.status,
+                    routerEarningsCents: j.routerEarningsCents ?? 0,
+                    brokerFeeCents: j.brokerFeeCents ?? 0,
+                    contractorPayoutCents: j.contractorPayoutCents ?? 0,
+                    laborTotalCents: j.laborTotalCents ?? 0,
+                    materialsTotalCents: j.materialsTotalCents ?? 0,
+                    transactionFeeCents: j.transactionFeeCents ?? 0,
+                    status: j.status ?? "PUBLISHED",
                     image: photo ?? undefined
                   }}
                   isAuthenticated={false}
