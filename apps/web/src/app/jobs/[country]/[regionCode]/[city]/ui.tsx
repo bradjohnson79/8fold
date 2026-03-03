@@ -113,6 +113,7 @@ export function CityJobsClient(props: { country: string; regionCode: string; cit
                     serviceType: j.serviceType ?? "handyman",
                     tradeCategory: j.tradeCategory ?? "",
                     timeWindow: undefined,
+                    amountCents: (j as { amountCents?: number }).amountCents ?? 0,
                     routerEarningsCents: j.routerEarningsCents ?? 0,
                     brokerFeeCents: j.brokerFeeCents ?? 0,
                     contractorPayoutCents: j.contractorPayoutCents ?? 0,

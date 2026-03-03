@@ -16,9 +16,10 @@ interface JobCardProps {
     currency?: 'USD' | 'CAD'
     timeWindow?: string
     isMock?: boolean
-    routerEarningsCents: number
-    brokerFeeCents: number
-    contractorPayoutCents: number
+    amountCents?: number
+    routerEarningsCents?: number
+    brokerFeeCents?: number
+    contractorPayoutCents?: number
     laborTotalCents?: number
     materialsTotalCents?: number
     transactionFeeCents?: number
@@ -37,9 +38,26 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
   const currency = (job.currency ?? (job.country === 'CA' ? 'CAD' : 'USD')) as 'USD' | 'CAD'
 
   const computed = useMemo(() => {
-    const labor = Number.isFinite(job.laborTotalCents as any) ? (job.laborTotalCents ?? null) : null
     const materials = Number.isFinite(job.materialsTotalCents as any) ? (job.materialsTotalCents ?? 0) : 0
 
+    const amountCents = Number.isFinite(job.amountCents) && (job.amountCents ?? 0) > 0
+      ? (job.amountCents ?? 0)
+      : null
+
+    if (amountCents !== null) {
+      const routerCents = Math.round(amountCents * REVENUE_SPLIT.router)
+      const contractorCents = Math.round(amountCents * REVENUE_SPLIT.contractor)
+      const platformCents = Math.round(amountCents * REVENUE_SPLIT.platform)
+      return {
+        totalCents: amountCents,
+        routerCents,
+        contractorCents,
+        platformCents,
+        materialsCents: materials,
+      }
+    }
+
+    const labor = Number.isFinite(job.laborTotalCents as any) ? (job.laborTotalCents ?? null) : null
     const fallbackTotal =
       (job.contractorPayoutCents ?? 0) +
       (job.routerEarningsCents ?? 0) +

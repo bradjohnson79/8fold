@@ -60,6 +60,8 @@ export async function GET(req: Request) {
 
     const out = jobRows.map((j) => {
       const createdAt = j.created_at instanceof Date ? j.created_at : j.created_at ? new Date(String(j.created_at)) : null;
+      const amountCents = Number(j.amount_cents ?? 0);
+      const currency = String(j.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD";
       return {
         id: String(j.id ?? ""),
         title: String(j.title ?? ""),
@@ -67,12 +69,14 @@ export async function GET(req: Request) {
         region: String(j.region ?? ""),
         city: j.city != null ? String(j.city) : null,
         createdAt: createdAt instanceof Date ? createdAt.toISOString() : "",
+        amountCents,
+        currency,
         regionCode,
         country: canonicalCountry,
         status: "PUBLISHED",
         publicStatus: "OPEN" as const,
         serviceType: "handyman",
-        laborTotalCents: 0,
+        laborTotalCents: amountCents,
         materialsTotalCents: 0,
         transactionFeeCents: 0,
         contractorPayoutCents: 0,
