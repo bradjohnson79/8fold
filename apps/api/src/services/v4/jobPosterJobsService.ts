@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { jobEditRequests, jobCancelRequests } from "@/db/schema";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
@@ -94,6 +95,8 @@ export async function listJobsForJobPoster(userId: string): Promise<JobListItem[
   }
 }
 
+export type PendingRequest = { submittedAt: string } | null;
+
 export type JobDetail = {
   id: string;
   title: string;
@@ -109,6 +112,11 @@ export type JobDetail = {
   contractorMarkedCompleteAt: string | null;
   posterMarkedCompleteAt: string | null;
   completedAt: string | null;
+  region: string | null;
+  city: string | null;
+  regionName: string | null;
+  pendingEditRequest: PendingRequest;
+  pendingCancelRequest: PendingRequest;
 };
 
 export async function getJobDetailForJobPoster(jobId: string, userId: string): Promise<JobDetail | null> {
@@ -148,6 +156,21 @@ export async function getJobDetailForJobPoster(jobId: string, userId: string): P
     new Date(),
   );
 
+  const [pendingEdit, pendingCancel] = await Promise.all([
+    db
+      .select({ createdAt: jobEditRequests.createdAt })
+      .from(jobEditRequests)
+      .where(and(eq(jobEditRequests.jobId, jobId), eq(jobEditRequests.status, "pending")))
+      .orderBy(desc(jobEditRequests.createdAt))
+      .limit(1),
+    db
+      .select({ createdAt: jobCancelRequests.createdAt })
+      .from(jobCancelRequests)
+      .where(and(eq(jobCancelRequests.jobId, jobId), eq(jobCancelRequests.status, "pending")))
+      .orderBy(desc(jobCancelRequests.createdAt))
+      .limit(1),
+  ]);
+
   return {
     id: String(row.id ?? ""),
     title: String(row.title ?? ""),
@@ -163,6 +186,15 @@ export async function getJobDetailForJobPoster(jobId: string, userId: string): P
     contractorMarkedCompleteAt: contractorMarkedCompleteAt != null ? contractorMarkedCompleteAt.toISOString() : null,
     posterMarkedCompleteAt: posterMarkedCompleteAt != null ? posterMarkedCompleteAt.toISOString() : null,
     completedAt: completedAt != null ? completedAt.toISOString() : null,
+    region: row.region_code != null ? String(row.region_code) : row.region != null ? String(row.region) : null,
+    city: row.city != null ? String(row.city) : null,
+    regionName: row.region_name != null ? String(row.region_name) : null,
+    pendingEditRequest: pendingEdit[0]
+      ? { submittedAt: pendingEdit[0].createdAt instanceof Date ? pendingEdit[0].createdAt.toISOString() : String(pendingEdit[0].createdAt) }
+      : null,
+    pendingCancelRequest: pendingCancel[0]
+      ? { submittedAt: pendingCancel[0].createdAt instanceof Date ? pendingCancel[0].createdAt.toISOString() : String(pendingCancel[0].createdAt) }
+      : null,
   };
 }
 
@@ -368,4 +400,98 @@ export async function acceptAppointmentForJobPoster(
     jobId,
     appointmentAcceptedAt: now.toISOString(),
   };
+}
+
+export async function createEditRequest(
+  jobId: string,
+  userId: string,
+  payload: { requestedTitle: string; requestedDescription: string },
+): Promise<{ requestId: string }> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      scope: jobs.scope,
+      jobPosterUserId: jobs.job_poster_user_id,
+      contractorUserId: jobs.contractor_user_id,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  const job = rows[0];
+  if (!job || String(job.jobPosterUserId ?? "") !== userId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  if (job.contractorUserId != null)
+    throw conflict("V4_JOB_EDIT_ASSIGNED", "Job cannot be edited once a contractor has been assigned.");
+
+  const pending = await db
+    .select({ id: jobEditRequests.id })
+    .from(jobEditRequests)
+    .where(and(eq(jobEditRequests.jobId, jobId), eq(jobEditRequests.status, "pending")))
+    .limit(1);
+  if (pending[0]) throw conflict("V4_EDIT_REQUEST_PENDING", "A request is already pending for this job.");
+
+  const title = String(job.title ?? "").trim();
+  const scope = String(job.scope ?? "").trim();
+  const reqTitle = String(payload.requestedTitle ?? "").trim();
+  const reqDesc = String(payload.requestedDescription ?? "").trim();
+  if (reqTitle === title && reqDesc === scope)
+    throw badRequest("V4_EDIT_REQUEST_NO_CHANGE", "At least one field must differ from the current job.");
+
+  const [inserted] = await db
+    .insert(jobEditRequests)
+    .values({
+      jobId,
+      jobPosterId: userId,
+      originalTitle: title,
+      originalDescription: scope,
+      requestedTitle: reqTitle,
+      requestedDescription: reqDesc,
+    })
+    .returning({ id: jobEditRequests.id });
+  return { requestId: String(inserted?.id ?? "") };
+}
+
+export async function createCancelRequest(
+  jobId: string,
+  userId: string,
+  payload: { reason: string },
+): Promise<{ requestId: string }> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      jobPosterUserId: jobs.job_poster_user_id,
+      contractorUserId: jobs.contractor_user_id,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  const job = rows[0];
+  if (!job || String(job.jobPosterUserId ?? "") !== userId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+  const status = String(job.status ?? "").toUpperCase();
+  if (job.contractorUserId != null || status === "ASSIGNED")
+    throw conflict("V4_CANCEL_REQUEST_ASSIGNED", "Only unassigned jobs can be cancelled through this request.");
+
+  const pending = await db
+    .select({ id: jobCancelRequests.id })
+    .from(jobCancelRequests)
+    .where(and(eq(jobCancelRequests.jobId, jobId), eq(jobCancelRequests.status, "pending")))
+    .limit(1);
+  if (pending[0]) throw conflict("V4_CANCEL_REQUEST_PENDING", "A request is already pending for this job.");
+
+  const reason = String(payload.reason ?? "").trim();
+  if (!reason) throw badRequest("V4_CANCEL_REQUEST_REASON", "Reason is required.");
+
+  const [inserted] = await db
+    .insert(jobCancelRequests)
+    .values({
+      jobId,
+      jobPosterId: userId,
+      reason,
+    })
+    .returning({ id: jobCancelRequests.id });
+
+  await db.update(jobs).set({ cancel_request_pending: true, updated_at: new Date() }).where(eq(jobs.id, jobId));
+
+  return { requestId: String(inserted?.id ?? "") };
 }

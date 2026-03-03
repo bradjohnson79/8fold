@@ -23,6 +23,8 @@ export const JobStatusSchema = z.enum([
   "DISPUTED",
   // Execution lifecycle status (appointment reached, work can be completed).
   "JOB_STARTED",
+  // Admin-approved cancel (terminal; added via 0115 migration).
+  "CANCELLED",
 ]);
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
@@ -64,7 +66,9 @@ export const JobAllowedTransitions: Readonly<
   COMPLETED_APPROVED: [],
   COMPLETED: [],
   // Disputed jobs are payout-frozen; transitions are handled by dispute resolution workflows.
-  DISPUTED: []
+  DISPUTED: [],
+  // Terminal; no transitions from CANCELLED.
+  CANCELLED: [],
 } as const;
 
 export const PayoutRequestAllowedTransitions: Readonly<

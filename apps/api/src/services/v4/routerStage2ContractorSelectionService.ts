@@ -254,6 +254,7 @@ export async function routeStage2JobToContractors(
           eq(jobs.id, jobId),
           eq(jobs.status, "OPEN_FOR_ROUTING"),
           eq(jobs.routing_status, "UNROUTED"),
+          eq(jobs.cancel_request_pending, false),
           sql`${jobs.claimed_by_user_id} is null`,
         ),
       )

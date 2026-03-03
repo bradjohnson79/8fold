@@ -114,6 +114,7 @@ export async function GET(req: Request) {
       .where(
         and(
           eq(jobs.archived, false),
+          eq(jobs.cancel_request_pending, false),
           // Router open-jobs list (only)
           eq(jobs.status, "OPEN_FOR_ROUTING"),
           eq(jobs.routing_status, "UNROUTED"),

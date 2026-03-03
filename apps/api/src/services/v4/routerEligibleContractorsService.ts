@@ -90,6 +90,7 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
       status: jobs.status,
       routingStatus: jobs.routing_status,
       claimedByUserId: jobs.claimed_by_user_id,
+      cancelRequestPending: jobs.cancel_request_pending,
       country: jobs.country,
       countryCode: jobs.country_code,
       stateCode: jobs.state_code,
@@ -114,6 +115,7 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
   if (
     job.archived ||
     job.isMock ||
+    job.cancelRequestPending ||
     job.status !== "OPEN_FOR_ROUTING" ||
     job.routingStatus !== "UNROUTED" ||
     job.claimedByUserId

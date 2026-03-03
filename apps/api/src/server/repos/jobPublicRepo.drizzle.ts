@@ -6,6 +6,7 @@ import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 function publicEligibility() {
   return and(
     eq(jobs.archived, false),
+    eq(jobs.cancel_request_pending, false),
     or(
       eq(jobs.status, "ASSIGNED"),
       and(

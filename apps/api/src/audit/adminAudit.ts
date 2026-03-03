@@ -6,6 +6,8 @@ import { auditLogs } from "../../db/schema/auditLog";
 export type AdminAuditEntityType =
   | "User"
   | "Job"
+  | "JobEditRequest"
+  | "JobCancelRequest"
   | "SupportTicket"
   | "DisputeCase"
   | "PayoutRequest"

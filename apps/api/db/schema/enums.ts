@@ -65,6 +65,8 @@ export const jobStatusEnum = pgEnum("JobStatus", [
   "DISPUTED",
   // NOTE: Added to Postgres via add-only ALTER TYPE on 2026-03-02.
   "JOB_STARTED",
+  // NOTE: Added to Postgres via 0115 migration for admin-approved cancel requests.
+  "CANCELLED",
 ]);
 
 export const publicJobStatusEnum = pgEnum("PublicJobStatus", ["OPEN", "IN_PROGRESS"]);
@@ -74,6 +76,8 @@ export const jobSourceEnum = pgEnum("JobSource", ["MOCK", "REAL", "AI_REGENERATE
 export const jobTypeEnum = pgEnum("JobType", ["urban", "regional"]);
 
 export const routingStatusEnum = pgEnum("RoutingStatus", ["UNROUTED", "ROUTED_BY_ROUTER", "ROUTED_BY_ADMIN"]);
+
+export const jobRequestStatusEnum = pgEnum("job_request_status", ["pending", "approved", "rejected"]);
 
 export const countryCodeEnum = pgEnum("CountryCode", ["CA", "US"]);
 
