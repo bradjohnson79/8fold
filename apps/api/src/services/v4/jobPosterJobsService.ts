@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
@@ -14,33 +15,83 @@ import {
 export type JobListItem = {
   id: string;
   title: string;
-  scope: string;
+  tradeCategory: string;
   status: string;
   routingStatus: string;
-  tradeCategory: string;
   amountCents: number;
   currency: string;
+  region: string | null;
+  city: string | null;
   createdAt: string;
 };
 
-export async function listJobsForJobPoster(userId: string): Promise<JobListItem[]> {
-  const rows = await db
-    .select()
-    .from(jobs)
-    .where(and(eq(jobs.job_poster_user_id, userId), eq(jobs.archived, false)))
-    .orderBy(desc(jobs.created_at));
+type MinimalRow = {
+  id: string;
+  title: string | null;
+  trade_category: string | null;
+  status: string | null;
+  routing_status: string | null;
+  amount_cents: number | null;
+  currency: string | null;
+  region: string | null;
+  city: string | null;
+  created_at: Date | string | null;
+};
 
-  return rows.map((r) => ({
-    id: String(r.id),
-    title: String(r.title ?? ""),
-    scope: String(r.scope ?? ""),
-    status: String(r.status ?? ""),
-    routingStatus: String(r.routing_status ?? ""),
-    tradeCategory: String(r.trade_category ?? ""),
-    amountCents: Number(r.amount_cents ?? 0),
-    currency: String(r.currency ?? ""),
-    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : "",
-  }));
+export async function listJobsForJobPoster(userId: string): Promise<JobListItem[]> {
+  try {
+    const res = await db.execute<MinimalRow>(
+      sql`
+        SELECT
+          id,
+          title,
+          trade_category,
+          status,
+          routing_status,
+          amount_cents,
+          currency,
+          region,
+          city,
+          created_at
+        FROM jobs
+        WHERE job_poster_user_id = ${userId}
+          AND archived = false
+        ORDER BY created_at DESC
+      `,
+    );
+    const rows = (res as { rows?: MinimalRow[] })?.rows ?? [];
+
+    return rows.map((r) => ({
+      id: String(r.id ?? ""),
+      title: String(r.title ?? ""),
+      tradeCategory: String(r.trade_category ?? ""),
+      status: String(r.status ?? ""),
+      routingStatus: String(r.routing_status ?? ""),
+      amountCents: Number(r.amount_cents ?? 0),
+      currency: String(r.currency ?? ""),
+      region: r.region != null ? String(r.region) : null,
+      city: r.city != null ? String(r.city) : null,
+      createdAt:
+        r.created_at instanceof Date
+          ? r.created_at.toISOString()
+          : typeof r.created_at === "string"
+            ? r.created_at
+            : "",
+    }));
+  } catch (err: unknown) {
+    const pg = (err as { cause?: Record<string, unknown>; code?: string; message?: string; detail?: string; column?: string; schema?: string; table?: string; constraint?: string }) ?? {};
+    const cause = (pg.cause ?? pg) as Record<string, unknown>;
+    console.error("[JP_JOBS_LIST] select_failed", {
+      code: cause.code ?? pg.code,
+      message: cause.message ?? pg.message,
+      detail: cause.detail ?? pg.detail,
+      schema: cause.schema ?? pg.schema,
+      table: cause.table ?? pg.table,
+      column: cause.column ?? pg.column,
+      constraint: cause.constraint ?? pg.constraint,
+    });
+    throw err;
+  }
 }
 
 export type JobDetail = {

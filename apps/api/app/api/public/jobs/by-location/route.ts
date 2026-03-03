@@ -53,39 +53,34 @@ export async function GET(req: Request) {
         .orderBy(asc(jobPhotos.createdAt));
       for (const r of rows) {
         const arr = photosByJobId.get(r.jobId) ?? [];
-        arr.push({ id: r.id, kind: r.kind, url: (r as any).url ?? null });
+        arr.push({ id: r.id, kind: r.kind, url: (r as { url?: string | null }).url ?? null });
         photosByJobId.set(r.jobId, arr);
       }
     }
 
-    const jobs = jobRows.map((j) => ({
-      id: j.id,
-      status: j.status,
-      title: j.title,
-      scope: j.scope,
-      regionName: j.region_name,
-      city: j.city,
-      regionCode: j.region_code,
-      country: canonicalCountry,
-      publicStatus: j.public_status,
-      serviceType: j.service_type,
-      tradeCategory: j.trade_category,
-      laborTotalCents: j.labor_total_cents,
-      materialsTotalCents: j.materials_total_cents,
-      transactionFeeCents: j.transaction_fee_cents,
-      contractorPayoutCents: j.contractor_payout_cents,
-      routerEarningsCents: j.router_earnings_cents,
-      brokerFeeCents: j.broker_fee_cents,
-      createdAt: j.created_at,
-      publishedAt: j.published_at,
-      photos: photosByJobId.get(j.id) ?? [],
-    }));
-
-    const out = jobs.map((j) => ({
-      ...j,
-      createdAt: j.createdAt.toISOString(),
-      publishedAt: j.publishedAt.toISOString()
-    }));
+    const out = jobRows.map((j) => {
+      const createdAt = j.created_at instanceof Date ? j.created_at : j.created_at ? new Date(String(j.created_at)) : null;
+      return {
+        id: String(j.id ?? ""),
+        title: String(j.title ?? ""),
+        tradeCategory: String(j.trade_category ?? ""),
+        region: String(j.region ?? ""),
+        city: j.city != null ? String(j.city) : null,
+        createdAt: createdAt instanceof Date ? createdAt.toISOString() : "",
+        regionCode,
+        country: canonicalCountry,
+        status: "PUBLISHED",
+        publicStatus: "OPEN" as const,
+        serviceType: "handyman",
+        laborTotalCents: 0,
+        materialsTotalCents: 0,
+        transactionFeeCents: 0,
+        contractorPayoutCents: 0,
+        routerEarningsCents: 0,
+        brokerFeeCents: 0,
+        photos: photosByJobId.get(j.id) ?? [],
+      };
+    });
 
     return ok({ jobs: out });
   } catch (err) {

@@ -5,11 +5,11 @@ import Link from "next/link";
 
 type Job = {
   id: string;
-  title: string;
-  status: string;
-  routingStatus: string;
-  amountCents: number;
-  createdAt: string;
+  title?: string;
+  status?: string;
+  routingStatus?: string;
+  amountCents?: number;
+  createdAt?: string;
 };
 
 export default function JobPosterJobsPage() {
@@ -60,12 +60,13 @@ export default function JobPosterJobsPage() {
                   href={`/dashboard/job-poster/jobs/${j.id}`}
                   className="block rounded-lg border border-gray-200 p-4 hover:bg-gray-50"
                 >
-                  <span className="font-medium">{j.title}</span>
+                  <span className="font-medium">{j.title ?? "Untitled"}</span>
                   <span className="ml-2 text-sm text-gray-500">
-                    {j.status} · {j.routingStatus} · ${(j.amountCents / 100).toFixed(2)}
+                    {j.status ?? "—"} · {j.routingStatus ?? "—"} · $
+                    {((j.amountCents ?? 0) / 100).toFixed(2)}
                   </span>
                   <span className="ml-2 text-sm text-gray-400">
-                    {new Date(j.createdAt).toLocaleDateString()}
+                    {j.createdAt ? new Date(j.createdAt).toLocaleDateString() : "—"}
                   </span>
                 </Link>
               </li>

@@ -58,30 +58,28 @@ export async function GET(req: Request) {
       }
     }
 
-    const jobs = jobRows.map((j) => ({
-      id: j.id,
-      status: j.status,
-      title: j.title,
-      region: j.region,
-      city: j.city,
-      country: j.country,
-      publicStatus: j.publicStatus,
-      tradeCategory: j.tradeCategory,
-      serviceType: "handyman",
-      laborTotalCents: j.laborTotalCents,
-      contractorPayoutCents: j.contractorPayoutCents,
-      routerEarningsCents: j.routerEarningsCents,
-      brokerFeeCents: j.brokerFeeCents,
-      materialsTotalCents: j.materialsTotalCents,
-      transactionFeeCents: j.transactionFeeCents,
-      createdAt: j.createdAt,
-      photos: photosByJobId.get(j.id) ?? [],
-    }));
-
-    const out = jobs.map((j) => ({
-      ...j,
-      createdAt: (j.createdAt instanceof Date ? j.createdAt : new Date(j.createdAt ?? 0)).toISOString(),
-    }));
+    const out = jobRows.map((j) => {
+      const createdAt = j.created_at instanceof Date ? j.created_at : j.created_at ? new Date(String(j.created_at)) : null;
+      return {
+        id: String(j.id ?? ""),
+        title: String(j.title ?? ""),
+        tradeCategory: String(j.trade_category ?? ""),
+        region: String(j.region ?? ""),
+        city: j.city != null ? String(j.city) : null,
+        createdAt: createdAt instanceof Date ? createdAt.toISOString() : "",
+        status: "PUBLISHED",
+        publicStatus: "OPEN" as const,
+        serviceType: "handyman",
+        country: "US" as const,
+        laborTotalCents: 0,
+        contractorPayoutCents: 0,
+        routerEarningsCents: 0,
+        brokerFeeCents: 0,
+        materialsTotalCents: 0,
+        transactionFeeCents: 0,
+        photos: photosByJobId.get(j.id) ?? [],
+      };
+    });
 
     return ok({ jobs: out });
   } catch (err) {
