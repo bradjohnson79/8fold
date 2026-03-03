@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
@@ -14,73 +14,33 @@ import {
 export type JobListItem = {
   id: string;
   title: string;
+  scope: string;
   status: string;
   routingStatus: string;
+  tradeCategory: string;
   amountCents: number;
+  currency: string;
   createdAt: string;
-  canMarkComplete: boolean;
-  contractorMarkedCompleteAt: string | null;
-  posterMarkedCompleteAt: string | null;
-  completedAt: string | null;
-  executionStatus: string;
 };
 
 export async function listJobsForJobPoster(userId: string): Promise<JobListItem[]> {
-  try {
-    await promoteDuePublishedJobsForJobPoster(userId);
-  } catch (error) {
-    logEvent({
-      level: "error",
-      event: "job_poster.dashboard.promote_due_failed",
-      userId,
-      context: {
-        error: error instanceof Error ? error.message : String(error),
-      },
-    });
-  }
   const rows = await db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      status: jobs.status,
-      routingStatus: jobs.routing_status,
-      amountCents: jobs.amount_cents,
-      createdAt: jobs.created_at,
-      appointmentAt: jobs.appointment_at,
-      completedAt: jobs.completed_at,
-      contractorMarkedCompleteAt: jobs.contractor_marked_complete_at,
-      posterMarkedCompleteAt: jobs.poster_marked_complete_at,
-    })
+    .select()
     .from(jobs)
-    .where(and(eq(jobs.job_poster_user_id, userId), ne(jobs.status, "DRAFT")))
+    .where(and(eq(jobs.job_poster_user_id, userId), eq(jobs.archived, false)))
     .orderBy(desc(jobs.created_at));
 
-  return rows.map((r) => {
-    const eligibility = computeExecutionEligibility(
-      {
-        id: r.id,
-        status: mapLegacyStatusForExecution(String(r.status ?? "")),
-        appointment_at: r.appointmentAt ?? null,
-        completed_at: r.completedAt ?? null,
-        contractor_marked_complete_at: r.contractorMarkedCompleteAt ?? null,
-        poster_marked_complete_at: r.posterMarkedCompleteAt ?? null,
-      },
-      new Date(),
-    );
-    return {
-      id: r.id,
-      title: r.title,
-      status: mapLegacyStatusForExecution(String(r.status ?? "")),
-      routingStatus: String(r.routingStatus ?? ""),
-      amountCents: Number(r.amountCents ?? 0),
-      createdAt: r.createdAt?.toISOString?.() ?? "",
-      canMarkComplete: eligibility.canMarkComplete,
-      contractorMarkedCompleteAt: r.contractorMarkedCompleteAt?.toISOString?.() ?? null,
-      posterMarkedCompleteAt: r.posterMarkedCompleteAt?.toISOString?.() ?? null,
-      completedAt: r.completedAt?.toISOString?.() ?? null,
-      executionStatus: eligibility.executionStatus,
-    };
-  });
+  return rows.map((r) => ({
+    id: String(r.id),
+    title: String(r.title ?? ""),
+    scope: String(r.scope ?? ""),
+    status: String(r.status ?? ""),
+    routingStatus: String(r.routing_status ?? ""),
+    tradeCategory: String(r.trade_category ?? ""),
+    amountCents: Number(r.amount_cents ?? 0),
+    currency: String(r.currency ?? ""),
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : "",
+  }));
 }
 
 export type JobDetail = {
