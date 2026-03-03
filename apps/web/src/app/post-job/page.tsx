@@ -164,21 +164,6 @@ function HoldConfirm(props: {
               });
               const status = result.paymentIntent?.status ?? null;
               const nextAction = (result.paymentIntent as any)?.next_action ?? null;
-              const errorPayload = result.error
-                ? {
-                    type: result.error.type,
-                    code: result.error.code,
-                    message: result.error.message,
-                    param: (result.error as any).param,
-                    decline_code: (result.error as any).decline_code,
-                  }
-                : null;
-              console.log("TEMP_STRIPE_DEBUG_CONFIRM_RESULT", {
-                status,
-                id: result.paymentIntent?.id ?? null,
-                next_action: nextAction,
-                error: errorPayload,
-              });
               if (result.error) {
                 const mapped = mapStripeConfirmError({
                   message: result.error.message || "Payment confirmation failed.",
@@ -188,7 +173,6 @@ function HoldConfirm(props: {
                 throw new Error(`${mapped.code}: ${mapped.message}`);
               }
               if (status === "requires_action") {
-                console.warn("TEMP_STRIPE_DEBUG_CONFIRM_REQUIRES_ACTION", { next_action: nextAction });
                 throw new Error("Payment requires additional action before it can be confirmed.");
               }
               if (status === "succeeded") {
@@ -277,16 +261,6 @@ export default function PostJobPage() {
     window.scrollTo(0, 0);
   }, []);
 
-  useEffect(() => {
-    if (!stripeConfig) return;
-    console.log("TEMP_STRIPE_DEBUG_MODE_WEB", {
-      publishableMode: String(stripeConfig.pkMode ?? "unknown").toUpperCase(),
-      secretMode: String(stripeConfig.skMode ?? "unknown").toUpperCase(),
-      stripeMode: stripeConfig.stripeMode,
-      ok: stripeConfig.ok,
-    });
-  }, [stripeConfig]);
-
   const stripeModeMismatch = stripeConfig?.ok === false && stripeConfig?.error?.code === "STRIPE_MODE_MISMATCH";
   const stripeConfigBlockingError = stripeConfig?.ok === false ? stripeConfig?.error?.message ?? "Stripe configuration is invalid." : null;
 
@@ -327,10 +301,6 @@ export default function PostJobPage() {
 
   const isLower = appraisal ? appraisalPriceCents < baseMedianCents : false;
   const isHigher = appraisal ? appraisalPriceCents > baseMedianCents : false;
-  useEffect(() => {
-    if (!paymentSummary) return;
-    console.log("TEMP_STRIPE_DEBUG_UI_TOTALS", paymentSummary);
-  }, [paymentSummary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -566,22 +536,15 @@ export default function PostJobPage() {
         }),
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
-      const debugPrepareBody = {
-        ...json,
-        clientSecret: json?.clientSecret ? "[redacted]" : undefined,
-      };
       if (!resp.ok || !json.clientSecret || !json.paymentIntentId) {
-        console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
         throw new Error(getApiErrorMessage(json, "Failed to prepare Stripe confirmation."));
       }
       if (json.stripeMode && json.stripeMode !== stripeConfig.stripeMode) {
         throw new Error("STRIPE_MODE_MISMATCH: Payment intent mode does not match Stripe config.");
       }
       if (!hasValidServerTotals(json)) {
-        console.error("POST_JOB_INVALID_TOTALS_FROM_BACKEND", debugPrepareBody);
         throw new Error("Server returned invalid totals. Please retry.");
       }
-      console.log("TEMP_STRIPE_DEBUG_PREPARE_RESPONSE", { ok: resp.ok, status: resp.status, body: debugPrepareBody });
       setPaymentSummary(json);
       setClientSecret(json.clientSecret);
       setPaymentIntentId(json.paymentIntentId);
@@ -594,7 +557,6 @@ export default function PostJobPage() {
   }
 
   async function submitJob() {
-    console.log("SUBMIT_CLICKED", Date.now());
     if (working) return;
     setError(null);
     if (!paymentConfirmed) {
@@ -603,10 +565,9 @@ export default function PostJobPage() {
     }
 
     setWorking(true);
-    console.log("SUBMIT_FETCH_START");
     try {
       const authHeader = await getApiAuthHeader();
-      const resp = await fetch(apiUrl("/api/web/v4/job-poster/jobs"), {
+      const resp = await fetch(apiUrl("/api/web/v4/job-poster/jobs/finalize"), {
         method: "POST",
         headers: {
           ...authHeader,
@@ -614,27 +575,15 @@ export default function PostJobPage() {
         },
         body: JSON.stringify({
           details: {
-            tradeCategory,
-            title,
-            description,
-            isRegional: urbanOrRegional === "regional",
-            address: activeAddress.address,
-            city: activeAddress.city,
-            postalCode: activeAddress.postalCode,
-            stateCode: activeAddress.region,
+            title: title.trim(),
+            description: description.trim(),
+            tradeCategory: tradeCategory.trim().toUpperCase(),
+            stateCode: activeAddress.region.trim(),
             countryCode: activeAddress.country,
-            lat: activeAddress.lat,
-            lon: activeAddress.lon,
-          },
-          availability,
-          images,
-          pricing: {
-            selectedPriceCents: appraisalPriceCents,
             isRegional: urbanOrRegional === "regional",
           },
           payment: {
             paymentIntentId,
-            modelAJobId: paymentSummary?.modelAJobId,
           },
         }),
       });
@@ -653,6 +602,7 @@ export default function PostJobPage() {
       if (!resp.ok || !json.success || !json.jobId) {
         throw new Error(getApiErrorMessage(json, "Failed to submit job."));
       }
+      // Treat created: false as success (idempotent case)
       router.push(`/dashboard/job-poster/jobs/${encodeURIComponent(json.jobId)}`);
     } catch (e) {
       setError(getErrorMessage(e, "Failed to submit job."));
