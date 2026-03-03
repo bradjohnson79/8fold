@@ -38,9 +38,8 @@ export function tradeEnumToTradeCategories(trade: string): string[] {
       return ["JUNK_REMOVAL"];
     case "YARDWORK_GROUNDSKEEPING":
       return ["LANDSCAPING"];
-    // Legacy trade not in v1 list; keep contractor eligible under HANDYMAN.
     case "WELDING":
-      return ["HANDYMAN"];
+      return ["WELDING"];
     default:
       return ["HANDYMAN"];
   }
@@ -63,6 +62,8 @@ export function serviceTypeToTradeCategory(serviceType: string): string {
   if (s.includes("junk")) return "JUNK_REMOVAL";
   if (s.includes("move") || s.includes("moving")) return "MOVING";
   if (s.includes("auto") || s.includes("vehicle")) return "AUTOMOTIVE";
+  if (s.includes("weld")) return "WELDING";
+  if (s.includes("jack") || s.includes("odd") || s.includes("mounting")) return "JACK_OF_ALL_TRADES";
   return "HANDYMAN";
 }
 
