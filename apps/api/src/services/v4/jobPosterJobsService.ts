@@ -6,6 +6,10 @@ import { jobEditRequests, jobCancelRequests } from "@/db/schema";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
+import {
+  computeExecutionEligibility,
+  mapLegacyStatusForExecution,
+} from "./jobExecutionService";
 
 export type JobListItem = {
   id: string;
@@ -115,116 +119,115 @@ export type JobDetail = {
   assignedContractorId: string | null;
 };
 
-type JobDetailRow = {
-  id: string;
-  title: string | null;
-  scope: string | null;
-  trade_category: string | null;
-  status: string | null;
-  routing_status: string | null;
-  amount_cents: number | null;
-  currency: string | null;
-  region: string | null;
-  region_code: string | null;
-  region_name: string | null;
-  city: string | null;
-  created_at: Date | string | null;
-  address_full: string | null;
-  contractor_user_id: string | null;
-};
-
 /**
- * Clean-slate read-only job detail for Job Poster Job Review page.
- * - Uses raw SQL matching listJobsForJobPoster pattern (ownership in WHERE).
- * - No mutations, no writes, no promoteDuePublishedJobs.
- * - Pending requests are optional; failure does not block response.
+ * Minimal read-only job detail for Job Poster Job Review page.
+ * - No mutations (promoteDuePublishedJobs removed; was causing side effects on read).
+ * - Direct jobs table query with ownership check.
+ * - Pending requests wrapped in try/catch; returns null if tables missing or query fails.
  */
 export async function getJobDetailForJobPoster(jobId: string, userId: string): Promise<JobDetail | null> {
-  const res = await db.execute<JobDetailRow>(
-    sql`
-      SELECT
-        id,
-        title,
-        scope,
-        trade_category,
-        status,
-        routing_status,
-        amount_cents,
-        currency,
-        region,
-        region_code,
-        region_name,
-        city,
-        created_at,
-        address_full,
-        contractor_user_id
-      FROM jobs
-      WHERE id = ${jobId}
-        AND job_poster_user_id = ${userId}
-      LIMIT 1
-    `,
-  );
-  const rows = (res as { rows?: JobDetailRow[] })?.rows ?? [];
-  const row = rows[0];
-  if (!row) return null;
-
-  let pendingEditRequest: PendingRequest = null;
-  let pendingCancelRequest: PendingRequest = null;
   try {
-    const [pendingEdit, pendingCancel] = await Promise.all([
-      db
-        .select({ createdAt: jobEditRequests.createdAt })
-        .from(jobEditRequests)
-        .where(and(eq(jobEditRequests.jobId, jobId), eq(jobEditRequests.status, "pending")))
-        .orderBy(desc(jobEditRequests.createdAt))
-        .limit(1),
-      db
-        .select({ createdAt: jobCancelRequests.createdAt })
-        .from(jobCancelRequests)
-        .where(and(eq(jobCancelRequests.jobId, jobId), eq(jobCancelRequests.status, "pending")))
-        .orderBy(desc(jobCancelRequests.createdAt))
-        .limit(1),
-    ]);
-    pendingEditRequest = pendingEdit[0]
-      ? { submittedAt: pendingEdit[0].createdAt instanceof Date ? pendingEdit[0].createdAt.toISOString() : String(pendingEdit[0].createdAt) }
-      : null;
-    pendingCancelRequest = pendingCancel[0]
-      ? { submittedAt: pendingCancel[0].createdAt instanceof Date ? pendingCancel[0].createdAt.toISOString() : String(pendingCancel[0].createdAt) }
-      : null;
-  } catch {
-    // Tables may not exist in prod; do not block response
+    const rows = await db
+      .select({
+        id: jobs.id,
+        title: jobs.title,
+        scope: jobs.scope,
+        status: jobs.status,
+        routing_status: jobs.routing_status,
+        amount_cents: jobs.amount_cents,
+        address_full: jobs.address_full,
+        trade_category: jobs.trade_category,
+        created_at: jobs.created_at,
+        region: jobs.region,
+        region_code: jobs.region_code,
+        region_name: jobs.region_name,
+        city: jobs.city,
+        job_poster_user_id: jobs.job_poster_user_id,
+        contractor_user_id: jobs.contractor_user_id,
+        appointment_at: jobs.appointment_at,
+        completed_at: jobs.completed_at,
+        contractor_marked_complete_at: jobs.contractor_marked_complete_at,
+        poster_marked_complete_at: jobs.poster_marked_complete_at,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row || String(row.job_poster_user_id ?? "") !== userId) return null;
+
+    const appointmentAt = row.appointment_at instanceof Date ? row.appointment_at : null;
+    const completedAt = row.completed_at instanceof Date ? row.completed_at : null;
+    const contractorMarkedCompleteAt =
+      row.contractor_marked_complete_at instanceof Date ? row.contractor_marked_complete_at : null;
+    const posterMarkedCompleteAt =
+      row.poster_marked_complete_at instanceof Date ? row.poster_marked_complete_at : null;
+
+    const eligibility = computeExecutionEligibility(
+      {
+        id: row.id,
+        status: mapLegacyStatusForExecution(String(row.status ?? "")),
+        appointment_at: appointmentAt,
+        completed_at: completedAt,
+        contractor_marked_complete_at: contractorMarkedCompleteAt,
+        poster_marked_complete_at: posterMarkedCompleteAt,
+      },
+      new Date(),
+    );
+
+    let pendingEditRequest: PendingRequest = null;
+    let pendingCancelRequest: PendingRequest = null;
+    try {
+      const [pendingEdit, pendingCancel] = await Promise.all([
+        db
+          .select({ createdAt: jobEditRequests.createdAt })
+          .from(jobEditRequests)
+          .where(and(eq(jobEditRequests.jobId, jobId), eq(jobEditRequests.status, "pending")))
+          .orderBy(desc(jobEditRequests.createdAt))
+          .limit(1),
+        db
+          .select({ createdAt: jobCancelRequests.createdAt })
+          .from(jobCancelRequests)
+          .where(and(eq(jobCancelRequests.jobId, jobId), eq(jobCancelRequests.status, "pending")))
+          .orderBy(desc(jobCancelRequests.createdAt))
+          .limit(1),
+      ]);
+      pendingEditRequest = pendingEdit[0]
+        ? { submittedAt: pendingEdit[0].createdAt instanceof Date ? pendingEdit[0].createdAt.toISOString() : String(pendingEdit[0].createdAt) }
+        : null;
+      pendingCancelRequest = pendingCancel[0]
+        ? { submittedAt: pendingCancel[0].createdAt instanceof Date ? pendingCancel[0].createdAt.toISOString() : String(pendingCancel[0].createdAt) }
+        : null;
+    } catch (reqErr) {
+      console.error("JOB_POSTER_JOB_DETAIL_ERROR", { jobId, phase: "pending_requests", error: reqErr });
+    }
+
+    return {
+      id: String(row.id ?? ""),
+      title: String(row.title ?? ""),
+      scope: String(row.scope ?? ""),
+      status: mapLegacyStatusForExecution(String(row.status ?? "")),
+      routingStatus: String(row.routing_status ?? ""),
+      amountCents: Number(row.amount_cents ?? 0),
+      addressFull: row.address_full != null ? String(row.address_full) : null,
+      tradeCategory: String(row.trade_category ?? ""),
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : "",
+      canMarkComplete: eligibility.canMarkComplete,
+      executionStatus: eligibility.executionStatus,
+      contractorMarkedCompleteAt: contractorMarkedCompleteAt != null ? contractorMarkedCompleteAt.toISOString() : null,
+      posterMarkedCompleteAt: posterMarkedCompleteAt != null ? posterMarkedCompleteAt.toISOString() : null,
+      completedAt: completedAt != null ? completedAt.toISOString() : null,
+      region: row.region_code != null ? String(row.region_code) : row.region != null ? String(row.region) : null,
+      city: row.city != null ? String(row.city) : null,
+      regionName: row.region_name != null ? String(row.region_name) : null,
+      pendingEditRequest,
+      pendingCancelRequest,
+      assignedContractorId: row.contractor_user_id != null ? String(row.contractor_user_id) : null,
+    };
+  } catch (err) {
+    console.error("JOB_POSTER_JOB_DETAIL_ERROR", { jobId, userId, error: err });
+    throw err;
   }
-
-  const status = String(row.status ?? "").toUpperCase();
-  const displayStatus = status === "IN_PROGRESS" ? "JOB_STARTED" : status;
-
-  return {
-    id: String(row.id ?? ""),
-    title: String(row.title ?? ""),
-    scope: String(row.scope ?? ""),
-    status: displayStatus,
-    routingStatus: String(row.routing_status ?? ""),
-    amountCents: Number(row.amount_cents ?? 0),
-    addressFull: row.address_full != null ? String(row.address_full) : null,
-    tradeCategory: String(row.trade_category ?? ""),
-    createdAt:
-      row.created_at instanceof Date
-        ? row.created_at.toISOString()
-        : typeof row.created_at === "string"
-          ? row.created_at
-          : "",
-    canMarkComplete: false,
-    executionStatus: "NOT_STARTED",
-    contractorMarkedCompleteAt: null,
-    posterMarkedCompleteAt: null,
-    completedAt: null,
-    region: row.region_code != null ? String(row.region_code) : row.region != null ? String(row.region) : null,
-    city: row.city != null ? String(row.city) : null,
-    regionName: row.region_name != null ? String(row.region_name) : null,
-    pendingEditRequest,
-    pendingCancelRequest,
-    assignedContractorId: row.contractor_user_id != null ? String(row.contractor_user_id) : null,
-  };
 }
 
 export async function releaseCompletedJobForPoster(jobId: string, userId: string): Promise<{ jobId: string; payoutStatus: string }> {
