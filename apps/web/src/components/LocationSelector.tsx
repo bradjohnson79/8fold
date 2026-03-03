@@ -6,7 +6,7 @@ import { REGION_OPTIONS } from "@/lib/regions";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
-type CityWithJobs = {
+type CityJobCount = {
   city: string;
   jobCount: number;
 };
@@ -14,6 +14,10 @@ type CityWithJobs = {
 function slugCity(city: string): string {
   return city.trim().toLowerCase().replace(/\s+/g, "-");
 }
+
+// FUTURE: These city links may route to
+// /jobs/[region]/[city] geo pages.
+// Current implementation keeps existing flow intact.
 
 export function LocationSelector(props: {
   title?: string;
@@ -32,7 +36,7 @@ export function LocationSelector(props: {
     return [...us, ...ca];
   }, []);
 
-  const [cities, setCities] = React.useState<CityWithJobs[]>([]);
+  const [regionCities, setRegionCities] = React.useState<CityJobCount[]>([]);
 
   const [regionKey, setRegionKey] = React.useState<string>(() => {
     const c = props.initialCountry ?? "";
@@ -58,10 +62,12 @@ export function LocationSelector(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const gridRef = React.useRef<HTMLDivElement>(null);
+
   React.useEffect(() => {
     let cancelled = false;
     async function loadCities() {
-      setCities([]);
+      setRegionCities([]);
       setCity("");
       if (!selectedRegion) return;
 
@@ -74,14 +80,12 @@ export function LocationSelector(props: {
         });
         const resp = await fetch(`/api/public/locations/cities-with-jobs?${qs.toString()}`, { cache: "no-store" });
         if (!resp.ok) {
-          // Don't assume JSON on failures.
           throw new Error("Failed to load cities");
         }
-        const data = (await resp.json().catch(() => null)) as any;
-        // Source of truth: cities returned by the API only (job-driven + counts).
-        const list = Array.isArray(data) ? (data as CityWithJobs[]) : Array.isArray(data?.cities) ? (data.cities as CityWithJobs[]) : [];
+        const data = (await resp.json().catch(() => null)) as unknown;
+        const list = Array.isArray(data) ? (data as CityJobCount[]) : Array.isArray((data as { cities?: CityJobCount[] })?.cities) ? ((data as { cities: CityJobCount[] }).cities) : [];
         if (cancelled) return;
-        setCities(list);
+        setRegionCities(list);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load cities");
@@ -93,8 +97,16 @@ export function LocationSelector(props: {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRegion?.country, selectedRegion?.regionCode]);
+
+  // Optional: smooth scroll to grid on mobile when it renders with content
+  React.useEffect(() => {
+    if (!selectedRegion || regionCities.length === 0 || loadingCities) return;
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
+    if (isMobile && gridRef.current) {
+      gridRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selectedRegion, regionCities.length, loadingCities]);
 
   const usRegions = regions.filter((r) => r.country === "US");
   const caRegions = regions.filter((r) => r.country === "CA");
@@ -103,86 +115,124 @@ export function LocationSelector(props: {
 
   const go = () => {
     if (!selectedRegion || !city) return;
-    const exists = cities.some((c) => c.city === city);
+    const exists = regionCities.some((c) => c.city === city);
     if (!exists) return;
     const next = { country: selectedRegion.country, regionCode: selectedRegion.regionCode, city };
     props.onNavigate?.(next);
     router.push(`/jobs/${next.country}/${next.regionCode}/${slugCity(next.city)}`);
   };
 
+  const gridCities = React.useMemo(
+    () => [...regionCities].sort((a, b) => (b.jobCount ?? 0) - (a.jobCount ?? 0)),
+    [regionCities]
+  );
+
   return (
-    <div className="mb-8 rounded-2xl border border-gray-100 bg-white shadow-sm p-6">
-      <div className="flex flex-col gap-2">
-        <div className="text-2xl font-bold text-gray-900">{props.title ?? "Discover jobs in your area"}</div>
-        <div className="text-gray-600">{props.subtitle ?? "Pick a location to view jobs"}</div>
-      </div>
-
-      {error ? (
-        <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
-      ) : null}
-
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-        <div>
-          <div className="text-sm font-semibold text-gray-700 mb-2">State / Province</div>
-          <select
-            value={regionKey}
-            onChange={(e) => setRegionKey(e.target.value)}
-            disabled={regions.length === 0}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
-          >
-            <option value="">Select a region</option>
-            {usRegions.length ? (
-              <optgroup label="— United States —">
-                {usRegions.map((r) => (
-                  <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
-                    {r.regionName} ({r.regionCode})
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {caRegions.length ? (
-              <optgroup label="— Canada —">
-                {caRegions.map((r) => (
-                  <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
-                    {r.regionName} ({r.regionCode})
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
+    <div className="mb-8">
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6">
+        <div className="flex flex-col gap-2">
+          <div className="text-2xl font-bold text-gray-900">{props.title ?? "Discover jobs in your area"}</div>
+          <div className="text-gray-600">{props.subtitle ?? "Pick a location to view jobs"}</div>
         </div>
 
-        <div>
-          <div className="text-sm font-semibold text-gray-700 mb-2">City / Town</div>
-          <select
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            disabled={!selectedRegion || loadingCities || cities.length === 0}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
-          >
-            <option value="">
-              {!selectedRegion ? "Select a region first" : loadingCities ? "Loading..." : "Select a city"}
-            </option>
-            {cities.map((c) => (
-              <option key={c.city} value={c.city}>
-                {c.city} · {c.jobCount}
+        {error ? (
+          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
+        ) : null}
+
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">State / Province</div>
+            <select
+              value={regionKey}
+              onChange={(e) => setRegionKey(e.target.value)}
+              disabled={regions.length === 0}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
+            >
+              <option value="">Select a region</option>
+              {usRegions.length ? (
+                <optgroup label="— United States —">
+                  {usRegions.map((r) => (
+                    <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
+                      {r.regionName} ({r.regionCode})
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {caRegions.length ? (
+                <optgroup label="— Canada —">
+                  {caRegions.map((r) => (
+                    <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
+                      {r.regionName} ({r.regionCode})
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">City / Town</div>
+            <select
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              disabled={!selectedRegion || loadingCities || regionCities.length === 0}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
+            >
+              <option value="">
+                {!selectedRegion ? "Select a region first" : loadingCities ? "Loading..." : "Select a city"}
               </option>
-            ))}
-          </select>
+              {regionCities.map((c) => (
+                <option key={c.city} value={c.city}>
+                  {c.city} · {c.jobCount}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex">
+            <button
+              disabled={!canGo}
+              onClick={go}
+              className={`w-full font-semibold px-4 py-2 rounded-lg transition-colors ${
+                canGo ? "bg-8fold-green hover:bg-8fold-green-dark text-white" : "bg-gray-200 text-gray-500"
+              }`}
+            >
+              View jobs
+            </button>
+          </div>
         </div>
 
-        <div className="flex">
-          <button
-            disabled={!canGo}
-            onClick={go}
-            className={`w-full font-semibold px-4 py-2 rounded-lg transition-colors ${
-              canGo ? "bg-8fold-green hover:bg-8fold-green-dark text-white" : "bg-gray-200 text-gray-500"
-            }`}
-          >
-            View jobs
-          </button>
-        </div>
+        {loadingCities && selectedRegion ? (
+          <div className="mt-4 flex items-center gap-2 text-gray-500 text-sm">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+            Loading cities…
+          </div>
+        ) : null}
       </div>
+
+      {selectedRegion ? (
+        <div ref={gridRef} className="mt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">
+            Browse Cities in {selectedRegion.regionName}
+          </h3>
+          {regionCities.length === 0 && !loadingCities ? (
+            <p className="text-gray-500 text-sm">No active jobs in this region yet.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {gridCities.map((c) => (
+                <button
+                  key={c.city}
+                  type="button"
+                  onClick={() => setCity(c.city)}
+                  className="text-left px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors text-sm"
+                >
+                  {c.city} ({c.jobCount})
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
