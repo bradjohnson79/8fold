@@ -14,6 +14,7 @@ type CitiesWithJobsPayload = {
   state?: string | null;
 };
 type FlagJobPayload = { jobId?: string | null; reason?: string | null };
+type JobsCitiesPayload = { region?: string | null };
 
 function unwrapOkData(json: any): any {
   if (json && typeof json === "object" && "data" in json) return (json as any).data;
@@ -113,6 +114,13 @@ export function registerPublicDiscoveryHandlers() {
       ? await fetchJson(`/api/public/locations/cities-with-jobs?${qs.toString()}`)
       : [];
     return out;
+  });
+
+  safeRegister("public.jobs.cities", async ({ payload }: { payload: JobsCitiesPayload }) => {
+    const region = String(payload?.region ?? "").trim().toUpperCase();
+    if (!region || region.length !== 2) return [];
+    const qs = new URLSearchParams({ region });
+    return await fetchJson(`/api/public/jobs/cities?${qs.toString()}`);
   });
 
   safeRegister("public.jobs.flag", async ({ payload }: { payload: FlagJobPayload }) => {
