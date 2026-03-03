@@ -53,7 +53,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     await adminAuditLog(
       req,
-      { userId: authed.adminId, role: authed.role, authSource: "admin_session" as const },
+      { userId: authed.adminId, role: "ADMIN", authSource: "admin_session" as const },
       {
         action: "JOB_EDIT_REQUEST_APPROVED",
         entityType: "JobEditRequest",
