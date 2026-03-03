@@ -2,6 +2,7 @@ import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4Messages } from "@/db/schema/v4Message";
+import { logEvent } from "@/src/server/observability/log";
 import { getJobPosterPaymentStatus } from "./jobPosterPaymentService";
 
 export type JobPosterSummary = {
