@@ -19,11 +19,12 @@ type JobRow = {
   materialsTotalCents?: number;
   transactionFeeCents?: number;
   status?: string;
+  imageUrl?: string;
   photos?: Array<{ url: string | null }>;
 };
 
 function getPhoto(j: JobRow): string | undefined {
-  if ((j as { imageUrl?: string }).imageUrl) return (j as { imageUrl: string }).imageUrl;
+  if (j.imageUrl) return j.imageUrl;
   const url = j.photos?.find((p) => p.url)?.url ?? null;
   return url ?? undefined;
 }
