@@ -101,57 +101,57 @@ export type JobDetail = {
 };
 
 export async function getJobDetailForJobPoster(jobId: string, userId: string): Promise<JobDetail | null> {
-  await promoteDuePublishedJobsForJobPoster(userId);
-  const rows = await db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      scope: jobs.scope,
-      status: jobs.status,
-      routingStatus: jobs.routing_status,
-      amountCents: jobs.amount_cents,
-      address_full: jobs.address_full,
-      trade_category: jobs.trade_category,
-      createdAt: jobs.created_at,
-      jobPosterUserId: jobs.job_poster_user_id,
-      appointmentAt: jobs.appointment_at,
-      completedAt: jobs.completed_at,
-      contractorMarkedCompleteAt: jobs.contractor_marked_complete_at,
-      posterMarkedCompleteAt: jobs.poster_marked_complete_at,
-    })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
+  console.warn("[JOB_DETAIL_SAFE_READ]", { jobId });
 
-  const r = rows[0];
-  if (!r || r.jobPosterUserId !== userId) return null;
+  try {
+    await promoteDuePublishedJobsForJobPoster(userId);
+  } catch (error) {
+    logEvent({
+      level: "error",
+      event: "job_poster.detail.promote_due_failed",
+      userId,
+      context: { jobId, error: error instanceof Error ? error.message : String(error) },
+    });
+  }
+
+  const rows = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  const row = rows[0];
+  if (!row || String(row.job_poster_user_id ?? "") !== userId) return null;
+
+  const appointmentAt = row.appointment_at instanceof Date ? row.appointment_at : null;
+  const completedAt = row.completed_at instanceof Date ? row.completed_at : null;
+  const contractorMarkedCompleteAt =
+    row.contractor_marked_complete_at instanceof Date ? row.contractor_marked_complete_at : null;
+  const posterMarkedCompleteAt =
+    row.poster_marked_complete_at instanceof Date ? row.poster_marked_complete_at : null;
 
   const eligibility = computeExecutionEligibility(
     {
-      id: r.id,
-      status: mapLegacyStatusForExecution(String(r.status ?? "")),
-      appointment_at: r.appointmentAt ?? null,
-      completed_at: r.completedAt ?? null,
-      contractor_marked_complete_at: r.contractorMarkedCompleteAt ?? null,
-      poster_marked_complete_at: r.posterMarkedCompleteAt ?? null,
+      id: row.id,
+      status: mapLegacyStatusForExecution(String(row.status ?? "")),
+      appointment_at: appointmentAt,
+      completed_at: completedAt,
+      contractor_marked_complete_at: contractorMarkedCompleteAt,
+      poster_marked_complete_at: posterMarkedCompleteAt,
     },
     new Date(),
   );
+
   return {
-    id: r.id,
-    title: r.title,
-    scope: r.scope,
-    status: mapLegacyStatusForExecution(String(r.status ?? "")),
-    routingStatus: String(r.routingStatus ?? ""),
-    amountCents: Number(r.amountCents ?? 0),
-    addressFull: r.address_full ?? null,
-    tradeCategory: String(r.trade_category ?? ""),
-    createdAt: r.createdAt?.toISOString?.() ?? "",
+    id: String(row.id ?? ""),
+    title: String(row.title ?? ""),
+    scope: String(row.scope ?? ""),
+    status: mapLegacyStatusForExecution(String(row.status ?? "")),
+    routingStatus: String(row.routing_status ?? ""),
+    amountCents: Number(row.amount_cents ?? 0),
+    addressFull: row.address_full != null ? String(row.address_full) : null,
+    tradeCategory: String(row.trade_category ?? ""),
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : "",
     canMarkComplete: eligibility.canMarkComplete,
     executionStatus: eligibility.executionStatus,
-    contractorMarkedCompleteAt: r.contractorMarkedCompleteAt?.toISOString?.() ?? null,
-    posterMarkedCompleteAt: r.posterMarkedCompleteAt?.toISOString?.() ?? null,
-    completedAt: r.completedAt?.toISOString?.() ?? null,
+    contractorMarkedCompleteAt: contractorMarkedCompleteAt != null ? contractorMarkedCompleteAt.toISOString() : null,
+    posterMarkedCompleteAt: posterMarkedCompleteAt != null ? posterMarkedCompleteAt.toISOString() : null,
+    completedAt: completedAt != null ? completedAt.toISOString() : null,
   };
 }
 
