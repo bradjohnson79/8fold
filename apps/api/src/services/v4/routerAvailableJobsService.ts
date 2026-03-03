@@ -57,6 +57,7 @@ export async function getV4RouterAvailableJobs(userId: string) {
       .where(
         and(
           eq(jobs.status, "OPEN_FOR_ROUTING"),
+          eq(jobs.cancel_request_pending, false),
           sql`upper(trim(${jobs.state_code})) = ${routerProvinceCode}`,
         ),
       )

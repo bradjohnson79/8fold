@@ -2,6 +2,8 @@ export * from "./enums";
 export * from "./_dbSchema";
 export * from "./user";
 export * from "./job";
+export * from "./jobEditRequest";
+export * from "./jobCancelRequest";
 export * from "./jobPhoto";
 export * from "./router";
 export * from "./jobPoster";

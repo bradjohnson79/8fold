@@ -38,6 +38,7 @@ export const jobs = dbSchema.table(
     archived_by_admin_id: text("archived_by_admin_id"),
     suspended_until: timestamp("suspended_until", { mode: "date", withTimezone: true }),
     suspension_reason: text("suspension_reason"),
+    cancel_request_pending: boolean("cancel_request_pending").notNull().default(false),
 
     title: text("title").notNull(),
     scope: text("scope").notNull(),

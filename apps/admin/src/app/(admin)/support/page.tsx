@@ -52,7 +52,12 @@ export default function SupportPage() {
   return (
     <div>
       <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Support</h1>
-      <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)", maxWidth: 980 }}>Support tickets from Admin V4.</p>
+      <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)", maxWidth: 980 }}>
+        Support tickets from Admin V4.{" "}
+        <Link href="/support/job-requests" style={{ color: "rgba(125,211,252,0.95)", textDecoration: "none", fontWeight: 900 }}>
+          Job Requests
+        </Link>
+      </p>
 
       {loading ? <div style={{ marginTop: 14 }}>Loading tickets...</div> : null}
       {error ? (

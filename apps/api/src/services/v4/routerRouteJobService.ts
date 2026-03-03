@@ -67,7 +67,7 @@ export async function routeV4Job(
         routing_status: "ROUTED_BY_ROUTER" as any,
         first_routed_at: sql`coalesce(${jobs.first_routed_at}, ${now})`,
       })
-      .where(and(eq(jobs.id, jobId), eq(jobs.status, "OPEN_FOR_ROUTING"), eq(jobs.routing_status, "UNROUTED"), sql`${jobs.claimed_by_user_id} is null`))
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, "OPEN_FOR_ROUTING"), eq(jobs.routing_status, "UNROUTED"), eq(jobs.cancel_request_pending, false), sql`${jobs.claimed_by_user_id} is null`))
       .returning({ id: jobs.id });
     if (updated.length !== 1) return { kind: "job_not_available" };
 
