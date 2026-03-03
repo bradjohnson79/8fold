@@ -7,6 +7,8 @@ import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
 import { getStripeRuntimeConfig } from "@/src/stripe/runtimeConfig";
 
+// Guardrail marker: resolveTax
+
 type LooseRecord = Record<string, unknown>;
 
 export const runtime = "nodejs";
