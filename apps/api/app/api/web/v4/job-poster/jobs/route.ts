@@ -56,6 +56,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  console.warn("[POST_JOB_HIT]", Date.now());
   try {
     const role = await requireV4Role(req, "JOB_POSTER");
     if (role instanceof Response) return role;
