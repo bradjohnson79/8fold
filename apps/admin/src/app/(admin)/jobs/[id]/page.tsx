@@ -3,6 +3,38 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import JobStatusEditor from "./JobStatusEditor";
 
+const inputStyle: React.CSSProperties = {
+  background: "rgba(2,6,23,0.35)",
+  border: "1px solid rgba(148,163,184,0.14)",
+  color: "rgba(226,232,240,0.92)",
+  borderRadius: 12,
+  padding: "9px 10px",
+  fontSize: 13,
+  width: "100%",
+};
+
+const buttonStyle: React.CSSProperties = {
+  background: "rgba(34,197,94,0.16)",
+  border: "1px solid rgba(34,197,94,0.35)",
+  color: "rgba(134,239,172,0.95)",
+  borderRadius: 12,
+  padding: "9px 12px",
+  fontSize: 13,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  background: "rgba(248,113,113,0.16)",
+  border: "1px solid rgba(248,113,113,0.35)",
+  color: "rgba(254,202,202,0.95)",
+  borderRadius: 12,
+  padding: "9px 12px",
+  fontSize: 13,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
 type Party = { id: string; name: string | null; email: string | null; role: string | null };
 type PaymentState = { label: string; rawPaymentStatus: string | null; rawPayoutStatus: string | null };
 type JobDetail = {
@@ -261,6 +293,74 @@ export default async function JobDetailPage({
     }
   }
 
+  async function doSuperSuspend(formData: FormData) {
+    "use server";
+    const duration = String(formData.get("duration") ?? "1m").trim();
+    const reason = String(formData.get("reason") ?? "").trim();
+    if (!reason) return;
+    try {
+      await adminApiFetch(`/api/admin/v4/super/jobs/${encodeURIComponent(id)}/suspend`, {
+        method: "POST",
+        body: JSON.stringify({ duration, reason }),
+      });
+    } catch {
+      // 403 if not ADMIN_SUPER
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async function doSuperArchive(formData: FormData) {
+    "use server";
+    const reason = String(formData.get("reason") ?? "").trim();
+    try {
+      await adminApiFetch(`/api/admin/v4/super/jobs/${encodeURIComponent(id)}/archive`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason || "Archived by super admin" }),
+      });
+    } catch {
+      // 403 if not ADMIN_SUPER
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async function doSuperDelete(formData: FormData) {
+    "use server";
+    const confirm = String(formData.get("confirm") ?? "").trim();
+    if (confirm !== "DELETE JOB") return;
+    try {
+      await adminApiFetch(`/api/admin/v4/super/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch {
+      // 403 or 409 if blocked
+    }
+    redirect("/jobs");
+  }
+
+  async function doSuperEdit(formData: FormData) {
+    "use server";
+    const title = String(formData.get("title") ?? "").trim();
+    const scope = String(formData.get("scope") ?? "").trim();
+    const region = String(formData.get("region") ?? "").trim();
+    const trade_category = String(formData.get("trade_category") ?? "").trim();
+    if (!title && !scope && !region && !trade_category) return;
+    const payload: Record<string, string> = {};
+    if (title) payload.title = title;
+    if (scope) payload.scope = scope;
+    if (region) payload.region = region;
+    if (trade_category) payload.trade_category = trade_category;
+    try {
+      await adminApiFetch(`/api/admin/v4/super/jobs/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // 403 if not ADMIN_SUPER
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -401,6 +501,74 @@ export default async function JobDetailPage({
               ))}
             </div>
           )}
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <Card title="">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div style={{ fontWeight: 950, color: "rgba(226,232,240,0.95)" }}>Super Admin Controls</div>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.5,
+                padding: "4px 8px",
+                borderRadius: 8,
+                background: "rgba(251,191,36,0.2)",
+                color: "rgba(253,224,71,0.95)",
+              }}
+            >
+              SUPER ADMIN
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Edit</div>
+              <form action={doSuperEdit} style={{ display: "grid", gap: 6 }}>
+                <input name="title" placeholder="Title" defaultValue={job.title} style={{ ...inputStyle, width: "100%" }} />
+                <input name="scope" placeholder="Scope" defaultValue={job.scope} style={{ ...inputStyle, width: "100%" }} />
+                <input name="region" placeholder="Region" defaultValue={job.regionCode ?? ""} style={{ ...inputStyle, width: "100%" }} />
+                <input name="trade_category" placeholder="Trade" defaultValue={job.tradeCategory} style={{ ...inputStyle, width: "100%" }} />
+                <button type="submit" style={buttonStyle}>
+                  Save
+                </button>
+              </form>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Suspend</div>
+              <form action={doSuperSuspend} style={{ display: "grid", gap: 6 }}>
+                <select name="duration" style={{ ...inputStyle, width: "100%" }}>
+                  <option value="1w">1 week</option>
+                  <option value="1m">1 month</option>
+                  <option value="3m">3 months</option>
+                  <option value="6m">6 months</option>
+                </select>
+                <textarea name="reason" placeholder="Reason (required)" rows={2} style={inputStyle} />
+                <button type="submit" style={dangerButtonStyle}>
+                  Suspend
+                </button>
+              </form>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Archive</div>
+              <form action={doSuperArchive} style={{ display: "grid", gap: 6 }}>
+                <textarea name="reason" placeholder="Reason (optional)" rows={2} style={inputStyle} />
+                <button type="submit" style={dangerButtonStyle}>
+                  Archive
+                </button>
+              </form>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(254,202,202,0.95)", marginBottom: 6 }}>Delete</div>
+              <form action={doSuperDelete} style={{ display: "grid", gap: 6 }}>
+                <input name="confirm" placeholder='Type "DELETE JOB" to confirm' style={inputStyle} />
+                <button type="submit" style={dangerButtonStyle}>
+                  Delete Job
+                </button>
+              </form>
+            </div>
+          </div>
         </Card>
       </div>
     </div>

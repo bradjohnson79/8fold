@@ -220,6 +220,7 @@ export async function archiveManagedUser(input: {
         accountStatus: "ARCHIVED",
         archivedAt: now,
         archivedReason: reason,
+        archivedByAdminId: input.adminId,
         suspendedUntil: null,
         suspensionReason: null,
         updatedByAdminId: input.adminId,

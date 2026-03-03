@@ -42,6 +42,7 @@ export const users = dbSchema.table("User", {
   suspensionReason: text("suspensionReason"),
   archivedAt: timestamp("archivedAt", { mode: "date" }),
   archivedReason: text("archivedReason"),
+  archivedByAdminId: text("archivedByAdminId"),
   deletionReason: text("deletionReason"),
   updatedByAdminId: text("updatedByAdminId"),
 
