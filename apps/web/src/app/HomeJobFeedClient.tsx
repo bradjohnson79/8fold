@@ -23,6 +23,7 @@ type JobRow = {
 };
 
 function getPhoto(j: JobRow): string | undefined {
+  if ((j as { imageUrl?: string }).imageUrl) return (j as { imageUrl: string }).imageUrl;
   const url = j.photos?.find((p) => p.url)?.url ?? null;
   return url ?? undefined;
 }

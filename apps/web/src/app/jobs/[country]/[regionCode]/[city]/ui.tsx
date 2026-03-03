@@ -98,7 +98,10 @@ export function CityJobsClient(props: { country: string; regionCode: string; cit
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {jobs.map((j) => {
-              const photo = j.photos?.find((p) => p.url)?.url ?? null;
+              const photo =
+                (j as { imageUrl?: string }).imageUrl ??
+                j.photos?.find((p) => p.url)?.url ??
+                null;
               const regionSlug = `${props.citySlug}-${regionCode.toLowerCase()}`;
               return (
                 <JobCard

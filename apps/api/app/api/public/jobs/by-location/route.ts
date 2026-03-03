@@ -7,6 +7,16 @@ import { db } from "@/server/db/drizzle";
 import { asc, inArray } from "drizzle-orm";
 import { jobPhotos } from "../../../../../db/schema/jobPhoto";
 
+function deriveImageUrl(
+  photoUrls: string[] | null,
+  photosFromTable: Array<{ url: string | null }>,
+): string | null {
+  const fromJob = Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls[0] : null;
+  if (fromJob) return fromJob;
+  const fromTable = photosFromTable.find((p) => p.url)?.url ?? null;
+  return fromTable ?? null;
+}
+
 const QuerySchema = z.object({
   country: z.enum(["US", "CA"]),
   regionCode: z.string().trim().min(2).max(2),
@@ -62,27 +72,35 @@ export async function GET(req: Request) {
       const createdAt = j.created_at instanceof Date ? j.created_at : j.created_at ? new Date(String(j.created_at)) : null;
       const amountCents = Number(j.amount_cents ?? 0);
       const currency = String(j.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD";
+      const photos = photosByJobId.get(j.id) ?? [];
+      const photoUrls = Array.isArray(j.photo_urls) ? j.photo_urls : [];
+      const imageUrl = deriveImageUrl(photoUrls, photos);
+      const routerCents = Number(j.router_earnings_cents ?? 0);
+      const contractorCents = Number(j.contractor_payout_cents ?? 0);
+      const brokerCents = Number(j.broker_fee_cents ?? 0);
       return {
         id: String(j.id ?? ""),
         title: String(j.title ?? ""),
-        tradeCategory: String(j.trade_category ?? ""),
-        region: String(j.region ?? ""),
+        tradeCategory: String(j.trade_category ?? "handyman"),
+        region: String(j.region_name ?? j.region ?? ""),
+        regionName: j.region_name != null ? String(j.region_name) : null,
         city: j.city != null ? String(j.city) : null,
         createdAt: createdAt instanceof Date ? createdAt.toISOString() : "",
         amountCents,
         currency,
         regionCode,
         country: canonicalCountry,
-        status: "PUBLISHED",
+        status: String(j.status ?? "OPEN_FOR_ROUTING"),
         publicStatus: "OPEN" as const,
         serviceType: "handyman",
         laborTotalCents: amountCents,
         materialsTotalCents: 0,
         transactionFeeCents: 0,
-        contractorPayoutCents: 0,
-        routerEarningsCents: 0,
-        brokerFeeCents: 0,
-        photos: photosByJobId.get(j.id) ?? [],
+        contractorPayoutCents: contractorCents,
+        routerEarningsCents: routerCents,
+        brokerFeeCents: brokerCents,
+        imageUrl: imageUrl ?? undefined,
+        photos,
       };
     });
 

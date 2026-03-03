@@ -1,16 +1,28 @@
-import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
 import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 
 /**
- * Public discovery eligibility. Restored to OPEN_FOR_ROUTING to fix Option B regression.
- * Used by listRegionsWithJobs, countEligiblePublicJobs.
+ * Public discovery eligibility - jobs available to route.
+ * Includes OPEN_FOR_ROUTING, ASSIGNED, and CUSTOMER_APPROVED (when router not yet approved).
  */
 function publicEligibility() {
   return and(
     eq(jobs.archived, false),
-    eq(jobs.status, "OPEN_FOR_ROUTING"),
+    or(
+      eq(jobs.status, "OPEN_FOR_ROUTING" as any),
+      eq(jobs.status, "ASSIGNED" as any),
+      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
+    )!,
+  );
+}
+
+/** Simpler eligibility for city/region lists: OPEN_FOR_ROUTING or ASSIGNED only. */
+function publicEligibilityForLocations() {
+  return and(
+    eq(jobs.archived, false),
+    sql`${jobs.status} IN ('OPEN_FOR_ROUTING', 'ASSIGNED')`,
   );
 }
 
@@ -106,7 +118,7 @@ export async function listCitiesByRegion(
       FROM jobs
       WHERE region_code = ${rc}
         AND country = ${country}
-        AND status = 'OPEN_FOR_ROUTING'
+        AND status IN ('OPEN_FOR_ROUTING', 'ASSIGNED')
         AND archived = false
         AND city IS NOT NULL
         AND city != ''
@@ -137,7 +149,7 @@ export async function listCitiesWithJobCounts(
       FROM jobs
       WHERE region_code = ${rc}
         AND country = ${country}
-        AND status = 'OPEN_FOR_ROUTING'
+        AND status IN ('OPEN_FOR_ROUTING', 'ASSIGNED')
         AND archived = false
         AND city IS NOT NULL
         AND city != ''
@@ -154,27 +166,41 @@ export async function listCitiesWithJobCounts(
 export type PublicNewestJobRow = {
   id: string;
   title: string | null;
+  scope: string | null;
   trade_category: string | null;
+  status: string | null;
+  routing_status: string | null;
   region: string | null;
+  region_name: string | null;
   city: string | null;
+  photo_urls: string[] | null;
   amount_cents: number | null;
   currency: string | null;
+  router_earnings_cents: number | null;
+  contractor_payout_cents: number | null;
+  broker_fee_cents: number | null;
+  published_at: Date | string | null;
   created_at: Date | string | null;
 };
 
 /**
- * Minimal newest jobs for public discovery. Restored to avoid Option B regression.
- * No joins, no extra fields. Uses OPEN_FOR_ROUTING only.
+ * Canonical projection for public newest jobs. Strict column list prevents schema drift.
+ * Includes OPEN_FOR_ROUTING, ASSIGNED, CUSTOMER_APPROVED (router not approved).
  */
 export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[]> {
   const take = Math.max(1, Math.min(50, Math.trunc(limit || 9)));
   const res = await db.execute<PublicNewestJobRow>(
     sql`
-      SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
+      SELECT
+        id, title, scope, trade_category, status, routing_status,
+        region, region_name, city, photo_urls,
+        amount_cents, currency,
+        router_earnings_cents, contractor_payout_cents, broker_fee_cents,
+        published_at, created_at
       FROM jobs
-      WHERE status = 'OPEN_FOR_ROUTING'
-        AND archived = false
-      ORDER BY created_at DESC
+      WHERE archived = false
+        AND (status = 'OPEN_FOR_ROUTING' OR status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+      ORDER BY published_at DESC, id DESC
       LIMIT ${take}
     `,
   );
@@ -193,11 +219,20 @@ export async function countEligiblePublicJobs(): Promise<number> {
 export type PublicJobMinimalRow = {
   id: string;
   title: string | null;
+  scope: string | null;
   trade_category: string | null;
+  status: string | null;
+  routing_status: string | null;
   region: string | null;
+  region_name: string | null;
   city: string | null;
+  photo_urls: string[] | null;
   amount_cents: number | null;
   currency: string | null;
+  router_earnings_cents: number | null;
+  contractor_payout_cents: number | null;
+  broker_fee_cents: number | null;
+  published_at: Date | string | null;
   created_at: Date | string | null;
 };
 
@@ -220,10 +255,15 @@ export async function listJobsByLocation(opts: {
   try {
     const res = await db.execute<PublicJobMinimalRow>(
       sql`
-        SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
+        SELECT
+          id, title, scope, trade_category, status, routing_status,
+          region, region_name, city, photo_urls,
+          amount_cents, currency,
+          router_earnings_cents, contractor_payout_cents, broker_fee_cents,
+          published_at, created_at
         FROM jobs
-        WHERE status = 'OPEN_FOR_ROUTING'
-          AND archived = false
+        WHERE archived = false
+          AND (status = 'OPEN_FOR_ROUTING' OR status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
           AND region_code IS NOT NULL
           AND region_code = ${rc}
           AND (lower(city) = lower(${city}) OR region = ${regionSlug})
