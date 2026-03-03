@@ -1,19 +1,16 @@
-import { and, asc, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
 import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 
+/**
+ * Public discovery eligibility. Restored to OPEN_FOR_ROUTING to fix Option B regression.
+ * Used by listRegionsWithJobs, countEligiblePublicJobs.
+ */
 function publicEligibility() {
   return and(
     eq(jobs.archived, false),
-    eq(jobs.cancel_request_pending, false),
-    or(
-      eq(jobs.status, "ASSIGNED"),
-      and(
-        eq(jobs.status, "CUSTOMER_APPROVED"),
-        isNull(jobs.router_approved_at)
-      )
-    )
+    eq(jobs.status, "OPEN_FOR_ROUTING"),
   );
 }
 
@@ -91,6 +88,10 @@ export async function listRegionsWithJobs(): Promise<
   });
 }
 
+/**
+ * Minimal city list for dropdown (cities-with-jobs). Restored to avoid Option B regression.
+ * SELECT DISTINCT city only. No GROUP BY, no counts.
+ */
 export async function listCitiesByRegion(
   country: CountryCode2,
   regionCode: string,
@@ -99,27 +100,54 @@ export async function listCitiesByRegion(
   if (!rc) return [];
   if (!isAllowedRegion(country, rc)) return [];
 
-  // DB truth only: cities come from Job.city (no slug derivation).
-  // This keeps selector deterministic and avoids client-side heuristics.
-  await maybeLogPublicDiscoveryDiagnostics();
-  const rows = await db
-    .select({ city: jobs.city, jobCount: sql<number>`count(*)::int` })
-    .from(jobs)
-    .where(
-      and(
-        publicEligibility(),
-        eq(jobs.country, country as any),
-        isNotNull(jobs.region_code),
-        eq(jobs.region_code, rc),
-        isNotNull(jobs.city),
-      ),
-    )
-    .groupBy(jobs.city)
-    .orderBy(asc(jobs.city))
-    .limit(5000);
-
+  const res = await db.execute<{ city: string | null }>(
+    sql`
+      SELECT DISTINCT city
+      FROM jobs
+      WHERE region_code = ${rc}
+        AND country = ${country}
+        AND status = 'OPEN_FOR_ROUTING'
+        AND archived = false
+        AND city IS NOT NULL
+        AND city != ''
+      ORDER BY city ASC
+    `,
+  );
+  const rows = (res as { rows?: { city: string | null }[] })?.rows ?? [];
   return rows
-    .map((r) => ({ city: String(r.city ?? "").trim(), jobCount: Number(r.jobCount ?? 0) }))
+    .map((r) => ({ city: String(r.city ?? "").trim(), jobCount: 0 }))
+    .filter((r) => Boolean(r.city));
+}
+
+/**
+ * Cities with job counts for Option B grid. Isolated — does not affect existing endpoints.
+ * Powers /api/public/jobs/cities only.
+ */
+export async function listCitiesWithJobCounts(
+  country: CountryCode2,
+  regionCode: string,
+): Promise<Array<{ city: string; jobCount: number }>> {
+  const rc = regionCode.trim().toUpperCase();
+  if (!rc) return [];
+  if (!isAllowedRegion(country, rc)) return [];
+
+  const res = await db.execute<{ city: string | null; job_count: number }>(
+    sql`
+      SELECT city, COUNT(*)::int AS job_count
+      FROM jobs
+      WHERE region_code = ${rc}
+        AND country = ${country}
+        AND status = 'OPEN_FOR_ROUTING'
+        AND archived = false
+        AND city IS NOT NULL
+        AND city != ''
+      GROUP BY city
+      ORDER BY job_count DESC
+    `,
+  );
+  const rows = (res as { rows?: { city: string | null; job_count: number }[] })?.rows ?? [];
+  return rows
+    .map((r) => ({ city: String(r.city ?? "").trim(), jobCount: Number(r.job_count ?? 0) }))
     .filter((r) => Boolean(r.city));
 }
 
@@ -134,32 +162,23 @@ export type PublicNewestJobRow = {
   created_at: Date | string | null;
 };
 
+/**
+ * Minimal newest jobs for public discovery. Restored to avoid Option B regression.
+ * No joins, no extra fields. Uses OPEN_FOR_ROUTING only.
+ */
 export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[]> {
   const take = Math.max(1, Math.min(50, Math.trunc(limit || 9)));
-  await maybeLogPublicDiscoveryDiagnostics();
-  try {
-    const res = await db.execute<PublicNewestJobRow>(
-      sql`
-        SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
-        FROM jobs
-        WHERE archived = false
-          AND (status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
-        ORDER BY created_at DESC, id DESC
-        LIMIT ${take}
-      `,
-    );
-    const rows = (res as { rows?: PublicNewestJobRow[] })?.rows ?? [];
-    return rows;
-  } catch (err: unknown) {
-    const pg = (err as { cause?: Record<string, unknown>; code?: string; column?: string }) ?? {};
-    const cause = (pg.cause ?? pg) as Record<string, unknown>;
-    console.error("[PUBLIC_JOBS_RECENT] select_failed", {
-      code: cause.code ?? pg.code,
-      column: cause.column ?? pg.column,
-      message: cause.message ?? (err as Error)?.message,
-    });
-    throw err;
-  }
+  const res = await db.execute<PublicNewestJobRow>(
+    sql`
+      SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
+      FROM jobs
+      WHERE status = 'OPEN_FOR_ROUTING'
+        AND archived = false
+      ORDER BY created_at DESC
+      LIMIT ${take}
+    `,
+  );
+  return (res as { rows?: PublicNewestJobRow[] })?.rows ?? [];
 }
 
 export async function countEligiblePublicJobs(): Promise<number> {
@@ -203,8 +222,8 @@ export async function listJobsByLocation(opts: {
       sql`
         SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
         FROM jobs
-        WHERE archived = false
-          AND (status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+        WHERE status = 'OPEN_FOR_ROUTING'
+          AND archived = false
           AND region_code IS NOT NULL
           AND region_code = ${rc}
           AND (lower(city) = lower(${city}) OR region = ${regionSlug})
