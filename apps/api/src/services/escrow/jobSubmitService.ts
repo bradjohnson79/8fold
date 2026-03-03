@@ -8,6 +8,7 @@ import { jobPhotos } from "@/db/schema/jobPhoto";
 import { v4JobUploads } from "@/db/schema/v4JobUpload";
 import { stripe } from "@/src/payments/stripe";
 import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
+import { createJobMinimalInsert } from "@/src/services/v4/jobPosterJobInsertMinimal";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 
 type LooseRecord = Record<string, unknown>;
@@ -43,11 +44,6 @@ function parseImages(value: unknown): UploadInput[] {
     out.push({ uploadId, url });
   }
   return out;
-}
-
-function toFiniteNumberOrNull(value: unknown): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function toSubmitCurrency(value: unknown): LedgerCurrency {
@@ -103,7 +99,6 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   const body = asObject(payload);
   const details = asObject(body.details);
   const payment = asObject(body.payment);
-  const availability = body.availability;
 
   const paymentIntentId = String(payment.paymentIntentId ?? "").trim();
   if (!paymentIntentId || !stripe) {
@@ -158,13 +153,11 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   }
 
   const currency = toSubmitCurrency(pi.currency);
-  const city = String(details.city ?? "").trim();
-  const postalCode = String(details.postalCode ?? "").trim();
-  const region = String(details.stateCode ?? details.region ?? city ?? "")
+  const region = String(details.stateCode ?? details.region ?? details.city ?? "")
     .trim()
     .toLowerCase();
-  const lat = toFiniteNumberOrNull(details.lat);
-  const lng = toFiniteNumberOrNull(details.lng ?? details.lon);
+  const countryCode = String(details.countryCode ?? details.country ?? "US").trim().toUpperCase();
+  const stateCode = String(details.stateCode ?? details.region ?? "").trim();
 
   const images = parseImages(body.images);
   const uploadIds = images.map((i) => i.uploadId);
@@ -197,44 +190,28 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
     }
   }
 
-  const jobInsertValues: Record<string, unknown> = {
-    id: jobId,
-    title,
-    scope,
-    region: region || "unspecified",
-    trade_category: tradeCategory,
-    job_poster_user_id: userId,
-    status: JOB_STATUS_OPEN_FOR_ROUTING,
-    routing_status: ROUTING_STATUS_UNROUTED,
-    currency,
-    amount_cents: stripeAmountCents,
-    total_amount_cents: stripeAmountCents,
-    stripe_payment_intent_id: paymentIntentId,
-    stripe_payment_intent_status: String(pi.status ?? ""),
-    created_at: now,
-    updated_at: now,
-  };
-
-  if (city) {
-    jobInsertValues.city = city;
-  }
-  if (postalCode) {
-    jobInsertValues.postal_code = postalCode;
-  }
-  if (lat != null) {
-    jobInsertValues.lat = lat;
-  }
-  if (lng != null) {
-    jobInsertValues.lng = lng;
-  }
-  if (availability != null) {
-    jobInsertValues.availability = availability as any;
-  }
-
   try {
     await db.transaction(async (tx) => {
       try {
-        await tx.insert(jobs).values(jobInsertValues as any);
+        await createJobMinimalInsert(tx, {
+          jobId,
+          userId,
+          title,
+          scope,
+          tradeCategory,
+          status: JOB_STATUS_OPEN_FOR_ROUTING,
+          routingStatus: ROUTING_STATUS_UNROUTED,
+          currency,
+          amountCents: stripeAmountCents,
+          totalAmountCents: stripeAmountCents,
+          stripePaymentIntentId: paymentIntentId,
+          stripePaymentIntentStatus: String(pi.status ?? ""),
+          createdAt: now,
+          updatedAt: now,
+          region: region || "unspecified",
+          countryCode: countryCode || "US",
+          stateCode: stateCode || undefined,
+        });
       } catch (err) {
         const dbErr = err as any;
         console.error("[JOB_SUBMIT_INSERT_FAILED]", {
