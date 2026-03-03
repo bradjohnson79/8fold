@@ -35,21 +35,26 @@ export default function JobPosterJobDetailPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
 
+  const [loadError, setLoadError] = useState<"not_found" | "server_error" | null>(null);
+
   const fetchJob = useCallback(async () => {
     if (!id) return;
+    setLoadError(null);
     try {
       const resp = await fetch(`/api/web/v4/job-poster/jobs/${id}`, {
         cache: "no-store",
         credentials: "include",
       });
+      const data = await resp.json().catch(() => null);
       if (resp.ok) {
-        const data = (await resp.json()) as JobDetail;
-        setJob(data);
+        setJob(data as JobDetail);
       } else {
         setJob(null);
+        setLoadError(resp.status === 404 ? "not_found" : "server_error");
       }
     } catch {
       setJob(null);
+      setLoadError("server_error");
     } finally {
       setLoading(false);
     }
@@ -89,10 +94,33 @@ export default function JobPosterJobDetailPage() {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-bold">Job Detail</h1>
-        <p className="mt-2 text-gray-600">Job not found.</p>
-        <Link href="/dashboard/job-poster/jobs" className="mt-4 inline-block text-blue-600 hover:underline">
-          ← Back to My Jobs
-        </Link>
+        {loadError === "server_error" ? (
+          <>
+            <p className="mt-2 text-gray-600">We couldn&apos;t load this job right now.</p>
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true);
+                  fetchJob();
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Try again
+              </button>
+              <Link href="/dashboard/job-poster/jobs" className="inline-block text-blue-600 hover:underline py-2">
+                ← Back to My Jobs
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-gray-600">Job not found.</p>
+            <Link href="/dashboard/job-poster/jobs" className="mt-4 inline-block text-blue-600 hover:underline">
+              ← Back to My Jobs
+            </Link>
+          </>
+        )}
       </div>
     );
   }

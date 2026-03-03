@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listCitiesByRegion } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
+import { listCitiesWithJobCounts } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 import type { CountryCode2 } from "../../../../../src/locations/datasets";
 
 const US_STATE_CODES_50 = new Set([
@@ -44,19 +44,10 @@ export async function GET(req: Request) {
       );
     }
 
-    const rows = await listCitiesByRegion(country, regionParam);
-    const sorted = [...rows].sort((a, b) => (b.jobCount ?? 0) - (a.jobCount ?? 0));
-
-    return NextResponse.json(sorted);
+    const rows = await listCitiesWithJobCounts(country, regionParam);
+    return NextResponse.json(rows);
   } catch (err) {
-    const cause = err as { code?: string; message?: string };
-    console.error("[PUBLIC_JOBS_CITIES] error", {
-      code: cause.code,
-      message: cause.message ?? (err as Error)?.message,
-    });
-    return NextResponse.json(
-      { error: "Failed to load cities", code: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
+    console.error("PUBLIC_DISCOVERY_ERROR", { route: "/api/public/jobs/cities", error: err });
+    return NextResponse.json({ error: "PUBLIC_DISCOVERY_FAILED" }, { status: 500 });
   }
 }

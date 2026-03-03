@@ -2,9 +2,8 @@ import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4Messages } from "@/db/schema/v4Message";
-import { getJobPosterPaymentStatus } from "./jobPosterPaymentService";
-import { promoteDuePublishedJobsForJobPoster } from "./jobExecutionService";
 import { logEvent } from "@/src/server/observability/log";
+import { getJobPosterPaymentStatus } from "./jobPosterPaymentService";
 
 export type JobPosterSummary = {
   jobsPosted: number;
@@ -14,19 +13,8 @@ export type JobPosterSummary = {
   activeAssignments: number;
 };
 
+/** Read-only summary. No mutations, no promote-due. */
 export async function getJobPosterSummary(userId: string): Promise<JobPosterSummary> {
-  try {
-    await promoteDuePublishedJobsForJobPoster(userId);
-  } catch (error) {
-    logEvent({
-      level: "error",
-      event: "job_poster.dashboard.promote_due_failed",
-      userId,
-      context: {
-        error: error instanceof Error ? error.message : String(error),
-      },
-    });
-  }
   const jobsPostedRows = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(jobs)

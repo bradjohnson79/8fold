@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { asc, inArray } from "drizzle-orm";
-import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { ok, badRequest } from "../../../../../src/lib/api/respond";
 import { countEligiblePublicJobs, listNewestJobs } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 import { db } from "@/server/db/drizzle";
@@ -87,6 +86,7 @@ export async function GET(req: Request) {
 
     return ok({ jobs: out });
   } catch (err) {
+    console.error("PUBLIC_DISCOVERY_ERROR", { route: "/api/public/jobs/recent", error: err });
     if (debug) {
       const msg = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? err.stack : undefined;
@@ -95,6 +95,6 @@ export async function GET(req: Request) {
         { status: 500 },
       );
     }
-    return handleApiError(err, "GET /api/public/jobs/recent", { route: "/api/public/jobs/recent" });
+    return NextResponse.json({ error: "PUBLIC_DISCOVERY_FAILED" }, { status: 500 });
   }
 }

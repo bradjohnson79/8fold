@@ -3,7 +3,7 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
-import { mapLegacyStatusForExecution, promoteDuePublishedJobsForJobPoster } from "./jobExecutionService";
+import { mapLegacyStatusForExecution } from "./jobExecutionService";
 
 export type AssignedContractorPayload = {
   id: string;
@@ -16,9 +16,9 @@ export type AssignedContractorPayload = {
   appointmentAcceptedAt: string | null;
 };
 
+/** Read-only. No mutations, no promote-due. */
 export async function getAssignedContractorForJobPoster(userId: string): Promise<AssignedContractorPayload | null> {
   try {
-    await promoteDuePublishedJobsForJobPoster(userId);
     const rows = await db
       .select({
         jobId: jobs.id,

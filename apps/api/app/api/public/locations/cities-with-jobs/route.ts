@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { toHttpError } from "../../../../../src/http/errors";
 import { listCitiesByRegion } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 
 function normalizeCountry(input: string | null): "US" | "CA" | null {
@@ -35,8 +34,8 @@ export async function GET(req: Request) {
     const out = await listCitiesByRegion(country, regionCode);
     return NextResponse.json(out);
   } catch (err) {
-    const { status, message } = toHttpError(err);
-    return NextResponse.json({ error: message }, { status });
+    console.error("PUBLIC_DISCOVERY_ERROR", { route: "/api/public/locations/cities-with-jobs", error: err });
+    return NextResponse.json({ error: "PUBLIC_DISCOVERY_FAILED" }, { status: 500 });
   }
 }
 
