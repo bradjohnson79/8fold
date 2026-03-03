@@ -128,6 +128,8 @@ export type PublicNewestJobRow = {
   trade_category: string | null;
   region: string | null;
   city: string | null;
+  amount_cents: number | null;
+  currency: string | null;
   created_at: Date | string | null;
 };
 
@@ -137,7 +139,7 @@ export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[
   try {
     const res = await db.execute<PublicNewestJobRow>(
       sql`
-        SELECT id, title, trade_category, region, city, created_at
+        SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
         FROM jobs
         WHERE archived = false
           AND (status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
@@ -174,6 +176,8 @@ export type PublicJobMinimalRow = {
   trade_category: string | null;
   region: string | null;
   city: string | null;
+  amount_cents: number | null;
+  currency: string | null;
   created_at: Date | string | null;
 };
 
@@ -196,7 +200,7 @@ export async function listJobsByLocation(opts: {
   try {
     const res = await db.execute<PublicJobMinimalRow>(
       sql`
-        SELECT id, title, trade_category, region, city, created_at
+        SELECT id, title, trade_category, region, city, amount_cents, currency, created_at
         FROM jobs
         WHERE archived = false
           AND (status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
