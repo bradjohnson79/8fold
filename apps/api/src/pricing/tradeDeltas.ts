@@ -27,6 +27,8 @@ export const TRADE_DELTAS: Record<TradeCategory, number> = {
   PAINTING: 50_00,
   CARPENTRY: 50_00,
   ROOFING: 50_00,
+  WELDING: 25_00,
+  JACK_OF_ALL_TRADES: 25_00,
 };
 
 /**

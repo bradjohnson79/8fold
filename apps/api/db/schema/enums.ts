@@ -43,6 +43,8 @@ export const tradeCategoryEnum = pgEnum("TradeCategory", [
   "MOVING",
   "AUTOMOTIVE",
   "FURNITURE_ASSEMBLY",
+  "WELDING",
+  "JACK_OF_ALL_TRADES",
 ]);
 
 export const jobStatusEnum = pgEnum("JobStatus", [

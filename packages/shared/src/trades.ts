@@ -18,7 +18,9 @@ export const TradeCategorySchema = z.enum([
   "JUNK_REMOVAL",
   "MOVING",
   "FURNITURE_ASSEMBLY",
-  "AUTOMOTIVE"
+  "AUTOMOTIVE",
+  "WELDING",
+  "JACK_OF_ALL_TRADES",
 ]);
 export type TradeCategory = z.infer<typeof TradeCategorySchema>;
 
@@ -39,6 +41,8 @@ export const TradeCategoryLabel: Record<TradeCategory, string> = {
   JUNK_REMOVAL: "Junk Removal",
   MOVING: "Light Moving",
   FURNITURE_ASSEMBLY: "Furniture Assembly",
-  AUTOMOTIVE: "Automotive (Light)"
+  AUTOMOTIVE: "Automotive (Light)",
+  WELDING: "Welding",
+  JACK_OF_ALL_TRADES: "Jack-of-All-Trades (Odd Jobs & Mounting)",
 };
 

@@ -16,6 +16,8 @@ export const TRADE_CATEGORIES_CANONICAL = [
   "MOVING",
   "AUTOMOTIVE",
   "FURNITURE_ASSEMBLY",
+  "WELDING",
+  "JACK_OF_ALL_TRADES",
 ] as const;
 
 export type TradeCategoryCanonical = (typeof TRADE_CATEGORIES_CANONICAL)[number];
@@ -38,6 +40,8 @@ export const TRADE_CATEGORIES_UI_ORDER: readonly TradeCategoryCanonical[] = [
   "SNOW_REMOVAL",
   "JANITORIAL_CLEANING",
   "AUTOMOTIVE",
+  "WELDING",
+  "JACK_OF_ALL_TRADES",
 ] as const;
 
 export const URBAN_RADIUS_KM = 50;
