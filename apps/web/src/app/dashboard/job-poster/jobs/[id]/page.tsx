@@ -23,6 +23,7 @@ type JobDetail = {
   regionName?: string | null;
   pendingEditRequest?: PendingRequest;
   pendingCancelRequest?: PendingRequest;
+  assignedContractorId?: string | null;
 };
 
 export default function JobPosterJobDetailPage() {
@@ -63,8 +64,9 @@ export default function JobPosterJobDetailPage() {
   const isCancelled = job?.status?.toUpperCase() === "CANCELLED";
   const hasPendingEdit = Boolean(job?.pendingEditRequest);
   const hasPendingCancel = Boolean(job?.pendingCancelRequest);
-  const canEdit = !isCancelled && !hasPendingEdit;
-  const canCancel = !isCancelled && !hasPendingCancel;
+  const hasAssignedContractor = Boolean(job?.assignedContractorId);
+  const canEdit = !isCancelled && !hasPendingEdit && !hasAssignedContractor;
+  const canCancel = !isCancelled && !hasPendingCancel && !hasAssignedContractor;
 
   if (!id) {
     return (
