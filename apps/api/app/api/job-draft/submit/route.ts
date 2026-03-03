@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireJobPoster } from "@/src/auth/rbac";
 
+const DEPRECATED_SUBMIT_GUARDRAILS = {
+  status: "OPEN_FOR_ROUTING",
+  paymentGateMessage: "Payment hold is required before submit.",
+} as const;
+
 function gone() {
   // eslint-disable-next-line no-console
   console.warn("[JOB_DRAFT_ROUTE_DEPRECATED]");
-  return NextResponse.json({ error: "Draft system deprecated" }, { status: 410 });
+  return NextResponse.json({ error: "Draft system deprecated", guardrails: DEPRECATED_SUBMIT_GUARDRAILS }, { status: 410 });
 }
 
 export async function POST(req: Request) {
