@@ -13,11 +13,14 @@ export async function GET(
     if (role instanceof Response) return role;
     requestId = role.requestId;
     const { id } = await params;
-    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "JOB_ID_REQUIRED" }, { status: 400 });
     const job = await getJobDetailForJobPoster(id, role.userId);
-    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    if (!job) {
+      return NextResponse.json({ error: "JOB_NOT_FOUND" }, { status: 404 });
+    }
     return NextResponse.json(job);
   } catch (err) {
+    console.error("JOB_POSTER_JOB_DETAIL_ERROR", { requestId, error: err });
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_JOB_DETAIL_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
   }
