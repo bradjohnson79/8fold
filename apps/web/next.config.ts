@@ -3,10 +3,6 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   transpilePackages: ['@8fold/shared'],
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**', pathname: '/**' },
-      { protocol: 'http', hostname: '**', pathname: '/**' },
-    ],
     domains: [
       'localhost',
       's3.amazonaws.com',
@@ -17,6 +13,10 @@ const nextConfig: NextConfig = {
       'imgur.com',
       'i.imgur.com',
       'placehold.co',
+    ],
+    remotePatterns: [
+      { protocol: 'https', hostname: '**', pathname: '/**' },
+      { protocol: 'http', hostname: '**', pathname: '/**' },
     ],
     unoptimized: process.env.NODE_ENV === 'development',
   },
