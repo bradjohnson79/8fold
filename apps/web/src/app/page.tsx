@@ -1,21 +1,19 @@
 import Link from "next/link";
 import { LocationSelector } from "../components/LocationSelector";
 import { HomeJobFeedClient } from "./HomeJobFeedClient";
-import { requireServerSession } from "@/server/auth/meSession";
 import { HeroBackgroundVideo } from "./HeroBackgroundVideo";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { HomepageFAQSection } from "@/components/home/HomepageFAQSection";
 
+/**
+ * Homepage is public and must never block on authentication.
+ * Auth runs client-side where needed (e.g. HomeJobFeedClient fetches via API).
+ */
 export default async function HomePage() {
-  let session: Awaited<ReturnType<typeof requireServerSession>> | null = null;
-  try {
-    session = await requireServerSession();
-  } catch {
-    session = null;
-  }
+  const session = null;
 
-  const isRouter = String(session?.role ?? "").trim().toUpperCase() === "ROUTER";
+  const isRouter = false;
   const heroVideoPath = String(process.env.NEXT_PUBLIC_HERO_VIDEO_PATH ?? "/hero-video.mp4").trim() || "/hero-video.mp4";
   const heroVideoEnabledByEnv = String(process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO ?? "").trim() === "1";
   const heroVideoIsExternal = /^https?:\/\//i.test(heroVideoPath);
