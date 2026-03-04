@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { LocationSelector } from "../../../../components/LocationSelector";
+import { slugCity } from "@/utils/slug";
 
 type CityWithJobs = { city: string; jobCount: number };
 
@@ -11,10 +12,6 @@ function titleCaseFromSlug(slug: string): string {
     .trim()
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function slugCity(city: string): string {
-  return city.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
 export function StateJobsClient(props: { country: string; regionCode: string }) {
