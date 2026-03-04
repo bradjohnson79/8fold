@@ -141,6 +141,15 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
     return (job.serviceType ?? 'Job').trim()
   }
 
+  // Fallback image when no photo_urls/image/imageUrl. Maps trade_category to /images/jobs/{category}/{category}1.png
+  const TRADE_IMAGE_FOLDERS = new Set(['carpentry', 'drywall', 'electrical', 'furniture_assembly', 'janitorial', 'junk_removal', 'landscaping', 'moving', 'plumbing', 'roofing'])
+  const tradeFolder = (job.tradeCategory ?? 'handyman').toLowerCase().replace(/-/g, '_')
+  const fallbackImagePath = TRADE_IMAGE_FOLDERS.has(tradeFolder)
+    ? `/images/jobs/${tradeFolder}/${tradeFolder}1.png`
+    : '/images/jobs/moving/moving1.png'
+
+  const imageSrc = (job.image ?? job.imageUrl) || fallbackImagePath
+
   function categoryIcon(): string {
     const v = `${(job.tradeCategory ?? '').toLowerCase()} ${(job.serviceType ?? '').toLowerCase()}`
     if (v.includes('elect')) return '⚡'
@@ -231,9 +240,9 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
       {/* Image */}
       <div className="px-6">
         <div className="relative h-48 bg-gray-100 rounded-xl overflow-hidden">
-          {(job.image ?? job.imageUrl) && !imageError ? (
+          {imageSrc && !imageError ? (
             <Image
-              src={job.image ?? job.imageUrl ?? ""}
+              src={imageSrc}
               alt={job.title}
               fill
               className="object-cover"
