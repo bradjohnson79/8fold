@@ -4,9 +4,6 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
  * AUTHORITY RULE:
  * Clerk is the sole source of authentication state.
  * No DB, cookie, or internal API logic may determine login state.
- *
- * DISABLED: Renamed from middleware.ts for Step 3 hang diagnostic.
- * Restore by: mv middleware.disabled.ts middleware.ts
  */
 
 const isPublicRoute = createRouteMatcher([
