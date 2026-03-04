@@ -7,6 +7,7 @@ import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { haversineKm } from "@/src/jobs/geo";
+import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
 
 export type Stage2ContractorCard = {
   contractorId: string;
@@ -24,8 +25,11 @@ type Stage2JobSnapshot = {
   city: string;
   region: string;
   provinceCode: string;
+  countryCode: string;
+  regionCode: string;
   tradeCategory: string;
   jobType: "urban" | "regional";
+  isRegional: boolean;
   status: string;
   lat: number;
   lng: number;
@@ -62,6 +66,14 @@ function normalizeProvinceCode(value: string | null | undefined): string {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function normalizeCountryCode(value: string | null | undefined): string {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function normalizeRegionCode(value: string | null | undefined): string {
+  return String(value ?? "").trim().toUpperCase().replace(/[\s._-]+/g, "");
+}
+
 function normalizeTradeCategory(value: string | null | undefined): string {
   return String(value ?? "")
     .trim()
@@ -85,8 +97,8 @@ function parseTradeCategories(raw: unknown): string[] {
   return [];
 }
 
-function resolveMaxDistanceKm(jobType: string): number {
-  return String(jobType).toLowerCase() === "urban" ? 50 : 100;
+function resolveMaxDistanceKm(isRegional: boolean): number {
+  return isRegional ? 100 : 50;
 }
 
 async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null> {
@@ -97,8 +109,11 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
       city: jobs.city,
       region: jobs.region,
       provinceCode: jobs.state_code,
+      countryCode: jobs.country_code,
+      regionCode: jobs.region_code,
       tradeCategory: jobs.trade_category,
       jobType: jobs.job_type,
+      isRegional: jobs.is_regional,
       status: jobs.status,
       lat: jobs.lat,
       lng: jobs.lng,
@@ -110,6 +125,10 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
   const row = rows[0] ?? null;
   if (!row) return null;
 
+  const isRegional = Boolean(row.isRegional);
+  const countryCode = normalizeCountryCode(row.countryCode ?? "");
+  const regionCode = normalizeRegionCode(row.regionCode ?? row.provinceCode ?? "");
+
   if (typeof row.lat !== "number" || !Number.isFinite(row.lat) || typeof row.lng !== "number" || !Number.isFinite(row.lng)) {
     return {
       id: row.id,
@@ -117,8 +136,11 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
       city: row.city ?? "",
       region: row.region ?? "",
       provinceCode: normalizeProvinceCode(row.provinceCode),
+      countryCode,
+      regionCode,
       tradeCategory: normalizeTradeCategory(row.tradeCategory),
       jobType: row.jobType,
+      isRegional,
       status: row.status,
       lat: Number.NaN,
       lng: Number.NaN,
@@ -131,8 +153,11 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
     city: row.city ?? "",
     region: row.region ?? "",
     provinceCode: normalizeProvinceCode(row.provinceCode),
+    countryCode,
+    regionCode,
     tradeCategory: normalizeTradeCategory(row.tradeCategory),
     jobType: row.jobType,
+    isRegional,
     status: row.status,
     lat: row.lat,
     lng: row.lng,
@@ -140,7 +165,10 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
 }
 
 async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage2ContractorCard[]> {
-  const maxDistanceKm = resolveMaxDistanceKm(job.jobType);
+  if (!job.countryCode || !job.regionCode) return [];
+
+  const maxDistanceKm = resolveMaxDistanceKm(job.isRegional);
+  const bounds = geoBoundingBox(job.lat, job.lng, maxDistanceKm);
 
   const rows = await db
     .select({
@@ -155,7 +183,15 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
     })
     .from(contractorProfilesV4)
     .innerJoin(contractorAccounts, eq(contractorAccounts.userId, contractorProfilesV4.userId))
-    .where(sql`upper(trim(coalesce(${contractorAccounts.regionCode}, ''))) = ${job.provinceCode}`);
+    .where(
+      and(
+        sql`upper(trim(coalesce(${contractorProfilesV4.countryCode}, ''))) = ${job.countryCode}`,
+        sql`upper(trim(coalesce(${contractorProfilesV4.homeRegionCode}, ''))) = ${job.regionCode}`,
+        sql`${contractorProfilesV4.homeLatitude} BETWEEN ${bounds.latMin} AND ${bounds.latMax}`,
+        sql`${contractorProfilesV4.homeLongitude} BETWEEN ${bounds.lngMin} AND ${bounds.lngMax}`,
+      ),
+    )
+    .limit(500);
 
   const out: Stage2ContractorCard[] = [];
   for (const row of rows) {
@@ -206,7 +242,7 @@ export async function getStage2JobContractors(jobId: string): Promise<Stage2GetC
       provinceCode: job.provinceCode,
       tradeCategory: job.tradeCategory,
       urbanOrRegional: job.jobType === "urban" ? "URBAN" : "REGIONAL",
-      maxDistanceKm: resolveMaxDistanceKm(job.jobType),
+      maxDistanceKm: resolveMaxDistanceKm(job.isRegional),
     },
     contractors,
   };

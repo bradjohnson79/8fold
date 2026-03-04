@@ -31,10 +31,23 @@ export default function RouterQueuePage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/routed-jobs", { cache: "no-store" });
+      const resp = await fetch("/api/web/v4/router/jobs/routed", { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => ({} as any));
-      if (!resp.ok) throw new Error(json?.error ?? "Failed to load");
-      const rows = Array.isArray(json?.jobs) ? (json.jobs as QueueJob[]) : [];
+      if (!resp.ok) throw new Error(json?.error?.message ?? json?.error ?? "Failed to load");
+      const raw = Array.isArray(json?.jobs) ? json.jobs : [];
+      const rows: QueueJob[] = raw.map((j: any) => {
+        const awaiting = j.status === "OPEN_FOR_ROUTING" && j.routingStatus === "ROUTED_BY_ROUTER";
+        return {
+          id: j.id,
+          title: j.title ?? "",
+          region: j.region ?? "",
+          tradeCategory: j.tradeCategory ?? "",
+          routedContractorCount: 1,
+          expiresAt: null,
+          timeRemainingSeconds: 0,
+          status: awaiting ? ("AWAITING_CONTRACTOR_RESPONSE" as const) : ("EXPIRED" as const),
+        };
+      });
       setJobs(rows);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");

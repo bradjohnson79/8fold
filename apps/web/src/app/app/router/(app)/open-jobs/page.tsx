@@ -59,12 +59,24 @@ export default function RouterOpenJobsPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/api/app/router/jobs/${encodeURIComponent(jobId)}/eligible-contractors`, {
+      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, {
         cache: "no-store",
+        credentials: "include",
       });
       const json = await resp.json().catch(() => ({} as any));
-      if (!resp.ok) throw new Error(json?.error || "Failed to load contractors");
-      const rows = Array.isArray(json?.contractors) ? (json.contractors as EligibleContractor[]) : [];
+      if (json.kind !== "ok" || !resp.ok) {
+        const msg = typeof json.error === "string" ? json.error : json.error?.message ?? "Failed to load contractors";
+        throw new Error(msg);
+      }
+      const raw = Array.isArray(json.contractors) ? json.contractors : [];
+      const rows: EligibleContractor[] = raw.map((c: any) => ({
+        id: c.contractorId ?? c.id,
+        name: c.contactName ?? c.businessName ?? "",
+        businessName: c.businessName,
+        trade: c.tradeCategory ?? c.trade ?? "",
+        distanceKm: c.distanceKm ?? null,
+        availability: "AVAILABLE" as const,
+      }));
       setContractors(rows);
       setSelectedContractorIds([]);
     } catch (e) {
@@ -92,10 +104,11 @@ export default function RouterOpenJobsPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/apply-routing", {
+      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(selectedJobId)}/route`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jobId: selectedJobId, contractorIds: selectedContractorIds }),
+        credentials: "include",
+        body: JSON.stringify({ contractorIds: selectedContractorIds }),
       });
       const json = await resp.json().catch(() => ({} as any));
       const missing = parseMissingSteps(json);

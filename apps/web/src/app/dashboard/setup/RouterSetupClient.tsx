@@ -146,8 +146,6 @@ export function RouterSetupClient() {
         homeRegionCode: regionCode,
         serviceAreas: [regionCode],
         availability: ["STATEWIDE_ROUTING"],
-        homeLatitude: 0,
-        homeLongitude: 0,
       };
 
       const profileResp = await fetch("/api/web/v4/router/profile", {

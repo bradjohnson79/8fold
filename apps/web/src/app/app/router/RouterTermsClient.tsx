@@ -11,9 +11,10 @@ export function RouterTermsClient(props?: { onComplete?: () => void }) {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/terms/accept", {
+      const resp = await fetch("/api/web/v4/router/accept-tos", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "include",
       });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Failed to record acceptance");

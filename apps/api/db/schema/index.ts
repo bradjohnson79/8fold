@@ -92,5 +92,6 @@ export * from "./v4TaxRegion";
 export * from "./v4TaxSetting";
 export * from "./v4FinancialLedger";
 export * from "./v4PaymentFeeConfig";
+export * from "./v4RouterRewardEvents";
 export * from "./admin";
 export * from "./roleTermsAcceptance";

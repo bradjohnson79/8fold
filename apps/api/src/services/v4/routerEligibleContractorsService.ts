@@ -96,6 +96,7 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
       stateCode: jobs.state_code,
       tradeCategory: jobs.trade_category,
       jobType: jobs.job_type,
+      isRegional: jobs.is_regional,
       lat: jobs.lat,
       lng: jobs.lng,
       createdAt: jobs.created_at,
@@ -133,7 +134,7 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
     return { kind: "missing_job_coords" };
   }
 
-  const radiusKm = job.jobType === "urban" ? 50 : 100;
+  const radiusKm = job.isRegional ? 100 : 50;
   const invitedRows = await db
     .select({ contractorUserId: v4ContractorJobInvites.contractorUserId })
     .from(v4ContractorJobInvites)
