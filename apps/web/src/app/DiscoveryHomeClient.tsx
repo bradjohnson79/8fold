@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { slugCity } from "@/utils/slug";
+import { slugify } from "@/utils/slug";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
@@ -138,7 +138,7 @@ export function DiscoveryHomeClient() {
               // Never navigate to an empty page: we only allow cities returned by the API.
               const exists = cities.some((c) => c.city === city);
               if (!exists) return;
-              router.push(`/jobs/${selectedRegion.country}/${selectedRegion.regionCode}/${slugCity(city)}`);
+              router.push(`/jobs/${selectedRegion.country}/${selectedRegion.regionCode}/${slugify(city)}`);
             }}
             className={`w-full font-semibold px-4 py-2 rounded-lg transition-colors ${
               canGo ? "bg-8fold-green hover:bg-8fold-green-dark text-white" : "bg-gray-200 text-gray-500"

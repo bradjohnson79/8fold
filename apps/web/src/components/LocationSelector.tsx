@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { slugCity, slugRegion } from "@/utils/slug";
+import { slugify } from "@/utils/slug";
+import { regionNameToSlug } from "@/utils/regionSlug";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
@@ -117,7 +118,7 @@ export function LocationSelector(props: {
     if (!exists) return;
     const next = { country: selectedRegion.country, regionCode: selectedRegion.regionCode, city };
     props.onNavigate?.(next);
-    router.push(`/jobs/${next.country}/${next.regionCode}/${slugCity(next.city)}`);
+    router.push(`/jobs/${next.country}/${next.regionCode}/${slugify(next.city)}`);
   };
 
   const gridCities = React.useMemo(
@@ -188,7 +189,7 @@ export function LocationSelector(props: {
             {selectedRegion && (
               <div className="mt-2">
                 <Link
-                  href={`/jobs/${slugRegion(selectedRegion.regionName)}`}
+                  href={`/jobs/${regionNameToSlug(selectedRegion.regionName)}`}
                   className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                 >
                   View all cities in {selectedRegion.regionName} →
