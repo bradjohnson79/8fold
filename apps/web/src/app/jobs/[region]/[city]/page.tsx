@@ -3,10 +3,10 @@ import { resolveRegionSlug } from "@/utils/regionSlug";
 import { slugToTitleCase } from "@/utils/slug";
 import type { Metadata } from "next";
 
-type Props = { params: Promise<{ region: string; city: string }> };
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { region: regionSlug, city: citySlug } = await params;
+export async function generateMetadata(props: {
+  params: Promise<{ region: string; city: string }>;
+}): Promise<Metadata> {
+  const { region: regionSlug, city: citySlug } = await props.params;
   const resolved = resolveRegionSlug(regionSlug);
   const regionName = resolved?.regionName ?? regionSlug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   const cityName = slugToTitleCase(citySlug);
@@ -16,7 +16,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function CityJobsPage({ params }: Props) {
-  const { region: regionSlug, city: citySlug } = await params;
+export default async function CityJobsPage(props: {
+  params: Promise<{ region: string; city: string }>;
+}) {
+  const { region: regionSlug, city: citySlug } = await props.params;
   return <CityJobsClient regionSlug={regionSlug} citySlug={citySlug} />;
 }
