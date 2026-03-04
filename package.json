@@ -13,6 +13,7 @@
     "dev:dise": "API_ORIGIN=http://localhost:3003 pnpm -C apps/dise dev",
     "dev": "node scripts/dev.mjs",
     "predev:verify": "pnpm -C apps/api db:verify",
+    "prebuild": "tsx scripts/validate-jobs-routes.ts",
     "build": "pnpm -C apps/web build",
     "lint": "pnpm check:no-legacy-job-wizard && pnpm check:post-job-guardrails && pnpm -C apps/web lint",
     "typecheck": "pnpm -C apps/web typecheck",
