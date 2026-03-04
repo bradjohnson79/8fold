@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { LocationSelector } from "../../../../components/LocationSelector";
 import { slugify } from "@/utils/slug";
+import { slugCity } from "@/utils/slug";
 
 type CityWithJobs = { city: string; jobCount: number };
 

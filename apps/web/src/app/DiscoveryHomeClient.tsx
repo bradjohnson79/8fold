@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { REGION_OPTIONS } from "@/lib/regions";
 import { slugify } from "@/utils/slug";
+import { slugCity } from "@/utils/slug";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 

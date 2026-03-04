@@ -1,33 +1,43 @@
-import { slugify } from "@/utils/slug";
 import { REGION_OPTIONS } from "@/lib/regions";
+import { slugify } from "@/utils/slug";
 
 export type RegionResolution = {
   country: "US" | "CA";
   regionCode: string;
-  regionName?: string;
+  regionName: string;
 };
 
 /**
  * Converts a region name to a URL slug.
- * Uses slugify for accent normalization.
+ * Handles accents and spaces safely.
+ * Example: "British Columbia" → "british-columbia"
  */
-export function regionNameToSlug(regionName: string): string {
+export function slugRegion(regionName: string): string {
   return slugify(regionName);
 }
 
 /**
- * Resolves a URL slug to region code and country.
- * Deterministic, no network calls.
- * Returns null for unknown slugs.
+ * Resolves a region slug or region code into
+ * a canonical region object.
+ *
+ * Examples:
+ *  "alabama" → { country: "US", regionCode: "AL" }
+ *  "AL" → { country: "US", regionCode: "AL" }
+ *  "british-columbia" → { country: "CA", regionCode: "BC" }
  */
-export function resolveRegionSlug(regionSlug: string): RegionResolution | null {
-  const slug = regionSlug.trim().toLowerCase().replace(/\s+/g, "-");
-  if (!slug) return null;
+export function resolveRegionSlug(slug: string): RegionResolution | null {
+  const normalizedSlug = slug.trim().toLowerCase();
 
+  const normalizedName = normalizedSlug.replace(/-/g, " ");
+
+  // Check US states
   for (const region of REGION_OPTIONS.US) {
-    const nameSlug = regionNameToSlug(region.name);
-    const codeSlug = region.code.toLowerCase();
-    if (nameSlug === slug || codeSlug === slug) {
+    const regionNameSlug = slugRegion(region.name);
+    if (
+      regionNameSlug === normalizedSlug ||
+      region.code.toLowerCase() === normalizedSlug ||
+      region.name.toLowerCase() === normalizedName
+    ) {
       return {
         country: "US",
         regionCode: region.code,
@@ -36,10 +46,14 @@ export function resolveRegionSlug(regionSlug: string): RegionResolution | null {
     }
   }
 
+  // Check Canadian provinces
   for (const region of REGION_OPTIONS.CA) {
-    const nameSlug = regionNameToSlug(region.name);
-    const codeSlug = region.code.toLowerCase();
-    if (nameSlug === slug || codeSlug === slug) {
+    const regionNameSlug = slugRegion(region.name);
+    if (
+      regionNameSlug === normalizedSlug ||
+      region.code.toLowerCase() === normalizedSlug ||
+      region.name.toLowerCase() === normalizedName
+    ) {
       return {
         country: "CA",
         regionCode: region.code,

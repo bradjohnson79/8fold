@@ -4,8 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { slugify } from "@/utils/slug";
-import { regionNameToSlug } from "@/utils/regionSlug";
+import { slugCity, slugRegion } from "@/utils/slug";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
@@ -29,9 +28,19 @@ export function LocationSelector(props: {
   const router = useRouter();
 
   const regions = React.useMemo<RegionRow[]>(() => {
-    const us = REGION_OPTIONS.US.map((r) => ({ country: "US" as const, regionCode: r.code, regionName: r.name }));
-    const ca = REGION_OPTIONS.CA.map((r) => ({ country: "CA" as const, regionCode: r.code, regionName: r.name }));
-    // Required ordering: 50 US states first, then 10 Canadian provinces.
+    const us = REGION_OPTIONS.US.map((r) => ({
+      country: "US" as const,
+      regionCode: r.code,
+      regionName: r.name,
+    }));
+
+    const ca = REGION_OPTIONS.CA.map((r) => ({
+      country: "CA" as const,
+      regionCode: r.code,
+      regionName: r.name,
+    }));
+
+    // Required ordering: US states first, then Canadian provinces
     return [...us, ...ca];
   }, []);
 
@@ -42,10 +51,11 @@ export function LocationSelector(props: {
     const r = (props.initialRegionCode ?? "").toUpperCase();
     return c && r ? `${c}:${r}` : "";
   });
+
   const [city, setCity] = React.useState<string>(() => props.initialCity ?? "");
 
   const [loadingCities, setLoadingCities] = React.useState(false);
-  const [error, setError] = React.useState<string>("");
+  const [error, setError] = React.useState("");
 
   const selectedRegion = React.useMemo(() => {
     if (!regionKey) return null;
@@ -54,36 +64,48 @@ export function LocationSelector(props: {
   }, [regionKey, regions]);
 
   React.useEffect(() => {
-    // If a caller provides an unsupported region code, clear selection.
     if (regionKey && !selectedRegion) {
       setRegionKey("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const gridRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     let cancelled = false;
+
     async function loadCities() {
       setRegionCities([]);
       setCity("");
+
       if (!selectedRegion) return;
 
       setLoadingCities(true);
       setError("");
+
       try {
         const qs = new URLSearchParams({
           country: selectedRegion.country,
           regionCode: selectedRegion.regionCode,
         });
-        const resp = await fetch(`/api/public/locations/cities-with-jobs?${qs.toString()}`, { cache: "no-store" });
-        if (!resp.ok) {
-          throw new Error("Failed to load cities");
-        }
+
+        const resp = await fetch(
+          `/api/public/locations/cities-with-jobs?${qs.toString()}`,
+          { cache: "no-store" }
+        );
+
+        if (!resp.ok) throw new Error("Failed to load cities");
+
         const data = (await resp.json().catch(() => null)) as unknown;
-        const list = Array.isArray(data) ? (data as CityJobCount[]) : Array.isArray((data as { cities?: CityJobCount[] })?.cities) ? ((data as { cities: CityJobCount[] }).cities) : [];
+
+        const list = Array.isArray(data)
+          ? (data as CityJobCount[])
+          : Array.isArray((data as { cities?: CityJobCount[] })?.cities)
+          ? ((data as { cities: CityJobCount[] }).cities)
+          : [];
+
         if (cancelled) return;
+
         setRegionCities(list);
       } catch (e) {
         if (cancelled) return;
@@ -92,16 +114,21 @@ export function LocationSelector(props: {
         if (!cancelled) setLoadingCities(false);
       }
     }
+
     void loadCities();
+
     return () => {
       cancelled = true;
     };
   }, [selectedRegion?.country, selectedRegion?.regionCode]);
 
-  // Optional: smooth scroll to grid on mobile when it renders with content
   React.useEffect(() => {
     if (!selectedRegion || regionCities.length === 0 || loadingCities) return;
-    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
+
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 640px)").matches;
+
     if (isMobile && gridRef.current) {
       gridRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -114,11 +141,21 @@ export function LocationSelector(props: {
 
   const go = () => {
     if (!selectedRegion || !city) return;
+
     const exists = regionCities.some((c) => c.city === city);
     if (!exists) return;
-    const next = { country: selectedRegion.country, regionCode: selectedRegion.regionCode, city };
+
+    const next = {
+      country: selectedRegion.country,
+      regionCode: selectedRegion.regionCode,
+      city,
+    };
+
     props.onNavigate?.(next);
-    router.push(`/jobs/${next.country}/${next.regionCode}/${slugify(next.city)}`);
+
+    router.push(
+      `/jobs/${next.country}/${next.regionCode}/${slugCity(next.city)}`
+    );
   };
 
   const gridCities = React.useMemo(
@@ -130,17 +167,28 @@ export function LocationSelector(props: {
     <div className="mb-8">
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6">
         <div className="flex flex-col gap-2">
-          <div className="text-2xl font-bold text-gray-900">{props.title ?? "Discover jobs in your area"}</div>
-          <div className="text-gray-600">{props.subtitle ?? "Pick a location to view jobs"}</div>
+          <div className="text-2xl font-bold text-gray-900">
+            {props.title ?? "Discover jobs in your area"}
+          </div>
+
+          <div className="text-gray-600">
+            {props.subtitle ?? "Pick a location to view jobs"}
+          </div>
         </div>
 
         {error ? (
-          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
+          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {error}
+          </div>
         ) : null}
 
         <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          {/* REGION SELECT */}
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">State / Province</div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">
+              State / Province
+            </div>
+
             <select
               value={regionKey}
               onChange={(e) => setRegionKey(e.target.value)}
@@ -148,29 +196,37 @@ export function LocationSelector(props: {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
             >
               <option value="">Select a region</option>
-              {usRegions.length ? (
-                <optgroup label="— United States —">
-                  {usRegions.map((r) => (
-                    <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
-                      {r.regionName} ({r.regionCode})
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              {caRegions.length ? (
-                <optgroup label="— Canada —">
-                  {caRegions.map((r) => (
-                    <option key={`${r.country}:${r.regionCode}`} value={`${r.country}:${r.regionCode}`}>
-                      {r.regionName} ({r.regionCode})
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
+
+              <optgroup label="— United States —">
+                {usRegions.map((r) => (
+                  <option
+                    key={`${r.country}:${r.regionCode}`}
+                    value={`${r.country}:${r.regionCode}`}
+                  >
+                    {r.regionName} ({r.regionCode})
+                  </option>
+                ))}
+              </optgroup>
+
+              <optgroup label="— Canada —">
+                {caRegions.map((r) => (
+                  <option
+                    key={`${r.country}:${r.regionCode}`}
+                    value={`${r.country}:${r.regionCode}`}
+                  >
+                    {r.regionName} ({r.regionCode})
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
+          {/* CITY SELECT */}
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">City / Town</div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">
+              City / Town
+            </div>
+
             <select
               value={city}
               onChange={(e) => setCity(e.target.value)}
@@ -178,18 +234,24 @@ export function LocationSelector(props: {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white"
             >
               <option value="">
-                {!selectedRegion ? "Select a region first" : loadingCities ? "Loading..." : "Select a city"}
+                {!selectedRegion
+                  ? "Select a region first"
+                  : loadingCities
+                  ? "Loading..."
+                  : "Select a city"}
               </option>
+
               {regionCities.map((c) => (
                 <option key={c.city} value={c.city}>
                   {c.city} · {c.jobCount}
                 </option>
               ))}
             </select>
+
             {selectedRegion && (
               <div className="mt-2">
                 <Link
-                  href={`/jobs/${regionNameToSlug(selectedRegion.regionName)}`}
+                  href={`/jobs/${slugRegion(selectedRegion.regionName)}`}
                   className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                 >
                   View all cities in {selectedRegion.regionName} →
@@ -198,12 +260,15 @@ export function LocationSelector(props: {
             )}
           </div>
 
+          {/* BUTTON */}
           <div className="flex">
             <button
               disabled={!canGo}
               onClick={go}
               className={`w-full font-semibold px-4 py-2 rounded-lg transition-colors ${
-                canGo ? "bg-8fold-green hover:bg-8fold-green-dark text-white" : "bg-gray-200 text-gray-500"
+                canGo
+                  ? "bg-8fold-green hover:bg-8fold-green-dark text-white"
+                  : "bg-gray-200 text-gray-500"
               }`}
             >
               View jobs
@@ -211,21 +276,24 @@ export function LocationSelector(props: {
           </div>
         </div>
 
-        {loadingCities && selectedRegion ? (
+        {loadingCities && selectedRegion && (
           <div className="mt-4 flex items-center gap-2 text-gray-500 text-sm">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
             Loading cities…
           </div>
-        ) : null}
+        )}
       </div>
 
-      {selectedRegion ? (
+      {selectedRegion && (
         <div ref={gridRef} className="mt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">
             Browse Cities in {selectedRegion.regionName}
           </h3>
+
           {regionCities.length === 0 && !loadingCities ? (
-            <p className="text-gray-500 text-sm">No active jobs in this region yet.</p>
+            <p className="text-gray-500 text-sm">
+              No active jobs in this region yet.
+            </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {gridCities.map((c) => (
@@ -241,7 +309,7 @@ export function LocationSelector(props: {
             </div>
           )}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
