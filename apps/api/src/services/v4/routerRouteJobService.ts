@@ -5,6 +5,7 @@ import { auditLogs } from "@/db/schema/auditLog";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { getV4EligibleContractors } from "@/src/services/v4/routerEligibleContractorsService";
 
 export type RouteJobResult =
@@ -64,10 +65,10 @@ export async function routeV4Job(
         routed_at: now,
         routing_started_at: now,
         routing_expires_at: expiresAt,
-        routing_status: "ROUTED_BY_ROUTER" as any,
+        routing_status: ROUTING_STATUS.INVITES_SENT as any,
         first_routed_at: sql`coalesce(${jobs.first_routed_at}, ${now})`,
       })
-      .where(and(eq(jobs.id, jobId), eq(jobs.status, "OPEN_FOR_ROUTING"), eq(jobs.routing_status, "UNROUTED"), eq(jobs.cancel_request_pending, false), sql`${jobs.claimed_by_user_id} is null`))
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, "OPEN_FOR_ROUTING"), eq(jobs.routing_status, ROUTING_STATUS.UNROUTED), eq(jobs.cancel_request_pending, false), sql`${jobs.claimed_by_user_id} is null`))
       .returning({ id: jobs.id });
     if (updated.length !== 1) return { kind: "job_not_available" };
 

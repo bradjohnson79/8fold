@@ -1,4 +1,4 @@
-import { index, text, timestamp } from "drizzle-orm/pg-core";
+import { index, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 import { jobs } from "./job";
 import { users } from "./user";
@@ -25,5 +25,6 @@ export const v4ContractorJobInvites = dbSchema.table(
     jobIdx: index("v4_contractor_job_invites_job_idx").on(t.jobId),
     contractorIdx: index("v4_contractor_job_invites_contractor_idx").on(t.contractorUserId),
     statusIdx: index("v4_contractor_job_invites_status_idx").on(t.status),
+    uniqueJobContractorInvite: uniqueIndex("unique_job_contractor_invite").on(t.jobId, t.contractorUserId),
   })
 );

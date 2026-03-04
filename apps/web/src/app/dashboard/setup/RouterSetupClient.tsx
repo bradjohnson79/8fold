@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { ROUTER_TOS_SECTIONS, ROUTER_TOS_TITLE, ROUTER_TOS_VERSION } from "@/lib/routerTosV1";
+import { REGION_OPTIONS } from "@/lib/regions";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
@@ -16,7 +17,6 @@ const CA_PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE"
 type RouterSetupForm = {
   contactName: string;
   phone: string;
-  homeRegion: string;
   homeCountryCode: "US" | "CA";
   homeRegionCode: string;
 };
@@ -26,7 +26,6 @@ function canSave(form: RouterSetupForm, termsChecked: boolean): boolean {
     termsChecked &&
       form.contactName.trim() &&
       form.phone.trim().length >= 7 &&
-      form.homeRegion.trim() &&
       form.homeCountryCode &&
       form.homeRegionCode.trim(),
   );
@@ -97,7 +96,6 @@ export function RouterSetupClient() {
   const [form, setForm] = React.useState<RouterSetupForm>({
     contactName: "",
     phone: "",
-    homeRegion: "",
     homeCountryCode: "US",
     homeRegionCode: "",
   });
@@ -116,7 +114,6 @@ export function RouterSetupClient() {
           ...s,
           contactName: String(contactName).trim(),
           phone: String(p.phone ?? "").trim(),
-          homeRegion: String(p.homeRegion ?? "").trim(),
           homeCountryCode: (String(p.homeCountryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US") as "US" | "CA",
           homeRegionCode: String(p.homeRegionCode ?? "").trim(),
         }));
@@ -132,6 +129,12 @@ export function RouterSetupClient() {
     };
   }, [user]);
 
+  function regionNameFor(code: string): string {
+    const opts = REGION_OPTIONS[form.homeCountryCode] ?? [];
+    const r = opts.find((o) => o.code === code);
+    return r?.name ?? code;
+  }
+
   async function onSave() {
     if (!canSave(form, termsChecked)) return;
     setSaving(true);
@@ -141,7 +144,7 @@ export function RouterSetupClient() {
       const profilePayload = {
         contactName: form.contactName.trim(),
         phone: form.phone.trim(),
-        homeRegion: form.homeRegion.trim(),
+        homeRegion: regionNameFor(regionCode),
         homeCountryCode: form.homeCountryCode,
         homeRegionCode: regionCode,
         serviceAreas: [regionCode],
@@ -184,7 +187,6 @@ export function RouterSetupClient() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Contact Name" value={form.contactName} onChange={(v) => setForm((s) => ({ ...s, contactName: v }))} />
           <Field label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} helperText="Required" />
-          <Field label="Home Region (display)" value={form.homeRegion} onChange={(v) => setForm((s) => ({ ...s, homeRegion: v }))} helperText="e.g. Ontario, California" />
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Country</span>
             <select

@@ -7,6 +7,7 @@ import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { badRequest, conflict, forbidden } from "./v4Errors";
 import { expireStaleInvitesAndResetJobs } from "./inviteExpirationService";
 
@@ -242,6 +243,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         contractor_user_id: contractorUserId,
         accepted_at: now,
         poster_accept_expires_at: posterAcceptExpiresAt,
+        routing_status: ROUTING_STATUS.INVITE_ACCEPTED as any,
         routing_started_at: null,
         routing_expires_at: null,
         updated_at: now,

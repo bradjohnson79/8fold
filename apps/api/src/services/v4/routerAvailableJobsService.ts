@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
+import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { expireStaleInvitesAndResetJobs } from "@/src/services/v4/inviteExpirationService";
 
 function normalizeRegionCode(value: string | null | undefined): string {
@@ -67,6 +68,7 @@ export async function getV4RouterAvailableJobs(userId: string) {
       .where(
         and(
           eq(jobs.status, "OPEN_FOR_ROUTING"),
+          eq(jobs.routing_status, ROUTING_STATUS.UNROUTED),
           eq(jobs.cancel_request_pending, false),
           isNull(jobs.archived_at),
           isNull(jobs.contractor_user_id),

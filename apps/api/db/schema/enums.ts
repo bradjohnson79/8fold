@@ -75,7 +75,14 @@ export const jobSourceEnum = pgEnum("JobSource", ["MOCK", "REAL", "AI_REGENERATE
 
 export const jobTypeEnum = pgEnum("JobType", ["urban", "regional"]);
 
-export const routingStatusEnum = pgEnum("RoutingStatus", ["UNROUTED", "ROUTED_BY_ROUTER", "ROUTED_BY_ADMIN"]);
+export const routingStatusEnum = pgEnum("RoutingStatus", [
+  "UNROUTED",
+  "ROUTED_BY_ROUTER",
+  "ROUTED_BY_ADMIN",
+  "INVITES_SENT",
+  "INVITE_ACCEPTED",
+  "INVITES_EXPIRED",
+]);
 
 export const jobRequestStatusEnum = pgEnum("job_request_status", ["pending", "approved", "rejected"]);
 
