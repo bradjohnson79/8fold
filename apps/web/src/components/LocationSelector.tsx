@@ -1,10 +1,8 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { regionNameToSlug } from "@/utils/regionSlug";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
@@ -203,17 +201,6 @@ export function LocationSelector(props: {
             </button>
           </div>
         </div>
-
-        {selectedRegion ? (
-          <div className="mt-3">
-            <Link
-              href={`/jobs/${regionNameToSlug(selectedRegion.regionName)}`}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              View all cities in {selectedRegion.regionName} →
-            </Link>
-          </div>
-        ) : null}
 
         {loadingCities && selectedRegion ? (
           <div className="mt-4 flex items-center gap-2 text-gray-500 text-sm">

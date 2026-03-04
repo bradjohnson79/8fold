@@ -4,7 +4,6 @@ import Image from 'next/image'
 import { useMemo, useState } from 'react'
 import { formatMoney, REVENUE_SPLIT } from '@8fold/shared'
 import { FlagJobModal } from './jobs/FlagJobModal'
-import { jobStatusLabel } from '@/utils/jobStatusLabel'
 
 interface JobCardProps {
   job: {
@@ -105,41 +104,33 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
     city = titleCase(parts.slice(0, -1).join(" "))
   }
 
-  // Determine status badge using jobStatusLabel for consistency
+  // Determine status badge
   const getStatusBadge = () => {
-    const status = (job.status || 'PUBLISHED').toUpperCase()
-    const label = jobStatusLabel(status)
-    if (status === 'OPEN_FOR_ROUTING' || status === 'PUBLISHED' || status === 'CUSTOMER_APPROVED_AWAITING_ROUTER') {
+    const status = job.status || 'PUBLISHED'
+    if (status === 'OPEN_FOR_ROUTING' || status === 'PUBLISHED') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-8fold-green text-white">
-          {label}
+          Awaiting Router
         </span>
       )
     }
-    if (status === 'ASSIGNED' || status === 'IN_PROGRESS') {
+    if (status === 'IN_PROGRESS') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-          {label}
+          Routed
         </span>
       )
     }
-    if (status === 'COMPLETED') {
+    if (status === 'PUBLISHED') {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-          {label}
-        </span>
-      )
-    }
-    if (status === 'CANCELLED') {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-          {label}
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-8fold-green text-white">
+          Available
         </span>
       )
     }
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-        {label}
+        Routing Pending
       </span>
     )
   }
