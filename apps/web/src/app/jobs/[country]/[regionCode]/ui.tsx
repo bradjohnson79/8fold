@@ -3,6 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { LocationSelector } from "../../../../components/LocationSelector";
+import { slugify } from "@/utils/slug";
+import { slugCity } from "@/utils/slug";
 
 type CityWithJobs = { city: string; jobCount: number };
 
@@ -11,10 +13,6 @@ function titleCaseFromSlug(slug: string): string {
     .trim()
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function slugCity(city: string): string {
-  return city.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
 export function StateJobsClient(props: { country: string; regionCode: string }) {
@@ -80,7 +78,7 @@ export function StateJobsClient(props: { country: string; regionCode: string }) 
             {cities.map((c) => (
               <Link
                 key={c.city}
-                href={`/jobs/${country}/${regionCode}/${slugCity(c.city)}`}
+                href={`/jobs/${country}/${regionCode}/${slugify(c.city)}`}
                 className="block border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition-shadow"
               >
                 <div className="font-bold text-gray-900">{titleCaseFromSlug(c.city)}</div>

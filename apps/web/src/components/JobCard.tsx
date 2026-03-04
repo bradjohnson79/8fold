@@ -141,13 +141,14 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
     return (job.serviceType ?? 'Job').trim()
   }
 
-  // Fallback when image/imageUrl (from photo_urls) is empty. Use /images/jobs/{category}/{category}1.png
-  const TRADE_FOLDERS = new Set(['carpentry', 'drywall', 'electrical', 'furniture_assembly', 'janitorial', 'junk_removal', 'landscaping', 'moving', 'plumbing', 'roofing'])
+  // Fallback image when no photo_urls/image/imageUrl. Maps trade_category to /images/jobs/{category}/{category}1.png
+  const TRADE_IMAGE_FOLDERS = new Set(['carpentry', 'drywall', 'electrical', 'furniture_assembly', 'janitorial', 'junk_removal', 'landscaping', 'moving', 'plumbing', 'roofing'])
   const tradeFolder = (job.tradeCategory ?? 'handyman').toLowerCase().replace(/-/g, '_')
-  const fallbackImage = TRADE_FOLDERS.has(tradeFolder)
+  const fallbackImagePath = TRADE_IMAGE_FOLDERS.has(tradeFolder)
     ? `/images/jobs/${tradeFolder}/${tradeFolder}1.png`
     : '/images/jobs/moving/moving1.png'
-  const imageSrc = (job.image ?? job.imageUrl) || fallbackImage
+
+  const imageSrc = (job.image ?? job.imageUrl) || fallbackImagePath
 
   function categoryIcon(): string {
     const v = `${(job.tradeCategory ?? '').toLowerCase()} ${(job.serviceType ?? '').toLowerCase()}`
