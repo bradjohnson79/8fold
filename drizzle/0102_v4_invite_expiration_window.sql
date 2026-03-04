@@ -28,6 +28,6 @@ SELECT
   route_id AS router_id,
   status,
   created_at,
-  expires_at,
-  responded_at
+  responded_at,
+  expires_at
 FROM v4_contractor_job_invites;
