@@ -5,6 +5,19 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { EditJobRequestModal } from "@/components/jobPoster/EditJobRequestModal";
 import { CancelJobRequestModal } from "@/components/jobPoster/CancelJobRequestModal";
+import { jobStatusLabel } from "@/utils/jobStatusLabel";
+
+function titleCase(text: string): string {
+  return text.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 type PendingRequest = { submittedAt: string } | null;
 
@@ -156,16 +169,18 @@ export default function JobPosterJobDetailPage() {
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Location</p>
             <p className="mt-1 text-gray-700">
-              {[job.city, job.regionName ?? job.region].filter(Boolean).join(", ") || job.addressFull || "—"}
+              {[job.city, job.regionName ?? (job.region ? titleCase(job.region) : null)].filter(Boolean).join(", ") ||
+                job.addressFull ||
+                "—"}
             </p>
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status</p>
-            <p className="mt-1 text-gray-700">{job.status}</p>
+            <p className="mt-1 text-gray-700">{jobStatusLabel(job.status)}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Routing Status</p>
-            <p className="mt-1 text-gray-700">{job.routingStatus}</p>
+            <p className="mt-1 text-gray-700">{jobStatusLabel(job.routingStatus)}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</p>
@@ -173,7 +188,7 @@ export default function JobPosterJobDetailPage() {
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Date Posted</p>
-            <p className="mt-1 text-gray-700">{new Date(job.createdAt).toLocaleString()}</p>
+            <p className="mt-1 text-gray-700">{formatDate(job.createdAt)}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Job ID</p>
@@ -188,7 +203,7 @@ export default function JobPosterJobDetailPage() {
                 Edit Request Pending Review
                 <br />
                 <span className="text-gray-600">
-                  Submitted {job.pendingEditRequest?.submittedAt ? new Date(job.pendingEditRequest.submittedAt).toLocaleString() : ""}
+                  Submitted {job.pendingEditRequest?.submittedAt ? formatDate(job.pendingEditRequest.submittedAt) : ""}
                 </span>
               </p>
             )}
@@ -197,7 +212,7 @@ export default function JobPosterJobDetailPage() {
                 Cancel Request Pending Review
                 <br />
                 <span className="text-gray-600">
-                  Submitted {job.pendingCancelRequest?.submittedAt ? new Date(job.pendingCancelRequest.submittedAt).toLocaleString() : ""}
+                  Submitted {job.pendingCancelRequest?.submittedAt ? formatDate(job.pendingCancelRequest.submittedAt) : ""}
                 </span>
               </p>
             )}
