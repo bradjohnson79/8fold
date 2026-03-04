@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { routers } from "@/db/schema/router";
 import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
 import { promoteDuePublishedJobsForRouter } from "./jobExecutionService";
@@ -18,7 +19,7 @@ export async function getV4RouterSummary(userId: string) {
       .select({
         totalRouted: sql<number>`count(*)::int`,
         activeRoutes: sql<number>`count(*) filter (where ${jobs.status} in ('ASSIGNED', 'JOB_STARTED', 'IN_PROGRESS'))::int`,
-        awaitingContractorAcceptance: sql<number>`count(*) filter (where ${jobs.status} = 'OPEN_FOR_ROUTING' and ${jobs.routing_status} = 'ROUTED_BY_ROUTER')::int`,
+        awaitingContractorAcceptance: sql<number>`count(*) filter (where ${jobs.routing_status} in ('INVITES_SENT', 'ROUTED_BY_ROUTER'))::int`,
         pendingCompletionApproval: sql<number>`count(*) filter (where ${jobs.contractor_completed_at} is not null and ${jobs.router_approved_at} is null)::int`,
         completedThisMonth: sql<number>`count(*) filter (where ${jobs.router_approved_at} >= ${monthStart})::int`,
         earningsWeekCents: sql<number>`coalesce(sum(${jobs.router_earnings_cents}) filter (where ${jobs.released_at} >= ${weekStart}), 0)::int`,
@@ -69,7 +70,8 @@ export async function getV4RouterSummary(userId: string) {
     const routingStatus = String(row.routingStatus ?? "");
 
     let event = "Job Updated";
-    if (routingStatus === "ROUTED_BY_ROUTER" && status === "OPEN_FOR_ROUTING") event = "Awaiting Contractor Response";
+    const invitesSent = [ROUTING_STATUS.INVITES_SENT, ROUTING_STATUS.ROUTED_BY_ROUTER].includes(routingStatus as any);
+    if (invitesSent && (status === "OPEN_FOR_ROUTING" || status === "INVITED")) event = "Awaiting Contractor Response";
     else if (status === "ASSIGNED") event = "Assigned to Contractor";
     else if (status === "JOB_STARTED" || status === "IN_PROGRESS") event = "In Progress";
     else if (status === "CONTRACTOR_COMPLETED") event = "Awaiting Completion Approval";

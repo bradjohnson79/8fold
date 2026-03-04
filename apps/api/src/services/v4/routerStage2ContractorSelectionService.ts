@@ -7,6 +7,7 @@ import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { haversineKm } from "@/src/jobs/geo";
+import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
 
 export type Stage2ContractorCard = {
@@ -269,6 +270,13 @@ export async function routeStage2JobToContractors(
   return db.transaction(async (tx) => {
     await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
+    // Invite insert safety: prevent overflow if two routers race (max 5 invites per job)
+    const countRes = await tx.execute(
+      sql`SELECT COUNT(*)::int AS cnt FROM v4_contractor_job_invites WHERE job_id = ${jobId}`
+    );
+    const existingCount = Number((countRes.rows[0] as any)?.cnt ?? 0);
+    if (existingCount >= 5 || existingCount + desired.length > 5) return { kind: "job_not_available" as const };
+
     const existingRows = await tx
       .select({ contractorUserId: v4ContractorJobInvites.contractorUserId })
       .from(v4ContractorJobInvites)
@@ -280,16 +288,19 @@ export async function routeStage2JobToContractors(
     const updated = await tx
       .update(jobs)
       .set({
+        status: "INVITED" as any,
         claimed_by_user_id: routerUserId,
         claimed_at: now,
         routed_at: now,
-        routing_status: "ROUTED_BY_ROUTER" as any,
+        routing_status: ROUTING_STATUS.INVITES_SENT as any,
+        routing_started_at: now,
+        routing_expires_at: expiresAt,
       })
       .where(
         and(
           eq(jobs.id, jobId),
           eq(jobs.status, "OPEN_FOR_ROUTING"),
-          eq(jobs.routing_status, "UNROUTED"),
+          eq(jobs.routing_status, ROUTING_STATUS.UNROUTED),
           eq(jobs.cancel_request_pending, false),
           sql`${jobs.claimed_by_user_id} is null`,
         ),

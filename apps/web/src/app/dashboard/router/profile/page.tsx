@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { REGION_OPTIONS } from "@/lib/regions";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
@@ -14,7 +15,6 @@ const CA_PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE"
 type ProfileForm = {
   contactName: string;
   phone: string;
-  homeRegion: string;
   homeCountryCode: "US" | "CA";
   homeRegionCode: string;
 };
@@ -41,7 +41,6 @@ export default function RouterProfilePage() {
   const [form, setForm] = useState<ProfileForm>({
     contactName: "",
     phone: "",
-    homeRegion: "",
     homeCountryCode: "US",
     homeRegionCode: "",
   });
@@ -58,7 +57,6 @@ export default function RouterProfilePage() {
           ...s,
           contactName: String(p.contactName ?? "").trim(),
           phone: String(p.phone ?? "").trim(),
-          homeRegion: String(p.homeRegion ?? "").trim(),
           homeCountryCode: (String(p.homeCountryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US") as "US" | "CA",
           homeRegionCode: String(p.homeRegionCode ?? "").trim(),
         }));
@@ -73,10 +71,17 @@ export default function RouterProfilePage() {
     };
   }, []);
 
+  function regionNameFor(code: string): string {
+    const opts = REGION_OPTIONS[form.homeCountryCode] ?? [];
+    const r = opts.find((o) => o.code === code);
+    return r?.name ?? code;
+  }
+
   async function onSave() {
     setSaving(true);
     setError("");
     try {
+      const regionCode = form.homeRegionCode.trim();
       const resp = await fetch("/api/web/v4/router/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -84,9 +89,9 @@ export default function RouterProfilePage() {
         body: JSON.stringify({
           contactName: form.contactName.trim(),
           phone: form.phone.trim(),
-          homeRegion: form.homeRegion.trim(),
+          homeRegion: regionNameFor(regionCode),
           homeCountryCode: form.homeCountryCode,
-          homeRegionCode: form.homeRegionCode.trim(),
+          homeRegionCode: regionCode,
         }),
       });
       const json = (await resp.json().catch(() => null)) as any;
@@ -109,7 +114,6 @@ export default function RouterProfilePage() {
       <div className="rounded-xl bg-white p-6 shadow dark:bg-zinc-900 space-y-4 max-w-2xl">
         <Field label="Contact Name" value={form.contactName} onChange={(v) => setForm((s) => ({ ...s, contactName: v }))} />
         <Field label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
-        <Field label="State/Province" value={form.homeRegion} onChange={(v) => setForm((s) => ({ ...s, homeRegion: v }))} />
         <label className="block">
           <span className="text-sm font-medium text-gray-700">Country</span>
           <select
