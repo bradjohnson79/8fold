@@ -1,25 +1,43 @@
 import { REGION_OPTIONS } from "@/lib/regions";
+import { slugify } from "@/utils/slug";
 
-type RegionResolution = {
+export type RegionResolution = {
   country: "US" | "CA";
   regionCode: string;
   regionName: string;
 };
 
-const US_CODES = new Set(REGION_OPTIONS.US.map((r) => r.code));
-const CA_CODES = new Set(REGION_OPTIONS.CA.map((r) => r.code));
+/**
+ * Converts a region name to a URL slug.
+ * Handles accents and spaces safely.
+ * Example: "British Columbia" → "british-columbia"
+ */
+export function slugRegion(regionName: string): string {
+  return slugify(regionName);
+}
 
 /**
- * Resolves a URL slug like "alabama" or "british-columbia" to a region code.
- * Returns null if the slug cannot be resolved.
+ * Resolves a region slug or region code into
+ * a canonical region object.
+ *
+ * Examples:
+ *  "alabama" → { country: "US", regionCode: "AL" }
+ *  "AL" → { country: "US", regionCode: "AL" }
+ *  "british-columbia" → { country: "CA", regionCode: "BC" }
  */
 export function resolveRegionSlug(slug: string): RegionResolution | null {
-  const normalized = slug.trim().toLowerCase().replace(/-/g, " ");
+  const normalizedSlug = slug.trim().toLowerCase();
 
-  // Try US states first
+  const normalizedName = normalizedSlug.replace(/-/g, " ");
+
+  // Check US states
   for (const region of REGION_OPTIONS.US) {
-    const nameNormalized = region.name.toLowerCase();
-    if (nameNormalized === normalized || region.code.toLowerCase() === slug.toLowerCase()) {
+    const regionNameSlug = slugRegion(region.name);
+    if (
+      regionNameSlug === normalizedSlug ||
+      region.code.toLowerCase() === normalizedSlug ||
+      region.name.toLowerCase() === normalizedName
+    ) {
       return {
         country: "US",
         regionCode: region.code,
@@ -28,10 +46,14 @@ export function resolveRegionSlug(slug: string): RegionResolution | null {
     }
   }
 
-  // Try CA provinces
+  // Check Canadian provinces
   for (const region of REGION_OPTIONS.CA) {
-    const nameNormalized = region.name.toLowerCase();
-    if (nameNormalized === normalized || region.code.toLowerCase() === slug.toLowerCase()) {
+    const regionNameSlug = slugRegion(region.name);
+    if (
+      regionNameSlug === normalizedSlug ||
+      region.code.toLowerCase() === normalizedSlug ||
+      region.name.toLowerCase() === normalizedName
+    ) {
       return {
         country: "CA",
         regionCode: region.code,
@@ -41,16 +63,4 @@ export function resolveRegionSlug(slug: string): RegionResolution | null {
   }
 
   return null;
-}
-
-/**
- * Creates a URL-friendly slug from a region name.
- * Example: "British Columbia" → "british-columbia"
- */
-export function slugifyRegion(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
 }

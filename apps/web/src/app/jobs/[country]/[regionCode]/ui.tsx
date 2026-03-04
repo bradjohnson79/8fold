@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { LocationSelector } from "../../../../components/LocationSelector";
+import { slugify } from "@/utils/slug";
 import { slugCity } from "@/utils/slug";
 
 type CityWithJobs = { city: string; jobCount: number };
@@ -77,7 +78,7 @@ export function StateJobsClient(props: { country: string; regionCode: string }) 
             {cities.map((c) => (
               <Link
                 key={c.city}
-                href={`/jobs/${country}/${regionCode}/${slugCity(c.city)}`}
+                href={`/jobs/${country}/${regionCode}/${slugify(c.city)}`}
                 className="block border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition-shadow"
               >
                 <div className="font-bold text-gray-900">{titleCaseFromSlug(c.city)}</div>

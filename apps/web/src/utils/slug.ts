@@ -29,3 +29,14 @@ export function slugCity(city: string): string {
 export function slugRegion(regionName: string): string {
   return slugify(regionName);
 }
+
+/**
+ * Converts a slug back to Title Case for display/API.
+ * Example: "new-westminster" → "New Westminster"
+ */
+export function slugToTitleCase(slug: string): string {
+  return slug
+    .trim()
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
