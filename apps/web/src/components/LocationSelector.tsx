@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { slugCity, slugRegion } from "@/utils/slug";
+import { slugCity } from "@/utils/slug";
 
 type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string };
 
@@ -12,10 +12,6 @@ type CityJobCount = {
   city: string;
   jobCount: number;
 };
-
-// FUTURE: These city links may route to
-// /jobs/[region]/[city] geo pages.
-// Current implementation keeps existing flow intact.
 
 export function LocationSelector(props: {
   title?: string;
@@ -251,7 +247,7 @@ export function LocationSelector(props: {
             {selectedRegion && (
               <div className="mt-2">
                 <Link
-                  href={`/jobs/${slugRegion(selectedRegion.regionName)}`}
+                  href={`/jobs/${selectedRegion.country}/${selectedRegion.regionCode}`}
                   className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                 >
                   View all cities in {selectedRegion.regionName} →
