@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 export async function POST() {
-  return NextResponse.json({ ok: false, error: "not_implemented" }, { status: 501 });
+  return NextResponse.json(
+    { error: { message: "Router legacy endpoint removed. Use /api/web/v4/router/*" } },
+    { status: 410 },
+  );
 }
-

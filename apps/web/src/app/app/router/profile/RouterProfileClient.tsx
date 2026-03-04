@@ -4,11 +4,11 @@ import React from "react";
 import { z } from "zod";
 import { useUser } from "@clerk/nextjs";
 import { REGION_OPTIONS } from "@/lib/regions";
-import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 import { StripeExpressPayoutSetup } from "@/components/StripeExpressPayoutSetup";
 
 const FormSchema = z.object({
   name: z.string().trim().min(1),
+  phone: z.string().trim().min(7).max(40),
   address: z.string().trim().min(1).max(200),
   city: z.string().trim().min(1).max(120),
   postalCode: z.string().trim().min(3).max(24),
@@ -57,6 +57,7 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
 
   const [form, setForm] = React.useState<RouterProfileForm>({
     name: "",
+    phone: "",
     address: "",
     city: "",
     postalCode: "",
@@ -67,11 +68,7 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string>("");
   const [notice, setNotice] = React.useState<string>("");
-  const [attemptedSave, setAttemptedSave] = React.useState(false);
   const [email, setEmail] = React.useState<string>("");
-  const [mapDisplayName, setMapDisplayName] = React.useState("");
-  const [mapLat, setMapLat] = React.useState<number>(0);
-  const [mapLng, setMapLng] = React.useState<number>(0);
 
   const regionOptions = React.useMemo(() => {
     if (country !== "CA" && country !== "US") return [];
@@ -82,34 +79,31 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/app/router/profile", { cache: "no-store", credentials: "include" });
-        const json = (await resp.json().catch(() => null)) as RouterProfileResp | null;
+        const resp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const json = (await resp.json().catch(() => null)) as { ok?: boolean; profile?: Record<string, unknown> } | null;
         if (!alive) return;
-        if (!resp.ok || !json || json.ok !== true) {
+        if (!resp.ok || !json?.ok) {
           throw new Error(typeof (json as any)?.error === "string" ? (json as any).error : "Failed to load profile");
         }
 
-        const data = json.data;
-        const nextName = data.profile?.name ?? "";
-        const nextEmail = String(data.router.email ?? "").trim() || String(clerkEmail ?? "").trim();
-        const nextAddr = String(data.profile?.address ?? "").trim();
-        const nextCity = String(data.profile?.city ?? "").trim();
-        const nextPostal = String(data.profile?.postalCode ?? "").trim();
-        const nextCountry = String(data.profile?.country ?? data.router.homeCountry ?? "").trim().toUpperCase();
-        const nextState = String(data.profile?.stateProvince ?? data.router.homeRegionCode ?? "").trim().toUpperCase();
+        const p = json.profile ?? {};
+        const nextName = String(p.contactName ?? "").trim();
+        const nextEmail = String(p.email ?? clerkEmail ?? "").trim() || String(clerkEmail ?? "").trim();
+        const nextCountry = String(p.homeCountryCode ?? "US").trim().toUpperCase();
+        const nextState = String(p.homeRegionCode ?? "").trim().toUpperCase();
+        const nextRegion = String(p.homeRegion ?? "").trim();
         setCountry(nextCountry === "CA" || nextCountry === "US" ? (nextCountry as any) : "");
         setStateProvince(nextState);
+        const nextPhone = String((p as any).phone ?? "").trim();
         setForm((s) => ({
           ...s,
-          name: String(nextName ?? ""),
-          address: nextAddr,
-          city: nextCity,
-          postalCode: nextPostal,
+          name: nextName,
+          phone: nextPhone,
+          address: nextRegion || nextState,
+          city: nextRegion || nextState,
+          postalCode: nextState || "",
         }));
         setEmail(String(nextEmail ?? ""));
-        setMapDisplayName(String(data.router.formattedAddress ?? "").trim());
-        setMapLat(Number(data.profile?.lat ?? 0) || 0);
-        setMapLng(Number(data.profile?.lng ?? 0) || 0);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Failed to load");
@@ -123,7 +117,6 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
   }, []);
 
   async function save() {
-    setAttemptedSave(true);
     setError("");
     setNotice("");
     try {
@@ -132,31 +125,24 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
       if (country !== "CA" && country !== "US") throw new Error("Please select a country.");
       const sp = String(stateProvince ?? "").trim().toUpperCase();
       if (!sp) throw new Error("Please select a state / province.");
-      if (!Number.isFinite(mapLat) || !Number.isFinite(mapLng) || mapLat === 0 || mapLng === 0) {
-        throw new Error("Please select your location from the map suggestions.");
-      }
 
       setSaving(true);
-      const resp = await fetch("/api/app/router/profile", {
+      const resp = await fetch("/api/web/v4/router/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          name: parsed.data.name,
-          address: parsed.data.address,
-          city: parsed.data.city,
-          stateProvince: sp,
-          postalCode: parsed.data.postalCode,
-          country,
-          mapDisplayName: mapDisplayName.trim(),
-          lat: mapLat,
-          lng: mapLng,
+          contactName: parsed.data.name,
+          phone: parsed.data.phone,
+          homeRegion: parsed.data.city || sp,
+          homeCountryCode: country,
+          homeRegionCode: sp,
         }),
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) {
         const code = String(json?.error ?? "");
         if (code === "INVALID_INPUT") throw new Error("Please fill all required fields.");
-        if (code === "INVALID_GEO") throw new Error("Please select a map location result.");
         throw new Error("Unable to save profile. Please try again.");
       }
       setNotice("Saved.");
@@ -168,8 +154,6 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
     }
   }
 
-  const geoSelected = Number.isFinite(mapLat) && Number.isFinite(mapLng) && !(mapLat === 0 && mapLng === 0);
-  const showMapError = !geoSelected && (attemptedSave || (form.address.trim() && mapDisplayName.trim()));
   const displayEmail = String(email || clerkEmail || "").trim();
 
   return (
@@ -186,6 +170,12 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
           placeholder="Jane Router"
           value={form.name}
           onChange={(v) => setForm((s) => ({ ...s, name: v }))}
+        />
+        <Field
+          label="Phone *"
+          placeholder="+1 555 123 4567"
+          value={form.phone}
+          onChange={(v) => setForm((s) => ({ ...s, phone: v }))}
         />
         <Field
           label="Email"
@@ -242,45 +232,6 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
         />
       </div>
 
-      <div className="mt-6 border border-gray-200 rounded-2xl p-5">
-        <div className="font-bold text-gray-900">Map location</div>
-        <div className="text-sm text-gray-600 mt-1">Required. Used to calculate routing distance.</div>
-        <div className="mt-3">
-          <MapLocationSelector
-            required
-            value={mapDisplayName}
-            onChange={(data) => {
-              setMapDisplayName(data.mapDisplayName);
-              setMapLat(data.lat);
-              setMapLng(data.lng);
-            }}
-            errorText={showMapError ? "Please select your location from the map suggestions." : ""}
-          />
-        </div>
-
-        {geoSelected ? (
-          <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <div className="text-sm font-semibold text-gray-900">Saved location</div>
-            <div className="text-sm text-gray-700 mt-1">{mapDisplayName.trim() || "Location saved"}</div>
-            <div className="text-xs text-gray-600 font-mono mt-2">
-              lat {mapLat.toFixed(6)}, lng {mapLng.toFixed(6)}
-            </div>
-            <div className="mt-2">
-              <a
-                href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(String(mapLat))}&mlon=${encodeURIComponent(
-                  String(mapLng),
-                )}#map=18/${encodeURIComponent(String(mapLat))}/${encodeURIComponent(String(mapLng))}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-semibold text-8fold-green hover:text-8fold-green-dark"
-              >
-                View on OpenStreetMap
-              </a>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
       <StripeExpressPayoutSetup />
 
       <div className="mt-6">
@@ -289,24 +240,26 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
             loading ||
             saving ||
             !form.name.trim() ||
+            !form.phone.trim() ||
+            form.phone.trim().length < 7 ||
             !form.address.trim() ||
             !form.city.trim() ||
             !form.postalCode.trim() ||
             !(country === "CA" || country === "US") ||
-            !String(stateProvince ?? "").trim() ||
-            !geoSelected
+            !String(stateProvince ?? "").trim()
           }
           onClick={save}
           className={`font-semibold px-4 py-2 rounded-lg ${
             loading ||
             saving ||
             !form.name.trim() ||
+            !form.phone.trim() ||
+            form.phone.trim().length < 7 ||
             !form.address.trim() ||
             !form.city.trim() ||
             !form.postalCode.trim() ||
             !(country === "CA" || country === "US") ||
-            !String(stateProvince ?? "").trim() ||
-            !geoSelected
+            !String(stateProvince ?? "").trim()
               ? "bg-gray-200 text-gray-600"
               : "bg-8fold-green text-white hover:bg-8fold-green-dark"
           }`}

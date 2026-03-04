@@ -1,4 +1,4 @@
-import { doublePrecision, jsonb, text, timestamp } from "drizzle-orm/pg-core";
+import { doublePrecision, integer, jsonb, text, timestamp } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 
 export const routerProfilesV4 = dbSchema.table("router_profiles_v4", {
@@ -15,8 +15,10 @@ export const routerProfilesV4 = dbSchema.table("router_profiles_v4", {
   homeRegionCode: text("home_region_code"),
   serviceAreas: jsonb("service_areas").notNull(),
   availability: jsonb("availability").notNull(),
-  homeLatitude: doublePrecision("home_latitude").notNull(),
-  homeLongitude: doublePrecision("home_longitude").notNull(),
+  homeLatitude: doublePrecision("home_latitude"),
+  homeLongitude: doublePrecision("home_longitude"),
+  /** Updated ONLY via routerRewardsService.addRouterReward(). Do not modify directly. */
+  rewardsBalanceCents: integer("rewards_balance_cents").notNull().default(0),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });

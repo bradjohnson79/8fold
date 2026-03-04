@@ -22,6 +22,7 @@ export const contractorProfilesV4 = dbSchema.table("contractor_profiles_v4", {
   city: text("city"),
   postalCode: text("postal_code"),
   countryCode: text("country_code"),
+  homeRegionCode: text("home_region_code"),
   tradeCategories: jsonb("trade_categories").notNull(),
   serviceRadiusKm: integer("service_radius_km").notNull().default(25),
   homeLatitude: doublePrecision("home_latitude").notNull(),

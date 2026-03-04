@@ -44,23 +44,27 @@ export async function saveV4RouterProfile(
 ) {
   const now = new Date();
   const countryCode = normalizeCountryCode(body.homeCountryCode);
+  const lat = body.homeLatitude;
+  const lng = body.homeLongitude;
+  const hasCoords = typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng);
+
   await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({
-        name: body.contactName,
-        phone: body.phone,
-        country: countryCode as any,
-        countryCode: countryCode as any,
-        stateCode: body.homeRegionCode,
-        legalCity: body.homeRegion,
-        legalCountry: countryCode,
-        formattedAddress: body.homeRegion,
-        latitude: body.homeLatitude as any,
-        longitude: body.homeLongitude as any,
-        updatedAt: now,
-      } as any)
-      .where(eq(users.id, userId));
+    const userSet: Record<string, unknown> = {
+      name: body.contactName,
+      phone: body.phone,
+      country: countryCode,
+      countryCode: countryCode,
+      stateCode: body.homeRegionCode,
+      legalCity: body.homeRegion,
+      legalCountry: countryCode,
+      formattedAddress: body.homeRegion,
+      updatedAt: now,
+    };
+    if (hasCoords) {
+      (userSet as any).latitude = lat;
+      (userSet as any).longitude = lng;
+    }
+    await tx.update(users).set(userSet as any).where(eq(users.id, userId));
 
     await tx
       .insert(routers)
@@ -88,41 +92,48 @@ export async function saveV4RouterProfile(
         } as any,
       });
 
+    const profileValues: Record<string, unknown> = {
+      id: randomUUID(),
+      userId,
+      firstName: identity?.firstName ?? null,
+      lastName: identity?.lastName ?? null,
+      email: identity?.email ?? null,
+      avatarUrl: identity?.avatarUrl ?? null,
+      contactName: body.contactName,
+      phone: body.phone,
+      homeRegion: body.homeRegion,
+      homeCountryCode: body.homeCountryCode,
+      homeRegionCode: body.homeRegionCode,
+      serviceAreas: [],
+      availability: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (hasCoords) {
+      profileValues.homeLatitude = lat;
+      profileValues.homeLongitude = lng;
+    } else {
+      profileValues.homeLatitude = null;
+      profileValues.homeLongitude = null;
+    }
+    const profileSet: Record<string, unknown> = {
+      contactName: body.contactName,
+      phone: body.phone,
+      homeRegion: body.homeRegion,
+      homeCountryCode: body.homeCountryCode,
+      homeRegionCode: body.homeRegionCode,
+      serviceAreas: [],
+      availability: [],
+      homeLatitude: hasCoords ? lat : null,
+      homeLongitude: hasCoords ? lng : null,
+      updatedAt: now,
+    };
     await tx
       .insert(routerProfilesV4)
-      .values({
-        id: randomUUID(),
-        userId,
-        firstName: identity?.firstName ?? null,
-        lastName: identity?.lastName ?? null,
-        email: identity?.email ?? null,
-        avatarUrl: identity?.avatarUrl ?? null,
-        contactName: body.contactName,
-        phone: body.phone,
-        homeRegion: body.homeRegion,
-        homeCountryCode: body.homeCountryCode,
-        homeRegionCode: body.homeRegionCode,
-        serviceAreas: [] as any,
-        availability: [] as any,
-        homeLatitude: body.homeLatitude,
-        homeLongitude: body.homeLongitude,
-        createdAt: now,
-        updatedAt: now,
-      } as any)
+      .values(profileValues as any)
       .onConflictDoUpdate({
         target: routerProfilesV4.userId,
-        set: {
-          contactName: body.contactName,
-          phone: body.phone,
-          homeRegion: body.homeRegion,
-          homeCountryCode: body.homeCountryCode,
-          homeRegionCode: body.homeRegionCode,
-          serviceAreas: [] as any,
-          availability: [] as any,
-          homeLatitude: body.homeLatitude,
-          homeLongitude: body.homeLongitude,
-          updatedAt: now,
-        } as any,
+        set: profileSet as any,
       });
   });
 }

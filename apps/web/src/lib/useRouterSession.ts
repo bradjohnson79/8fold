@@ -32,7 +32,7 @@ export function useRouterSession(): {
       setLoading(true);
       setError("");
       try {
-        const resp = await fetch("/api/app/router/session", { cache: "no-store", credentials: "include" });
+        const resp = await fetch("/api/web/v4/router/session", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as RouterSessionResp | null;
         if (cancelled) return;
         if (!resp.ok || !json || (json as any).ok !== true) {

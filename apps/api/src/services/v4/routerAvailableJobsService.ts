@@ -1,11 +1,16 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { expireStaleInvitesAndResetJobs } from "@/src/services/v4/inviteExpirationService";
 
-function normalizeProvinceCode(value: string | null | undefined): string {
+function normalizeRegionCode(value: string | null | undefined): string {
   return String(value ?? "").trim().toUpperCase();
+}
+
+function normalizeCountryCode(value: string | null | undefined): "US" | "CA" {
+  const c = String(value ?? "").trim().toUpperCase();
+  return c === "CA" ? "CA" : "US";
 }
 
 export async function getV4RouterAvailableJobs(userId: string) {
@@ -13,20 +18,24 @@ export async function getV4RouterAvailableJobs(userId: string) {
     await expireStaleInvitesAndResetJobs();
 
     const profileRows = await db
-      .select({ provinceCode: routerProfilesV4.homeRegionCode })
+      .select({
+        countryCode: routerProfilesV4.homeCountryCode,
+        regionCode: routerProfilesV4.homeRegionCode,
+      })
       .from(routerProfilesV4)
       .where(eq(routerProfilesV4.userId, userId))
       .limit(1);
 
     const profile = profileRows[0] ?? null;
-    const routerProvinceCode = normalizeProvinceCode(profile?.provinceCode);
+    const routerCountry = normalizeCountryCode(profile?.countryCode);
+    const routerRegionCode = normalizeRegionCode(profile?.regionCode);
 
-    if (!routerProvinceCode || !/^[A-Z]{2}$/.test(routerProvinceCode)) {
+    if (!routerRegionCode || !/^[A-Z]{2}$/.test(routerRegionCode)) {
       return { ok: true as const, jobs: [] };
     }
 
     if (process.env.NODE_ENV !== "production") {
-      console.debug(`[router-available-jobs] Router Province: ${routerProvinceCode}`);
+      console.debug(`[router-available-jobs] Router: ${routerCountry} / ${routerRegionCode}`);
     }
 
     const raw = await db
@@ -38,7 +47,8 @@ export async function getV4RouterAvailableJobs(userId: string) {
         city: jobs.city,
         region: jobs.region,
         countryCode: jobs.country_code,
-        provinceCode: jobs.state_code,
+        regionCode: jobs.region_code,
+        stateCode: jobs.state_code,
         postedAt: jobs.posted_at,
         serviceType: jobs.service_type,
         tradeCategory: jobs.trade_category,
@@ -58,10 +68,14 @@ export async function getV4RouterAvailableJobs(userId: string) {
         and(
           eq(jobs.status, "OPEN_FOR_ROUTING"),
           eq(jobs.cancel_request_pending, false),
-          sql`upper(trim(${jobs.state_code})) = ${routerProvinceCode}`,
+          isNull(jobs.archived_at),
+          isNull(jobs.contractor_user_id),
+          eq(jobs.country_code, routerCountry),
+          sql`upper(trim(coalesce(${jobs.region_code}, ${jobs.state_code}, ''))) = ${routerRegionCode}`,
         ),
       )
-      .orderBy(desc(jobs.published_at), desc(jobs.id));
+      .orderBy(desc(jobs.published_at), desc(jobs.id))
+      .limit(50);
 
     if (process.env.NODE_ENV !== "production") {
       console.debug(`[router-available-jobs] Jobs Returned: ${raw.length}`);
@@ -81,8 +95,8 @@ export async function getV4RouterAvailableJobs(userId: string) {
         city: j.city,
         region: j.region,
         countryCode: j.countryCode,
-        regionCode: normalizeProvinceCode(j.provinceCode),
-        provinceCode: normalizeProvinceCode(j.provinceCode),
+        regionCode: normalizeRegionCode(j.regionCode ?? j.stateCode),
+        provinceCode: normalizeRegionCode(j.regionCode ?? j.stateCode),
         postedAt: j.postedAt ? j.postedAt.toISOString() : "",
         createdAt: j.postedAt ? j.postedAt.toISOString() : "",
         serviceType: j.serviceType,

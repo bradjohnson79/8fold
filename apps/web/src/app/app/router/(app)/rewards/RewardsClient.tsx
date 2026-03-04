@@ -2,26 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type RewardsStats = {
-  ok: true;
-  totalReferredUsers: number;
-  completedReferredJobs: number;
-  pendingRewards: number;
-  paidRewards: number;
-};
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="border border-gray-200 rounded-xl p-4">
-      <div className="text-sm text-gray-600">{label}</div>
-      <div className="text-2xl font-bold text-gray-900 mt-1">{value}</div>
-    </div>
-  );
-}
-
 export function RewardsClient(props: { referralLink: string }) {
   const [copied, setCopied] = useState(false);
-  const [stats, setStats] = useState<RewardsStats | null>(null);
+  const [balanceCents, setBalanceCents] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -33,7 +16,6 @@ export function RewardsClient(props: { referralLink: string }) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      // fall back to error UI
       setError("Could not copy. Please copy the link manually.");
     }
   }
@@ -42,11 +24,11 @@ export function RewardsClient(props: { referralLink: string }) {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/rewards", { cache: "no-store", credentials: "include" });
+      const resp = await fetch("/api/web/v4/router/rewards", { cache: "no-store", credentials: "include" });
       const json = (await resp.json().catch(() => null)) as any;
-      if (!resp.ok) throw new Error(String(json?.error ?? "Failed to load"));
-      if (!json || json.ok !== true) throw new Error(String(json?.error ?? "Failed to load"));
-      setStats(json as RewardsStats);
+      if (!resp.ok) throw new Error(String(json?.error?.message ?? json?.error ?? "Failed to load"));
+      if (typeof json?.balanceCents !== "number") throw new Error("Invalid response");
+      setBalanceCents(json.balanceCents);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -91,7 +73,7 @@ export function RewardsClient(props: { referralLink: string }) {
 
       <div className="mt-6">
         <div className="flex items-center justify-between gap-3">
-          <div className="font-semibold text-gray-900">Rewards stats</div>
+          <div className="font-semibold text-gray-900">Current Rewards Balance</div>
           <button
             type="button"
             onClick={() => void load()}
@@ -103,16 +85,12 @@ export function RewardsClient(props: { referralLink: string }) {
 
         {loading ? <div className="mt-3 text-gray-600">Loading…</div> : null}
 
-        {!loading && stats ? (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Stat label="Total referred users" value={stats.totalReferredUsers} />
-            <Stat label="Completed referred jobs" value={stats.completedReferredJobs} />
-            <Stat label="Pending rewards" value={stats.pendingRewards} />
-            <Stat label="Paid rewards (lifetime)" value={stats.paidRewards} />
+        {!loading && balanceCents !== null ? (
+          <div className="mt-3 border border-gray-200 rounded-xl p-4">
+            <div className="text-2xl font-bold text-gray-900">${(balanceCents / 100).toFixed(2)}</div>
           </div>
         ) : null}
       </div>
     </>
   );
 }
-

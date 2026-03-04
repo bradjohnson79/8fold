@@ -197,17 +197,41 @@ export function RoutingWorkspace() {
   }
 
   async function loadRoutedJobs() {
-    const resp = await fetch("/api/app/router/routed-jobs", { cache: "no-store", credentials: "include" });
+    const resp = await fetch("/api/web/v4/router/jobs/routed", { cache: "no-store", credentials: "include" });
     if (!resp.ok) return;
     const json = await safeJson<{ jobs: RoutedJob[] }>(resp);
-    setRoutedJobs(Array.isArray(json.jobs) ? json.jobs : []);
+    const raw = Array.isArray(json.jobs) ? json.jobs : [];
+    const mapped: RoutedJob[] = raw.map((j: any) => ({
+      id: j.id,
+      title: j.title ?? "",
+      region: j.region ?? "",
+      tradeCategory: j.tradeCategory ?? "",
+      status: j.status ?? "",
+      routedAt: j.routedAt ?? "",
+      claimedAt: j.claimedAt ?? null,
+      contractor: j.contractor ?? null,
+      routerEarningsCents: j.routerEarningsCents ?? 0,
+      estimatedCompletionDate: j.estimatedCompletionDate ?? null,
+    }));
+    setRoutedJobs(mapped);
   }
 
   async function loadEarnings() {
-    const resp = await fetch("/api/app/router/earnings", { cache: "no-store", credentials: "include" });
+    const resp = await fetch("/api/web/v4/router/dashboard/summary", { cache: "no-store", credentials: "include" });
     if (!resp.ok) return;
-    const json = await safeJson<EarningsPayload>(resp);
-    setEarnings(json);
+    const json = await safeJson<any>(resp);
+    const e = json?.earnings ?? {};
+    setEarnings({
+      projectedPendingCents: Number(e.pendingReleaseCents ?? 0),
+      totals: {
+        PENDING: Number(e.pendingReleaseCents ?? 0),
+        AVAILABLE: 0,
+        PAID: Number(e.lifetimeCents ?? 0),
+        HELD: 0,
+      },
+      paymentSchedule: { cadence: "weekly", note: "" },
+      history: [],
+    });
   }
 
   async function loadPayoutMethod() {
@@ -220,10 +244,32 @@ export function RoutingWorkspace() {
   }
 
   async function loadProfile() {
-    const resp = await fetch("/api/app/router/profile", { cache: "no-store", credentials: "include" });
-    if (!resp.ok) return;
-    const json = await safeJson<ProfilePayload>(resp);
-    setProfile(json);
+    const [profileResp, meResp] = await Promise.all([
+      fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" }),
+      fetch("/api/me", { cache: "no-store", credentials: "include" }),
+    ]);
+    if (!profileResp.ok) return;
+    const profileJson = await safeJson<any>(profileResp);
+    const meJson = meResp.ok ? await safeJson<{ userId?: string; email?: string }>(meResp) : {};
+    const p = profileJson?.profile ?? {};
+    setProfile({
+      router: {
+        userId: meJson?.userId ?? "",
+        email: p.email ?? meJson?.email ?? null,
+        homeCountry: p.homeCountryCode ?? "US",
+        homeRegionCode: p.homeRegionCode ?? "",
+        isSeniorRouter: false,
+        dailyRouteLimit: 10,
+        routesCompleted: 0,
+      },
+      profile: {
+        name: p.contactName ?? null,
+        phone: p.phone ?? null,
+        notifyViaEmail: true,
+        notifyViaSms: false,
+        state: p.homeRegionCode ?? null,
+      },
+    });
   }
 
   async function openRoutingWorkspace(job: RoutableJob) {
@@ -231,19 +277,27 @@ export function RoutingWorkspace() {
     setError("");
     setSupportNotice("");
     try {
-      // Claim (locks "one active job") + load eligible contractors.
-      const claim = await fetch(`/api/app/router/jobs/${job.id}/claim`, { method: "POST", credentials: "include" });
-      if (!claim.ok) {
-        const j = await safeJson<{ error?: string }>(claim);
-        throw new Error(j.error || "Failed to claim job");
+      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(job.id)}/contractors`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = await safeJson<{ kind?: string; contractors?: EligibleContractor[]; error?: { message?: string } }>(resp);
+      if (json.kind !== "ok" || !resp.ok) {
+        const msg = typeof json.error === "string" ? json.error : json.error?.message ?? "Failed to load contractors";
+        throw new Error(msg);
       }
-
-      const resp = await fetch(`/api/app/router/jobs/${job.id}/eligible-contractors`, { cache: "no-store", credentials: "include" });
-      const json = await safeJson<{ contractors: EligibleContractor[]; error?: string }>(resp);
-      if (!resp.ok) throw new Error(json.error || "Failed to load contractors");
-
+      const raw = Array.isArray(json.contractors) ? json.contractors : [];
+      const mapped: EligibleContractor[] = raw.map((c: any) => ({
+        id: c.contractorId ?? c.id,
+        businessName: c.businessName ?? "",
+        name: c.contactName ?? c.businessName ?? "",
+        yearsExperience: c.yearsExperience ?? 0,
+        trade: c.tradeCategory ?? c.trade ?? "",
+        distanceKm: c.distanceKm ?? null,
+        availability: "AVAILABLE" as const,
+      }));
       setSelectedJob(job);
-      setContractors(Array.isArray(json.contractors) ? json.contractors : []);
+      setContractors(mapped);
       setSelectedContractorIds([]);
       setWorkspaceStep("contractors");
       setWorkspaceOpen(true);
@@ -260,16 +314,16 @@ export function RoutingWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/apply-routing", {
+      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(selectedJob.id)}/route`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ jobId: selectedJob.id, contractorIds: selectedContractorIds })
+        body: JSON.stringify({ contractorIds: selectedContractorIds }),
       });
       const json = await safeJson<{
         ok?: boolean;
+        created?: number;
         error?: string | { code?: string; message?: string; details?: { missing?: MissingStep[] } };
-        created?: DispatchCreated[];
       }>(resp);
       const missing = parseMissingSteps(json);
       if (missing) {
@@ -280,7 +334,7 @@ export function RoutingWorkspace() {
       const errorMessage =
         typeof json.error === "string" ? json.error : typeof json.error?.message === "string" ? json.error.message : "";
       if (!resp.ok) throw new Error(errorMessage || "Failed to route");
-      setLastDispatches(Array.isArray(json.created) ? json.created : []);
+      setLastDispatches([]);
 
       await Promise.all([loadAvailableJobs(), loadRoutedJobs(), loadEarnings(), loadPayoutMethod()]);
       setWorkspaceStep("success");
@@ -297,20 +351,20 @@ export function RoutingWorkspace() {
     setError("");
     setNotice("");
     try {
-      const resp = await fetch("/api/app/router/profile", {
+      const resp = await fetch("/api/web/v4/router/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: profile.profile?.name ?? undefined,
-          phone: profile.profile?.phone ?? undefined,
-          email: profile.router?.email ?? undefined,
-          notifyViaEmail: profile.profile?.notifyViaEmail,
-          notifyViaSms: profile.profile?.notifyViaSms
-        })
+          contactName: profile.profile?.name ?? "",
+          phone: profile.profile?.phone ?? "",
+          homeRegion: profile.profile?.state ?? profile.router?.homeRegionCode ?? "",
+          homeCountryCode: profile.router?.homeCountry ?? "US",
+          homeRegionCode: profile.router?.homeRegionCode ?? profile.profile?.state ?? "",
+        }),
       });
       const json = await safeJson<any>(resp);
-      if (!resp.ok) throw new Error(json?.error ?? "Failed to save profile");
+      if (!resp.ok) throw new Error(json?.error?.message ?? json?.error ?? "Failed to save profile");
       await loadProfile();
       setNotice("Saved profile.");
     } catch (e) {

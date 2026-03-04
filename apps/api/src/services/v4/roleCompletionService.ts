@@ -90,8 +90,8 @@ function hasJobPosterAddressAndMap(profile: {
 function hasRouterProfileRequiredFields(profile: {
   serviceAreas: unknown;
   availability: unknown;
-  homeLatitude: number;
-  homeLongitude: number;
+  homeLatitude?: number | null;
+  homeLongitude?: number | null;
   phone: string;
   homeRegion: string;
   homeCountryCode: string | null;
@@ -103,8 +103,6 @@ function hasRouterProfileRequiredFields(profile: {
       profile.serviceAreas.length > 0 &&
       Array.isArray(profile.availability) &&
       profile.availability.length > 0 &&
-      profile.homeLatitude != null &&
-      profile.homeLongitude != null &&
       profile.phone?.trim() &&
       profile.homeRegion?.trim() &&
       profile.homeCountryCode?.trim() &&

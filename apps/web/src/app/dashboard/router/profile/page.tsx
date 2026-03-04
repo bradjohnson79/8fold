@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MapLocationSelector } from "@/components/location/MapLocationSelector";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
@@ -18,9 +17,6 @@ type ProfileForm = {
   homeRegion: string;
   homeCountryCode: "US" | "CA";
   homeRegionCode: string;
-  mapDisplayName: string;
-  lat: number;
-  lng: number;
 };
 
 function Field(props: { label: string; value: string; onChange: (v: string) => void; helperText?: string }) {
@@ -48,9 +44,6 @@ export default function RouterProfilePage() {
     homeRegion: "",
     homeCountryCode: "US",
     homeRegionCode: "",
-    mapDisplayName: "",
-    lat: 0,
-    lng: 0,
   });
 
   useEffect(() => {
@@ -68,8 +61,6 @@ export default function RouterProfilePage() {
           homeRegion: String(p.homeRegion ?? "").trim(),
           homeCountryCode: (String(p.homeCountryCode ?? "US").toUpperCase() === "CA" ? "CA" : "US") as "US" | "CA",
           homeRegionCode: String(p.homeRegionCode ?? "").trim(),
-          lat: typeof p.homeLatitude === "number" ? p.homeLatitude : 0,
-          lng: typeof p.homeLongitude === "number" ? p.homeLongitude : 0,
         }));
       } catch {
         if (alive) setError("Failed to load profile");
@@ -96,8 +87,6 @@ export default function RouterProfilePage() {
           homeRegion: form.homeRegion.trim(),
           homeCountryCode: form.homeCountryCode,
           homeRegionCode: form.homeRegionCode.trim(),
-          homeLatitude: form.lat,
-          homeLongitude: form.lng,
         }),
       });
       const json = (await resp.json().catch(() => null)) as any;
@@ -145,14 +134,6 @@ export default function RouterProfilePage() {
             ))}
           </select>
         </label>
-        <div>
-          <div className="text-sm font-medium text-gray-700 mb-2">Home Location</div>
-          <MapLocationSelector
-            value={form.mapDisplayName}
-            onChange={(data) => setForm((s) => ({ ...s, mapDisplayName: data.mapDisplayName, lat: data.lat, lng: data.lng }))}
-            errorText={!(form.lat && form.lng) ? "Select a location" : ""}
-          />
-        </div>
       </div>
       {error ? <div className="text-red-700">{error}</div> : null}
       <button
