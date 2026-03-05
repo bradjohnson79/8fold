@@ -82,6 +82,12 @@ export default function AvailableJobsClient() {
       }
 
       if (!resp.ok) {
+        const errorCode =
+          typeof json?.error === "string" ? json.error : json?.error?.code ?? json?.error?.message ?? "";
+        if (errorCode === "AUTH_MISSING_TOKEN" || resp.status === 401) {
+          setError("Authentication lost — please refresh the page");
+          return;
+        }
         const msg =
           typeof json?.error === "string"
             ? json.error
