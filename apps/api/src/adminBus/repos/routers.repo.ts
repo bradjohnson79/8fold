@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/src/adminBus/db";
-import { payoutMethods, routerProfilesV4, routers, users } from "@/db/schema";
+import { contractorAccounts, payoutMethods, routerProfilesV4, routers, users } from "@/db/schema";
 import { tableExists } from "@/src/adminBus/schemaIntrospection";
 import { parseRoleListParams, type RoleListParams } from "@/src/adminBus/repos/jobPosters.repo";
 
@@ -23,6 +23,7 @@ type StripeMethodFallback = {
   userId: string;
   stripeAccountId: string | null;
   stripePayoutsEnabled: boolean;
+  stripeSimulatedApproved: boolean;
 };
 
 function joinName(firstName: string | null | undefined, lastName: string | null | undefined): string | null {
@@ -83,37 +84,70 @@ async function loadStripeMethodFallbacks(
   userIds: string[],
   hasPayoutMethods: boolean,
 ): Promise<Map<string, StripeMethodFallback>> {
-  if (!hasPayoutMethods || userIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      userId: payoutMethods.userId,
-      stripeAccountId: sql<string | null>`${payoutMethods.details} ->> 'stripeAccountId'`,
-      stripePayoutsEnabled: sql<boolean>`case
-        when lower(coalesce(${payoutMethods.details} ->> 'stripePayoutsEnabled', 'false')) in ('true','t','1','yes') then true
-        else false
-      end`,
-      createdAt: payoutMethods.createdAt,
-    })
-    .from(payoutMethods)
-    .where(
-      and(
-        inArray(payoutMethods.userId, userIds as any),
-        eq(payoutMethods.provider, "STRIPE" as any),
-        eq(payoutMethods.isActive, true),
-      ),
-    )
-    .orderBy(desc(payoutMethods.createdAt));
+  if (userIds.length === 0) return new Map();
 
   const out = new Map<string, StripeMethodFallback>();
-  for (const row of rows) {
-    if (!out.has(row.userId)) {
-      out.set(row.userId, {
-        userId: row.userId,
-        stripeAccountId: row.stripeAccountId ? String(row.stripeAccountId).trim() : null,
-        stripePayoutsEnabled: Boolean(row.stripePayoutsEnabled),
-      });
+
+  if (hasPayoutMethods) {
+    const rows = await db
+      .select({
+        userId: payoutMethods.userId,
+        stripeAccountId: sql<string | null>`${payoutMethods.details} ->> 'stripeAccountId'`,
+        stripePayoutsEnabled: sql<boolean>`case
+          when lower(coalesce(${payoutMethods.details} ->> 'stripePayoutsEnabled', 'false')) in ('true','t','1','yes') then true
+          else false
+        end`,
+        stripeSimulatedApproved: sql<boolean>`case
+          when lower(coalesce(${payoutMethods.details} ->> 'stripeSimulatedApproved', 'false')) in ('true','t','1','yes') then true
+          else false
+        end`,
+        createdAt: payoutMethods.createdAt,
+      })
+      .from(payoutMethods)
+      .where(
+        and(
+          inArray(payoutMethods.userId, userIds as any),
+          eq(payoutMethods.provider, "STRIPE" as any),
+          eq(payoutMethods.isActive, true),
+        ),
+      )
+      .orderBy(desc(payoutMethods.createdAt));
+
+    for (const row of rows) {
+      if (!out.has(row.userId)) {
+        out.set(row.userId, {
+          userId: row.userId,
+          stripeAccountId: row.stripeAccountId ? String(row.stripeAccountId).trim() : null,
+          stripePayoutsEnabled: Boolean(row.stripePayoutsEnabled),
+          stripeSimulatedApproved: Boolean(row.stripeSimulatedApproved),
+        });
+      }
     }
   }
+
+  const missingIds = userIds.filter((id) => !out.has(id));
+  if (missingIds.length > 0) {
+    try {
+      const caRows = await db
+        .select({ userId: contractorAccounts.userId, stripeAccountId: contractorAccounts.stripeAccountId })
+        .from(contractorAccounts)
+        .where(inArray(contractorAccounts.userId, missingIds as any));
+      for (const row of caRows) {
+        const acctId = String(row.stripeAccountId ?? "").trim();
+        if (acctId && !out.has(row.userId)) {
+          out.set(row.userId, {
+            userId: row.userId,
+            stripeAccountId: acctId,
+            stripePayoutsEnabled: false,
+            stripeSimulatedApproved: false,
+          });
+        }
+      }
+    } catch {
+      // contractor_accounts may not exist; safe to ignore
+    }
+  }
+
   return out;
 }
 
@@ -170,31 +204,31 @@ export async function list(params: RoleListParams) {
       rows: rows.map((r) => {
         const profile = profileMap.get(r.id);
         const stripe = stripeMap.get(r.id);
-        const stripeConnected = Boolean(stripe?.stripeAccountId);
-        const stripeVerified = Boolean(stripe?.stripePayoutsEnabled);
-        return {
-          ...r,
-          name: r.name ?? profile?.contactName ?? joinName(profile?.firstName, profile?.lastName) ?? null,
-          email: r.email ?? profile?.email ?? null,
-          country: r.country ?? profile?.homeCountryCode ?? null,
-          regionCode: r.regionCode ?? profile?.homeRegionCode ?? null,
-          city: r.city ?? profile?.homeRegion ?? null,
-          createdAt: r.createdAt.toISOString(),
-          suspendedUntil: r.suspendedUntil?.toISOString() ?? null,
-          archivedAt: r.archivedAt?.toISOString() ?? null,
-          role: "ROUTER",
-          latitude: profile?.latitude ?? null,
-          longitude: profile?.longitude ?? null,
-          badges: [stripeBadge(stripeConnected, stripeVerified), profile ? "PROFILE_V4_ONLY" : "PROFILE_MISSING"],
-        };
-      }),
-      totalCount: Number(countRows[0]?.total ?? 0),
-      page: params.page,
-      pageSize: params.pageSize,
-    };
-  }
+      const stripeConnected = Boolean(stripe?.stripeAccountId);
+      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled) || Boolean(stripe?.stripeSimulatedApproved);
+      return {
+        ...r,
+        name: r.name ?? profile?.contactName ?? joinName(profile?.firstName, profile?.lastName) ?? null,
+        email: r.email ?? profile?.email ?? null,
+        country: r.country ?? profile?.homeCountryCode ?? null,
+        regionCode: r.regionCode ?? profile?.homeRegionCode ?? null,
+        city: r.city ?? profile?.homeRegion ?? null,
+        createdAt: r.createdAt.toISOString(),
+        suspendedUntil: r.suspendedUntil?.toISOString() ?? null,
+        archivedAt: r.archivedAt?.toISOString() ?? null,
+        role: "ROUTER",
+        latitude: profile?.latitude ?? null,
+        longitude: profile?.longitude ?? null,
+        badges: [stripeBadge(stripeConnected, stripeVerified), profile ? "PROFILE_V4_ONLY" : "PROFILE_MISSING"],
+      };
+    }),
+    totalCount: Number(countRows[0]?.total ?? 0),
+    page: params.page,
+    pageSize: params.pageSize,
+  };
+}
 
-  const [countRows, rows] = await Promise.all([
+const [countRows, rows] = await Promise.all([
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(users)
@@ -237,7 +271,7 @@ export async function list(params: RoleListParams) {
       const profile = profileMap.get(r.id);
       const stripe = stripeMap.get(r.id);
       const stripeConnected = Boolean(stripe?.stripeAccountId);
-      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled);
+      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled) || Boolean(stripe?.stripeSimulatedApproved);
       return {
         ...r,
         name: r.name ?? profile?.contactName ?? joinName(profile?.firstName, profile?.lastName) ?? null,
