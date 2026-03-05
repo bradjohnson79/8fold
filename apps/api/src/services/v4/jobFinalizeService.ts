@@ -12,6 +12,7 @@ import { tradeCategoryEnum } from "@/db/schema/enums";
 import { stripe } from "@/src/payments/stripe";
 import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
+import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
 
 export type FinalizeResult = { jobId: string; created: boolean };
 
@@ -93,10 +94,9 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
     throw Object.assign(new Error("Title and description are required."), { status: 400 });
   }
 
-  const region =
-    String(details.stateCode ?? details.region ?? details.province ?? details.city ?? "")
-      .trim()
-      .toLowerCase() || "unspecified";
+  const stateCode = String(details.stateCode ?? details.region ?? details.province ?? "").trim().toUpperCase();
+  const region = stateCode.toLowerCase() || "unspecified";
+  const resolvedCountryCode = deriveCountryFromRegion(stateCode) ?? (currencyRaw === "CAD" ? "CA" : "US");
   const isRegional = Boolean(details.isRegional ?? details.isRegionalRequested);
   const jobType = isRegional ? "regional" : "urban";
 
@@ -121,6 +121,9 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
       stripe_payment_intent_id,
       stripe_payment_intent_status,
       region,
+      country_code,
+      state_code,
+      region_code,
       created_at,
       updated_at
     ) VALUES (
@@ -138,6 +141,9 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
       ${paymentIntentId},
       ${String(pi.status ?? "")},
       ${region},
+      ${resolvedCountryCode},
+      ${stateCode},
+      ${stateCode || null},
       NOW(),
       NOW()
     )
