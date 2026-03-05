@@ -2,8 +2,13 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
+import { users } from "@/db/schema/user";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { expireStaleInvitesAndResetJobs } from "@/src/services/v4/inviteExpirationService";
+
+const TRACE_SERVICE_SOURCE = "apps/api/src/services/v4/routerAvailableJobsService.ts";
+
+export type RouterAvailableJobsTraceOpts = { requestId?: string } | undefined;
 
 function normalizeRegionCode(value: string | null | undefined): string {
   return String(value ?? "").trim().toUpperCase();
@@ -14,9 +19,74 @@ function normalizeCountryCode(value: string | null | undefined): "US" | "CA" {
   return c === "CA" ? "CA" : "US";
 }
 
-export async function getV4RouterAvailableJobs(userId: string) {
+function traceLog(trace: boolean, msg: string) {
+  if (trace) console.log(`[router-trace] ${msg}`);
+}
+
+export async function getV4RouterAvailableJobs(userId: string, traceOpts?: RouterAvailableJobsTraceOpts) {
+  const trace = process.env.ENABLE_ROUTER_TRACE === "true" && traceOpts != null;
+
   try {
+    if (trace) {
+      traceLog(trace, `service_source=${TRACE_SERVICE_SOURCE}`);
+      traceLog(trace, `step_pre expireStaleInvitesAndResetJobs`);
+    }
+
     await expireStaleInvitesAndResetJobs();
+
+    if (trace) traceLog(trace, `step_post expireStaleInvitesAndResetJobs`);
+
+    // Phase 3 — Service-level DB fingerprint and counts (diagnostic only)
+    if (trace) {
+      const fpRes = await db.execute<{ current_database: string; server_addr: string; server_port: number; current_schema: string }>(
+        sql`SELECT current_database() AS current_database, inet_server_addr()::text AS server_addr, inet_server_port() AS server_port, current_schema() AS current_schema`,
+      );
+      const fp = (fpRes as { rows?: Array<{ current_database?: string; server_addr?: string; server_port?: number; current_schema?: string }> })?.rows?.[0];
+      traceLog(trace, `db_fingerprint current_database=${fp?.current_database ?? "?"} server_addr=${fp?.server_addr ?? "?"} server_port=${fp?.server_port ?? "?"} current_schema=${fp?.current_schema ?? "?"}`);
+
+      const jobsCountRes = await db.execute<{ jobs_count: string }>(sql`SELECT COUNT(*)::text AS jobs_count FROM jobs`);
+      const jobsCount = (jobsCountRes as { rows?: Array<{ jobs_count?: string }> })?.rows?.[0]?.jobs_count ?? "?";
+      traceLog(trace, `jobs_count=${jobsCount}`);
+
+      const profilesCountRes = await db.execute<{ router_profiles_count: string }>(
+        sql`SELECT COUNT(*)::text AS router_profiles_count FROM router_profiles_v4`,
+      );
+      const profilesCount = (profilesCountRes as { rows?: Array<{ router_profiles_count?: string }> })?.rows?.[0]?.router_profiles_count ?? "?";
+      traceLog(trace, `router_profiles_count=${profilesCount}`);
+
+      const caBcRes = await db.execute<{ ca_bc_open_jobs: string }>(
+        sql`
+        SELECT COUNT(*)::text AS ca_bc_open_jobs FROM jobs
+        WHERE country_code = 'CA'
+          AND upper(trim(coalesce(region_code, state_code, ''))) = 'BC'
+          AND archived_at IS NULL
+          AND status = 'OPEN_FOR_ROUTING'
+          AND routing_status = 'UNROUTED'
+          AND contractor_user_id IS NULL
+          AND cancel_request_pending = false
+        `,
+      );
+      const caBcCount = (caBcRes as { rows?: Array<{ ca_bc_open_jobs?: string }> })?.rows?.[0]?.ca_bc_open_jobs ?? "?";
+      traceLog(trace, `ca_bc_open_jobs=${caBcCount}`);
+    }
+
+    // Phase 4 — Auth/profile consistency check
+    if (trace) {
+      const [userRows, profileRowsAll] = await Promise.all([
+        db.select({ id: users.id, role: users.role }).from(users).where(eq(users.id, userId)).limit(1),
+        db.select().from(routerProfilesV4).where(eq(routerProfilesV4.userId, userId)),
+      ]);
+      const user = userRows[0] ?? null;
+      traceLog(trace, `auth_profile_check: user_exists=${user != null} role=${user?.role ?? "null"}`);
+      traceLog(trace, `auth_profile_check: router_profiles_v4_row_count=${profileRowsAll.length}`);
+      if (profileRowsAll.length > 1) traceLog(trace, `auth_profile_check: WARNING multiple rows for user`);
+      for (const p of profileRowsAll) {
+        traceLog(
+          trace,
+          `auth_profile_check: profile home_country_code=${p.homeCountryCode ?? "null"} home_region_code=${p.homeRegionCode ?? "null"}`,
+        );
+      }
+    }
 
     const profileRows = await db
       .select({
@@ -31,12 +101,85 @@ export async function getV4RouterAvailableJobs(userId: string) {
     const routerCountry = normalizeCountryCode(profile?.countryCode);
     const routerRegionCode = normalizeRegionCode(profile?.regionCode);
 
+    // Step A — Router profile resolution
+    if (trace) {
+      traceLog(trace, `step_a router_user_id=${userId}`);
+      traceLog(trace, `step_a router_profile_found=${profile != null}`);
+      traceLog(trace, `step_a homeCountryCode=${profile?.countryCode ?? "null"} homeRegionCode=${profile?.regionCode ?? "null"}`);
+      traceLog(trace, `step_a resolved routerCountry=${routerCountry} routerRegionCode=${routerRegionCode}`);
+    }
+
     if (!routerRegionCode || !/^[A-Z]{2}$/.test(routerRegionCode)) {
+      if (trace) traceLog(trace, `step_a early_exit: invalid region (empty or not 2 chars)`);
       return { ok: true as const, jobs: [] };
     }
 
     if (process.env.NODE_ENV !== "production") {
       console.debug(`[router-available-jobs] Router: ${routerCountry} / ${routerRegionCode}`);
+    }
+
+    // Step B — Candidate count by filter stage (diagnostic only)
+    if (trace) {
+      const c1 = await db.execute<{ cnt: string }>(
+        sql`
+        SELECT COUNT(*)::text AS cnt FROM jobs
+        WHERE country_code = ${routerCountry}
+          AND upper(trim(coalesce(region_code, state_code, ''))) = ${routerRegionCode}
+          AND archived_at IS NULL
+        `,
+      );
+      const c2 = await db.execute<{ cnt: string }>(
+        sql`
+        SELECT COUNT(*)::text AS cnt FROM jobs
+        WHERE country_code = ${routerCountry}
+          AND upper(trim(coalesce(region_code, state_code, ''))) = ${routerRegionCode}
+          AND archived_at IS NULL
+          AND status = 'OPEN_FOR_ROUTING'
+        `,
+      );
+      const c3 = await db.execute<{ cnt: string }>(
+        sql`
+        SELECT COUNT(*)::text AS cnt FROM jobs
+        WHERE country_code = ${routerCountry}
+          AND upper(trim(coalesce(region_code, state_code, ''))) = ${routerRegionCode}
+          AND archived_at IS NULL
+          AND status = 'OPEN_FOR_ROUTING'
+          AND routing_status = 'UNROUTED'
+        `,
+      );
+      const c4 = await db.execute<{ cnt: string }>(
+        sql`
+        SELECT COUNT(*)::text AS cnt FROM jobs
+        WHERE country_code = ${routerCountry}
+          AND upper(trim(coalesce(region_code, state_code, ''))) = ${routerRegionCode}
+          AND archived_at IS NULL
+          AND status = 'OPEN_FOR_ROUTING'
+          AND routing_status = 'UNROUTED'
+          AND contractor_user_id IS NULL
+        `,
+      );
+      const c5 = await db.execute<{ cnt: string }>(
+        sql`
+        SELECT COUNT(*)::text AS cnt FROM jobs
+        WHERE country_code = ${routerCountry}
+          AND upper(trim(coalesce(region_code, state_code, ''))) = ${routerRegionCode}
+          AND archived_at IS NULL
+          AND status = 'OPEN_FOR_ROUTING'
+          AND routing_status = 'UNROUTED'
+          AND contractor_user_id IS NULL
+          AND cancel_request_pending = false
+        `,
+      );
+      const r1 = (c1 as { rows?: { cnt?: string }[] })?.rows?.[0]?.cnt ?? "?";
+      const r2 = (c2 as { rows?: { cnt?: string }[] })?.rows?.[0]?.cnt ?? "?";
+      const r3 = (c3 as { rows?: { cnt?: string }[] })?.rows?.[0]?.cnt ?? "?";
+      const r4 = (c4 as { rows?: { cnt?: string }[] })?.rows?.[0]?.cnt ?? "?";
+      const r5 = (c5 as { rows?: { cnt?: string }[] })?.rows?.[0]?.cnt ?? "?";
+      traceLog(trace, `step_b filter_stage_1_jurisdiction_only count=${r1}`);
+      traceLog(trace, `step_b filter_stage_2_plus_status_OPEN_FOR_ROUTING count=${r2}`);
+      traceLog(trace, `step_b filter_stage_3_plus_routing_status_UNROUTED count=${r3}`);
+      traceLog(trace, `step_b filter_stage_4_plus_contractor_user_id_NULL count=${r4}`);
+      traceLog(trace, `step_b filter_stage_5_plus_cancel_request_pending_false count=${r5}`);
     }
 
     const raw = await db
@@ -50,6 +193,8 @@ export async function getV4RouterAvailableJobs(userId: string) {
         countryCode: jobs.country_code,
         regionCode: jobs.region_code,
         stateCode: jobs.state_code,
+        routingStatus: jobs.routing_status,
+        cancelRequestPending: jobs.cancel_request_pending,
         postedAt: jobs.posted_at,
         serviceType: jobs.service_type,
         tradeCategory: jobs.trade_category,
@@ -81,6 +226,19 @@ export async function getV4RouterAvailableJobs(userId: string) {
 
     if (process.env.NODE_ENV !== "production") {
       console.debug(`[router-available-jobs] Jobs Returned: ${raw.length}`);
+    }
+
+    // Step C — Sample rows
+    if (trace && raw.length > 0) {
+      const samples = raw.slice(0, 5);
+      for (let i = 0; i < samples.length; i++) {
+        const j = samples[i] as Record<string, unknown>;
+        traceLog(
+          trace,
+          `step_c sample_${i + 1} id=${j.id} title=${String(j.title ?? "").slice(0, 40)} status=${j.status} routing_status=${j.routingStatus ?? "n/a"} country_code=${j.countryCode} region_code=${j.regionCode} state_code=${j.stateCode} city=${j.city} cancel_request_pending=${j.cancelRequestPending}`,
+        );
+      }
+      traceLog(trace, `step_c final_result_count=${raw.length}`);
     }
 
     const jobsRes = raw.map((j) => {
@@ -123,7 +281,10 @@ export async function getV4RouterAvailableJobs(userId: string) {
     });
 
     return { ok: true as const, jobs: jobsRes };
-  } catch {
+  } catch (err) {
+    if (trace) {
+      traceLog(trace, `service_caught_error=${err instanceof Error ? err.message : String(err)}`);
+    }
     return { ok: true as const, jobs: [] };
   }
 }
