@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
@@ -63,7 +63,7 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
           AND status = 'OPEN_FOR_ROUTING'
           AND routing_status = 'UNROUTED'
           AND contractor_user_id IS NULL
-          AND cancel_request_pending = false
+          AND COALESCE(cancel_request_pending, false) = false
         `,
       );
       const caBcCount = (caBcRes as { rows?: Array<{ ca_bc_open_jobs?: string }> })?.rows?.[0]?.ca_bc_open_jobs ?? "?";
@@ -167,7 +167,7 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
           AND status = 'OPEN_FOR_ROUTING'
           AND routing_status = 'UNROUTED'
           AND contractor_user_id IS NULL
-          AND cancel_request_pending = false
+          AND COALESCE(cancel_request_pending, false) = false
         `,
       );
       const r1 = (c1 as { rows?: { cnt?: string }[] })?.rows?.[0]?.cnt ?? "?";
@@ -214,7 +214,7 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
         and(
           eq(jobs.status, "OPEN_FOR_ROUTING"),
           eq(jobs.routing_status, ROUTING_STATUS.UNROUTED),
-          eq(jobs.cancel_request_pending, false),
+          or(eq(jobs.cancel_request_pending, false), isNull(jobs.cancel_request_pending)),
           isNull(jobs.archived_at),
           isNull(jobs.contractor_user_id),
           eq(jobs.country_code, routerCountry),
