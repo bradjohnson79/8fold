@@ -99,11 +99,7 @@ function hasRouterProfileRequiredFields(profile: {
 } | null): boolean {
   if (!profile) return false;
   return Boolean(
-    Array.isArray(profile.serviceAreas) &&
-      profile.serviceAreas.length > 0 &&
-      Array.isArray(profile.availability) &&
-      profile.availability.length > 0 &&
-      profile.phone?.trim() &&
+    profile.phone?.trim() &&
       profile.homeRegion?.trim() &&
       profile.homeCountryCode?.trim() &&
       profile.homeRegionCode?.trim(),

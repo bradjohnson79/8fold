@@ -9,6 +9,7 @@ import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { haversineKm } from "@/src/jobs/geo";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
+import { getRoleCompletionSnapshot } from "@/src/services/v4/roleCompletionService";
 
 export type Stage2ContractorCard = {
   contractorId: string;
@@ -61,7 +62,8 @@ export type Stage2RouteResult =
   | { kind: "job_not_available" }
   | { kind: "missing_job_coords" }
   | { kind: "too_many" }
-  | { kind: "contractor_not_eligible" };
+  | { kind: "contractor_not_eligible" }
+  | { kind: "payment_setup_required" };
 
 function normalizeProvinceCode(value: string | null | undefined): string {
   return String(value ?? "").trim().toUpperCase();
@@ -254,6 +256,11 @@ export async function routeStage2JobToContractors(
   jobId: string,
   contractorIds: string[],
 ): Promise<Stage2RouteResult> {
+  const snapshot = await getRoleCompletionSnapshot(routerUserId, "ROUTER");
+  if (!snapshot.hasCompletedRouterPaymentSetup) {
+    return { kind: "payment_setup_required" };
+  }
+
   const desired = Array.from(new Set(contractorIds)).filter(Boolean);
   if (desired.length < 1 || desired.length > 5) return { kind: "too_many" };
 
