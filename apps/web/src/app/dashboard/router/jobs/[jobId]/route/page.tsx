@@ -55,7 +55,7 @@ export default function RouterRouteJobPage() {
       setLoading(true);
       setError("");
       try {
-        const resp = await fetch(`/api/router/jobs/${encodeURIComponent(jobId)}/contractors`, {
+        const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, {
           cache: "no-store",
           credentials: "include",
         });
@@ -92,7 +92,7 @@ export default function RouterRouteJobPage() {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch(`/api/router/jobs/${encodeURIComponent(jobId)}/route`, {
+      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/route`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",

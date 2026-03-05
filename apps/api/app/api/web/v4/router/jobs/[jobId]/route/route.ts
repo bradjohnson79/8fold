@@ -70,6 +70,9 @@ export async function POST(
         { status: 409 },
       );
     }
+    if (result.kind === "payment_setup_required") {
+      return NextResponse.json({ error: "PAYMENT_SETUP_REQUIRED" }, { status: 403 });
+    }
 
     const wrapped = internal("V4_ROUTER_ROUTE_JOB_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });

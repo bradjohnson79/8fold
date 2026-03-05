@@ -564,12 +564,16 @@ function accountStatusFromUser(user: {
   };
 }
 
-async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId: string | null; payoutsEnabled: boolean } | null> {
+async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId: string | null; payoutsEnabled: boolean; simulatedApproved: boolean } | null> {
   const rows = await db
     .select({
       stripeAccountId: sql<string | null>`${payoutMethods.details} ->> 'stripeAccountId'`,
       payoutsEnabled: sql<boolean>`case
         when lower(coalesce(${payoutMethods.details} ->> 'stripePayoutsEnabled', 'false')) in ('true','t','1','yes') then true
+        else false
+      end`,
+      simulatedApproved: sql<boolean>`case
+        when lower(coalesce(${payoutMethods.details} ->> 'stripeSimulatedApproved', 'false')) in ('true','t','1','yes') then true
         else false
       end`,
     })
@@ -582,6 +586,7 @@ async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId:
   return {
     stripeAccountId: row.stripeAccountId ? String(row.stripeAccountId).trim() : null,
     payoutsEnabled: Boolean(row.payoutsEnabled),
+    simulatedApproved: Boolean(row.simulatedApproved),
   };
 }
 
@@ -869,8 +874,17 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
     String(row.profileContactName ?? "").trim() ||
     null;
   const stripeMethod = await getLatestStripeMethod(userId);
-  const stripeConnected = Boolean(stripeMethod?.stripeAccountId);
-  const stripeVerified = Boolean(stripeMethod?.payoutsEnabled);
+  let stripeConnected = Boolean(stripeMethod?.stripeAccountId);
+  let stripeVerified = Boolean(stripeMethod?.payoutsEnabled) || Boolean(stripeMethod?.simulatedApproved);
+  if (!stripeConnected) {
+    const caRows = await db
+      .select({ stripeAccountId: contractorAccounts.stripeAccountId })
+      .from(contractorAccounts)
+      .where(eq(contractorAccounts.userId, userId))
+      .limit(1);
+    const caStripeId = String(caRows[0]?.stripeAccountId ?? "").trim();
+    if (caStripeId) stripeConnected = true;
+  }
   const [recentJobs, payoutReadiness, enforcement] = await Promise.all([
     recentJobsForRouter(userId),
     payoutReadinessForUser(userId, String(row.status ?? "ACTIVE"), stripeConnected),

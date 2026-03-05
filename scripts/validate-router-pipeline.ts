@@ -33,15 +33,32 @@ async function main() {
 
   let failed = false;
 
-  // Step 1 — Available Jobs query
-  console.log("1. Available Jobs sample");
-  const jobsRes = await client.query(`
-    SELECT id, title, country_code, region_code, contractor_user_id, routing_status
-    FROM jobs
-    WHERE status = 'OPEN_FOR_ROUTING'
-    AND archived_at IS NULL
-    LIMIT 10
+  // Fetch router profile first (needed for jurisdiction-scoped checks)
+  const routerRes = await client.query(`
+    SELECT user_id, home_country_code, home_region_code
+    FROM router_profiles_v4
+    LIMIT 1
   `);
+  const router = routerRes.rows[0] as { home_country_code?: string; home_region_code?: string } | undefined;
+  const routerCountry = router?.home_country_code ? String(router.home_country_code).trim().toUpperCase() : null;
+  const routerRegion = router?.home_region_code ? String(router.home_region_code).trim().toUpperCase() : null;
+
+  // Step 1 — Available Jobs sample (scoped to router jurisdiction when router exists)
+  console.log("1. Available Jobs sample");
+  const jobsWhere =
+    routerCountry && routerRegion
+      ? `status = 'OPEN_FOR_ROUTING' AND archived_at IS NULL
+         AND country_code = $1 AND upper(trim(coalesce(region_code, state_code, ''))) = $2
+         AND routing_status = 'UNROUTED' AND contractor_user_id IS NULL`
+      : `status = 'OPEN_FOR_ROUTING' AND archived_at IS NULL`;
+  const jobsParams = routerCountry && routerRegion ? [routerCountry, routerRegion] : [];
+  const jobsRes = await client.query(
+    `SELECT id, title, country_code, region_code, contractor_user_id, routing_status
+     FROM jobs
+     WHERE ${jobsWhere}
+     LIMIT 10`,
+    jobsParams
+  );
   if (jobsRes.rows.length > 0) {
     const bad = jobsRes.rows.filter(
       (r: any) => r.contractor_user_id != null || !r.country_code || !r.region_code
@@ -50,10 +67,10 @@ async function main() {
       console.log("   ✗ Some jobs have contractor_user_id set or missing codes:", bad.length);
       failed = true;
     } else {
-      console.log("   ✓", jobsRes.rows.length, "jobs returned, contractor_user_id NULL, codes populated");
+      console.log("   ✓", jobsRes.rows.length, "jobs in jurisdiction, contractor_user_id NULL, codes populated");
     }
   } else {
-    console.log("   ✓ No OPEN_FOR_ROUTING jobs (empty is ok)");
+    console.log("   ✓ No OPEN_FOR_ROUTING jobs in jurisdiction (empty is ok)");
   }
 
   // Step 1b — Routing lifecycle (OPEN_FOR_ROUTING jobs should have UNROUTED or INVITES_SENT/ROUTED_BY_ROUTER)
@@ -77,8 +94,41 @@ async function main() {
     console.log("   ✓ No OPEN_FOR_ROUTING jobs (empty is ok)");
   }
 
-  // Step 1c — Jobs that should have been reset (INVITES_SENT/ROUTED_BY_ROUTER with all invites expired, contractor_user_id NULL)
-  console.log("\n1c. Stale invites-sent jobs (should be reset)");
+  // Step 1c — routing_status NULL (data normalization guardrail: must be 0)
+  console.log("\n1c. routing_status NULL check");
+  const nullRoutingRes = await client.query(`
+    SELECT id FROM jobs WHERE routing_status IS NULL
+  `);
+  if (nullRoutingRes.rows.length > 0) {
+    console.log("   ✗ Jobs with routing_status NULL:", nullRoutingRes.rows.length);
+    failed = true;
+  } else {
+    console.log("   ✓ No jobs with routing_status NULL");
+  }
+
+  // Step 1d — Invalid region_code (data normalization guardrail: must be 0)
+  const VALID_REGION_CODES = [
+    "BC", "AB", "SK", "MB", "ON", "QC", "NB", "NS", "PE", "NL", "YT", "NT", "NU",
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+    "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+    "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+    "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+  ];
+  console.log("\n1d. Invalid region_code check");
+  const invalidRegionRes = await client.query(
+    `SELECT id, region_code FROM jobs
+     WHERE region_code IS NOT NULL
+     AND region_code NOT IN (${VALID_REGION_CODES.map((c) => `'${c}'`).join(",")})`
+  );
+  if (invalidRegionRes.rows.length > 0) {
+    console.log("   ✗ Jobs with invalid region_code:", invalidRegionRes.rows);
+    failed = true;
+  } else {
+    console.log("   ✓ No jobs with invalid region_code");
+  }
+
+  // Step 1e — Jobs that should have been reset (INVITES_SENT/ROUTED_BY_ROUTER with all invites expired, contractor_user_id NULL)
+  console.log("\n1e. Stale invites-sent jobs (should be reset)");
   const staleRes = await client.query(`
     SELECT j.id, j.routing_status
     FROM jobs j
@@ -98,11 +148,6 @@ async function main() {
 
   // Step 2 — Router jurisdiction
   console.log("\n2. Router profile");
-  const routerRes = await client.query(`
-    SELECT user_id, home_country_code, home_region_code
-    FROM router_profiles_v4
-    LIMIT 1
-  `);
   if (routerRes.rows.length === 0) {
     console.log("   ⚠ No router profile (skip jurisdiction checks)");
   } else {

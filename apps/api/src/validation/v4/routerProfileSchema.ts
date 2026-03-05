@@ -5,7 +5,7 @@ export const V4RouterProfileSchema = z.object({
   phone: z.string().trim().min(7).max(40),
   homeRegion: z.string().trim().min(1).max(40),
   homeCountryCode: z.string().trim().min(2).max(2),
-  homeRegionCode: z.string().trim().max(10).optional().default(""),
+  homeRegionCode: z.string().trim().min(1, "Region code is required").max(10),
   homeLatitude: z.number().min(-90).max(90).optional(),
   homeLongitude: z.number().min(-180).max(180).optional(),
 });

@@ -44,10 +44,20 @@ async function save(req: Request) {
       );
     }
 
-    const identity = await getClerkIdentity(role.clerkUserId);
+    if (!parsed.data.homeRegionCode?.trim()) {
+      throw badRequest("V4_INVALID_REQUEST_BODY", "Router profile missing homeRegionCode");
+    }
+
+    let identity: Awaited<ReturnType<typeof getClerkIdentity>> | null = null;
+    try {
+      identity = await getClerkIdentity(role.clerkUserId);
+    } catch (identityErr) {
+      console.error("[router-profile-save] getClerkIdentity failed, continuing with null", identityErr);
+    }
     await saveV4RouterProfile(role.internalUser.id, parsed.data, identity);
     return NextResponse.json(await getV4RouterProfile(role.internalUser.id), { status: 200 });
   } catch (err) {
+    console.error("[router-profile-save]", err);
     const wrapped =
       err instanceof Error && "status" in err
         ? (err as V4Error)
