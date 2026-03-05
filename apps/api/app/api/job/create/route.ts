@@ -5,6 +5,7 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { jobPhotos } from "@/db/schema/jobPhoto";
 import { z } from "zod";
+import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
 
 const TRADE_CATEGORIES = [
   "PLUMBING",
@@ -68,8 +69,8 @@ export async function POST(req: Request) {
         title: input.title,
         scope: input.scope,
         region: input.region,
-        country: input.country,
-        country_code: input.country,
+        country: deriveCountryFromRegion(input.state_code) ?? input.country,
+        country_code: deriveCountryFromRegion(input.state_code) ?? input.country,
         state_code: input.state_code,
         region_code: input.state_code,
         city: input.city ?? null,

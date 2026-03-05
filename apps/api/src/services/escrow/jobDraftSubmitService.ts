@@ -11,6 +11,7 @@ import { stripe } from "@/src/payments/stripe";
 import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
 import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
+import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
 
 type DraftData = Record<string, any>;
 
@@ -92,8 +93,8 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   const title = String(details.title ?? "").trim();
   const scope = String(details.description ?? "").trim();
   const tradeCategory = String(details.tradeCategory ?? "").trim().toUpperCase();
-  const countryCode = String(details.countryCode ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US";
   const stateCode = String(details.stateCode ?? details.region ?? "").trim().toUpperCase();
+  const countryCode = deriveCountryFromRegion(stateCode) ?? (String(details.countryCode ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US");
   const region = stateCode.toLowerCase();
   const city = String(details.city ?? "").trim();
   const postalCode = String(details.postalCode ?? "").trim();

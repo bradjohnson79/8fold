@@ -13,6 +13,7 @@ import { reverseGeocodeProvince } from "@/src/services/v4/geocodeService";
 import { badRequest, conflict, internal } from "@/src/services/v4/v4Errors";
 import { URBAN_RADIUS_KM } from "@/src/validation/v4/constants";
 import { type V4JobCreateBody, V4JobCreateBodySchema } from "@/src/validation/v4/jobCreateSchema";
+import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
 
 type UploadRow = { id: string; url: string };
 
@@ -176,8 +177,8 @@ export async function createV4Job(input: V4JobCreateBody, actorUserId: string, i
       title: input.title,
       scope: input.scope,
       region: resolvedProvince,
-      country: input.country,
-      country_code: input.country,
+      country: deriveCountryFromRegion(resolvedProvince) ?? input.country,
+      country_code: deriveCountryFromRegion(resolvedProvince) ?? input.country,
       state_code: resolvedProvince.slice(0, 10),
       region_code: resolvedProvince.slice(0, 10),
       city: input.city ?? null,
