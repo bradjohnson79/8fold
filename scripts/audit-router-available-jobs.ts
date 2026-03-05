@@ -284,7 +284,19 @@ async function main() {
   console.log(`  contractor already assigned: ${exclusionReasons.contractor_assigned}`);
   console.log(`  archived: ${exclusionReasons.archived}`);
   console.log(`  missing coordinates: ${exclusionReasons.missing_coords}`);
+  // Step 7 — cancel_request_pending NULL check
+  console.log("Step 7: cancel_request_pending NULL audit");
+  const cancelNullRes = await client.query(`
+    SELECT COUNT(*)::int AS cnt FROM jobs WHERE cancel_request_pending IS NULL
+  `);
+  const cancelNullCount = cancelNullRes.rows[0]?.cnt ?? 0;
+  if (cancelNullCount > 0) {
+    console.log(`  ✗ ${cancelNullCount} jobs have cancel_request_pending = NULL (will be excluded from available jobs)`);
+  } else {
+    console.log("  ✓ No jobs with cancel_request_pending = NULL");
+  }
   console.log("");
+
   console.log("Note: This script is read-only. No data was modified.");
   console.log("");
 
