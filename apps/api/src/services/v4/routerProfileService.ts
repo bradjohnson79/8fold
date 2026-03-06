@@ -122,8 +122,6 @@ export async function saveV4RouterProfile(
       homeRegion: body.homeRegion,
       homeCountryCode: countryCode,
       homeRegionCode: body.homeRegionCode,
-      serviceAreas: [],
-      availability: [],
       homeLatitude: hasCoords ? lat : null,
       homeLongitude: hasCoords ? lng : null,
       updatedAt: now,
