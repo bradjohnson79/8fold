@@ -16,8 +16,8 @@ const FieldsSchema = z.object({
   email: z.string().email().optional(),
   phone: z.string().trim().optional(),
   businessName: z.string().trim().optional(),
-  homeRegion: z.string().trim().optional(),
-  homeCountry: z.string().trim().optional(),
+  homeRegionCode: z.string().trim().optional(),
+  homeCountryCode: z.string().trim().optional(),
   company: z.string().trim().optional(),
 });
 
@@ -66,8 +66,8 @@ export async function POST(req: Request) {
 
     if (role === "ROUTER") {
       const routerUpdate: Record<string, any> = { updatedAt: now };
-      if (fields.homeRegion !== undefined) routerUpdate.homeRegion = fields.homeRegion;
-      if (fields.homeCountry !== undefined) routerUpdate.homeCountryCode = fields.homeCountry;
+      if (fields.homeRegionCode !== undefined) routerUpdate.homeRegionCode = fields.homeRegionCode;
+      if (fields.homeCountryCode !== undefined) routerUpdate.homeCountryCode = fields.homeCountryCode;
       if (Object.keys(routerUpdate).length > 1) {
         await db.update(routerProfilesV4).set(routerUpdate as any).where(eq(routerProfilesV4.userId, id));
       }

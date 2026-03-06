@@ -68,9 +68,11 @@ export function DeleteConfirmModal({
   onCancel: () => void;
 }) {
   const [typed, setTyped] = useState("");
-  const confirmed = typed === "DELETE";
 
-  const label = action === "delete" ? "permanently delete" : "archive";
+  const isDelete = action === "delete";
+  const confirmWord = isDelete ? "DELETE" : "ARCHIVE";
+  const label = isDelete ? "permanently delete" : "archive";
+  const confirmed = typed === confirmWord;
 
   return (
     <div style={overlayStyle} onClick={onCancel} role="dialog" aria-modal="true">
@@ -80,16 +82,16 @@ export function DeleteConfirmModal({
         </div>
         <div style={{ fontSize: 14, color: "rgba(226,232,240,0.85)", lineHeight: 1.5 }}>
           You are about to <strong>{label}</strong> {count} {count === 1 ? "account" : "accounts"}.
-          This action cannot be easily undone.
+          {isDelete ? " This action is permanent and cannot be undone." : " This action cannot be easily undone."}
         </div>
         <div style={{ fontSize: 13, color: "rgba(226,232,240,0.65)", marginTop: 14 }}>
-          Type <strong style={{ color: "rgba(239,68,68,0.95)" }}>DELETE</strong> to confirm.
+          Type <strong style={{ color: "rgba(239,68,68,0.95)" }}>{confirmWord}</strong> to confirm.
         </div>
         <input
           type="text"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
-          placeholder="Type DELETE"
+          placeholder={`Type ${confirmWord}`}
           style={inputStyle}
           autoFocus
         />

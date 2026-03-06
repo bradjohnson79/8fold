@@ -87,8 +87,8 @@ export function EditUserModal({
   const [email, setEmail] = useState(user.email ?? "");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [businessName, setBusinessName] = useState(user.businessName ?? "");
-  const [homeRegion, setHomeRegion] = useState(user.regionCode ?? "");
-  const [homeCountry, setHomeCountry] = useState(user.country ?? "");
+  const [homeRegionCode, setHomeRegionCode] = useState(user.regionCode ?? "");
+  const [homeCountryCode, setHomeCountryCode] = useState(user.country ?? "");
   const [company, setCompany] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +105,8 @@ export function EditUserModal({
       if (phone !== (user.phone ?? "")) fields.phone = phone;
       if (role === "CONTRACTOR" && businessName !== (user.businessName ?? "")) fields.businessName = businessName;
       if (role === "ROUTER") {
-        if (homeRegion !== (user.regionCode ?? "")) fields.homeRegion = homeRegion;
-        if (homeCountry !== (user.country ?? "")) fields.homeCountry = homeCountry;
+        if (homeRegionCode !== (user.regionCode ?? "")) fields.homeRegionCode = homeRegionCode;
+        if (homeCountryCode !== (user.country ?? "")) fields.homeCountryCode = homeCountryCode;
       }
       if (role === "JOB_POSTER" && company) fields.company = company;
 
@@ -167,12 +167,12 @@ export function EditUserModal({
           {role === "ROUTER" && (
             <>
               <div>
-                <label style={labelStyle}>Home Region</label>
-                <input value={homeRegion} onChange={(e) => setHomeRegion(e.target.value)} style={inputStyle} />
+                <label style={labelStyle}>Province / State</label>
+                <input value={homeRegionCode} onChange={(e) => setHomeRegionCode(e.target.value)} style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Home Country</label>
-                <input value={homeCountry} onChange={(e) => setHomeCountry(e.target.value)} style={inputStyle} />
+                <label style={labelStyle}>Country</label>
+                <input value={homeCountryCode} onChange={(e) => setHomeCountryCode(e.target.value)} style={inputStyle} />
               </div>
             </>
           )}

@@ -20,6 +20,8 @@ const BodySchema = z.object({
   reason: z.string().trim().min(1).optional(),
 });
 
+const MAX_DELETE_IDS = 10;
+
 const DESTRUCTIVE_ACTIONS = new Set(["delete"]);
 
 const ACTION_MONTHS: Record<string, number> = {
@@ -29,12 +31,12 @@ const ACTION_MONTHS: Record<string, number> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  suspend_1w: "USER_BULK_SUSPENDED",
-  suspend_1m: "USER_BULK_SUSPENDED",
-  suspend_3m: "USER_BULK_SUSPENDED",
-  suspend_6m: "USER_BULK_SUSPENDED",
-  archive: "USER_BULK_ARCHIVED",
-  delete: "USER_BULK_DELETED",
+  suspend_1w: "USER_SUSPENDED",
+  suspend_1m: "USER_SUSPENDED",
+  suspend_3m: "USER_SUSPENDED",
+  suspend_6m: "USER_SUSPENDED",
+  archive: "USER_ARCHIVED",
+  delete: "USER_DELETED",
 };
 
 export async function POST(req: Request) {
@@ -54,6 +56,17 @@ export async function POST(req: Request) {
     if (DESTRUCTIVE_ACTIONS.has(action) && authed.tier !== "ADMIN_SUPER") {
       return err(403, "ADMIN_V4_FORBIDDEN", "Delete action requires ADMIN_SUPER tier");
     }
+
+    if (action === "delete" && ids.length > MAX_DELETE_IDS && authed.tier !== "ADMIN_SUPER") {
+      return err(400, "BULK_LIMIT_EXCEEDED", `Delete actions are limited to ${MAX_DELETE_IDS} users at a time`);
+    }
+
+    await adminAuditLog(req, authed as any, {
+      action: "USER_BULK_ACTION_REQUESTED",
+      entityType: "BulkAction",
+      entityId: authed.adminId,
+      metadata: { bulkAction: action, ids, reason, source: "admin-bulk-action" },
+    });
 
     const results: Array<{ id: string; ok: boolean; error?: string }> = [];
 
@@ -95,7 +108,7 @@ export async function POST(req: Request) {
             action: ACTION_LABELS[action] ?? "USER_BULK_ACTION",
             entityType: "User",
             entityId: userId,
-            metadata: { bulkAction: action, reason, affectedIds: ids },
+            metadata: { bulkAction: action, reason, source: "admin-bulk-action" },
           });
         } else {
           results.push({
