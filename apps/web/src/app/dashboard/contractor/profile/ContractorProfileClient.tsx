@@ -1,35 +1,27 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { apiFetch } from "@/lib/routerApi";
 
-type ProfileData = {
+type FullProfile = {
   contactName: string;
   phone: string;
   businessName: string;
+  businessNumber: string | null;
+  startedTradeYear: number | null;
+  startedTradeMonth: number | null;
+  streetAddress: string | null;
+  formattedAddress: string | null;
+  city: string | null;
+  postalCode: string | null;
+  countryCode: string;
+  homeRegionCode: string | null;
   tradeCategories: string[];
-  homeCountryCode: string;
-  homeRegionCode: string;
-  homeLatitude: number | null;
-  homeLongitude: number | null;
-  email: string;
-  serviceRadiusKm: number | null;
-  stripeConnected: boolean;
-};
-
-const EMPTY_PROFILE: ProfileData = {
-  contactName: "",
-  phone: "",
-  businessName: "",
-  tradeCategories: [],
-  homeCountryCode: "",
-  homeRegionCode: "",
-  homeLatitude: null,
-  homeLongitude: null,
-  email: "",
-  serviceRadiusKm: null,
-  stripeConnected: false,
+  homeLatitude: number;
+  homeLongitude: number;
+  tosVersion: string | null;
+  email: string | null;
 };
 
 const TRADE_CATEGORIES = [
@@ -148,13 +140,16 @@ function FieldCard({ label, children }: { label: string; children: React.ReactNo
 
 export default function ContractorProfileClient() {
   const { getToken } = useAuth();
-  const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
+  const { user: clerkUser } = useUser();
+  const [profile, setProfile] = useState<FullProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [editing, setEditing] = useState(false);
   const [tradeCatOpen, setTradeCatOpen] = useState(false);
+
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? "";
 
   const loadProfile = useCallback(async () => {
     setError("");
@@ -170,14 +165,20 @@ export default function ContractorProfileClient() {
         contactName: p.contactName ?? "",
         phone: p.phone ?? "",
         businessName: p.businessName ?? "",
+        businessNumber: p.businessNumber ?? null,
+        startedTradeYear: p.startedTradeYear ?? null,
+        startedTradeMonth: p.startedTradeMonth ?? null,
+        streetAddress: p.streetAddress ?? null,
+        formattedAddress: p.formattedAddress ?? null,
+        city: p.city ?? null,
+        postalCode: p.postalCode ?? null,
+        countryCode: p.countryCode ?? "",
+        homeRegionCode: p.homeRegionCode ?? null,
         tradeCategories: Array.isArray(p.tradeCategories) ? p.tradeCategories : [],
-        homeCountryCode: p.homeCountryCode ?? "",
-        homeRegionCode: p.homeRegionCode ?? "",
-        homeLatitude: p.homeLatitude ?? null,
-        homeLongitude: p.homeLongitude ?? null,
-        email: p.email ?? "",
-        serviceRadiusKm: p.serviceRadiusKm ?? null,
-        stripeConnected: Boolean(p.stripeConnected),
+        homeLatitude: typeof p.homeLatitude === "number" ? p.homeLatitude : 0,
+        homeLongitude: typeof p.homeLongitude === "number" ? p.homeLongitude : 0,
+        tosVersion: p.tosVersion ?? "v1.0",
+        email: p.email ?? null,
       });
     } catch (e: unknown) {
       if (e instanceof Error && (e as any).code === "AUTH_MISSING_TOKEN") {
@@ -193,35 +194,49 @@ export default function ContractorProfileClient() {
   useEffect(() => { void loadProfile(); }, [loadProfile]);
 
   async function handleSave() {
+    if (!profile) return;
     setSaving(true);
     setError("");
     setSuccess("");
     try {
+      const payload = {
+        contactName: profile.contactName,
+        phone: profile.phone,
+        businessName: profile.businessName,
+        businessNumber: profile.businessNumber,
+        startedTradeYear: profile.startedTradeYear ?? new Date().getFullYear() - 5,
+        startedTradeMonth: profile.startedTradeMonth ?? 1,
+        streetAddress: profile.streetAddress ?? "N/A",
+        city: profile.city ?? "N/A",
+        postalCode: profile.postalCode ?? "N/A",
+        countryCode: profile.countryCode || "CA",
+        homeRegionCode: profile.homeRegionCode || null,
+        formattedAddress: profile.formattedAddress ?? profile.streetAddress ?? "N/A",
+        tradeCategories: profile.tradeCategories,
+        homeLatitude: profile.homeLatitude,
+        homeLongitude: profile.homeLongitude,
+        acceptedTos: true as const,
+        tosVersion: "v1.0" as const,
+      };
+
       const resp = await apiFetch("/api/web/v4/contractor/profile", getToken, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contactName: profile.contactName,
-          phone: profile.phone,
-          businessName: profile.businessName,
-          tradeCategories: profile.tradeCategories,
-          homeCountryCode: profile.homeCountryCode,
-          homeRegionCode: profile.homeRegionCode,
-          homeLatitude: profile.homeLatitude,
-          homeLongitude: profile.homeLongitude,
-        }),
+        body: JSON.stringify(payload),
       });
       if (resp.status === 401) {
         throw new Error("Authentication lost — please refresh and sign in again.");
       }
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        throw new Error(
-          typeof json?.error === "string" ? json.error : json?.error?.message ?? "Failed to save",
-        );
+        const msg = typeof json?.error === "string"
+          ? json.error
+          : json?.error?.message ?? json?.message ?? "Failed to save";
+        throw new Error(msg);
       }
       setSuccess("Profile updated successfully.");
       setEditing(false);
+      setTradeCatOpen(false);
       void loadProfile();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save profile");
@@ -230,12 +245,13 @@ export default function ContractorProfileClient() {
     }
   }
 
-  function updateField(field: keyof ProfileData, value: string) {
-    setProfile((prev) => ({ ...prev, [field]: value }));
+  function updateField(field: keyof FullProfile, value: string) {
+    setProfile((prev) => prev ? { ...prev, [field]: value } : prev);
   }
 
   function toggleTradeCategory(cat: string) {
     setProfile((prev) => {
+      if (!prev) return prev;
       const has = prev.tradeCategories.includes(cat);
       return {
         ...prev,
@@ -247,17 +263,13 @@ export default function ContractorProfileClient() {
   }
 
   function handleCountryChange(newCountry: string) {
-    setProfile((prev) => ({
-      ...prev,
-      homeCountryCode: newCountry,
-      homeRegionCode: "",
-    }));
+    setProfile((prev) => prev ? { ...prev, countryCode: newCountry, homeRegionCode: null } : prev);
   }
 
-  const regionOptions = getRegionOptions(profile.homeCountryCode);
-  const regionLabel = profile.homeCountryCode === "US" ? "State" : profile.homeCountryCode === "CA" ? "Province" : "Province / State";
-  const countryLabel = COUNTRIES.find((c) => c.value === profile.homeCountryCode)?.label ?? profile.homeCountryCode;
-  const regionFullLabel = regionOptions.find((r) => r.value === profile.homeRegionCode)?.label ?? profile.homeRegionCode;
+  const displayEmail = profile?.email || clerkEmail || "";
+  const regionOptions = getRegionOptions(profile?.countryCode ?? "");
+  const regionLabel = profile?.countryCode === "US" ? "State" : profile?.countryCode === "CA" ? "Province" : "Province / State";
+  const countryLabel = COUNTRIES.find((c) => c.value === profile?.countryCode)?.label ?? profile?.countryCode ?? "";
 
   if (loading) {
     return (
@@ -304,12 +316,12 @@ export default function ContractorProfileClient() {
           {editing ? (
             <input
               type="text"
-              value={profile.contactName}
+              value={profile?.contactName ?? ""}
               onChange={(e) => updateField("contactName", e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           ) : (
-            <div className="text-sm font-medium text-slate-900">{profile.contactName || "—"}</div>
+            <div className="text-sm font-medium text-slate-900">{profile?.contactName || "—"}</div>
           )}
         </FieldCard>
 
@@ -317,12 +329,12 @@ export default function ContractorProfileClient() {
           {editing ? (
             <input
               type="tel"
-              value={profile.phone}
+              value={profile?.phone ?? ""}
               onChange={(e) => updateField("phone", e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           ) : (
-            <div className="text-sm font-medium text-slate-900">{profile.phone || "—"}</div>
+            <div className="text-sm font-medium text-slate-900">{profile?.phone || "—"}</div>
           )}
         </FieldCard>
 
@@ -330,19 +342,19 @@ export default function ContractorProfileClient() {
           {editing ? (
             <input
               type="text"
-              value={profile.businessName}
+              value={profile?.businessName ?? ""}
               onChange={(e) => updateField("businessName", e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           ) : (
-            <div className="text-sm font-medium text-slate-900">{profile.businessName || "—"}</div>
+            <div className="text-sm font-medium text-slate-900">{profile?.businessName || "—"}</div>
           )}
         </FieldCard>
 
         <FieldCard label="Email">
           <input
             type="email"
-            value={profile.email}
+            value={displayEmail}
             disabled
             className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
           />
@@ -360,9 +372,9 @@ export default function ContractorProfileClient() {
                 onClick={() => setTradeCatOpen((o) => !o)}
                 className="flex w-full items-center justify-between rounded-lg border border-slate-300 px-3 py-2 text-left text-sm"
               >
-                <span className={profile.tradeCategories.length > 0 ? "text-slate-900" : "text-slate-400"}>
-                  {profile.tradeCategories.length > 0
-                    ? profile.tradeCategories.map(formatTradeLabel).join(", ")
+                <span className={(profile?.tradeCategories.length ?? 0) > 0 ? "text-slate-900" : "text-slate-400"}>
+                  {(profile?.tradeCategories.length ?? 0) > 0
+                    ? profile!.tradeCategories.map(formatTradeLabel).join(", ")
                     : "Select categories..."}
                 </span>
                 <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -372,7 +384,7 @@ export default function ContractorProfileClient() {
               {tradeCatOpen ? (
                 <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                   {TRADE_CATEGORIES.map((cat) => {
-                    const checked = profile.tradeCategories.includes(cat.value);
+                    const checked = profile?.tradeCategories.includes(cat.value) ?? false;
                     return (
                       <label
                         key={cat.value}
@@ -395,8 +407,8 @@ export default function ContractorProfileClient() {
             </div>
           ) : (
             <div className="text-sm font-medium text-slate-900">
-              {profile.tradeCategories.length > 0
-                ? profile.tradeCategories.map(formatTradeLabel).join(", ")
+              {(profile?.tradeCategories.length ?? 0) > 0
+                ? profile!.tradeCategories.map(formatTradeLabel).join(", ")
                 : "—"}
             </div>
           )}
@@ -406,7 +418,7 @@ export default function ContractorProfileClient() {
         <FieldCard label="Country">
           {editing ? (
             <select
-              value={profile.homeCountryCode}
+              value={profile?.countryCode ?? ""}
               onChange={(e) => handleCountryChange(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
@@ -420,17 +432,17 @@ export default function ContractorProfileClient() {
           )}
         </FieldCard>
 
-        {/* Province / State dropdown — filtered by country */}
+        {/* Province / State dropdown */}
         <FieldCard label={regionLabel}>
           {editing ? (
             <select
-              value={profile.homeRegionCode}
-              onChange={(e) => updateField("homeRegionCode", e.target.value)}
-              disabled={!profile.homeCountryCode}
+              value={profile?.homeRegionCode ?? ""}
+              onChange={(e) => setProfile((prev) => prev ? { ...prev, homeRegionCode: e.target.value || null } : prev)}
+              disabled={!profile?.countryCode}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
             >
               <option value="">
-                {profile.homeCountryCode ? `Select ${regionLabel.toLowerCase()}...` : "Select country first"}
+                {profile?.countryCode ? `Select ${regionLabel.toLowerCase()}...` : "Select country first"}
               </option>
               {regionOptions.map((r) => (
                 <option key={r.value} value={r.value}>{r.label} ({r.value})</option>
@@ -438,11 +450,14 @@ export default function ContractorProfileClient() {
             </select>
           ) : (
             <div className="text-sm font-medium text-slate-900">
-              {regionFullLabel || "—"}
+              {(() => {
+                const code = profile?.homeRegionCode ?? "";
+                const found = regionOptions.find((r) => r.value === code);
+                return found ? `${found.label} (${found.value})` : code || "—";
+              })()}
             </div>
           )}
         </FieldCard>
-
       </div>
 
       {editing ? (
