@@ -55,7 +55,7 @@ const ACTION_LABELS: Record<string, string> = {
   suspend_3m: "suspended for 3 months",
   suspend_6m: "suspended for 6 months",
   archive: "archived",
-  delete: "deleted",
+  delete: "permanently deleted",
 };
 
 const tdStyle: React.CSSProperties = {
@@ -126,8 +126,15 @@ export function ContractorsTableClient({ rows, totalCount, page, pageSize, q, st
       });
       const json = await resp.json().catch(() => null);
       const success = json?.data?.success ?? 0;
+      const failed = json?.data?.failed ?? 0;
       const label = ACTION_LABELS[action] ?? action;
-      setToast(`${success} ${success === 1 ? "account" : "accounts"} ${label}`);
+      if (failed > 0 && success > 0) {
+        setToast(`${success} succeeded, ${failed} failed`);
+      } else if (failed > 0) {
+        setToast(`${failed} ${failed === 1 ? "action" : "actions"} failed`);
+      } else {
+        setToast(`${success} ${success === 1 ? "user" : "users"} ${label}`);
+      }
       setSelected(new Set());
       router.refresh();
     } catch {
@@ -138,7 +145,7 @@ export function ContractorsTableClient({ rows, totalCount, page, pageSize, q, st
   function handleApply(action: string) {
     if (action === "edit") {
       if (selected.size !== 1) {
-        setToast("Select exactly one user to edit");
+        setToast("Select exactly one user to edit profile");
         return;
       }
       const user = rows.find((r) => selected.has(r.id));
@@ -291,7 +298,7 @@ export function ContractorsTableClient({ rows, totalCount, page, pageSize, q, st
           onSaved={() => {
             setEditUser(null);
             setSelected(new Set());
-            setToast("Profile updated");
+            setToast("Profile updated successfully");
             router.refresh();
           }}
         />

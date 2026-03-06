@@ -218,23 +218,20 @@ export async function archiveManagedUser(input: {
   }
 
   const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({
-        status: "ARCHIVED",
-        accountStatus: "ARCHIVED",
-        archivedAt: now,
-        archivedReason: reason,
-        archivedByAdminId: input.adminId,
-        suspendedUntil: null,
-        suspensionReason: null,
-        updatedByAdminId: input.adminId,
-        updatedAt: now,
-      } as any)
-      .where(eq(users.id, input.userId));
-    await tx.delete(sessions).where(eq(sessions.userId, input.userId));
-  });
+  await db
+    .update(users)
+    .set({
+      status: "ARCHIVED",
+      accountStatus: "ARCHIVED",
+      archivedAt: now,
+      archivedReason: reason,
+      archivedByAdminId: input.adminId,
+      suspendedUntil: null,
+      suspensionReason: null,
+      updatedByAdminId: input.adminId,
+      updatedAt: now,
+    } as any)
+    .where(eq(users.id, input.userId));
 
   return { ok: true, data: { archived: true } };
 }
@@ -314,6 +311,10 @@ export async function softDeleteManagedUser(input: {
 }): Promise<ActionResult<{ deleted: true }>> {
   const user = await loadManagedUser(input.userId);
   if (!user.ok) return user;
+
+  if (user.data.status === "DELETED") {
+    return { ok: false, status: 409, code: "USER_ALREADY_DELETED", message: "User is already deleted" };
+  }
 
   const reason = String(input.reason ?? "").trim();
   if (!reason) {

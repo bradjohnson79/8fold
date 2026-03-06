@@ -81,8 +81,12 @@ export function BulkActionBar({
       >
         <option value="">Bulk Actions</option>
         {ACTION_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
+          <option
+            key={o.value}
+            value={o.value}
+            disabled={o.value === "edit" && selectedCount !== 1}
+          >
+            {o.label}{o.value === "edit" && selectedCount !== 1 ? " (select 1)" : ""}
           </option>
         ))}
       </select>
