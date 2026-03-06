@@ -48,7 +48,7 @@ export function middleware(req: Request) {
     const resp = new NextResponse(null, { status: 204 });
     resp.headers.set("Access-Control-Allow-Origin", allowOrigin);
     resp.headers.set("Vary", "Origin");
-    resp.headers.set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    resp.headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     resp.headers.set("Access-Control-Allow-Headers", "content-type,authorization,x-admin-trace-id,x-requested-with");
     resp.headers.set("Access-Control-Allow-Credentials", "true");
     return resp;

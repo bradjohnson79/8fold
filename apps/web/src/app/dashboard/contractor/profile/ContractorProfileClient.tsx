@@ -340,7 +340,12 @@ export default function ContractorProfileClient() {
         </FieldCard>
 
         <FieldCard label="Email">
-          <div className="text-sm font-medium text-slate-900">{profile.email || "—"}</div>
+          <input
+            type="email"
+            value={profile.email}
+            disabled
+            className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
+          />
         </FieldCard>
 
         {/* Trade Categories — multi-select dropdown */}
