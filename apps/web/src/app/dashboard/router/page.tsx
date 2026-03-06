@@ -4,17 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
-
-type SessionData = {
-  hasAcceptedTerms: boolean;
-  profileComplete: boolean;
-  state: string;
-};
-
-type StripeStatus = {
-  ok: boolean;
-  state: "NOT_CONNECTED" | "PENDING_VERIFICATION" | "CONNECTED" | "CURRENCY_MISMATCH";
-};
+import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 
 type SummaryData = {
   capacity: { routesUsedToday: number };
@@ -26,8 +16,6 @@ type SummaryData = {
     updatedAt: string | null;
   }>;
 };
-
-type NotifData = { unreadCount?: number };
 
 function formatTimeAgo(iso: string | null): string {
   if (!iso) return "";
@@ -96,43 +84,32 @@ function GateCard({
 
 export default function RouterOverviewPage() {
   const { getToken } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { readiness, loading: readinessLoading, error: readinessError } = useRouterReadiness();
+  const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [session, setSession] = useState<SessionData | null>(null);
-  const [stripe, setStripe] = useState<StripeStatus | null>(null);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [availableCount, setAvailableCount] = useState<number>(0);
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
 
   useEffect(() => {
+    if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [sessionResp, stripeResp, summaryResp, jobsResp, notifResp] =
+        const [summaryResp, jobsResp, notifResp] =
           await Promise.all([
-            routerApiFetch("/api/web/v4/router/session", getToken).catch(() => null),
-            routerApiFetch("/api/web/stripe/connect/create-account", getToken).catch(() => null),
             routerApiFetch("/api/web/v4/router/dashboard/summary", getToken).catch(() => null),
             routerApiFetch("/api/web/v4/router/available-jobs", getToken).catch(() => null),
             routerApiFetch("/api/web/v4/router/notifications?page=1&pageSize=1", getToken).catch(() => null),
           ]);
         if (!alive) return;
 
-        if (sessionResp?.status === 401) {
-          setError("Authentication lost — please refresh and sign in again.");
-          return;
-        }
-
-        const sessionJson = sessionResp ? await sessionResp.json().catch(() => null) : null;
-        const stripeJson = stripeResp ? await stripeResp.json().catch(() => null) : null;
         const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
         const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
         const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
         if (!alive) return;
 
-        setSession(sessionJson?.data ?? sessionJson ?? null);
-        setStripe(stripeJson?.ok ? stripeJson : null);
         setSummary(summaryJson ?? null);
         setAvailableCount(
           Array.isArray(jobsJson?.jobs) ? jobsJson.jobs.length : Array.isArray(jobsJson) ? jobsJson.length : 0,
@@ -141,13 +118,15 @@ export default function RouterOverviewPage() {
       } catch {
         if (alive) setError("Failed to load dashboard data");
       } finally {
-        if (alive) setLoading(false);
+        if (alive) setDataLoading(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [readinessLoading, getToken]);
+
+  const loading = readinessLoading || dataLoading;
 
   if (loading) {
     return (
@@ -163,18 +142,20 @@ export default function RouterOverviewPage() {
     );
   }
 
-  if (error) {
+  if (readinessError || error) {
     return (
       <div className="p-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {readinessError || error}
+        </div>
       </div>
     );
   }
 
-  const termsOk = session?.hasAcceptedTerms ?? false;
-  const profileOk = session?.profileComplete ?? false;
-  const stripeOk = stripe?.state === "CONNECTED";
-  const allGatesComplete = termsOk && profileOk && stripeOk;
+  const termsOk = readiness?.terms ?? false;
+  const profileOk = readiness?.profile ?? false;
+  const stripeOk = readiness?.payment ?? false;
+  const allGatesComplete = readiness?.complete ?? false;
 
   const routedToday = summary?.capacity?.routesUsedToday ?? 0;
   const openTickets = summary?.actionRequired?.supportTicketsRequiringInput ?? 0;
