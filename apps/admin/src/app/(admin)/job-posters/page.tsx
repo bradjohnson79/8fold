@@ -1,5 +1,6 @@
 import { adminApiFetch } from "@/server/adminApiV4";
 import { redirect } from "next/navigation";
+import { JobPostersTableClient } from "./JobPostersTableClient";
 
 type UserRow = {
   id: string;
@@ -119,7 +120,6 @@ export default async function JobPostersPage({
 
   const rows = data?.rows ?? [];
   const totalCount = Number(data?.totalCount ?? 0);
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <div>
@@ -174,104 +174,17 @@ export default async function JobPostersPage({
         </form>
       </div>
 
-      {err ? <div style={{ marginTop: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>{err}</div> : null}
-
-      <div style={{ marginTop: 12, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-          <thead>
-            <tr>
-              {["Name", "Email", "Phone", "Region", "Status", "Created", "Badges"].map((h) => (
-                <th key={h} style={{ textAlign: "left", fontSize: 12, color: "rgba(226,232,240,0.70)", fontWeight: 900, padding: "10px 10px", borderBottom: "1px solid rgba(148,163,184,0.12)" }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {err ? (
-              <tr>
-                <td colSpan={7} style={{ padding: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>
-                  {err}
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ padding: 12, color: "rgba(226,232,240,0.65)" }}>
-                  No job posters found.
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={tdStyle}>
-                    <a href={`/job-posters/${encodeURIComponent(r.id)}`} style={linkStyle}>
-                      {r.name ?? "—"}
-                    </a>
-                  </td>
-                  <td style={tdStyle}>{r.email ?? "—"}</td>
-                  <td style={tdStyle}>{r.phone ?? "—"}</td>
-                  <td style={tdStyle}>{[r.city, r.regionCode, r.country].filter(Boolean).join(", ") || "—"}</td>
-                  <td style={tdStyle}>{r.status}</td>
-                  <td style={tdStyle}>{r.createdAt.slice(0, 10)}</td>
-                  <td style={tdStyle}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {(r.badges ?? []).map((b) => (
-                        <span key={b} style={{ border: "1px solid rgba(148,163,184,0.2)", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 }}>
-                          {formatBadgeLabel(b)}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ color: "rgba(226,232,240,0.65)", fontSize: 12 }}>
-          Showing {(page - 1) * pageSize + (rows.length ? 1 : 0)}-{(page - 1) * pageSize + rows.length} of {totalCount}
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <a
-            href={`/job-posters${qs({ q: q || undefined, status: status || undefined, page: String(Math.max(1, page - 1)), pageSize: String(pageSize) })}`}
-            style={{ ...pagerLinkStyle, pointerEvents: page <= 1 ? "none" : "auto", opacity: page <= 1 ? 0.45 : 1 }}
-          >
-            ← Prev
-          </a>
-          <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12, fontWeight: 900 }}>Page {page} / {totalPages}</div>
-          <a
-            href={`/job-posters${qs({ q: q || undefined, status: status || undefined, page: String(Math.min(totalPages, page + 1)), pageSize: String(pageSize) })}`}
-            style={{ ...pagerLinkStyle, pointerEvents: page >= totalPages ? "none" : "auto", opacity: page >= totalPages ? 0.45 : 1 }}
-          >
-            Next →
-          </a>
-        </div>
-      </div>
+      <JobPostersTableClient
+        rows={rows}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        q={q}
+        status={status}
+        error={err}
+        formatBadgeLabel={formatBadgeLabel}
+      />
     </div>
   );
 }
 
-const tdStyle: React.CSSProperties = {
-  padding: "10px 10px",
-  borderBottom: "1px solid rgba(148,163,184,0.08)",
-  color: "rgba(226,232,240,0.90)",
-  fontSize: 13,
-  verticalAlign: "top",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "rgba(191,219,254,0.95)",
-  textDecoration: "none",
-  fontWeight: 900,
-};
-
-const pagerLinkStyle: React.CSSProperties = {
-  border: "1px solid rgba(148,163,184,0.14)",
-  borderRadius: 12,
-  padding: "8px 10px",
-  color: "rgba(191,219,254,0.95)",
-  textDecoration: "none",
-  fontWeight: 900,
-};

@@ -35,6 +35,12 @@ function addMonths(base: Date, months: number): Date {
   return out;
 }
 
+function addDays(base: Date, days: number): Date {
+  const out = new Date(base);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
 async function loadManagedUser(userId: string): Promise<ActionResult<ManagedUser>> {
   const rows = await db
     .select({
@@ -258,6 +264,80 @@ export async function restoreManagedUser(input: {
   return { ok: true, data: { restored: true } };
 }
 
+export async function suspendManagedUserByDays(input: {
+  userId: string;
+  adminId: string;
+  days: number;
+  reason: string;
+}): Promise<ActionResult<{ suspendedUntil: string }>> {
+  const user = await loadManagedUser(input.userId);
+  if (!user.ok) return user;
+
+  const days = Math.trunc(Number(input.days));
+  const reason = String(input.reason ?? "").trim();
+  if (!Number.isFinite(days) || days < 1 || days > 180 || !reason) {
+    return {
+      ok: false,
+      status: 400,
+      code: "ADMIN_V4_SUSPEND_INVALID",
+      message: "days must be between 1 and 180, and reason is required",
+    };
+  }
+  if (user.data.status === "ARCHIVED") {
+    return { ok: false, status: 409, code: "ADMIN_V4_USER_ARCHIVED", message: "Archived users cannot be suspended" };
+  }
+
+  const now = new Date();
+  const suspendedUntil = addDays(now, days);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({
+        status: "SUSPENDED",
+        accountStatus: "SUSPENDED",
+        suspendedUntil,
+        suspensionReason: reason,
+        updatedByAdminId: input.adminId,
+        updatedAt: now,
+      } as any)
+      .where(eq(users.id, input.userId));
+    await tx.delete(sessions).where(eq(sessions.userId, input.userId));
+  });
+
+  return { ok: true, data: { suspendedUntil: suspendedUntil.toISOString() } };
+}
+
+export async function softDeleteManagedUser(input: {
+  userId: string;
+  adminId: string;
+  reason: string;
+}): Promise<ActionResult<{ deleted: true }>> {
+  const user = await loadManagedUser(input.userId);
+  if (!user.ok) return user;
+
+  const reason = String(input.reason ?? "").trim();
+  if (!reason) {
+    return { ok: false, status: 400, code: "ADMIN_V4_DELETE_INVALID", message: "reason is required" };
+  }
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({
+        status: "DELETED",
+        accountStatus: "DELETED",
+        deletionReason: reason,
+        updatedByAdminId: input.adminId,
+        updatedAt: now,
+      } as any)
+      .where(eq(users.id, input.userId));
+    await tx.delete(sessions).where(eq(sessions.userId, input.userId));
+  });
+
+  return { ok: true, data: { deleted: true } };
+}
+
 export async function hardDeleteManagedUser(input: {
   userId: string;
 }): Promise<ActionResult<{ deleted: true }>> {
@@ -290,8 +370,10 @@ export async function hardDeleteManagedUser(input: {
 
 export const userLifecycleRepo = {
   suspendManagedUser,
+  suspendManagedUserByDays,
   unsuspendManagedUser,
   archiveManagedUser,
   restoreManagedUser,
+  softDeleteManagedUser,
   hardDeleteManagedUser,
 };
