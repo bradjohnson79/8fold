@@ -103,10 +103,21 @@ export default function ContractorTermsPage() {
         <h3 className="flex items-center gap-2 text-sm font-bold text-amber-900">
           <span className="text-amber-500">&#9888;</span> Contractor Reliability Policy
         </h3>
-        <ul className="mt-2 space-y-1 text-sm text-amber-800">
-          <li>Cancel within 8 hours of appointment &rarr; <strong>1 week account suspension</strong></li>
-          <li>No-show without contact &rarr; <strong>1 month account suspension</strong></li>
-        </ul>
+        <div className="mt-2 space-y-3 text-sm text-amber-800">
+          <p>
+            In the event a job must be rescheduled or canceled, it must be reported before the 8 hour
+            window of an appointment time. Failure to do so could result in a <strong>7 day account suspension</strong>.
+          </p>
+          <p>
+            If an appointment is scheduled and the Contractor fails to appear for the assigned job,
+            this could lead to a <strong>1 month account suspension</strong>.
+          </p>
+          <p>
+            Suspension involves no access to a contractor&apos;s dashboard or assignment work available
+            for the amount of suspension time. Please be considerate to your clients by reporting any
+            need to reschedule or cancel within the appropriate window of time sanctioned by 8Fold.
+          </p>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm leading-relaxed text-slate-700">
