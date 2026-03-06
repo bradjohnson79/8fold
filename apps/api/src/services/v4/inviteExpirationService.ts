@@ -40,59 +40,10 @@ export async function expireStaleInvitesAndResetJobs(): Promise<void> {
       }
     }
 
-    const routedExpiredRows = await tx
-      .select({
-        id: jobs.id,
-        routerUserId: jobs.claimed_by_user_id,
-      })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.status, "INVITED" as any),
-          lt(jobs.routing_expires_at, now),
-          sql`not exists (
-            select 1
-            from v4_contractor_job_invites i
-            where i.job_id = ${jobs.id}
-              and i.status = 'ACCEPTED'
-          )`,
-        ),
-      );
-
-    await tx
-      .update(jobs)
-      .set({
-        status: "OPEN_FOR_ROUTING" as any,
-        routing_started_at: null,
-        routing_expires_at: null,
-        claimed_by_user_id: null,
-        claimed_at: null,
-        routed_at: null,
-        routing_status: ROUTING_STATUS.UNROUTED as any,
-        updated_at: now,
-      })
-      .where(and(eq(jobs.status, "INVITED" as any), lt(jobs.routing_expires_at, now)));
-
-    if (routedExpiredRows.length > 0) {
-      for (const row of routedExpiredRows) {
-        const routerId = String(row.routerUserId ?? "").trim();
-        if (!routerId) continue;
-        await emitDomainEvent(
-          {
-            type: "CONTRACTOR_INVITE_EXPIRED",
-            payload: {
-              inviteId: `routing-window:${row.id}`,
-              jobId: row.id,
-              contractorId: null,
-              routerId,
-              createdAt: now,
-              dedupeKey: `routing_window_expired:${row.id}`,
-            },
-          },
-          { tx },
-        );
-      }
-    }
+    // "INVITED" is not a valid JobStatus enum value — queries using it
+    // crash PostgreSQL at runtime. The block that was here has been removed.
+    // If an INVITED status is added to the enum in the future, re-add the
+    // expired-routing-window logic at that point.
 
     await tx
       .update(jobs)
