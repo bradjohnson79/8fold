@@ -30,7 +30,7 @@ type CardConfig = {
 function cardConfigs(role: DashboardRole): CardConfig[] {
   const termsHref =
     role === "CONTRACTOR"
-      ? "/dashboard/contractor"
+      ? "/dashboard/contractor/terms"
       : role === "ROUTER"
         ? "/dashboard/router/terms"
         : "/dashboard/job-poster";
