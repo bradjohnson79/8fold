@@ -6,6 +6,7 @@ import { DashboardShell } from "../DashboardShell";
 export function ContractorDashboardShellV4({ children }: { children: React.ReactNode }) {
   const items = [
     { href: "/dashboard/contractor", label: "Overview" },
+    { href: "/dashboard/contractor/terms", label: "Terms" },
     { href: "/dashboard/contractor/invites", label: "Invites" },
     { href: "/dashboard/contractor/jobs", label: "Jobs" },
     { href: "/dashboard/contractor/account-status", label: "Account Status" },
@@ -14,7 +15,7 @@ export function ContractorDashboardShellV4({ children }: { children: React.React
     { href: "/dashboard/contractor/profile", label: "Profile" },
     { href: "/dashboard/contractor/payment", label: "Payment Setup" },
     { href: "/dashboard/contractor/support", label: "Support" },
-    { href: "/app/contractor/support/inbox", label: "Support Inbox" },
+    { href: "/dashboard/contractor/support-inbox", label: "Support Inbox" },
   ];
 
   return (
