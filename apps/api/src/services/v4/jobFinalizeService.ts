@@ -124,7 +124,6 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
       country_code,
       state_code,
       region_code,
-      cancel_request_pending,
       created_at,
       updated_at
     ) VALUES (
@@ -145,7 +144,6 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
       ${resolvedCountryCode},
       ${stateCode},
       ${stateCode || null},
-      false,
       NOW(),
       NOW()
     )
