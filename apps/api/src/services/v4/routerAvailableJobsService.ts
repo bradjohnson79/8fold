@@ -32,7 +32,11 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
       traceLog(trace, `step_pre expireStaleInvitesAndResetJobs`);
     }
 
-    await expireStaleInvitesAndResetJobs();
+    try {
+      await expireStaleInvitesAndResetJobs();
+    } catch (expireErr) {
+      console.error("[available-jobs] expireStaleInvitesAndResetJobs failed (non-fatal)", expireErr instanceof Error ? expireErr.message : expireErr);
+    }
 
     if (trace) traceLog(trace, `step_post expireStaleInvitesAndResetJobs`);
 
