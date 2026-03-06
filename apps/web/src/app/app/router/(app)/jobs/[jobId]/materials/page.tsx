@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type MaterialsResponse = {
   request: null | {
@@ -30,6 +32,7 @@ function money(cents: number, currency: string) {
 
 export default function RouterMaterialsReadOnlyPage() {
   const params = useParams<{ jobId: string }>();
+  const { getToken } = useAuth();
   const jobId = params.jobId;
 
   const [loading, setLoading] = useState(true);
@@ -40,9 +43,7 @@ export default function RouterMaterialsReadOnlyPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/api/app/materials/by-job?jobId=${encodeURIComponent(jobId)}`, {
-        cache: "no-store"
-      });
+      const resp = await routerApiFetch(`/api/app/materials/by-job?jobId=${encodeURIComponent(jobId)}`, getToken);
       const json = (await resp.json().catch(() => ({}))) as MaterialsResponse;
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load");
       setData(json);

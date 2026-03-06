@@ -2,6 +2,8 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
 import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
@@ -25,6 +27,7 @@ type EligibleContractor = {
 
 export default function RouterOpenJobsPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
 
   const [step, setStep] = React.useState<"jobs" | "contractors">("jobs");
   const [loading, setLoading] = React.useState(false);
@@ -42,7 +45,7 @@ export default function RouterOpenJobsPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/web/v4/router/available-jobs", { cache: "no-store" });
+      const resp = await routerApiFetch("/api/web/v4/router/available-jobs", getToken);
       const json = await resp.json().catch(() => ({} as any));
       if (!resp.ok) throw new Error(json?.error ?? "Failed to load jobs");
       const rows = Array.isArray(json?.jobs) ? (json.jobs as RoutableJob[]) : [];
@@ -59,10 +62,7 @@ export default function RouterOpenJobsPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, {
-        cache: "no-store",
-        credentials: "include",
-      });
+      const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, getToken);
       const json = await resp.json().catch(() => ({} as any));
       if (json.kind !== "ok" || !resp.ok) {
         const msg = typeof json.error === "string" ? json.error : json.error?.message ?? "Failed to load contractors";
@@ -104,10 +104,9 @@ export default function RouterOpenJobsPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(selectedJobId)}/route`, {
+      const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(selectedJobId)}/route`, getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ contractorIds: selectedContractorIds }),
       });
       const json = await resp.json().catch(() => ({} as any));

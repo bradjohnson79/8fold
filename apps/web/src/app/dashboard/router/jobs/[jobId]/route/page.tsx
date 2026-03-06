@@ -2,8 +2,10 @@
 
 import { useParams, useRouter } from "next/navigation";
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
 import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
 import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type EligibleContractor = {
   contractorId: string;
@@ -33,6 +35,7 @@ type EligibleResponse = {
 export default function RouterRouteJobPage() {
   const params = useParams<{ jobId: string }>();
   const router = useRouter();
+  const { getToken } = useAuth();
   const jobId = String(params?.jobId ?? "");
 
   const [loading, setLoading] = React.useState(true);
@@ -55,10 +58,7 @@ export default function RouterRouteJobPage() {
       setLoading(true);
       setError("");
       try {
-        const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, {
-          cache: "no-store",
-          credentials: "include",
-        });
+        const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, getToken);
         const data = (await resp.json().catch(() => null)) as EligibleResponse & { error?: { message?: string } | string };
         if (!alive) return;
         if (!resp.ok || data?.kind !== "ok") {
@@ -92,10 +92,9 @@ export default function RouterRouteJobPage() {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/route`, {
+      const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/route`, getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ contractorIds: selectedContractorIds }),
       });
       const data = (await resp.json().catch(() => ({}))) as any;

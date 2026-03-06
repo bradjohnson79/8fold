@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type Job = {
   id: string;
@@ -50,6 +52,7 @@ function formatRelativeTime(iso: string | undefined): string {
 }
 
 export default function AvailableJobsClient() {
+  const { getToken } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,9 +67,7 @@ export default function AvailableJobsClient() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const resp = await fetch(ENDPOINT, {
-        cache: "no-store",
-        credentials: "include",
+      const resp = await routerApiFetch(ENDPOINT, getToken, {
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -112,7 +113,7 @@ export default function AvailableJobsClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   useEffect(() => {
     fetchJobs();
@@ -123,8 +124,8 @@ export default function AvailableJobsClient() {
     setSelfCheck(null);
     try {
       const [profileResp, summaryResp] = await Promise.all([
-        fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" }).catch(() => null),
-        fetch("/api/web/v4/router/dashboard/summary", { cache: "no-store", credentials: "include" }).catch(() => null),
+        routerApiFetch("/api/web/v4/router/profile", getToken).catch(() => null),
+        routerApiFetch("/api/web/v4/router/dashboard/summary", getToken).catch(() => null),
       ]);
 
       const profileJson = profileResp ? await profileResp.json().catch(() => null) : null;

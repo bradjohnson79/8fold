@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type Ticket = {
   id: string;
@@ -10,6 +12,7 @@ type Ticket = {
 };
 
 export default function RouterSupportInboxPage() {
+  const { getToken } = useAuth();
   const [tickets, setTickets] = React.useState<Ticket[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -18,7 +21,7 @@ export default function RouterSupportInboxPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/web/v4/support/tickets?take=50", { cache: "no-store", credentials: "include" });
+        const resp = await routerApiFetch("/api/web/v4/support/tickets?take=50", getToken);
         const json = (await resp.json().catch(() => ({}))) as { data?: { tickets?: Ticket[] }; tickets?: Ticket[]; error?: { message?: string } | string };
         if (!alive) return;
         if (!resp.ok) {

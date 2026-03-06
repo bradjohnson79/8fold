@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 import { ProgressBar } from "../../../../../components/Progress";
 
 type RouterIncentives = {
@@ -21,6 +23,7 @@ type RouterIncentives = {
 };
 
 export default function RouterIncentivesPage() {
+  const { getToken } = useAuth();
   const [data, setData] = useState<RouterIncentives | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,7 +32,7 @@ export default function RouterIncentivesPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/incentives", { cache: "no-store" });
+      const resp = await routerApiFetch("/api/app/router/incentives", getToken);
       const json = (await resp.json().catch(() => ({}))) as RouterIncentives;
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load");
       setData(json);

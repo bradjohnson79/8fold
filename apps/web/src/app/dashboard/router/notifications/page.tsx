@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type NotificationItem = {
   id: string;
@@ -18,6 +20,7 @@ type PreferenceItem = {
 };
 
 export default function RouterNotificationsPage() {
+  const { getToken } = useAuth();
   const [items, setItems] = React.useState<NotificationItem[]>([]);
   const [prefs, setPrefs] = React.useState<PreferenceItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -29,8 +32,8 @@ export default function RouterNotificationsPage() {
     setError(null);
     try {
       const [notifResp, prefsResp] = await Promise.all([
-        fetch("/api/web/v4/router/notifications?page=1&pageSize=50", { cache: "no-store", credentials: "include" }),
-        fetch("/api/web/v4/router/notification-preferences", { cache: "no-store", credentials: "include" }),
+        routerApiFetch("/api/web/v4/router/notifications?page=1&pageSize=50", getToken),
+        routerApiFetch("/api/web/v4/router/notification-preferences", getToken),
       ]);
       const notifJson = (await notifResp.json().catch(() => ({}))) as {
         notifications?: NotificationItem[];
@@ -65,17 +68,15 @@ export default function RouterNotificationsPage() {
   }, [load]);
 
   async function markRead(id: string) {
-    await fetch(`/api/web/v4/router/notifications/${encodeURIComponent(id)}/read`, {
+    await routerApiFetch(`/api/web/v4/router/notifications/${encodeURIComponent(id)}/read`, getToken, {
       method: "POST",
-      credentials: "include",
     });
     await load();
   }
 
   async function markAllRead() {
-    await fetch("/api/web/v4/router/notifications/read-all", {
+    await routerApiFetch("/api/web/v4/router/notifications/read-all", getToken, {
       method: "POST",
-      credentials: "include",
     });
     await load();
   }
@@ -85,9 +86,8 @@ export default function RouterNotificationsPage() {
     try {
       const nextItems = prefs.map((p) => (p.type === type ? { ...p, inApp: next } : p));
       setPrefs(nextItems);
-      await fetch("/api/web/v4/router/notification-preferences", {
+      await routerApiFetch("/api/web/v4/router/notification-preferences", getToken, {
         method: "PATCH",
-        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ items: [{ type, inApp: next }] }),
       });

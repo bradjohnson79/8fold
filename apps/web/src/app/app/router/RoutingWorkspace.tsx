@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
 import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
+import { routerApiFetch } from "@/lib/routerApi";
 import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
 type RoutableJob = {
@@ -147,6 +149,7 @@ function progressLabel(status: string, hasContractor: boolean) {
 const SENIOR_TARGET = 50;
 
 export function RoutingWorkspace() {
+  const { getToken } = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string>("");
   const [notice, setNotice] = React.useState<string>("");
@@ -187,7 +190,7 @@ export function RoutingWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/web/v4/router/available-jobs", { cache: "no-store", credentials: "include" });
+      const resp = await routerApiFetch("/api/web/v4/router/available-jobs", getToken);
       const json = await safeJson<{ jobs: RoutableJob[]; error?: string }>(resp);
       if (!resp.ok) throw new Error(json.error || "Failed to load");
       setAvailableJobs(Array.isArray(json.jobs) ? json.jobs : []);
@@ -197,7 +200,7 @@ export function RoutingWorkspace() {
   }
 
   async function loadRoutedJobs() {
-    const resp = await fetch("/api/web/v4/router/jobs/routed", { cache: "no-store", credentials: "include" });
+    const resp = await routerApiFetch("/api/web/v4/router/jobs/routed", getToken);
     if (!resp.ok) return;
     const json = await safeJson<{ jobs: RoutedJob[] }>(resp);
     const raw = Array.isArray(json.jobs) ? json.jobs : [];
@@ -217,7 +220,7 @@ export function RoutingWorkspace() {
   }
 
   async function loadEarnings() {
-    const resp = await fetch("/api/web/v4/router/dashboard/summary", { cache: "no-store", credentials: "include" });
+    const resp = await routerApiFetch("/api/web/v4/router/dashboard/summary", getToken);
     if (!resp.ok) return;
     const json = await safeJson<any>(resp);
     const e = json?.earnings ?? {};
@@ -235,7 +238,7 @@ export function RoutingWorkspace() {
   }
 
   async function loadPayoutMethod() {
-    const resp = await fetch("/api/app/payout-methods", { cache: "no-store", credentials: "include" });
+    const resp = await routerApiFetch("/api/app/payout-methods", getToken);
     if (!resp.ok) return;
     const json = await safeJson<any>(resp);
     const methods = Array.isArray(json?.methods) ? json.methods : [];
@@ -245,8 +248,8 @@ export function RoutingWorkspace() {
 
   async function loadProfile() {
     const [profileResp, meResp] = await Promise.all([
-      fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" }),
-      fetch("/api/me", { cache: "no-store", credentials: "include" }),
+      routerApiFetch("/api/web/v4/router/profile", getToken),
+      routerApiFetch("/api/me", getToken),
     ]);
     if (!profileResp.ok) return;
     const profileJson = await safeJson<any>(profileResp);
@@ -277,10 +280,7 @@ export function RoutingWorkspace() {
     setError("");
     setSupportNotice("");
     try {
-      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(job.id)}/contractors`, {
-        cache: "no-store",
-        credentials: "include",
-      });
+      const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(job.id)}/contractors`, getToken);
       const json = await safeJson<{ kind?: string; contractors?: EligibleContractor[]; error?: { message?: string } }>(resp);
       if (json.kind !== "ok" || !resp.ok) {
         const msg = typeof json.error === "string" ? json.error : json.error?.message ?? "Failed to load contractors";
@@ -314,10 +314,9 @@ export function RoutingWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`/api/web/v4/router/jobs/${encodeURIComponent(selectedJob.id)}/route`, {
+      const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(selectedJob.id)}/route`, getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ contractorIds: selectedContractorIds }),
       });
       const json = await safeJson<{
@@ -351,10 +350,9 @@ export function RoutingWorkspace() {
     setError("");
     setNotice("");
     try {
-      const resp = await fetch("/api/web/v4/router/profile", {
+      const resp = await routerApiFetch("/api/web/v4/router/profile", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           contactName: profile.profile?.name ?? "",
           phone: profile.profile?.phone ?? "",
@@ -389,10 +387,9 @@ export function RoutingWorkspace() {
       const subject = supportSubject.trim() || "Router support request";
       const jobRef = supportJobId.trim() ? `\n\nJob reference: ${supportJobId.trim()}` : "";
       const msg = (supportMessage.trim() || "No message provided.") + jobRef + `\n\nRouter ID: ${profile?.router?.userId ?? "—"}`;
-      const resp = await fetch("/api/app/support/tickets", {
+      const resp = await routerApiFetch("/api/app/support/tickets", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           category: supportCategoryToApiCategory(supportCategory),
           subject,
