@@ -195,6 +195,7 @@ export async function createV4Job(input: V4JobCreateBody, actorUserId: string, i
       availability: input.availability as any,
       lat: input.latitude,
       lng: input.longitude,
+      cancel_request_pending: false,
       posted_at: now,
       published_at: now,
       created_at: now,

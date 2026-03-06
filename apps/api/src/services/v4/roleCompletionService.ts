@@ -88,10 +88,6 @@ function hasJobPosterAddressAndMap(profile: {
 }
 
 function hasRouterProfileRequiredFields(profile: {
-  serviceAreas: unknown;
-  availability: unknown;
-  homeLatitude?: number | null;
-  homeLongitude?: number | null;
   phone: string;
   homeRegion: string;
   homeCountryCode: string | null;
@@ -141,10 +137,6 @@ export async function getRoleCompletionSnapshot(userId: string, roleHint?: strin
       .limit(1),
     db
       .select({
-        serviceAreas: routerProfilesV4.serviceAreas,
-        availability: routerProfilesV4.availability,
-        homeLatitude: routerProfilesV4.homeLatitude,
-        homeLongitude: routerProfilesV4.homeLongitude,
         phone: routerProfilesV4.phone,
         homeRegion: routerProfilesV4.homeRegion,
         homeCountryCode: routerProfilesV4.homeCountryCode,

@@ -197,6 +197,7 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
       trade_category: tradeCategory as any,
       service_type: "handyman",
       availability: data.availability,
+      cancel_request_pending: false,
       posted_at: now,
       published_at: now,
       created_at: now,

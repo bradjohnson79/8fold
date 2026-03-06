@@ -103,6 +103,7 @@ export async function createJobMinimalInsert(
     total_amount_cents: params.totalAmountCents,
     stripe_payment_intent_id: params.stripePaymentIntentId,
     stripe_payment_intent_status: params.stripePaymentIntentStatus,
+    cancel_request_pending: false,
     created_at: params.createdAt,
     updated_at: params.updatedAt,
   };

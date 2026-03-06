@@ -44,8 +44,8 @@ async function save(req: Request) {
       );
     }
 
-    if (!parsed.data.homeRegionCode?.trim()) {
-      throw badRequest("V4_INVALID_REQUEST_BODY", "Router profile missing homeRegionCode");
+    if (!parsed.data.homeCountryCode?.trim() || !parsed.data.homeRegionCode?.trim()) {
+      throw badRequest("V4_INVALID_REQUEST_BODY", "Router jurisdiction required");
     }
 
     let identity: Awaited<ReturnType<typeof getClerkIdentity>> | null = null;
