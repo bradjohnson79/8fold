@@ -334,6 +334,14 @@ export async function GET(req: Request) {
     }
     const status = await buildStatus({ userId: user.userId, role: role as "ROUTER" | "CONTRACTOR" });
     if (status instanceof NextResponse) return status;
+    if (status.payoutsEnabled && status.stripeAccountId) {
+      persistStripeAccountForUser({
+        userId: user.userId,
+        stripeAccountId: status.stripeAccountId,
+        expectedCurrency: status.payoutCurrency as "CAD" | "USD",
+        stripePayoutsEnabled: true,
+      }).catch(() => {});
+    }
     return NextResponse.json(status);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed" }, { status: 500 });
@@ -436,6 +444,12 @@ export async function POST(req: Request) {
     const profileUrl = `${baseUrl}${profilePath}`;
 
     if (onboardingComplete) {
+      await persistStripeAccountForUser({
+        userId: user.userId,
+        stripeAccountId,
+        expectedCurrency,
+        stripePayoutsEnabled: true,
+      });
       const loginLink = await stripe.accounts.createLoginLink(stripeAccountId);
       return NextResponse.json({
         ok: true,
