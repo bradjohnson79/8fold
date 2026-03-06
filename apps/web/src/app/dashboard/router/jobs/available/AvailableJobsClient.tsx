@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
+import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 
 type Job = {
   id: string;
@@ -51,8 +52,67 @@ function formatRelativeTime(iso: string | undefined): string {
   return `Posted ${days}d ago`;
 }
 
+function SetupRequiredPanel({ readiness }: { readiness: { terms: boolean; profile: boolean; payment: boolean } }) {
+  const gates = [
+    { label: "Terms", ok: readiness.terms, href: "/dashboard/router/terms" },
+    { label: "Profile", ok: readiness.profile, href: "/dashboard/router/profile" },
+    { label: "Stripe", ok: readiness.payment, href: "/dashboard/router/payments" },
+  ];
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">Complete Your Setup</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        To route jobs you must complete all setup steps.
+      </p>
+      <ul className="mt-4 space-y-2">
+        {gates.map((g) => (
+          <li key={g.label} className="flex items-center gap-3">
+            <span className={g.ok ? "text-emerald-600" : "text-amber-500"}>
+              {g.ok ? "\u2713" : "\u26A0"}
+            </span>
+            <Link
+              href={g.href}
+              className="text-sm font-medium text-slate-900 hover:text-emerald-700 hover:underline"
+            >
+              {g.label}
+            </Link>
+            <span className={"text-xs " + (g.ok ? "text-emerald-600" : "text-amber-600")}>
+              {g.ok ? "Complete" : "Incomplete"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {!readiness.payment && (
+        <Link
+          href="/dashboard/router/payments"
+          className="mt-4 inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          Connect Stripe
+        </Link>
+      )}
+      {!readiness.profile && readiness.payment && (
+        <Link
+          href="/dashboard/router/profile"
+          className="mt-4 inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          Complete Profile
+        </Link>
+      )}
+      {!readiness.terms && readiness.payment && readiness.profile && (
+        <Link
+          href="/dashboard/router/terms"
+          className="mt-4 inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          Accept Terms
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export default function AvailableJobsClient() {
   const { getToken } = useAuth();
+  const { readiness, loading: readinessLoading, error: readinessError } = useRouterReadiness();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +120,8 @@ export default function AvailableJobsClient() {
   const [responseKeys, setResponseKeys] = useState<string[]>([]);
   const [selfCheck, setSelfCheck] = useState<SelfCheckResult | null>(null);
   const [selfCheckLoading, setSelfCheckLoading] = useState(false);
+
+  const setupBlocked = readiness !== null && !readiness.complete;
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -116,8 +178,13 @@ export default function AvailableJobsClient() {
   }, [getToken]);
 
   useEffect(() => {
+    if (readinessLoading) return;
+    if (setupBlocked) {
+      setLoading(false);
+      return;
+    }
     fetchJobs();
-  }, [fetchJobs]);
+  }, [fetchJobs, readinessLoading, setupBlocked]);
 
   async function runSelfCheck() {
     setSelfCheckLoading(true);
@@ -151,6 +218,30 @@ export default function AvailableJobsClient() {
     } finally {
       setSelfCheckLoading(false);
     }
+  }
+
+  if (readinessError) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {readinessError}
+        </div>
+      </div>
+    );
+  }
+
+  if (setupBlocked && readiness) {
+    return (
+      <div className="space-y-5 p-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Available Jobs</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Open jobs in your home region, ready to route to contractors.
+          </p>
+        </div>
+        <SetupRequiredPanel readiness={readiness} />
+      </div>
+    );
   }
 
   return (
@@ -266,6 +357,12 @@ export default function AvailableJobsClient() {
           <div>First job ID: {jobs[0]?.id ?? "(none)"}</div>
           <div>Last fetched: {lastFetchedAt ?? "(not yet)"}</div>
           <div>Response keys: {JSON.stringify(responseKeys)}</div>
+          <div className="mt-2 border-t border-slate-200 pt-2">
+            <div className="font-semibold">Account Readiness:</div>
+            <div>termsAccepted: {readiness ? String(readiness.terms) : "(loading)"}</div>
+            <div>profileComplete: {readiness ? String(readiness.profile) : "(loading)"}</div>
+            <div>stripeConnected: {readiness ? String(readiness.payment) : "(loading)"}</div>
+          </div>
         </div>
 
         <div className="border-t border-slate-200 px-4 py-3">

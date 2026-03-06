@@ -2,10 +2,12 @@
 
 import { useParams, useRouter } from "next/navigation";
 import React from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
 import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 import { routerApiFetch } from "@/lib/routerApi";
+import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 
 type EligibleContractor = {
   contractorId: string;
@@ -36,6 +38,7 @@ export default function RouterRouteJobPage() {
   const params = useParams<{ jobId: string }>();
   const router = useRouter();
   const { getToken } = useAuth();
+  const { readiness, loading: readinessLoading, error: readinessError } = useRouterReadiness();
   const jobId = String(params?.jobId ?? "");
 
   const [loading, setLoading] = React.useState(true);
@@ -47,7 +50,14 @@ export default function RouterRouteJobPage() {
   const [showIncompleteModal, setShowIncompleteModal] = React.useState(false);
   const [missingSteps, setMissingSteps] = React.useState<MissingStep[]>([]);
 
+  const setupBlocked = readiness !== null && !readiness.complete;
+
   React.useEffect(() => {
+    if (readinessLoading) return;
+    if (setupBlocked) {
+      setLoading(false);
+      return;
+    }
     let alive = true;
     (async () => {
       if (!jobId) {
@@ -81,7 +91,7 @@ export default function RouterRouteJobPage() {
     return () => {
       alive = false;
     };
-  }, [jobId]);
+  }, [jobId, readinessLoading, setupBlocked, getToken]);
 
   function toggleContractor(contractorId: string) {
     setSelectedContractorIds((prev) => {
@@ -123,6 +133,61 @@ export default function RouterRouteJobPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (readinessError) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {readinessError}
+        </div>
+      </div>
+    );
+  }
+
+  if (setupBlocked && readiness) {
+    const gates = [
+      { label: "Terms", ok: readiness.terms, href: "/dashboard/router/terms" },
+      { label: "Profile", ok: readiness.profile, href: "/dashboard/router/profile" },
+      { label: "Stripe", ok: readiness.payment, href: "/dashboard/router/payments" },
+    ];
+    return (
+      <div className="space-y-5 p-6">
+        <h1 className="text-2xl font-bold text-slate-900">Route Job</h1>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Complete Your Setup</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            To route jobs you must complete all setup steps.
+          </p>
+          <ul className="mt-4 space-y-2">
+            {gates.map((g) => (
+              <li key={g.label} className="flex items-center gap-3">
+                <span className={g.ok ? "text-emerald-600" : "text-amber-500"}>
+                  {g.ok ? "\u2713" : "\u26A0"}
+                </span>
+                <Link
+                  href={g.href}
+                  className="text-sm font-medium text-slate-900 hover:text-emerald-700 hover:underline"
+                >
+                  {g.label}
+                </Link>
+                <span className={"text-xs " + (g.ok ? "text-emerald-600" : "text-amber-600")}>
+                  {g.ok ? "Complete" : "Incomplete"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!readiness.payment && (
+            <Link
+              href="/dashboard/router/payments"
+              className="mt-4 inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Connect Stripe
+            </Link>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (loading) {
