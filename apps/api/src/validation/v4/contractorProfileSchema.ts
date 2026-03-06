@@ -15,6 +15,7 @@ export const V4ContractorProfileSchema = z.object({
   city: z.string().trim().min(1).max(120),
   postalCode: z.string().trim().min(1).max(32),
   countryCode: z.string().trim().min(2).max(2).transform((v) => v.toUpperCase()),
+  homeRegionCode: z.string().trim().max(4).nullable().optional(),
   formattedAddress: z.string().trim().min(1).max(255),
   tradeCategories: z.array(TradeCategorySchema).min(1).max(10),
   homeLatitude: z.number().min(-90).max(90),
