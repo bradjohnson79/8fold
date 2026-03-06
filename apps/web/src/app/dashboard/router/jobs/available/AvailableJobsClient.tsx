@@ -26,13 +26,6 @@ type Job = {
   postedAt?: string;
 };
 
-type SelfCheckResult = {
-  jurisdiction: string | null;
-  profileLoaded: boolean;
-  summaryLoaded: boolean;
-  error: string | null;
-};
-
 const ENDPOINT = "/api/web/v4/router/available-jobs";
 
 function formatCents(cents: number): string {
@@ -74,16 +67,14 @@ function SetupRequiredPanel({
         {gates.map((g) => (
           <li key={g.label} className="flex items-center gap-3">
             <span className={g.ok ? "text-emerald-600" : "text-amber-500"}>
-              {g.ok ? "✓" : "⚠"}
+              {g.ok ? "\u2713" : "\u26A0"}
             </span>
-
             <Link
               href={g.href}
               className="text-sm font-medium text-slate-900 hover:text-emerald-700 hover:underline"
             >
               {g.label}
             </Link>
-
             <span className={"text-xs " + (g.ok ? "text-emerald-600" : "text-amber-600")}>
               {g.ok ? "Complete" : "Incomplete"}
             </span>
@@ -130,15 +121,16 @@ export default function AvailableJobsClient() {
     error: readinessError,
   } = useRouterReadiness();
 
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
+  // null = not yet fetched (distinguishes from [] = fetched but empty)
+  const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [responseMeta, setResponseMeta] = useState<Record<string, unknown> | null>(null);
 
   const setupBlocked = readiness !== null && !readiness.complete;
 
   const fetchJobs = useCallback(async () => {
-    setLoading(true);
+    setFetching(true);
     setError(null);
 
     try {
@@ -157,29 +149,24 @@ export default function AvailableJobsClient() {
       const list: Job[] = Array.isArray(json?.jobs)
         ? json.jobs
         : Array.isArray(json)
-        ? json
-        : [];
+          ? json
+          : [];
 
       setJobs(list);
     } catch {
       setError("Network error — failed to reach the API");
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
   }, [getToken]);
 
   useEffect(() => {
     if (readinessLoading) return;
-
-    if (setupBlocked) {
-      setLoading(false);
-      return;
-    }
-
+    if (setupBlocked) return;
     fetchJobs();
   }, [fetchJobs, readinessLoading, setupBlocked]);
 
-  /* ---------- READINESS LOADING GUARD ---------- */
+  /* ── Gate 1: Readiness still loading ── */
 
   if (readinessLoading) {
     return (
@@ -190,7 +177,6 @@ export default function AvailableJobsClient() {
             Open jobs in your home region, ready to route to contractors.
           </p>
         </div>
-
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           Checking account readiness...
         </div>
@@ -198,7 +184,7 @@ export default function AvailableJobsClient() {
     );
   }
 
-  /* ---------- READINESS ERROR ---------- */
+  /* ── Gate 2: Readiness error ── */
 
   if (readinessError) {
     return (
@@ -210,7 +196,7 @@ export default function AvailableJobsClient() {
     );
   }
 
-  /* ---------- SETUP BLOCKED ---------- */
+  /* ── Gate 3: Setup incomplete ── */
 
   if (setupBlocked && readiness) {
     return (
@@ -221,13 +207,40 @@ export default function AvailableJobsClient() {
             Open jobs in your home region, ready to route to contractors.
           </p>
         </div>
-
         <SetupRequiredPanel readiness={readiness} />
       </div>
     );
   }
 
-  /* ---------- NORMAL JOB UI ---------- */
+  /* ── Gate 4: Jobs not yet fetched or currently fetching ── */
+
+  if (jobs === null || fetching) {
+    return (
+      <div className="space-y-5 p-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Available Jobs</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Open jobs in your home region, ready to route to contractors.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="h-5 w-3/4 rounded bg-slate-200" />
+              <div className="mt-4 flex gap-2">
+                <div className="h-6 w-20 rounded-full bg-slate-100" />
+                <div className="h-6 w-16 rounded-full bg-slate-100" />
+              </div>
+              <div className="mt-4 h-4 w-1/2 rounded bg-slate-100" />
+              <div className="mt-2 h-4 w-1/3 rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Resolved: show jobs UI ── */
 
   return (
     <div className="space-y-5 p-6">
@@ -241,37 +254,63 @@ export default function AvailableJobsClient() {
 
         <button
           onClick={fetchJobs}
-          disabled={loading}
+          disabled={fetching}
           className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
-          {loading ? "Refreshing..." : "Refresh"}
+          {fetching ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
-      {loading && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          Loading jobs...
-        </div>
-      )}
-
-      {!loading && error && (
+      {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
           <p className="text-sm font-medium text-red-800">Error loading jobs</p>
           <p className="mt-1 text-sm text-red-700">{error}</p>
+          <button
+            type="button"
+            onClick={fetchJobs}
+            className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {!loading && !error && jobs.length === 0 && (
+      {!error && jobs.length === 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm">
           No jobs available in your region.
         </div>
       )}
 
-      {!loading && !error && jobs.length > 0 && (
+      {!error && jobs.length > 0 && (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {jobs.map((job) => (
             <li key={job.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="text-lg font-semibold text-slate-900">{job.title}</div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  {job.tradeCategory || "General"}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                  {job.urbanOrRegional || (job.jobType === "regional" ? "Regional" : "Urban")}
+                </span>
+              </div>
+
+              <div className="mt-4 text-sm text-slate-600">
+                {[job.city, job.regionCode ?? job.provinceCode, job.countryCode]
+                  .filter(Boolean)
+                  .join(", ") || "Location unknown"}
+              </div>
+
+              {(job.appraisalTotal ?? job.budgetCents) ? (
+                <div className="mt-1 text-sm font-medium text-slate-900">
+                  {formatCents(job.appraisalTotal ?? job.budgetCents ?? 0)}
+                </div>
+              ) : null}
+
+              <div className="mt-1 text-xs text-slate-500">
+                {formatRelativeTime(job.createdAt ?? job.postedAt)}
+              </div>
 
               <Link
                 href={`/dashboard/router/jobs/${encodeURIComponent(job.id)}/route`}
