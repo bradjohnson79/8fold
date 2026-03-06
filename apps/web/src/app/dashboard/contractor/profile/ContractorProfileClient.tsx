@@ -438,17 +438,6 @@ export default function ContractorProfileClient() {
           )}
         </FieldCard>
 
-        <FieldCard label="Stripe Connected">
-          <div className="text-sm font-medium text-slate-900">
-            {profile.stripeConnected ? (
-              <span className="inline-flex items-center gap-1.5 text-emerald-700">
-                <span className="text-emerald-600">&#10003;</span> Verified
-              </span>
-            ) : (
-              <span className="text-amber-700">Not connected</span>
-            )}
-          </div>
-        </FieldCard>
       </div>
 
       {editing ? (
