@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { REGION_OPTIONS } from "@/lib/regions";
+import { routerApiFetch } from "@/lib/routerApi";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
@@ -35,6 +37,7 @@ function Field(props: { label: string; value: string; onChange: (v: string) => v
 
 export default function RouterProfilePage() {
   const router = useRouter();
+  const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -49,7 +52,7 @@ export default function RouterProfilePage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const resp = await routerApiFetch("/api/web/v4/router/profile", getToken);
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive) return;
         const p = json?.profile ?? {};
@@ -82,10 +85,9 @@ export default function RouterProfilePage() {
     setError("");
     try {
       const regionCode = form.homeRegionCode.trim();
-      const resp = await fetch("/api/web/v4/router/profile", {
+      const resp = await routerApiFetch("/api/web/v4/router/profile", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           contactName: form.contactName.trim(),
           phone: form.phone.trim(),
@@ -95,7 +97,13 @@ export default function RouterProfilePage() {
         }),
       });
       const json = (await resp.json().catch(() => null)) as any;
-      if (!resp.ok) throw new Error(json?.error?.message ?? json?.error ?? "Failed to save");
+      if (resp.status === 401) {
+        throw new Error("Authentication lost — please refresh and sign in again.");
+      }
+      if (!resp.ok) {
+        const detail = json?.error?.details ? ` (${JSON.stringify(json.error.details)})` : "";
+        throw new Error(`${resp.status}: ${json?.error?.message ?? json?.error ?? "Failed to save"}${detail}`);
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");

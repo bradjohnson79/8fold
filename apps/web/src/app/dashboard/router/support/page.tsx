@@ -1,8 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 export default function RouterSupportPage() {
+  const { getToken } = useAuth();
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("HELP");
   const [body, setBody] = useState("");
@@ -20,10 +23,9 @@ export default function RouterSupportPage() {
     setError("");
     setSuccess(false);
     try {
-      const resp = await fetch("/api/web/v4/support/ticket", {
+      const resp = await routerApiFetch("/api/web/v4/support/ticket", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ subject: subject.trim(), category, body: body.trim() }),
       });
       const json = (await resp.json().catch(() => null)) as any;

@@ -2,7 +2,8 @@
 
 import React from "react";
 import { z } from "zod";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 import { REGION_OPTIONS } from "@/lib/regions";
 import { StripeExpressPayoutSetup } from "@/components/StripeExpressPayoutSetup";
 
@@ -53,6 +54,7 @@ function regionLabel(codeRaw: string, nameRaw: string): string {
 
 export default function RouterProfileClient(props?: { onComplete?: () => void }) {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const clerkEmail = user?.primaryEmailAddress?.emailAddress ?? "";
 
   const [form, setForm] = React.useState<RouterProfileForm>({
@@ -79,7 +81,7 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/web/v4/router/profile", { cache: "no-store", credentials: "include" });
+        const resp = await routerApiFetch("/api/web/v4/router/profile", getToken);
         const json = (await resp.json().catch(() => null)) as { ok?: boolean; profile?: Record<string, unknown> } | null;
         if (!alive) return;
         if (!resp.ok || !json?.ok) {
@@ -127,10 +129,9 @@ export default function RouterProfileClient(props?: { onComplete?: () => void })
       if (!sp) throw new Error("Please select a state / province.");
 
       setSaving(true);
-      const resp = await fetch("/api/web/v4/router/profile", {
+      const resp = await routerApiFetch("/api/web/v4/router/profile", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           contactName: parsed.data.name,
           phone: parsed.data.phone,

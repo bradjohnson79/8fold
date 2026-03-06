@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type QueueJob = {
   id: string;
@@ -23,6 +25,7 @@ function formatRemaining(sec: number) {
 }
 
 export default function RouterQueuePage() {
+  const { getToken } = useAuth();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [jobs, setJobs] = React.useState<QueueJob[]>([]);
@@ -31,7 +34,7 @@ export default function RouterQueuePage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/web/v4/router/jobs/routed", { cache: "no-store", credentials: "include" });
+      const resp = await routerApiFetch("/api/web/v4/router/jobs/routed", getToken);
       const json = await resp.json().catch(() => ({} as any));
       if (!resp.ok) throw new Error(json?.error?.message ?? json?.error ?? "Failed to load");
       const raw = Array.isArray(json?.jobs) ? json.jobs : [];

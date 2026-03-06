@@ -1,8 +1,11 @@
 "use client";
 
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 export function RouterTermsClient(props?: { onComplete?: () => void }) {
+  const { getToken } = useAuth();
   const [checked, setChecked] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -11,10 +14,9 @@ export function RouterTermsClient(props?: { onComplete?: () => void }) {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch("/api/web/v4/router/accept-tos", {
+      const resp = await routerApiFetch("/api/web/v4/router/accept-tos", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
       });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Failed to record acceptance");

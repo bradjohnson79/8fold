@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type Summary = {
   performance: {
@@ -57,6 +59,7 @@ const metricCards: Array<{ key: keyof Summary["performance"]; label: string; ton
 ];
 
 export default function RouterSummaryPage() {
+  const { getToken } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,9 +68,13 @@ export default function RouterSummaryPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/web/v4/router/dashboard/summary", { cache: "no-store", credentials: "include" });
+        const resp = await routerApiFetch("/api/web/v4/router/dashboard/summary", getToken);
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive) return;
+        if (resp.status === 401) {
+          setError("Authentication lost — please refresh and sign in again.");
+          return;
+        }
         if (!resp.ok) {
           setError(json?.error?.message ?? json?.error ?? "Failed to load summary");
           return;

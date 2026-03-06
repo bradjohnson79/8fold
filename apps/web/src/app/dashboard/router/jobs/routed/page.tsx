@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type Job = {
   id: string;
@@ -13,6 +15,7 @@ type Job = {
 };
 
 export default function RouterRoutedJobsPage() {
+  const { getToken } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -21,9 +24,13 @@ export default function RouterRoutedJobsPage() {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/web/v4/router/jobs/routed", { cache: "no-store", credentials: "include" });
+        const resp = await routerApiFetch("/api/web/v4/router/jobs/routed", getToken);
         const json = (await resp.json().catch(() => null)) as any;
         if (!alive) return;
+        if (resp.status === 401) {
+          setError("Authentication lost — please refresh and sign in again.");
+          return;
+        }
         if (!resp.ok) {
           setError(json?.error?.message ?? json?.error ?? "Failed to load jobs");
           return;

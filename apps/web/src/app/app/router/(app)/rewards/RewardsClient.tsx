@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 export function RewardsClient(props: { referralLink: string }) {
+  const { getToken } = useAuth();
   const [copied, setCopied] = useState(false);
   const [balanceCents, setBalanceCents] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,7 +27,7 @@ export function RewardsClient(props: { referralLink: string }) {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/web/v4/router/rewards", { cache: "no-store", credentials: "include" });
+      const resp = await routerApiFetch("/api/web/v4/router/rewards", getToken);
       const json = (await resp.json().catch(() => null)) as any;
       if (!resp.ok) throw new Error(String(json?.error?.message ?? json?.error ?? "Failed to load"));
       if (typeof json?.balanceCents !== "number") throw new Error("Invalid response");

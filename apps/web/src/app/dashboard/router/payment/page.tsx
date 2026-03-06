@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type StripeConnectStatus = {
   ok: true;
@@ -30,6 +32,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function RouterPaymentSetupPage() {
   const searchParams = useSearchParams();
+  const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accountType, setAccountType] = useState<"AUTO" | "INDIVIDUAL" | "COMPANY">("AUTO");
@@ -38,10 +41,7 @@ export default function RouterPaymentSetupPage() {
   const [summary, setSummary] = useState<RouterSummary | null>(null);
 
   async function loadStatus() {
-    const resp = await fetch("/api/web/stripe/connect/create-account", {
-      cache: "no-store",
-      credentials: "include",
-    });
+    const resp = await routerApiFetch("/api/web/stripe/connect/create-account", getToken);
     const data = (await resp.json().catch(() => null)) as StripeConnectStatus | { error?: string } | null;
     if (!resp.ok || !data || (data as any).ok !== true) {
       throw new Error(String((data as any)?.error ?? "Failed to load Stripe payout status"));
@@ -50,10 +50,7 @@ export default function RouterPaymentSetupPage() {
   }
 
   async function loadSummary() {
-    const resp = await fetch("/api/web/v4/router/dashboard/summary", {
-      cache: "no-store",
-      credentials: "include",
-    });
+    const resp = await routerApiFetch("/api/web/v4/router/dashboard/summary", getToken);
     const data = (await resp.json().catch(() => null)) as RouterSummary | { error?: string } | null;
     if (!resp.ok || !data || !(data as any)?.earnings) {
       throw new Error(String((data as any)?.error ?? "Failed to load commission earnings"));
@@ -82,14 +79,13 @@ export default function RouterPaymentSetupPage() {
     setSaving(true);
     setError(null);
     try {
-      const resp = await fetch("/api/web/stripe/connect/create-account", {
+      const resp = await routerApiFetch("/api/web/stripe/connect/create-account", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           accountType:
             accountType === "INDIVIDUAL" ? "individual" : accountType === "COMPANY" ? "company" : "auto",
         }),
-        credentials: "include",
       });
       const data = (await resp.json().catch(() => null)) as { url?: string; error?: string } | null;
       if (!resp.ok || !data?.url) {

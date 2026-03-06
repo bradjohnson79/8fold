@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type ActiveJob = null | {
   id: string;
@@ -25,6 +27,7 @@ function completionBadge(job: NonNullable<ActiveJob>): string | null {
 }
 
 export function RouterCompletionCard() {
+  const { getToken } = useAuth();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [job, setJob] = React.useState<ActiveJob>(null);
@@ -34,7 +37,7 @@ export function RouterCompletionCard() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/app/router/active-job", { cache: "no-store" });
+      const resp = await routerApiFetch("/api/app/router/active-job", getToken);
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Failed to load");
       setJob((json as any)?.job ?? null);
@@ -58,7 +61,7 @@ export function RouterCompletionCard() {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch(`/api/app/router/jobs/${encodeURIComponent(job.id)}/confirm-completion`, { method: "POST" });
+      const resp = await routerApiFetch(`/api/app/router/jobs/${encodeURIComponent(job.id)}/confirm-completion`, getToken, { method: "POST" });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Failed to confirm completion");
       await load();
