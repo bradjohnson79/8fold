@@ -6,6 +6,7 @@ import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { haversineKm } from "@/src/jobs/geo";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
@@ -295,7 +296,6 @@ export async function routeStage2JobToContractors(
     const updated = await tx
       .update(jobs)
       .set({
-        status: "INVITED" as any,
         claimed_by_user_id: routerUserId,
         claimed_at: now,
         routed_at: now,
@@ -324,6 +324,19 @@ export async function routeStage2JobToContractors(
         createdAt: now,
         expiresAt,
       });
+
+      await emitDomainEvent(
+        {
+          type: "ROUTER_JOB_ROUTED",
+          payload: {
+            jobId,
+            contractorId,
+            createdAt: now,
+            dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
+          },
+        },
+        { tx },
+      );
     }
 
     await tx.insert(auditLogs).values({
