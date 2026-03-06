@@ -32,6 +32,109 @@ const EMPTY_PROFILE: ProfileData = {
   stripeConnected: false,
 };
 
+const TRADE_CATEGORIES = [
+  { value: "HANDYMAN", label: "Handyman" },
+  { value: "PLUMBING", label: "Plumbing" },
+  { value: "ELECTRICAL", label: "Electrical" },
+  { value: "HVAC", label: "HVAC" },
+  { value: "APPLIANCE", label: "Appliance" },
+  { value: "CARPENTRY", label: "Carpentry" },
+  { value: "PAINTING", label: "Painting" },
+  { value: "DRYWALL", label: "Drywall" },
+  { value: "ROOFING", label: "Roofing" },
+  { value: "LANDSCAPING", label: "Landscaping" },
+  { value: "JUNK_REMOVAL", label: "Junk Removal" },
+  { value: "FURNITURE_ASSEMBLY", label: "Furniture Assembly" },
+  { value: "MOVING", label: "Moving" },
+  { value: "FENCING", label: "Fencing" },
+  { value: "SNOW_REMOVAL", label: "Snow Removal" },
+  { value: "JANITORIAL_CLEANING", label: "Janitorial / Cleaning" },
+  { value: "AUTOMOTIVE", label: "Automotive" },
+  { value: "WELDING", label: "Welding" },
+  { value: "JACK_OF_ALL_TRADES", label: "Jack of All Trades" },
+] as const;
+
+const COUNTRIES = [
+  { value: "CA", label: "Canada" },
+  { value: "US", label: "United States" },
+] as const;
+
+const CA_PROVINCES = [
+  { value: "AB", label: "Alberta" },
+  { value: "BC", label: "British Columbia" },
+  { value: "MB", label: "Manitoba" },
+  { value: "NB", label: "New Brunswick" },
+  { value: "NL", label: "Newfoundland and Labrador" },
+  { value: "NS", label: "Nova Scotia" },
+  { value: "ON", label: "Ontario" },
+  { value: "PE", label: "Prince Edward Island" },
+  { value: "QC", label: "Quebec" },
+  { value: "SK", label: "Saskatchewan" },
+] as const;
+
+const US_STATES = [
+  { value: "AL", label: "Alabama" },
+  { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" },
+  { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" },
+  { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" },
+  { value: "DE", label: "Delaware" },
+  { value: "FL", label: "Florida" },
+  { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" },
+  { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" },
+  { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" },
+  { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" },
+  { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" },
+  { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" },
+  { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" },
+  { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" },
+  { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" },
+  { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" },
+  { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" },
+  { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" },
+  { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" },
+  { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" },
+  { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" },
+  { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" },
+  { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" },
+  { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" },
+  { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" },
+  { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" },
+  { value: "WY", label: "Wyoming" },
+] as const;
+
+function getRegionOptions(countryCode: string) {
+  if (countryCode === "CA") return CA_PROVINCES;
+  if (countryCode === "US") return US_STATES;
+  return [];
+}
+
+function formatTradeLabel(value: string): string {
+  return TRADE_CATEGORIES.find((t) => t.value === value)?.label ?? value.replace(/_/g, " ");
+}
+
 function FieldCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -51,7 +154,7 @@ export default function ContractorProfileClient() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [editing, setEditing] = useState(false);
-  const [tradeCatInput, setTradeCatInput] = useState("");
+  const [tradeCatOpen, setTradeCatOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setError("");
@@ -76,7 +179,6 @@ export default function ContractorProfileClient() {
         serviceRadiusKm: p.serviceRadiusKm ?? null,
         stripeConnected: Boolean(p.stripeConnected),
       });
-      setTradeCatInput(Array.isArray(p.tradeCategories) ? p.tradeCategories.join(", ") : "");
     } catch (e: unknown) {
       if (e instanceof Error && (e as any).code === "AUTH_MISSING_TOKEN") {
         setError("Authentication lost — please refresh and sign in again.");
@@ -95,11 +197,6 @@ export default function ContractorProfileClient() {
     setError("");
     setSuccess("");
     try {
-      const categories = tradeCatInput
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
       const resp = await apiFetch("/api/web/v4/contractor/profile", getToken, {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -107,7 +204,7 @@ export default function ContractorProfileClient() {
           contactName: profile.contactName,
           phone: profile.phone,
           businessName: profile.businessName,
-          tradeCategories: categories,
+          tradeCategories: profile.tradeCategories,
           homeCountryCode: profile.homeCountryCode,
           homeRegionCode: profile.homeRegionCode,
           homeLatitude: profile.homeLatitude,
@@ -136,6 +233,31 @@ export default function ContractorProfileClient() {
   function updateField(field: keyof ProfileData, value: string) {
     setProfile((prev) => ({ ...prev, [field]: value }));
   }
+
+  function toggleTradeCategory(cat: string) {
+    setProfile((prev) => {
+      const has = prev.tradeCategories.includes(cat);
+      return {
+        ...prev,
+        tradeCategories: has
+          ? prev.tradeCategories.filter((c) => c !== cat)
+          : [...prev.tradeCategories, cat],
+      };
+    });
+  }
+
+  function handleCountryChange(newCountry: string) {
+    setProfile((prev) => ({
+      ...prev,
+      homeCountryCode: newCountry,
+      homeRegionCode: "",
+    }));
+  }
+
+  const regionOptions = getRegionOptions(profile.homeCountryCode);
+  const regionLabel = profile.homeCountryCode === "US" ? "State" : profile.homeCountryCode === "CA" ? "Province" : "Province / State";
+  const countryLabel = COUNTRIES.find((c) => c.value === profile.homeCountryCode)?.label ?? profile.homeCountryCode;
+  const regionFullLabel = regionOptions.find((r) => r.value === profile.homeRegionCode)?.label ?? profile.homeRegionCode;
 
   if (loading) {
     return (
@@ -221,47 +343,98 @@ export default function ContractorProfileClient() {
           <div className="text-sm font-medium text-slate-900">{profile.email || "—"}</div>
         </FieldCard>
 
-        <FieldCard label="Trade Categories">
+        {/* Trade Categories — multi-select dropdown */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:col-span-2">
+          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
+            Job Categories
+          </label>
           {editing ? (
-            <input
-              type="text"
-              value={tradeCatInput}
-              onChange={(e) => setTradeCatInput(e.target.value)}
-              placeholder="Plumbing, Electrical, HVAC"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setTradeCatOpen((o) => !o)}
+                className="flex w-full items-center justify-between rounded-lg border border-slate-300 px-3 py-2 text-left text-sm"
+              >
+                <span className={profile.tradeCategories.length > 0 ? "text-slate-900" : "text-slate-400"}>
+                  {profile.tradeCategories.length > 0
+                    ? profile.tradeCategories.map(formatTradeLabel).join(", ")
+                    : "Select categories..."}
+                </span>
+                <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {tradeCatOpen ? (
+                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {TRADE_CATEGORIES.map((cat) => {
+                    const checked = profile.tradeCategories.includes(cat.value);
+                    return (
+                      <label
+                        key={cat.value}
+                        className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleTradeCategory(cat.value)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        <span className={checked ? "font-medium text-slate-900" : "text-slate-700"}>
+                          {cat.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="text-sm font-medium text-slate-900">
-              {profile.tradeCategories.length > 0 ? profile.tradeCategories.join(", ") : "—"}
+              {profile.tradeCategories.length > 0
+                ? profile.tradeCategories.map(formatTradeLabel).join(", ")
+                : "—"}
             </div>
           )}
-        </FieldCard>
+        </div>
 
+        {/* Country dropdown */}
         <FieldCard label="Country">
           {editing ? (
-            <input
-              type="text"
+            <select
               value={profile.homeCountryCode}
-              onChange={(e) => updateField("homeCountryCode", e.target.value)}
-              placeholder="CA, US, etc."
+              onChange={(e) => handleCountryChange(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
+            >
+              <option value="">Select country...</option>
+              {COUNTRIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
           ) : (
-            <div className="text-sm font-medium text-slate-900">{profile.homeCountryCode || "—"}</div>
+            <div className="text-sm font-medium text-slate-900">{countryLabel || "—"}</div>
           )}
         </FieldCard>
 
-        <FieldCard label="Province / State">
+        {/* Province / State dropdown — filtered by country */}
+        <FieldCard label={regionLabel}>
           {editing ? (
-            <input
-              type="text"
+            <select
               value={profile.homeRegionCode}
               onChange={(e) => updateField("homeRegionCode", e.target.value)}
-              placeholder="ON, CA, etc."
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
+              disabled={!profile.homeCountryCode}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="">
+                {profile.homeCountryCode ? `Select ${regionLabel.toLowerCase()}...` : "Select country first"}
+              </option>
+              {regionOptions.map((r) => (
+                <option key={r.value} value={r.value}>{r.label} ({r.value})</option>
+              ))}
+            </select>
           ) : (
-            <div className="text-sm font-medium text-slate-900">{profile.homeRegionCode || "—"}</div>
+            <div className="text-sm font-medium text-slate-900">
+              {regionFullLabel || "—"}
+            </div>
           )}
         </FieldCard>
 
@@ -290,7 +463,7 @@ export default function ContractorProfileClient() {
           </button>
           <button
             type="button"
-            onClick={() => { setEditing(false); void loadProfile(); }}
+            onClick={() => { setEditing(false); setTradeCatOpen(false); void loadProfile(); }}
             disabled={saving}
             className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
