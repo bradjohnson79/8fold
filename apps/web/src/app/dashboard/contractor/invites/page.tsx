@@ -2,6 +2,8 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/routerApi";
 import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteModal";
 import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 
@@ -69,6 +71,7 @@ function countdownTone(remainingMs: number): string {
 
 export default function ContractorInvitesPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
   const [invites, setInvites] = React.useState<Invite[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -91,10 +94,11 @@ export default function ContractorInvitesPage() {
   const loadInvites = React.useCallback(async (aliveRef?: { current: boolean }) => {
     try {
       const requestStartedAt = Date.now();
-      const resp = await fetch("/api/contractor/invites", {
-        cache: "no-store",
-        credentials: "include",
-      });
+      const resp = await apiFetch("/api/web/v4/contractor/invites", getToken);
+      if (resp.status === 401) {
+        if (!aliveRef || aliveRef.current) setError("Authentication lost — please refresh and sign in again.");
+        return;
+      }
       const data = (await resp.json().catch(() => null)) as InviteListResponse | ApiErrorBody | null;
       if (aliveRef && !aliveRef.current) return;
       if (!resp.ok || !data || !("invites" in data)) {
@@ -108,12 +112,16 @@ export default function ContractorInvitesPage() {
       }
       setInvites(Array.isArray(data.invites) ? data.invites : []);
       setClockMs(Date.now());
-    } catch {
-      if (!aliveRef || aliveRef.current) setError("Failed to load invites");
+    } catch (e: unknown) {
+      if (e instanceof Error && (e as any).code === "AUTH_MISSING_TOKEN") {
+        if (!aliveRef || aliveRef.current) setError("Authentication lost — please refresh and sign in again.");
+      } else {
+        if (!aliveRef || aliveRef.current) setError("Failed to load invites");
+      }
     } finally {
       if (!aliveRef || aliveRef.current) setLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   React.useEffect(() => {
     const alive = { current: true };
@@ -164,10 +172,11 @@ export default function ContractorInvitesPage() {
     setError(null);
     setLockedInviteId(invite.inviteId);
     try {
-      const resp = await fetch(`/api/contractor/invites/${encodeURIComponent(invite.inviteId)}/accept`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const resp = await apiFetch(
+        `/api/web/v4/contractor/invites/${encodeURIComponent(invite.inviteId)}/accept`,
+        getToken,
+        { method: "POST" },
+      );
       const data = (await resp.json().catch(() => ({}))) as ApiErrorBody & { jobId?: string };
       if (!resp.ok) {
         const missing = parseMissingSteps(data);
@@ -194,10 +203,11 @@ export default function ContractorInvitesPage() {
     setError(null);
     setLockedInviteId(invite.inviteId);
     try {
-      const resp = await fetch(`/api/contractor/invites/${encodeURIComponent(invite.inviteId)}/reject`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const resp = await apiFetch(
+        `/api/web/v4/contractor/invites/${encodeURIComponent(invite.inviteId)}/reject`,
+        getToken,
+        { method: "POST" },
+      );
       const data = (await resp.json().catch(() => ({}))) as ApiErrorBody;
       if (!resp.ok) {
         setError(data?.error?.message ?? "Failed to reject invite");
@@ -216,12 +226,20 @@ export default function ContractorInvitesPage() {
       <h1 className="text-2xl font-bold text-slate-900">Invites</h1>
       <p className="mt-1 text-slate-600">Pending routed jobs waiting for your response.</p>
 
-      {error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+      {error ? (
+        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      ) : null}
 
       {loading ? (
-        <p className="mt-6 text-slate-600">Loading invites…</p>
+        <div className="mt-6 space-y-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-48 animate-pulse rounded-2xl border border-slate-200 bg-slate-50" />
+          ))}
+        </div>
       ) : visibleInvites.length === 0 ? (
-        <p className="mt-6 text-slate-500">No pending invites.</p>
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <p className="text-slate-500">No pending invites.</p>
+        </div>
       ) : (
         <div className="mt-6 max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           {visibleInvites.map((invite) => {

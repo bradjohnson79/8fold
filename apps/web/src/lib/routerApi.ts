@@ -1,10 +1,9 @@
 /**
- * Direct-to-API helper for Router Dashboard.
+ * Direct-to-API fetch helper.
  *
- * Follows the same pattern as Post a Job (apps/web/src/app/post-job/page.tsx):
- *   Clerk getToken() → Bearer header → direct fetch to api.8fold.app
+ * Clerk getToken() → Bearer header → direct fetch to api.8fold.app
  *
- * No proxy layer involved.
+ * No proxy layer involved. Used by Router, Contractor, and Job Poster dashboards.
  */
 
 export function getApiOrigin(): string {
@@ -20,7 +19,7 @@ export function apiUrl(path: string): string {
   return `${getApiOrigin()}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
-export async function routerApiFetch(
+export async function apiFetch(
   path: string,
   getToken: () => Promise<string | null>,
   init?: RequestInit,
@@ -40,3 +39,6 @@ export async function routerApiFetch(
     cache: "no-store",
   });
 }
+
+/** @deprecated Use apiFetch instead */
+export const routerApiFetch = apiFetch;

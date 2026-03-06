@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
-import { routerApiFetch } from "@/lib/routerApi";
+import { apiFetch, routerApiFetch } from "@/lib/routerApi";
 
 type Item = { href: string; label: string };
 type Badge = { kind: "dot" } | { kind: "count"; value: number };
@@ -126,8 +126,8 @@ export function DashboardShell({
     setBellError("");
     try {
       const apiPath = `${notificationApiPath(bellRole)}?page=1&pageSize=12`;
-      const resp = bellRole === "router"
-        ? await routerApiFetch(apiPath, getToken)
+      const resp = (bellRole === "router" || bellRole === "contractor")
+        ? await apiFetch(apiPath, getToken)
         : await fetch(apiPath, { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load notifications");
@@ -153,8 +153,8 @@ export function DashboardShell({
     if (!ids.length) return;
     try {
       const apiPath = `${notificationApiPath(bellRole)}/mark-read`;
-      if (bellRole === "router") {
-        await routerApiFetch(apiPath, getToken, {
+      if (bellRole === "router" || bellRole === "contractor") {
+        await apiFetch(apiPath, getToken, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ids }),
