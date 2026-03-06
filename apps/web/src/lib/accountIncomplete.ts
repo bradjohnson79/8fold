@@ -25,7 +25,7 @@ export function stepLabel(step: MissingStep): string {
 export function stepHref(role: CompletionRole, step: MissingStep): string {
   if (step === "TERMS") {
     if (role === "CONTRACTOR") return "/dashboard/contractor";
-    if (role === "ROUTER") return "/dashboard/router";
+    if (role === "ROUTER") return "/dashboard/router/terms";
     return "/dashboard/job-poster";
   }
   if (step === "PROFILE") {
@@ -34,6 +34,6 @@ export function stepHref(role: CompletionRole, step: MissingStep): string {
     return "/dashboard/job-poster/profile";
   }
   if (role === "CONTRACTOR") return "/dashboard/contractor/payment";
-  if (role === "ROUTER") return "/dashboard/router/payment";
+  if (role === "ROUTER") return "/dashboard/router/payments";
   return "/dashboard/job-poster/payment";
 }

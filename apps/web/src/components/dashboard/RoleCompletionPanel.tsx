@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import React from "react";
+import { useAuth } from "@clerk/nextjs";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type DashboardRole = "JOB_POSTER" | "CONTRACTOR" | "ROUTER";
 type CompletionStep = "TERMS" | "PROFILE" | "PAYMENT";
@@ -30,7 +32,7 @@ function cardConfigs(role: DashboardRole): CardConfig[] {
     role === "CONTRACTOR"
       ? "/dashboard/contractor"
       : role === "ROUTER"
-        ? "/dashboard/router"
+        ? "/dashboard/router/terms"
         : "/dashboard/job-poster";
   const profileHref =
     role === "CONTRACTOR"
@@ -42,7 +44,7 @@ function cardConfigs(role: DashboardRole): CardConfig[] {
     role === "CONTRACTOR"
       ? "/dashboard/contractor/payment"
       : role === "ROUTER"
-        ? "/dashboard/router/payment"
+        ? "/dashboard/router/payments"
         : "/dashboard/job-poster/payment";
 
   return [
@@ -71,6 +73,7 @@ function cardConfigs(role: DashboardRole): CardConfig[] {
 }
 
 export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
+  const { getToken } = useAuth();
   const [loading, setLoading] = React.useState(true);
   const [missing, setMissing] = React.useState<CompletionStep[]>([]);
 
@@ -78,7 +81,9 @@ export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
     let alive = true;
     (async () => {
       try {
-        const resp = await fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" });
+        const resp = role === "ROUTER"
+          ? await routerApiFetch("/api/web/v4/readiness", getToken)
+          : await fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" });
         const json = (await resp.json().catch(() => null)) as ReadinessPayload | null;
         if (!alive) return;
         const completion = json?.roleCompletion;

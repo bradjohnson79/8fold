@@ -43,6 +43,10 @@ export default function RouterNotificationsPage() {
         items?: PreferenceItem[];
         data?: { items?: PreferenceItem[] };
       };
+      if (notifResp.status === 401) {
+        setError("Authentication lost — please refresh and sign in again.");
+        return;
+      }
       if (!notifResp.ok) {
         const message =
           typeof notifJson.error === "string" ? notifJson.error : notifJson.error?.message ?? "Failed to load notifications";
@@ -100,7 +104,7 @@ export default function RouterNotificationsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="space-y-6 p-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">Notifications</h1>
         <button
@@ -110,17 +114,23 @@ export default function RouterNotificationsPage() {
           Mark all read
         </button>
       </div>
-      {error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      ) : null}
+
       {loading ? (
-        <p className="mt-3 text-sm text-slate-600">Loading notifications...</p>
+        <p className="text-sm text-slate-600">Loading notifications...</p>
       ) : items.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">No notifications yet.</p>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          No notifications yet.
+        </div>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="space-y-3">
           {items.map((n) => (
-            <article key={n.id} className="rounded-xl border border-slate-200 p-4">
+            <article key={n.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-4">
-                <div>
+                <div className="min-w-0">
                   <h2 className="font-semibold text-slate-900">{n.title}</h2>
                   {n.message ? <p className="mt-1 text-sm text-slate-700">{n.message}</p> : null}
                   <p className="mt-2 text-xs text-slate-500">{new Date(n.createdAt).toLocaleString()}</p>
@@ -128,12 +138,12 @@ export default function RouterNotificationsPage() {
                 {!n.readAt ? (
                   <button
                     onClick={() => void markRead(n.id)}
-                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     Mark read
                   </button>
                 ) : (
-                  <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                  <span className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                     Read
                   </span>
                 )}
@@ -143,18 +153,19 @@ export default function RouterNotificationsPage() {
         </div>
       )}
 
-      <section className="mt-8 rounded-xl border border-slate-200 p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Notification Preferences</h2>
         <p className="mt-1 text-sm text-slate-600">Control which in-app notifications are active.</p>
-        <div className="mt-4 grid gap-2">
+        <div className="mt-4 space-y-2">
           {prefs.map((pref) => (
-            <label key={pref.type} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+            <label key={pref.type} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5">
               <span className="text-sm font-medium text-slate-800">{pref.type}</span>
               <input
                 type="checkbox"
                 checked={pref.inApp}
                 disabled={savingPrefs}
                 onChange={(e) => void togglePreference(pref.type, e.target.checked)}
+                className="h-4 w-4 accent-emerald-600"
               />
             </label>
           ))}
