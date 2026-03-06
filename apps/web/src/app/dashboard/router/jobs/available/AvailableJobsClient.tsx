@@ -118,6 +118,7 @@ export default function AvailableJobsClient() {
   const [error, setError] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
   const [responseKeys, setResponseKeys] = useState<string[]>([]);
+  const [responseMeta, setResponseMeta] = useState<Record<string, unknown> | null>(null);
   const [selfCheck, setSelfCheck] = useState<SelfCheckResult | null>(null);
   const [selfCheckLoading, setSelfCheckLoading] = useState(false);
 
@@ -157,6 +158,10 @@ export default function AvailableJobsClient() {
             : json?.error?.message ?? resp.statusText ?? "Failed to load jobs";
         setError(msg);
         return;
+      }
+
+      if (json?._meta && typeof json._meta === "object") {
+        setResponseMeta(json._meta as Record<string, unknown>);
       }
 
       const list: Job[] = Array.isArray(json?.jobs)
@@ -357,6 +362,14 @@ export default function AvailableJobsClient() {
           <div>First job ID: {jobs[0]?.id ?? "(none)"}</div>
           <div>Last fetched: {lastFetchedAt ?? "(not yet)"}</div>
           <div>Response keys: {JSON.stringify(responseKeys)}</div>
+          {responseMeta && (
+            <div className="mt-2 border-t border-slate-200 pt-2">
+              <div className="font-semibold">API _meta:</div>
+              {Object.entries(responseMeta).map(([k, v]) => (
+                <div key={k}>{k}: {JSON.stringify(v)}</div>
+              ))}
+            </div>
+          )}
           <div className="mt-2 border-t border-slate-200 pt-2">
             <div className="font-semibold">Account Readiness:</div>
             <div>termsAccepted: {readiness ? String(readiness.terms) : "(loading)"}</div>

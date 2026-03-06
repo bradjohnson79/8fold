@@ -111,7 +111,19 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
 
     if (!routerRegionCode || !/^[A-Z]{2}$/.test(routerRegionCode)) {
       if (trace) traceLog(trace, `step_a early_exit: invalid region (empty or not 2 chars)`);
-      return { ok: true as const, jobs: [] };
+      console.warn(`[available-jobs] early_exit: invalid region userId=${userId} regionCode="${routerRegionCode}" profileFound=${profile != null}`);
+      return {
+        ok: true as const,
+        jobs: [],
+        _meta: {
+          userId,
+          profileFound: profile != null,
+          country: routerCountry,
+          region: routerRegionCode,
+          earlyExit: "invalid_region",
+          ts: new Date().toISOString(),
+        },
+      };
     }
 
     if (process.env.NODE_ENV !== "production") {
@@ -280,11 +292,28 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
       };
     });
 
-    return { ok: true as const, jobs: jobsRes };
+    return {
+      ok: true as const,
+      jobs: jobsRes,
+      _meta: {
+        userId,
+        profileFound: profile != null,
+        country: routerCountry,
+        region: routerRegionCode,
+        rawCount: raw.length,
+        ts: new Date().toISOString(),
+      },
+    };
   } catch (err) {
-    if (trace) {
-      traceLog(trace, `service_caught_error=${err instanceof Error ? err.message : String(err)}`);
-    }
-    return { ok: true as const, jobs: [] };
+    console.error(`[available-jobs] service_error userId=${userId}`, err instanceof Error ? err.message : err);
+    return {
+      ok: true as const,
+      jobs: [],
+      _meta: {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      },
+    };
   }
 }
