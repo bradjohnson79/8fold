@@ -86,7 +86,7 @@ export default function AvailableJobsClient() {
         const errorCode =
           typeof json?.error === "string" ? json.error : json?.error?.code ?? json?.error?.message ?? "";
         if (errorCode === "AUTH_MISSING_TOKEN" || resp.status === 401) {
-          setError("Authentication lost — please refresh the page");
+          setError("Authentication lost — please refresh and sign in again.");
           return;
         }
         const msg =
@@ -154,8 +154,7 @@ export default function AvailableJobsClient() {
   }
 
   return (
-    <div className="p-6 space-y-5">
-      {/* Header */}
+    <div className="space-y-5 p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Available Jobs</h1>
@@ -173,7 +172,6 @@ export default function AvailableJobsClient() {
         </button>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((i) => (
@@ -191,7 +189,6 @@ export default function AvailableJobsClient() {
         </div>
       )}
 
-      {/* Error */}
       {!loading && error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
           <p className="text-sm font-medium text-red-800">Error loading jobs</p>
@@ -206,14 +203,12 @@ export default function AvailableJobsClient() {
         </div>
       )}
 
-      {/* Empty */}
       {!loading && !error && jobs.length === 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm">
           No jobs available in your region.
         </div>
       )}
 
-      {/* Job Cards */}
       {!loading && !error && jobs.length > 0 && (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {jobs.map((job) => (
@@ -260,10 +255,10 @@ export default function AvailableJobsClient() {
         </ul>
       )}
 
-      {/* Debug Panel */}
+      {/* Diagnostics drawer -- closed by default */}
       <details className="rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-500">
         <summary className="cursor-pointer select-none px-4 py-2 font-medium">
-          Debug Panel
+          Diagnostics
         </summary>
         <div className="space-y-1 border-t border-slate-200 px-4 py-3 font-mono">
           <div>Endpoint: {ENDPOINT}</div>

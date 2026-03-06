@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
+import { routerApiFetch } from "@/lib/routerApi";
 
 type Item = { href: string; label: string };
 type Badge = { kind: "dot" } | { kind: "count"; value: number };
@@ -36,6 +38,7 @@ export function DashboardShell({
   children: React.ReactNode;
 }) {
   const path = usePathname();
+  const { getToken } = useAuth();
   const [boot, setBoot] = useState<
     | { loading: true }
     | { loading: false; ok: true; superuser: boolean }
@@ -75,8 +78,11 @@ export function DashboardShell({
           if (delay) await new Promise((r) => setTimeout(r, delay));
           if (cancelled) return;
 
+          const isRouter = path.startsWith("/dashboard/router") || path.startsWith("/app/router");
           const bootPath = path.startsWith("/dashboard/job-poster") ? "/api/web/v4/job-poster/me" : "/api/web/v4/readiness";
-          const resp = await fetch(bootPath, { cache: "no-store", credentials: "include" });
+          const resp = isRouter
+            ? await routerApiFetch(bootPath, getToken)
+            : await fetch(bootPath, { cache: "no-store", credentials: "include" });
           const json = (await resp.json().catch(() => null)) as any;
           if (cancelled) return;
 
@@ -119,7 +125,10 @@ export function DashboardShell({
     setBellLoading(true);
     setBellError("");
     try {
-      const resp = await fetch(`${notificationApiPath(bellRole)}?page=1&pageSize=12`, { cache: "no-store", credentials: "include" });
+      const apiPath = `${notificationApiPath(bellRole)}?page=1&pageSize=12`;
+      const resp = bellRole === "router"
+        ? await routerApiFetch(apiPath, getToken)
+        : await fetch(apiPath, { cache: "no-store", credentials: "include" });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((json as any)?.error || "Failed to load notifications");
 
@@ -143,12 +152,21 @@ export function DashboardShell({
     if (!bellRole) return;
     if (!ids.length) return;
     try {
-      await fetch(`${notificationApiPath(bellRole)}/mark-read`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ ids }),
-      });
+      const apiPath = `${notificationApiPath(bellRole)}/mark-read`;
+      if (bellRole === "router") {
+        await routerApiFetch(apiPath, getToken, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids }),
+        });
+      } else {
+        await fetch(apiPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ ids }),
+        });
+      }
     } catch {
       // best-effort
     }

@@ -47,25 +47,52 @@ export default function RouterRoutedJobsPage() {
     };
   }, []);
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (error) return <div className="p-6 text-red-700">{error}</div>;
+  if (loading) return <div className="p-6 text-slate-600">Loading routed jobs...</div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Routed Jobs</h1>
+    <div className="space-y-4 p-6">
+      <h1 className="text-2xl font-bold text-slate-900">Routed Jobs</h1>
       {jobs.length === 0 ? (
-        <div className="rounded-xl bg-white p-6 shadow dark:bg-zinc-900">No routed jobs yet.</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm">
+          No routed jobs yet.
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {jobs.map((job) => (
-            <li key={job.id} className="rounded-xl bg-white p-4 shadow dark:bg-zinc-900">
-              <div className="font-medium">{job.title}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                {job.region} · {job.status} · {job.routingStatus}
+            <li key={job.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-900">{job.title}</div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    {job.region} &middot; {job.routingStatus}
+                  </div>
+                </div>
+                <span
+                  className={
+                    "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium " +
+                    (job.status === "ASSIGNED" || job.status === "IN_PROGRESS"
+                      ? "bg-blue-50 text-blue-700"
+                      : job.status === "CONTRACTOR_COMPLETED" || job.status === "CUSTOMER_APPROVED"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-slate-100 text-slate-600")
+                  }
+                >
+                  {job.status}
+                </span>
               </div>
-              {job.routedAt && (
-                <div className="text-xs text-gray-500 mt-1">Routed: {new Date(job.routedAt).toLocaleString()}</div>
-              )}
+              {job.routedAt ? (
+                <div className="mt-2 text-xs text-slate-500">
+                  Routed: {new Date(job.routedAt).toLocaleString()}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

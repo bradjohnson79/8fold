@@ -61,6 +61,10 @@ export default function RouterRouteJobPage() {
         const resp = await routerApiFetch(`/api/web/v4/router/jobs/${encodeURIComponent(jobId)}/contractors`, getToken);
         const data = (await resp.json().catch(() => null)) as EligibleResponse & { error?: { message?: string } | string };
         if (!alive) return;
+        if (resp.status === 401) {
+          setError("Authentication lost — please refresh and sign in again.");
+          return;
+        }
         if (!resp.ok || data?.kind !== "ok") {
           const msg = typeof data?.error === "string" ? data.error : data?.error?.message ?? "Failed to load contractors";
           setError(msg);
@@ -104,6 +108,10 @@ export default function RouterRouteJobPage() {
         setShowIncompleteModal(true);
         return;
       }
+      if (resp.status === 401) {
+        setError("Authentication lost — please refresh and sign in again.");
+        return;
+      }
       if (!resp.ok) {
         const msg = typeof data?.error === "string" ? data.error : data?.error?.message ?? "Failed to route job";
         setError(msg);
@@ -118,26 +126,30 @@ export default function RouterRouteJobPage() {
   }
 
   if (loading) {
-    return <div className="p-6">Loading...</div>;
+    return <div className="p-6 text-slate-600">Loading eligible contractors...</div>;
   }
 
   if (error) {
     return (
-      <div className="p-6 space-y-3">
-        <p className="text-red-700">{error}</p>
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-5 p-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-900">Route Job: {job?.title ?? "Job"}</h1>
-        <p className="mt-1 text-sm text-slate-600">Select up to 5 contractors.</p>
-        <div className="mt-2 text-sm text-slate-600">
-          {job?.city ? `${job.city}, ` : ""}
-          {job?.region ?? ""} • {job?.provinceCode ?? ""} • {job?.urbanOrRegional ?? "URBAN"} • Max Distance {job?.maxDistanceKm ?? 0} km
-        </div>
+        <p className="mt-1 text-sm text-slate-600">Select up to 5 contractors to receive routing invites.</p>
+        {job ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
+            {job.city ? <span>{job.city}, {job.region}</span> : null}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{job.tradeCategory}</span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">{job.urbanOrRegional}</span>
+            <span className="text-xs text-slate-400">Max {job.maxDistanceKm} km</span>
+          </div>
+        ) : null}
       </div>
 
       {contractors.length === 0 ? (
@@ -151,22 +163,22 @@ export default function RouterRouteJobPage() {
             const disableUnchecked = !selected && selectedContractorIds.length >= 5;
             return (
               <li key={contractor.contractorId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <label className="flex items-start gap-3">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selected}
                     disabled={disableUnchecked || submitting}
                     onChange={() => toggleContractor(contractor.contractorId)}
-                    className="mt-1 h-4 w-4"
+                    className="mt-1 h-4 w-4 accent-emerald-600"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-lg font-semibold text-slate-900">{contractor.businessName}</div>
                     <div className="text-sm text-slate-600">{contractor.contactName}</div>
                     <div className="mt-2 text-sm text-slate-600">
-                      {contractor.tradeCategory} • {contractor.yearsExperience} years experience
+                      {contractor.tradeCategory} &middot; {contractor.yearsExperience} years experience
                     </div>
                     <div className="text-sm text-slate-600">
-                      {contractor.city || "Unknown city"} • {contractor.distanceKm.toFixed(1)} km away
+                      {contractor.city || "Unknown city"} &middot; {contractor.distanceKm.toFixed(1)} km away
                     </div>
                   </div>
                 </label>
@@ -176,15 +188,17 @@ export default function RouterRouteJobPage() {
         </ul>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div />
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-slate-500">
+          {selectedContractorIds.length} of 5 selected
+        </div>
         <button
           type="button"
           onClick={routeJob}
           disabled={submitting || selectedContractorIds.length < 1 || selectedContractorIds.length > 5}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Route Job
+          {submitting ? "Routing..." : "Route Job"}
         </button>
       </div>
 

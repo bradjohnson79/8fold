@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 function resolveTarget(roleParam: string | null): string {
   const role = String(roleParam ?? "").trim().toUpperCase();
   if (role === "ROUTER") {
-    return "/dashboard/router/payment?stripe=return";
+    return "/dashboard/router/payments?stripe=return";
   }
   if (role === "CONTRACTOR") {
     return "/dashboard/contractor/payment?stripe=return";

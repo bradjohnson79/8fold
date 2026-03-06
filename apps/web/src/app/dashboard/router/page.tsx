@@ -1,35 +1,24 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 
-type Summary = {
-  performance: {
-    totalRouted: number;
-    activeRoutes: number;
-    awaitingContractorAcceptance: number;
-    pendingCompletionApproval: number;
-    completedThisMonth: number;
-  };
-  capacity: {
-    routesUsedToday: number;
-    dailyRouteLimit: number;
-    remainingCapacity: number;
-    isSeniorRouter: boolean;
-    status: "AVAILABLE" | "NEAR_LIMIT" | "LIMIT_REACHED";
-  };
-  earnings: {
-    weekCents: number;
-    monthCents: number;
-    lifetimeCents: number;
-    pendingReleaseCents: number;
-  };
-  actionRequired: {
-    pendingCompletionApproval: number;
-    awaitingContractorAcceptance: number;
-    supportTicketsRequiringInput: number;
-  };
+type SessionData = {
+  hasAcceptedTerms: boolean;
+  profileComplete: boolean;
+  state: string;
+};
+
+type StripeStatus = {
+  ok: boolean;
+  state: "NOT_CONNECTED" | "PENDING_VERIFICATION" | "CONNECTED" | "CURRENCY_MISMATCH";
+};
+
+type SummaryData = {
+  capacity: { routesUsedToday: number };
+  actionRequired: { supportTicketsRequiringInput: number };
   recentActivity: Array<{
     id: number;
     title: string;
@@ -38,50 +27,119 @@ type Summary = {
   }>;
 };
 
-const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+type NotifData = { unreadCount?: number };
 
-const metricCards: Array<{ key: keyof Summary["performance"]; label: string; tone: string; icon: string }> = [
-  { key: "totalRouted", label: "Total Routed (All-Time)", tone: "border-slate-200", icon: "#" },
-  { key: "activeRoutes", label: "Active Routes", tone: "border-blue-200 bg-blue-50/40", icon: "A" },
-  {
-    key: "awaitingContractorAcceptance",
-    label: "Awaiting Contractor Acceptance",
-    tone: "border-yellow-200 bg-yellow-50/50",
-    icon: "!",
-  },
-  {
-    key: "pendingCompletionApproval",
-    label: "Pending Completion Approval",
-    tone: "border-orange-200 bg-orange-50/50",
-    icon: "!",
-  },
-  { key: "completedThisMonth", label: "Completed (This Month)", tone: "border-emerald-200 bg-emerald-50/50", icon: "C" },
-];
+function formatTimeAgo(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(1, Math.floor(diffMs / 60000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
-export default function RouterSummaryPage() {
+function GateCard({
+  label,
+  done,
+  href,
+  compact,
+}: {
+  label: string;
+  done: boolean;
+  href: string;
+  compact: boolean;
+}) {
+  if (compact) {
+    return (
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-emerald-700"
+      >
+        <span className="text-emerald-600">&#10003;</span>
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      className={
+        "flex items-center gap-3 rounded-xl border p-4 transition hover:shadow-md " +
+        (done
+          ? "border-emerald-200 bg-emerald-50"
+          : "border-amber-200 bg-amber-50")
+      }
+    >
+      <span
+        className={
+          "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold " +
+          (done
+            ? "bg-emerald-600 text-white"
+            : "bg-amber-400 text-white")
+        }
+      >
+        {done ? "\u2713" : "!"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-slate-900">{label}</div>
+        <div className={"text-xs " + (done ? "text-emerald-700" : "text-amber-700")}>
+          {done ? "Complete" : "Action required"}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+export default function RouterOverviewPage() {
   const { getToken } = useAuth();
-  const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [session, setSession] = useState<SessionData | null>(null);
+  const [stripe, setStripe] = useState<StripeStatus | null>(null);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [availableCount, setAvailableCount] = useState<number>(0);
+  const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const resp = await routerApiFetch("/api/web/v4/router/dashboard/summary", getToken);
-        const json = (await resp.json().catch(() => null)) as any;
+        const [sessionResp, stripeResp, summaryResp, jobsResp, notifResp] =
+          await Promise.all([
+            routerApiFetch("/api/web/v4/router/session", getToken).catch(() => null),
+            routerApiFetch("/api/web/stripe/connect/create-account", getToken).catch(() => null),
+            routerApiFetch("/api/web/v4/router/dashboard/summary", getToken).catch(() => null),
+            routerApiFetch("/api/web/v4/router/available-jobs", getToken).catch(() => null),
+            routerApiFetch("/api/web/v4/router/notifications?page=1&pageSize=1", getToken).catch(() => null),
+          ]);
         if (!alive) return;
-        if (resp.status === 401) {
+
+        if (sessionResp?.status === 401) {
           setError("Authentication lost — please refresh and sign in again.");
           return;
         }
-        if (!resp.ok) {
-          setError(json?.error?.message ?? json?.error ?? "Failed to load summary");
-          return;
-        }
-        setSummary(json);
+
+        const sessionJson = sessionResp ? await sessionResp.json().catch(() => null) : null;
+        const stripeJson = stripeResp ? await stripeResp.json().catch(() => null) : null;
+        const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
+        const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
+        const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
+        if (!alive) return;
+
+        setSession(sessionJson?.data ?? sessionJson ?? null);
+        setStripe(stripeJson?.ok ? stripeJson : null);
+        setSummary(summaryJson ?? null);
+        setAvailableCount(
+          Array.isArray(jobsJson?.jobs) ? jobsJson.jobs.length : Array.isArray(jobsJson) ? jobsJson.length : 0,
+        );
+        setUnreadNotifs(typeof notifJson?.unreadCount === "number" ? notifJson.unreadCount : 0);
       } catch {
-        if (alive) setError("Failed to load summary");
+        if (alive) setError("Failed to load dashboard data");
       } finally {
         if (alive) setLoading(false);
       }
@@ -91,116 +149,143 @@ export default function RouterSummaryPage() {
     };
   }, []);
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (error) return <div className="p-6 text-red-700">{error}</div>;
-  if (!summary) return <div className="p-6 text-slate-600">No summary data is available for this router account yet.</div>;
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="h-6 w-48 animate-pulse rounded bg-slate-200" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
+          ))}
+        </div>
+        <div className="h-32 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
+      </div>
+    );
+  }
 
-  const totalRequiredActions =
-    summary.actionRequired.pendingCompletionApproval +
-    summary.actionRequired.awaitingContractorAcceptance +
-    summary.actionRequired.supportTicketsRequiringInput;
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+      </div>
+    );
+  }
 
-  const capacityLabel =
-    summary.capacity.status === "LIMIT_REACHED"
-      ? "Limit Reached"
-      : summary.capacity.status === "NEAR_LIMIT"
-        ? "Near Limit"
-        : "Available";
-  const capacityIcon = summary.capacity.status === "LIMIT_REACHED" ? "STOP" : summary.capacity.status === "NEAR_LIMIT" ? "WARN" : "OK";
+  const termsOk = session?.hasAcceptedTerms ?? false;
+  const profileOk = session?.profileComplete ?? false;
+  const stripeOk = stripe?.state === "CONNECTED";
+  const allGatesComplete = termsOk && profileOk && stripeOk;
+
+  const routedToday = summary?.capacity?.routesUsedToday ?? 0;
+  const openTickets = summary?.actionRequired?.supportTicketsRequiringInput ?? 0;
+  const recentActivity = (summary?.recentActivity ?? []).slice(0, 5);
 
   return (
     <div className="space-y-6 p-6">
-      {totalRequiredActions > 0 ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
-          <div className="mb-1 text-sm font-semibold text-red-700">Action Required</div>
-          <div className="text-sm text-red-800">
-            {summary.actionRequired.pendingCompletionApproval} jobs pending completion approval, {" "}
-            {summary.actionRequired.awaitingContractorAcceptance} jobs awaiting contractor response, {" "}
-            {summary.actionRequired.supportTicketsRequiringInput} support tickets requiring routing input.
+      {/* Section 1: Setup Status */}
+      {allGatesComplete ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <GateCard label="Terms" done href="/dashboard/router/terms" compact />
+            <GateCard label="Profile" done href="/dashboard/router/profile" compact />
+            <GateCard label="Stripe" done href="/dashboard/router/payments" compact />
+          </div>
+          <div className="mt-2 text-sm font-semibold text-emerald-700">
+            Router ready to route jobs
           </div>
         </div>
-      ) : null}
+      ) : (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">Setup Status</h2>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <GateCard label="Terms" done={termsOk} href="/dashboard/router/terms" compact={false} />
+            <GateCard label="Profile" done={profileOk} href="/dashboard/router/profile" compact={false} />
+            <GateCard
+              label="Stripe"
+              done={stripeOk}
+              href="/dashboard/router/payments"
+              compact={false}
+            />
+          </div>
+        </section>
+      )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Routing Command Center</h1>
-          {summary.capacity.isSeniorRouter ? (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
-              Senior Router Enabled
-            </span>
-          ) : null}
+      {/* Section 2: Available Jobs (Hero) */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="text-sm font-medium uppercase tracking-wide text-slate-500">
+          Available Jobs
         </div>
-
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Performance Snapshot</h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {metricCards.map((card) => (
-            <div
-              key={card.key}
-              className={`rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow ${card.tone}`}
-            >
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">{card.icon}</span>
-                <span className="text-3xl font-semibold leading-none text-slate-900">{summary.performance[card.key]}</span>
-              </div>
-            </div>
-          ))}
+        <div className="mt-1 flex items-baseline gap-3">
+          <span className="text-5xl font-bold text-slate-900">{availableCount}</span>
+          <span className="text-lg text-slate-600">jobs waiting for routing</span>
         </div>
-      </div>
+        <Link
+          href="/dashboard/router/jobs/available"
+          className="mt-4 inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          View Jobs
+        </Link>
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-          <h3 className="mb-3 text-lg font-semibold text-slate-900">Daily Routing Capacity</h3>
-          <div className="space-y-2 text-sm text-slate-600">
-            <div>
-              Routes Used Today: <span className="font-semibold text-slate-900">{summary.capacity.routesUsedToday} / {summary.capacity.dailyRouteLimit}</span>
-            </div>
-            <div>
-              Remaining Capacity: <span className="font-semibold text-slate-900">{summary.capacity.remainingCapacity}</span>
-            </div>
-            <div>
-              Status: <span className="font-semibold text-slate-900">{capacityIcon} {capacityLabel}</span>
-            </div>
+      {/* Section 3: Recent Routing Activity */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900">Recent Routing Activity</h3>
+          <div className="text-sm text-slate-600">
+            Routed Today: <span className="font-semibold text-slate-900">{routedToday}</span>
           </div>
         </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-          <h3 className="mb-3 text-lg font-semibold text-slate-900">Earnings Overview</h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <div className="text-slate-500">This Week</div>
-              <div className="text-xl font-semibold text-slate-900">{money(summary.earnings.weekCents)}</div>
-            </div>
-            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <div className="text-slate-500">This Month</div>
-              <div className="text-xl font-semibold text-slate-900">{money(summary.earnings.monthCents)}</div>
-            </div>
-            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <div className="text-slate-500">Lifetime</div>
-              <div className="text-xl font-semibold text-slate-900">{money(summary.earnings.lifetimeCents)}</div>
-            </div>
-            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <div className="text-slate-500">Pending Release</div>
-              <div className="text-xl font-semibold text-slate-900">{money(summary.earnings.pendingReleaseCents)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="mb-3 text-lg font-semibold text-slate-900">Recent Routing Activity</h3>
-        {summary.recentActivity.length === 0 ? (
-          <div className="text-sm text-slate-500">No recent activity yet.</div>
+        {recentActivity.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No recent activity yet.</p>
         ) : (
-          <div className="space-y-2">
-            {summary.recentActivity.map((item) => (
-              <div key={item.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                <div className="font-medium text-slate-900">{item.title}</div>
-                <div className="text-slate-600">{item.event}</div>
-              </div>
+          <ul className="mt-3 divide-y divide-slate-100">
+            {recentActivity.map((item) => (
+              <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-slate-900">{item.title}</div>
+                  <div className="text-xs text-slate-500">{item.event}</div>
+                </div>
+                {item.updatedAt ? (
+                  <div className="shrink-0 text-xs text-slate-400">
+                    {formatTimeAgo(item.updatedAt)}
+                  </div>
+                ) : null}
+              </li>
             ))}
-          </div>
+          </ul>
         )}
+        <Link
+          href="/dashboard/router/jobs/routed"
+          className="mt-3 inline-flex text-sm font-semibold text-emerald-600 hover:underline"
+        >
+          View Routed Jobs
+        </Link>
+      </section>
+
+      {/* Section 4: Notifications */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Link
+          href="/dashboard/router/notifications"
+          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+        >
+          <div>
+            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Notifications</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">{unreadNotifs} <span className="text-base font-normal text-slate-500">unread</span></div>
+          </div>
+          <span className="text-slate-400">&rarr;</span>
+        </Link>
+
+        {/* Section 5: Support */}
+        <Link
+          href="/dashboard/router/support-inbox"
+          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+        >
+          <div>
+            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Support</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">{openTickets} <span className="text-base font-normal text-slate-500">open tickets</span></div>
+          </div>
+          <span className="text-slate-400">&rarr;</span>
+        </Link>
       </div>
     </div>
   );
