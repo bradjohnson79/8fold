@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
     await adminAuditLog(req, authed as any, {
       action: "USER_BULK_ACTION_REQUESTED",
-      entityType: "BulkAction",
+      entityType: "User",
       entityId: authed.adminId,
       metadata: { bulkAction: action, ids, reason, source: "admin-bulk-action" },
     });
