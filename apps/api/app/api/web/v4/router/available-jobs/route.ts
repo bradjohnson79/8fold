@@ -57,9 +57,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (err) {
-    if (trace) {
-      console.log(`[router-trace] caught_error=${err instanceof Error ? err.message : String(err)}`);
-    }
-    return NextResponse.json({ ok: true, jobs: [] }, { status: 200 });
+    console.error(`[available-jobs] route_error`, err instanceof Error ? err.message : err);
+    return NextResponse.json({
+      ok: true,
+      jobs: [],
+      _meta: { routeError: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() },
+    }, { status: 200 });
   }
 }
