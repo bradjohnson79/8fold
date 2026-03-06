@@ -29,8 +29,21 @@ type Props = {
   q: string;
   status: string;
   error: string | null;
-  formatBadgeLabel: (badge: string) => string;
 };
+
+function formatBadgeLabel(badge: string): string {
+  const b = String(badge ?? "").trim().toUpperCase();
+  if (!b) return "UNKNOWN";
+  if (b === "STRIPE_VERIFIED") return "Stripe Verified";
+  if (b === "STRIPE_CONNECTED_PENDING_VERIFICATION") return "Stripe Pending Verification";
+  if (b === "STRIPE_NOT_CONNECTED") return "Stripe Not Connected";
+  if (b === "PROFILE_SYNCED") return "Profile Synced";
+  if (b === "PROFILE_CANONICAL_ONLY") return "Profile Canonical Only";
+  if (b === "PROFILE_V4_ONLY") return "Profile V4 Only";
+  if (b === "PROFILE_MISSING") return "Profile Missing";
+  if (b === "SENIOR") return "Senior Router";
+  return b.replace(/_/g, " ");
+}
 
 const ACTION_LABELS: Record<string, string> = {
   suspend_1w: "suspended for 1 week",
@@ -76,7 +89,7 @@ function qs(sp: Record<string, string | undefined>): string {
   return out ? `?${out}` : "";
 }
 
-export function RoutersTableClient({ rows, totalCount, page, pageSize, q, status, error, formatBadgeLabel }: Props) {
+export function RoutersTableClient({ rows, totalCount, page, pageSize, q, status, error }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);

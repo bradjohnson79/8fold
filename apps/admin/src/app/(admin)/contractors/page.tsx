@@ -78,21 +78,6 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-function formatBadgeLabel(badge: string): string {
-  const b = String(badge ?? "").trim().toUpperCase();
-  if (!b) return "UNKNOWN";
-  if (b.startsWith("JOBS:")) return `Jobs ${b.slice(5)}`;
-  if (b === "STRIPE_VERIFIED") return "Stripe Verified";
-  if (b === "STRIPE_CONNECTED_PENDING_VERIFICATION") return "Stripe Pending Verification";
-  if (b === "STRIPE_NOT_CONNECTED") return "Stripe Not Connected";
-  if (b === "PROFILE_SYNCED") return "Profile Synced";
-  if (b === "PROFILE_CANONICAL_ONLY") return "Profile Canonical Only";
-  if (b === "PROFILE_V4_ONLY") return "Profile V4 Only";
-  if (b === "PROFILE_MISSING") return "Profile Missing";
-  if (b === "PENDING_APPROVAL") return "Pending Approval";
-  return b.replace(/_/g, " ");
-}
-
 export default async function ContractorsPage({
   searchParams,
 }: {
@@ -190,7 +175,6 @@ export default async function ContractorsPage({
         q={q}
         status={status}
         error={err}
-        formatBadgeLabel={formatBadgeLabel}
       />
     </div>
   );
