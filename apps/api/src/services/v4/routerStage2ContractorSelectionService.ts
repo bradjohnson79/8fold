@@ -420,15 +420,28 @@ export async function routeStage2JobToContractors(
         .returning({ id: jobs.id });
       if (updated.length !== 1) return { kind: "job_not_available" as const };
       for (const contractorId of desired) {
-        await tx.insert(v4ContractorJobInvites).values({
-          id: randomUUID(),
-          routeId: routerUserId,
-          jobId,
-          contractorUserId: contractorId,
-          status: "PENDING",
-          createdAt: now,
-          expiresAt,
-        });
+        await tx
+          .insert(v4ContractorJobInvites)
+          .values({
+            id: randomUUID(),
+            routeId: routerUserId,
+            jobId,
+            contractorUserId: contractorId,
+            status: "PENDING",
+            createdAt: now,
+            expiresAt,
+            respondedAt: null,
+          })
+          .onConflictDoUpdate({
+            target: [v4ContractorJobInvites.jobId, v4ContractorJobInvites.contractorUserId],
+            set: {
+              status: "PENDING",
+              routeId: routerUserId,
+              createdAt: now,
+              expiresAt,
+              respondedAt: null,
+            },
+          });
 
         await emitDomainEvent(
           {
