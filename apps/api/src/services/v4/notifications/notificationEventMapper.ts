@@ -1,4 +1,4 @@
-import { isNull } from "drizzle-orm";
+import { isNull, sql } from "drizzle-orm";
 import { admins } from "@/db/schema/admin";
 import { db } from "@/db/drizzle";
 import type {
@@ -21,15 +21,27 @@ async function safeNotify(
   tx?: any,
 ): Promise<void> {
   try {
-    await sendNotification(input, tx);
-  } catch (error) {
-    console.error("[NOTIFICATION_EVENT_MAPPER_ERROR]", {
+    if (tx) {
+      await tx.execute(sql`SAVEPOINT notify_sp`);
+      try {
+        await sendNotification(input, tx);
+      } catch (err) {
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT notify_sp`);
+        console.error("[notification-insert-error]", {
+          eventType,
+          userId: input.userId,
+          type: input.type,
+          dedupeKey: input.idempotencyKey ?? input.dedupeKey ?? null,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } else {
+      await sendNotification(input);
+    }
+  } catch (err) {
+    console.error("[notification-error]", {
       eventType,
-      dedupeKey: input.idempotencyKey ?? input.dedupeKey ?? null,
-      userId: input.userId,
-      role: input.role,
-      payload,
-      message: error instanceof Error ? error.message : String(error),
+      message: err instanceof Error ? err.message : String(err),
     });
   }
 }
