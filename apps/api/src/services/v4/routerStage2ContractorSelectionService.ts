@@ -20,6 +20,7 @@ export type Stage2ContractorCard = {
   yearsExperience: number;
   city: string;
   distanceKm: number;
+  availabilityStatus: "AVAILABLE" | "BUSY";
 };
 
 type Stage2JobSnapshot = {
@@ -222,10 +223,41 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
       yearsExperience: Number(row.yearsExperience ?? 0),
       city: String(row.city ?? "").trim(),
       distanceKm,
+      availabilityStatus: "AVAILABLE",
     });
   }
 
-  out.sort((a, b) => a.distanceKm - b.distanceKm || a.businessName.localeCompare(b.businessName));
+  const contractorIds = out.map((c) => c.contractorId);
+  if (contractorIds.length > 0) {
+    const activeJobs = await db
+      .select({
+        contractorUserId: jobs.contractor_user_id,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(jobs)
+      .where(
+        and(
+          inArray(jobs.contractor_user_id, contractorIds),
+          inArray(jobs.status, ["ASSIGNED", "IN_PROGRESS", "JOB_STARTED"]),
+        ),
+      )
+      .groupBy(jobs.contractor_user_id);
+
+    const busySet = new Set(activeJobs.map((r) => r.contractorUserId));
+    for (const c of out) {
+      c.availabilityStatus = busySet.has(c.contractorId) ? "BUSY" : "AVAILABLE";
+    }
+  }
+
+  out.sort((a, b) => {
+    const availDiff =
+      (a.availabilityStatus === "AVAILABLE" ? 0 : 1) -
+      (b.availabilityStatus === "AVAILABLE" ? 0 : 1);
+    if (availDiff !== 0) return availDiff;
+    if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
+    return a.businessName.localeCompare(b.businessName);
+  });
+
   return out;
 }
 

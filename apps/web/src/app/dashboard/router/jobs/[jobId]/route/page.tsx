@@ -8,6 +8,7 @@ import { AccountIncompleteModal } from "@/components/modals/AccountIncompleteMod
 import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
+import AvailabilityBadge from "@/components/AvailabilityBadge";
 
 type EligibleContractor = {
   contractorId: string;
@@ -17,6 +18,7 @@ type EligibleContractor = {
   yearsExperience: number;
   city: string;
   distanceKm: number;
+  availabilityStatus: "AVAILABLE" | "BUSY";
 };
 
 type EligibleResponse = {
@@ -237,7 +239,10 @@ export default function RouterRouteJobPage() {
                     className="mt-1 h-4 w-4 accent-emerald-600"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-lg font-semibold text-slate-900">{contractor.businessName}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-semibold text-slate-900">{contractor.businessName}</span>
+                      <AvailabilityBadge status={contractor.availabilityStatus} />
+                    </div>
                     <div className="text-sm text-slate-600">{contractor.contactName}</div>
                     <div className="mt-2 text-sm text-slate-600">
                       {contractor.tradeCategory} &middot; {contractor.yearsExperience} years experience
@@ -252,6 +257,15 @@ export default function RouterRouteJobPage() {
           })}
         </ul>
       )}
+
+      {selectedContractorIds.some((id) =>
+        contractors.find((c) => c.contractorId === id)?.availabilityStatus === "BUSY",
+      ) ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+          One or more selected contractors are currently BUSY.
+          You can still route the job, but available contractors may respond faster.
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm text-slate-500">
