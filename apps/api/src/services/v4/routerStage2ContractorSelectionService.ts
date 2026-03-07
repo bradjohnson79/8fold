@@ -35,6 +35,9 @@ type Stage2JobSnapshot = {
   jobType: "urban" | "regional";
   isRegional: boolean;
   status: string;
+  routingStatus: string;
+  claimedByUserId: string | null;
+  cancelRequestPending: boolean | null;
   lat: number;
   lng: number;
 };
@@ -120,6 +123,9 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
       jobType: jobs.job_type,
       isRegional: jobs.is_regional,
       status: jobs.status,
+      routingStatus: jobs.routing_status,
+      claimedByUserId: jobs.claimed_by_user_id,
+      cancelRequestPending: jobs.cancel_request_pending,
       lat: jobs.lat,
       lng: jobs.lng,
     })
@@ -147,6 +153,9 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
       jobType: row.jobType,
       isRegional,
       status: row.status,
+      routingStatus: String(row.routingStatus ?? ""),
+      claimedByUserId: row.claimedByUserId ?? null,
+      cancelRequestPending: row.cancelRequestPending ?? null,
       lat: Number.NaN,
       lng: Number.NaN,
     };
@@ -164,6 +173,9 @@ async function fetchJobSnapshot(jobId: string): Promise<Stage2JobSnapshot | null
     jobType: row.jobType,
     isRegional,
     status: row.status,
+    routingStatus: String(row.routingStatus ?? ""),
+    claimedByUserId: row.claimedByUserId ?? null,
+    cancelRequestPending: row.cancelRequestPending ?? null,
     lat: row.lat,
     lng: row.lng,
   };
@@ -268,7 +280,9 @@ export async function getStage2JobContractors(jobId: string): Promise<Stage2GetC
     jobId,
     exists: !!job,
     status: job?.status,
-    routing_status: (job as any)?.routing_status ?? null,
+    routingStatus: job?.routingStatus,
+    claimedByUserId: job?.claimedByUserId,
+    cancelRequestPending: job?.cancelRequestPending,
     lat: job?.lat,
     lng: job?.lng,
     latFinite: Number.isFinite(job?.lat),
@@ -280,10 +294,18 @@ export async function getStage2JobContractors(jobId: string): Promise<Stage2GetC
     return { kind: "not_found" };
   }
 
-  if (job.status !== "OPEN_FOR_ROUTING") {
+  if (
+    job.status !== "OPEN_FOR_ROUTING" ||
+    job.routingStatus !== ROUTING_STATUS.UNROUTED ||
+    job.claimedByUserId !== null ||
+    job.cancelRequestPending === true
+  ) {
     console.error("[stage2-contractors-debug] job_not_available", {
       jobId,
       status: job.status,
+      routingStatus: job.routingStatus,
+      claimedByUserId: job.claimedByUserId,
+      cancelRequestPending: job.cancelRequestPending,
     });
     return { kind: "job_not_available" };
   }
