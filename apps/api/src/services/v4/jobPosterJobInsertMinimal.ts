@@ -7,6 +7,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
+import { normalizeRegionToCode } from "@/src/services/v4/geocodeService";
 
 type ExecuteExecutor = { execute: typeof db.execute };
 
@@ -86,8 +87,9 @@ export async function createJobMinimalInsert(
   }
 
   const requiredSet = new Set(requiredColumns);
-  const region = String(params.region ?? params.stateCode ?? "").trim().toLowerCase() || "unspecified";
-  const stateCode = String(params.stateCode ?? params.region ?? "").trim().toUpperCase() || "";
+  const rawStateCode = String(params.stateCode ?? params.region ?? "").trim().toUpperCase() || "";
+  const stateCode = normalizeRegionToCode(rawStateCode);
+  const region = stateCode ? stateCode.toLowerCase() : (String(params.region ?? "").trim().toLowerCase() || "unspecified");
   const countryCode = deriveCountryFromRegion(stateCode) ?? normalizeCountryCode(params.countryCode);
 
   const insertValues: Record<string, unknown> = {

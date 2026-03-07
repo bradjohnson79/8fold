@@ -273,7 +273,7 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
   return out;
 }
 
-export async function getStage2JobContractors(jobId: string): Promise<Stage2GetContractorsResult> {
+export async function getStage2JobContractors(jobId: string, routerUserId?: string): Promise<Stage2GetContractorsResult> {
   const job = await fetchJobSnapshot(jobId);
 
   console.error("[stage2-contractors-debug]", {
@@ -294,18 +294,21 @@ export async function getStage2JobContractors(jobId: string): Promise<Stage2GetC
     return { kind: "not_found" };
   }
 
-  if (
-    job.status !== "OPEN_FOR_ROUTING" ||
-    job.routingStatus !== ROUTING_STATUS.UNROUTED ||
-    job.claimedByUserId !== null ||
-    job.cancelRequestPending === true
-  ) {
+  if (job.status !== "OPEN_FOR_ROUTING" || job.cancelRequestPending === true) {
     console.error("[stage2-contractors-debug] job_not_available", {
       jobId,
       status: job.status,
-      routingStatus: job.routingStatus,
-      claimedByUserId: job.claimedByUserId,
       cancelRequestPending: job.cancelRequestPending,
+    });
+    return { kind: "job_not_available" };
+  }
+
+  const claimedByOther = job.claimedByUserId !== null && job.claimedByUserId !== routerUserId;
+  if (claimedByOther) {
+    console.error("[stage2-contractors-debug] job_not_available (claimed by another router)", {
+      jobId,
+      claimedByUserId: job.claimedByUserId,
+      routerUserId,
     });
     return { kind: "job_not_available" };
   }
@@ -364,7 +367,7 @@ export async function routeStage2JobToContractors(
 
   if (desired.length > 5) return { kind: "too_many" };
 
-  const eligible = await getStage2JobContractors(jobId);
+  const eligible = await getStage2JobContractors(jobId, routerUserId);
   if (eligible.kind === "not_found") return { kind: "not_found" };
   if (eligible.kind === "job_not_available") return { kind: "job_not_available" };
   if (eligible.kind === "missing_job_coords") return { kind: "missing_job_coords" };
@@ -379,7 +382,7 @@ export async function routeStage2JobToContractors(
       await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
       const countRes = await tx.execute(
-        sql`SELECT COUNT(*)::int AS cnt FROM v4_contractor_job_invites WHERE job_id = ${jobId}`
+        sql`SELECT COUNT(*)::int AS cnt FROM v4_contractor_job_invites WHERE job_id = ${jobId} AND status = 'PENDING'`
       );
       const existingCount = Number((countRes.rows[0] as any)?.cnt ?? 0);
       if (existingCount >= 5 || existingCount + desired.length > 5) return { kind: "job_not_available" as const };
@@ -387,7 +390,11 @@ export async function routeStage2JobToContractors(
       const existingRows = await tx
         .select({ contractorUserId: v4ContractorJobInvites.contractorUserId })
         .from(v4ContractorJobInvites)
-        .where(and(eq(v4ContractorJobInvites.jobId, jobId), inArray(v4ContractorJobInvites.contractorUserId, desired as any)));
+        .where(and(
+          eq(v4ContractorJobInvites.jobId, jobId),
+          inArray(v4ContractorJobInvites.contractorUserId, desired as any),
+          eq(v4ContractorJobInvites.status, "PENDING"),
+        ));
       if (existingRows.length > 0) return { kind: "contractor_not_eligible" as const };
 
       const now = new Date();
@@ -406,9 +413,8 @@ export async function routeStage2JobToContractors(
           and(
             eq(jobs.id, jobId),
             eq(jobs.status, "OPEN_FOR_ROUTING"),
-            eq(jobs.routing_status, ROUTING_STATUS.UNROUTED),
             eq(jobs.cancel_request_pending, false),
-            sql`${jobs.claimed_by_user_id} is null`,
+            sql`(${jobs.claimed_by_user_id} is null or ${jobs.claimed_by_user_id} = ${routerUserId})`,
           ),
         )
         .returning({ id: jobs.id });

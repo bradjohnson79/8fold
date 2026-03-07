@@ -9,7 +9,7 @@ import { jobPhotos } from "@/db/schema/jobPhoto";
 import { v4JobUploads } from "@/db/schema/v4JobUpload";
 import { buildAppraisalPayloadHash, verifyAppraisalTokenOrThrow } from "@/src/services/v4/appraisalTokenService";
 import { calculateDistanceKm } from "@/src/services/v4/geoDistanceService";
-import { reverseGeocodeProvince } from "@/src/services/v4/geocodeService";
+import { reverseGeocodeProvince, normalizeRegionToCode } from "@/src/services/v4/geocodeService";
 import { badRequest, conflict, internal } from "@/src/services/v4/v4Errors";
 import { URBAN_RADIUS_KM } from "@/src/validation/v4/constants";
 import { type V4JobCreateBody, V4JobCreateBodySchema } from "@/src/validation/v4/jobCreateSchema";
@@ -176,11 +176,12 @@ export async function createV4Job(input: V4JobCreateBody, actorUserId: string, i
       archived: false,
       title: input.title,
       scope: input.scope,
-      region: resolvedProvince,
+      region: resolvedProvince.toLowerCase(),
       country: deriveCountryFromRegion(resolvedProvince) ?? input.country,
       country_code: deriveCountryFromRegion(resolvedProvince) ?? input.country,
-      state_code: resolvedProvince.slice(0, 10),
-      region_code: resolvedProvince.slice(0, 10),
+      state_code: resolvedProvince,
+      region_code: resolvedProvince,
+      province: resolvedProvince,
       city: input.city ?? null,
       address_full: input.address_full ?? null,
       currency: input.country === "CA" ? "CAD" : "USD",

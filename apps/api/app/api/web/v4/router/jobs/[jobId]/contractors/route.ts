@@ -21,7 +21,7 @@ export async function GET(
       );
     }
 
-    const result = await getStage2JobContractors(jobId);
+    const result = await getStage2JobContractors(jobId, authed.userId);
     if (result.kind === "ok") return NextResponse.json(result, { status: 200 });
     if (result.kind === "not_found") {
       return NextResponse.json(toV4ErrorResponse({ status: 404, code: "V4_NOT_FOUND", message: "Not found" } as V4Error, requestId), {

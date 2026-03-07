@@ -7,6 +7,7 @@ import { formatDateTime, formatMoney } from "@/admin/ui/format";
 import { Notice } from "@/admin/ui/notice";
 import { PageHeader, RowCard, Card, PrimaryButton, SecondaryButton, Pill } from "@/admin/ui/primitives";
 import { AdminColors } from "@/admin/ui/theme";
+import { GoogleAddressAutocomplete, type GoogleAddressResult } from "@/components/GoogleAddressAutocomplete";
 
 type Contractor = {
   id: string;
@@ -150,6 +151,10 @@ export default function JobsAdminPage() {
   const [bulkConfirm, setBulkConfirm] = React.useState<string>("");
   const [archiveTarget, setArchiveTarget] = React.useState<Job | null>(null);
   const [archiving, setArchiving] = React.useState<boolean>(false);
+  const [locationEditJobId, setLocationEditJobId] = React.useState<string | null>(null);
+  const [locationQuery, setLocationQuery] = React.useState("");
+  const [locationPick, setLocationPick] = React.useState<GoogleAddressResult | null>(null);
+  const [locationSaving, setLocationSaving] = React.useState(false);
 
   type BulkAiJobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
   type BulkAiJob = {
@@ -222,6 +227,37 @@ export default function JobsAdminPage() {
       setError("Action failed. See server logs.");
     } finally {
       setArchiving(false);
+    }
+  }
+
+  async function saveJobLocation() {
+    if (!locationEditJobId || !locationPick) return;
+    setLocationSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await apiFetch(`/api/admin/v4/jobs/${locationEditJobId}/location`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          formattedAddress: locationPick.formattedAddress,
+          city: locationPick.city,
+          region: locationPick.regionCode,
+          regionCode: locationPick.regionCode,
+          country: locationPick.countryCode,
+          countryCode: locationPick.countryCode,
+          latitude: locationPick.latitude,
+          longitude: locationPick.longitude,
+        }),
+      });
+      setLocationEditJobId(null);
+      setLocationPick(null);
+      setLocationQuery("");
+      await refresh();
+      setNotice("Job location updated.");
+    } catch {
+      setError("Failed to update location. See server logs.");
+    } finally {
+      setLocationSaving(false);
     }
   }
 
@@ -832,6 +868,64 @@ export default function JobsAdminPage() {
         </div>
       ) : null}
 
+      {locationEditJobId ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 60,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              background: AdminColors.card,
+              border: `1px solid ${AdminColors.border}`,
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 30px 90px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div style={{ fontWeight: 900, color: AdminColors.text, fontSize: 16, marginBottom: 12 }}>
+              Edit Job Location
+            </div>
+            <GoogleAddressAutocomplete
+              label="Search new address"
+              value={locationQuery}
+              onChange={setLocationQuery}
+              onPick={(result) => {
+                setLocationPick(result);
+                setLocationQuery(result.displayName);
+              }}
+              placeholder="Start typing an address…"
+            />
+            {locationPick ? (
+              <div style={{ marginTop: 12, padding: 12, background: AdminColors.bg, borderRadius: 8, fontSize: 13, lineHeight: "20px", color: AdminColors.text }}>
+                <div><strong>Address:</strong> {locationPick.formattedAddress}</div>
+                <div><strong>City:</strong> {locationPick.city || "—"}</div>
+                <div><strong>Region:</strong> {locationPick.regionCode || "—"}</div>
+                <div><strong>Country:</strong> {locationPick.countryCode || "—"}</div>
+                <div><strong>Lat/Lng:</strong> {locationPick.latitude.toFixed(6)}, {locationPick.longitude.toFixed(6)}</div>
+              </div>
+            ) : null}
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <SecondaryButton disabled={locationSaving} onClick={() => { setLocationEditJobId(null); setLocationPick(null); setLocationQuery(""); }}>
+                Cancel
+              </SecondaryButton>
+              <PrimaryButton disabled={locationSaving || !locationPick || !locationPick.city || !locationPick.regionCode || !locationPick.countryCode} onClick={() => void saveJobLocation()}>
+                {locationSaving ? "Saving…" : "Save Location"}
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ display: "grid", gap: 10 }}>
         {sortedJobs.map((j) => (
           <RowCard key={j.id} style={{ padding: 16 }}>
@@ -891,9 +985,14 @@ export default function JobsAdminPage() {
                 ) : null}
 
                 {!j.archived ? (
-                  <SecondaryButton disabled={loading} onClick={() => setArchiveTarget(j)}>
-                    Archive
-                  </SecondaryButton>
+                  <>
+                    <SecondaryButton disabled={loading} onClick={() => { setLocationEditJobId(j.id); setLocationPick(null); setLocationQuery(""); }}>
+                      Edit Location
+                    </SecondaryButton>
+                    <SecondaryButton disabled={loading} onClick={() => setArchiveTarget(j)}>
+                      Archive
+                    </SecondaryButton>
+                  </>
                 ) : null}
                 <SecondaryButton onClick={() => (window.location.href = `/admin/jobs/${j.id}`)}>View</SecondaryButton>
               </div>
