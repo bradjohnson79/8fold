@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
@@ -234,6 +234,10 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
           isNull(jobs.archived_at),
           isNull(jobs.contractor_user_id),
           eq(jobs.country_code, routerCountry),
+          isNotNull(jobs.lat),
+          isNotNull(jobs.lng),
+          sql`${jobs.lat} = ${jobs.lat}`,
+          sql`${jobs.lng} = ${jobs.lng}`,
           sql`upper(trim(coalesce(${jobs.region_code}, ${jobs.state_code}, ''))) = ${routerRegionCode}`,
         ),
       )
