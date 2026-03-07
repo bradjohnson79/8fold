@@ -5,6 +5,8 @@ import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 
+const ROUTING_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export async function expireStaleInvitesAndResetJobs(): Promise<void> {
   await db.transaction(async (tx) => {
     const now = new Date();
@@ -55,6 +57,8 @@ export async function expireStaleInvitesAndResetJobs(): Promise<void> {
         claimed_at: null,
         routed_at: null,
         routing_status: ROUTING_STATUS.UNROUTED as any,
+        routing_started_at: now,
+        routing_expires_at: new Date(now.getTime() + ROUTING_WINDOW_MS),
         updated_at: now,
       })
       .where(
@@ -88,8 +92,8 @@ export async function expireStaleInvitesAndResetJobs(): Promise<void> {
       .update(jobs)
       .set({
         status: "OPEN_FOR_ROUTING" as any,
-        routing_started_at: null,
-        routing_expires_at: null,
+        routing_started_at: now,
+        routing_expires_at: new Date(now.getTime() + ROUTING_WINDOW_MS),
         claimed_by_user_id: null,
         claimed_at: null,
         routed_at: null,
