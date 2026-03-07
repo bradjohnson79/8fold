@@ -328,9 +328,8 @@ export async function sendNotification(
       priority,
       createdAt,
     } as const;
-    const values = resolvedDedupeKey ? { ...valuesBase, dedupeKey: resolvedDedupeKey } : valuesBase;
-
     if (resolvedDedupeKey && dedupeColumnAvailable) {
+      const values = { ...valuesBase, dedupeKey: resolvedDedupeKey };
       try {
         const inserted = await exec
           .insert(v4Notifications)
@@ -356,18 +355,7 @@ export async function sendNotification(
       }
     }
 
-    try {
-      const inserted = await exec.insert(v4Notifications).values(values).returning(notificationSelect);
-      return (inserted[0] as NotificationRow | undefined) ?? null;
-    } catch (error) {
-      if (isMissingNotificationsDedupeColumnError(error)) {
-        console.error("[NOTIFICATION_SCHEMA_ERROR]", {
-          message: "v4_notifications.dedupe_key missing — falling back to insert without dedupe.",
-        });
-        return insertWithoutDedupeColumn(exec, valuesBase);
-      }
-      throw error;
-    }
+    return insertWithoutDedupeColumn(exec, valuesBase);
   } catch (error) {
     if (error instanceof NotificationSchemaError || isMissingPreferencesTableError(error)) {
       if (!(error instanceof NotificationSchemaError)) {
@@ -380,7 +368,9 @@ export async function sendNotification(
       role: String(input.role ?? ""),
       type: String(input.type ?? ""),
       message: error instanceof Error ? error.message : String(error),
+      code: (error as any)?.code,
     });
+    if (tx) throw error;
     return null;
   }
 }
