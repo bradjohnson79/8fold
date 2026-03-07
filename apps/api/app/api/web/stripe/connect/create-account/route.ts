@@ -293,7 +293,31 @@ async function buildStatus(args: { userId: string; role: "ROUTER" | "CONTRACTOR"
     return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
   }
 
-  const account = await stripe.accounts.retrieve(stripeAccountId);
+  let account: Awaited<ReturnType<typeof stripe.accounts.retrieve>>;
+  try {
+    account = await stripe.accounts.retrieve(stripeAccountId);
+  } catch (err) {
+    console.error("STRIPE_ACCOUNT_RETRIEVE_ERROR", {
+      userId: args.userId,
+      stripeAccountId,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: true,
+      state: "NOT_CONNECTED" as const,
+      stripeAccountId: null,
+      expectedCountry: country,
+      payoutCurrency: expectedCurrency,
+      countryMismatch: false,
+      currencyMismatch: false,
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      onboardingComplete: false,
+      simulationEnabled,
+      simulatedApproved: false,
+    };
+  }
+
   const accountCountry = String(account.country ?? "").trim().toUpperCase();
   const accountCurrency = expectedCurrencyForStripeCountry(accountCountry);
   const countryMismatch = accountCountry !== country;

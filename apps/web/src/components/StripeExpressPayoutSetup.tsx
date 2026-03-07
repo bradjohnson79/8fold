@@ -2,6 +2,8 @@
 
 import React from "react";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/routerApi";
 
 type ConnectStatus = {
   ok: true;
@@ -17,6 +19,7 @@ type ConnectStatus = {
 
 export function StripeExpressPayoutSetup() {
   const searchParams = useSearchParams();
+  const { getToken } = useAuth();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -26,14 +29,21 @@ export function StripeExpressPayoutSetup() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch("/api/v4/contractor/stripe/status", { cache: "no-store", credentials: "include" });
+      const resp = await apiFetch("/api/web/v4/contractor/stripe/status", getToken);
+      if (resp.status === 401) {
+        throw new Error("Authentication lost — please refresh and sign in again.");
+      }
       const json = (await resp.json().catch(() => null)) as ConnectStatus | { error?: string } | null;
       if (!resp.ok || !json || (json as any).ok !== true) {
         throw new Error(String((json as any)?.error?.message ?? (json as any)?.error ?? "Failed to load Stripe status"));
       }
       setStatus(json as ConnectStatus);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load Stripe Connect status");
+      if (e instanceof Error && (e as any).code === "AUTH_MISSING_TOKEN") {
+        setError("Authentication lost — please refresh and sign in again.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to load Stripe Connect status");
+      }
       setStatus(null);
     } finally {
       setLoading(false);
@@ -48,12 +58,14 @@ export function StripeExpressPayoutSetup() {
     setSaving(true);
     setError("");
     try {
-      const resp = await fetch("/api/v4/contractor/stripe/onboard", {
+      const resp = await apiFetch("/api/web/v4/contractor/stripe/onboard", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
-        credentials: "include",
       });
+      if (resp.status === 401) {
+        throw new Error("Authentication lost — please refresh and sign in again.");
+      }
       const json = (await resp.json().catch(() => null)) as any;
       if (!resp.ok) {
         throw new Error(String(json?.error?.message ?? json?.error ?? "Failed to initialize Stripe onboarding"));

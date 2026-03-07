@@ -259,7 +259,25 @@ export async function getContractorStripeStatus(userId: string): Promise<Contrac
     throw internal("V4_STRIPE_NOT_CONFIGURED", "Stripe is not configured.");
   }
 
-  const account = await stripe.accounts.retrieve(identity.stripeAccountId);
+  let account: Awaited<ReturnType<typeof stripe.accounts.retrieve>>;
+  try {
+    account = await stripe.accounts.retrieve(identity.stripeAccountId);
+  } catch (err: unknown) {
+    console.error("V4_CONTRACTOR_STRIPE_RETRIEVE_ERROR", {
+      userId,
+      stripeAccountId: identity.stripeAccountId,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: true,
+      state: "NOT_CONNECTED",
+      stripeAccountId: null,
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      requirements: { currentlyDue: [], pastDue: [] },
+    };
+  }
+
   const chargesEnabled = Boolean(account.charges_enabled);
   const payoutsEnabled = Boolean(account.payouts_enabled);
   const currentlyDue = Array.isArray(account.requirements?.currently_due)
