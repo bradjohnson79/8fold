@@ -241,7 +241,7 @@ export async function getV4RouterAvailableJobs(userId: string, traceOpts?: Route
           sql`upper(trim(coalesce(${jobs.region_code}, ${jobs.state_code}, ''))) = ${routerRegionCode}`,
         ),
       )
-      .orderBy(desc(jobs.published_at), desc(jobs.id))
+      .orderBy(desc(sql`coalesce(${jobs.routing_started_at}, ${jobs.published_at})`), desc(jobs.id))
       .limit(50);
 
     if (process.env.NODE_ENV !== "production") {
