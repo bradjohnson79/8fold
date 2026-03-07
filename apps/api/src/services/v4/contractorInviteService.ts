@@ -8,8 +8,12 @@ import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
-import { badRequest, conflict, forbidden } from "./v4Errors";
+import { badRequest, conflict, forbidden, type V4Error } from "./v4Errors";
 import { expireStaleInvitesAndResetJobs } from "./inviteExpirationService";
+
+function isV4Error(err: unknown): err is V4Error {
+  return err instanceof Error && "status" in err && typeof (err as any).status === "number";
+}
 
 export type PendingInviteDto = {
   inviteId: string;
@@ -166,7 +170,8 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
   const now = new Date();
   const posterAcceptExpiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
-  return db.transaction(async (tx) => {
+  try {
+  return await db.transaction(async (tx) => {
     await tx.execute(sql`select id from jobs where id = ${invite.jobId} for update`);
     await tx.execute(sql`select id from v4_contractor_job_invites where id = ${inviteId} for update`);
 
@@ -282,38 +287,58 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       jobPosterUserId: job.jobPosterUserId,
       contractorUserId,
     });
-    await tx
-      .insert(v4MessageThreads)
-      .values({
-        id: randomUUID(),
+    try {
+      await tx.execute(sql`SAVEPOINT thread_sp`);
+      try {
+        await tx
+          .insert(v4MessageThreads)
+          .values({
+            id: randomUUID(),
+            jobId: inviteAfterLock.jobId,
+            jobPosterUserId: job.jobPosterUserId,
+            contractorUserId,
+            lastMessageAt: now,
+            createdAt: now,
+          })
+          .onConflictDoNothing({
+            target: [
+              v4MessageThreads.jobId,
+              v4MessageThreads.jobPosterUserId,
+              v4MessageThreads.contractorUserId,
+            ],
+          });
+        console.log("[invite-accept-step] after thread insert", { jobId: inviteAfterLock.jobId });
+        await tx
+          .update(v4MessageThreads)
+          .set({ lastMessageAt: now })
+          .where(
+            and(
+              eq(v4MessageThreads.jobId, inviteAfterLock.jobId),
+              eq(v4MessageThreads.jobPosterUserId, job.jobPosterUserId),
+              eq(v4MessageThreads.contractorUserId, contractorUserId),
+            ),
+          );
+        console.log("[invite-accept-step] thread upserted", { jobId: inviteAfterLock.jobId });
+      } catch (threadErr) {
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT thread_sp`);
+        console.error("[invite-accept-thread-error]", {
+          jobId: inviteAfterLock.jobId,
+          message: threadErr instanceof Error ? threadErr.message : String(threadErr),
+          code: (threadErr as any)?.code,
+        });
+      }
+    } catch (spErr) {
+      console.error("[invite-accept-thread-savepoint-error]", {
         jobId: inviteAfterLock.jobId,
-        jobPosterUserId: job.jobPosterUserId,
-        contractorUserId,
-        lastMessageAt: now,
-        createdAt: now,
-      })
-      .onConflictDoNothing({
-        target: [
-          v4MessageThreads.jobId,
-          v4MessageThreads.jobPosterUserId,
-          v4MessageThreads.contractorUserId,
-        ],
+        message: spErr instanceof Error ? spErr.message : String(spErr),
       });
-    console.log("[invite-accept-step] after thread insert", { jobId: inviteAfterLock.jobId });
+    }
 
-    await tx
-      .update(v4MessageThreads)
-      .set({ lastMessageAt: now })
-      .where(
-        and(
-          eq(v4MessageThreads.jobId, inviteAfterLock.jobId),
-          eq(v4MessageThreads.jobPosterUserId, job.jobPosterUserId),
-          eq(v4MessageThreads.contractorUserId, contractorUserId),
-        ),
-      );
-    console.log("[invite-accept-step] thread upserted", { jobId: inviteAfterLock.jobId });
-
-    console.log("[invite-accept] emitting domain event");
+    console.log("[invite-accept-step] before emitDomainEvent", {
+      jobId: inviteAfterLock.jobId,
+      inviteId,
+      contractorUserId,
+    });
     try {
       await emitDomainEvent(
         {
@@ -334,12 +359,30 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       console.error("[invite-accept-event-error]", {
         jobId: inviteAfterLock.jobId,
         inviteId,
+        contractorUserId,
         message: eventErr instanceof Error ? eventErr.message : String(eventErr),
+        code: (eventErr as any)?.code,
+        stack: eventErr instanceof Error ? eventErr.stack?.slice(0, 500) : undefined,
       });
     }
+    console.log("[invite-accept-step] after emitDomainEvent", {
+      jobId: inviteAfterLock.jobId,
+    });
 
+    console.log("[invite-accept] transaction completing successfully", { jobId: inviteAfterLock.jobId });
     return { success: true as const, jobId: inviteAfterLock.jobId };
   });
+  } catch (txErr) {
+    if (isV4Error(txErr)) throw txErr;
+    console.error("[invite-accept-tx-error]", {
+      inviteId,
+      contractorUserId,
+      message: txErr instanceof Error ? txErr.message : String(txErr),
+      code: (txErr as any)?.code,
+      stack: txErr instanceof Error ? txErr.stack?.slice(0, 500) : undefined,
+    });
+    throw txErr;
+  }
 }
 
 export async function rejectInviteById(contractorUserId: string, inviteId: string): Promise<{ success: true }> {
