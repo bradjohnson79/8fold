@@ -185,7 +185,7 @@ export async function listContractors(params: ListRoleUsersParams): Promise<Admi
       mapRowToListRow("CONTRACTOR", {
         ...r,
         name: r.name ?? r.businessName ?? null,
-        badges: [r.approved ? "APPROVED" : "PENDING_APPROVAL"],
+        badges: ["APPROVED"],
       }),
     ),
     totalCount: Number(countRows[0]?.total ?? 0),

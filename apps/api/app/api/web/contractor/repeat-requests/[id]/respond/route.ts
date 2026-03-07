@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const contractorRows = await db
       .select({ id: contractors.id })
       .from(contractors)
-      .where(and(eq(contractors.status, "APPROVED"), sql`lower(${contractors.email}) = ${email}`))
+      .where(sql`lower(${contractors.email}) = ${email}`)
       .limit(1);
     const contractor = contractorRows[0] ?? null;
     if (!contractor) return NextResponse.json({ error: "Contractor record not found" }, { status: 404 });

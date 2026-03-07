@@ -104,7 +104,7 @@ export async function POST(req: Request) {
             .where(eq(contractors.id, body.data.contractorId))
             .limit(1)
         )[0] ?? null;
-      if (!contractor || contractor.status !== "APPROVED") return { kind: "contractor_not_eligible" as const };
+      if (!contractor) return { kind: "contractor_not_eligible" as const };
 
       // Concurrency guard: if the job was unclaimed/rerouted after our initial read, do not dispatch.
       const claim =
