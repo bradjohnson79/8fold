@@ -41,6 +41,9 @@ const JobPatchSchema = z.object({
   trade_category: z.string().trim().optional(),
   city: z.string().trim().max(200).optional(),
   postal_code: z.string().trim().max(20).optional(),
+  address_full: z.string().trim().max(1000).optional(),
+  latitude: z.number().finite().optional(),
+  longitude: z.number().finite().optional(),
   region_code: z
     .string()
     .trim()
@@ -123,6 +126,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     if (updates.country_code) {
       updates.country = updates.country_code;
+    }
+    if (updates.latitude != null && Number.isFinite(updates.latitude)) {
+      updates.lat = updates.latitude;
+      delete updates.latitude;
+    }
+    if (updates.longitude != null && Number.isFinite(updates.longitude)) {
+      updates.lng = updates.longitude;
+      delete updates.longitude;
     }
 
     const existing = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1);

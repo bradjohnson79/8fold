@@ -1,6 +1,9 @@
 "use client";
 
 import React from "react";
+import Script from "next/script";
+
+const GOOGLE_SCRIPT_ID = "admin-google-places-script";
 
 const REGIONS: Record<string, Array<{ code: string; name: string }>> = {
   CA: [
@@ -94,6 +97,16 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+type PlaceData = {
+  address: string;
+  city: string;
+  postalCode: string;
+  regionCode: string;
+  countryCode: string;
+  latitude: number;
+  longitude: number;
+};
+
 type Props = {
   action: (formData: FormData) => void | Promise<void>;
   defaultTitle: string;
@@ -101,6 +114,10 @@ type Props = {
   defaultCountryCode: string;
   defaultRegionCode: string;
   defaultTradeCategory: string;
+  defaultAddress?: string;
+  defaultCity?: string;
+  defaultPostalCode?: string;
+  jobId: string;
 };
 
 export default function JobEditForm({
@@ -110,20 +127,93 @@ export default function JobEditForm({
   defaultCountryCode,
   defaultRegionCode,
   defaultTradeCategory,
+  defaultAddress,
+  defaultCity,
+  defaultPostalCode,
+  jobId,
 }: Props) {
   const countryCode = String(defaultCountryCode ?? "").trim().toUpperCase();
   const initialCountry = countryCode === "CA" || countryCode === "US" ? countryCode : "CA";
   const [selectedCountry, setSelectedCountry] = React.useState(initialCountry);
-  const regionOptions = REGIONS[selectedCountry] ?? REGIONS.CA;
+  const [selectedRegion, setSelectedRegion] = React.useState<string | null>(null);
+  const [placeData, setPlaceData] = React.useState<PlaceData | null>(null);
+  const [scriptReady, setScriptReady] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
+  const regionOptions = REGIONS[selectedCountry] ?? REGIONS.CA;
   const currentRegionValid = regionOptions.some((r) => r.code === defaultRegionCode);
   const initialRegion = currentRegionValid ? defaultRegionCode : (regionOptions[0]?.code ?? "");
+  const regionValue = selectedRegion ?? (selectedCountry === initialCountry ? initialRegion : regionOptions[0]?.code ?? "");
+
+  const googleKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY ?? "";
+
+  React.useEffect(() => {
+    if (!scriptReady || !inputRef.current || !(window as any).google?.maps?.places) return;
+    const autocomplete = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
+      types: ["address"],
+      componentRestrictions: { country: ["ca", "us"] },
+      fields: ["address_components", "formatted_address", "geometry"],
+    });
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      const components = place?.address_components ?? [];
+      const get = (type: string) => components.find((c: any) => c.types?.includes(type));
+      const locality = get("locality") ?? get("postal_town") ?? get("administrative_area_level_2");
+      const region = get("administrative_area_level_1");
+      const country = get("country");
+      const postal = get("postal_code");
+      const loc = place?.geometry?.location;
+      const lat = typeof loc?.lat === "function" ? loc.lat() : Number(loc?.lat) || 0;
+      const lng = typeof loc?.lng === "function" ? loc.lng() : Number(loc?.lng) || 0;
+      const cc = String(country?.short_name ?? "").trim().toUpperCase();
+      const rc = String(region?.short_name ?? "").trim().toUpperCase();
+      if (!place?.formatted_address || !Number.isFinite(lat) || !Number.isFinite(lng) || (cc !== "CA" && cc !== "US")) return;
+      setPlaceData({
+        address: place.formatted_address,
+        city: String(locality?.long_name ?? "").trim(),
+        postalCode: String(postal?.long_name ?? "").trim(),
+        regionCode: rc,
+        countryCode: cc,
+        latitude: lat,
+        longitude: lng,
+      });
+      setSelectedCountry(cc);
+      setSelectedRegion(rc);
+    });
+    return () => {};
+  }, [scriptReady]);
 
   return (
-    <form action={action} style={{ display: "grid", gap: 6 }}>
-      <input name="title" placeholder="Title" defaultValue={defaultTitle} style={{ ...inputStyle, width: "100%" }} />
-      <input name="scope" placeholder="Scope" defaultValue={defaultScope} style={{ ...inputStyle, width: "100%" }} />
-      <select
+    <>
+      {googleKey ? (
+        <Script
+          id={GOOGLE_SCRIPT_ID}
+          src={`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleKey)}&libraries=places&v=weekly`}
+          strategy="afterInteractive"
+          onLoad={() => setScriptReady(true)}
+        />
+      ) : null}
+      <form action={action} style={{ display: "grid", gap: 6 }}>
+        <input
+          ref={inputRef}
+          id={`admin-address-autocomplete-${jobId}`}
+          placeholder="Search address..."
+          defaultValue={defaultAddress ?? ""}
+          style={{ ...inputStyle, width: "100%" }}
+          autoComplete="off"
+        />
+        {placeData ? (
+          <>
+            <input type="hidden" name="address_full" value={placeData.address} />
+            <input type="hidden" name="city" value={placeData.city} />
+            <input type="hidden" name="postal_code" value={placeData.postalCode} />
+            <input type="hidden" name="latitude" value={String(placeData.latitude)} />
+            <input type="hidden" name="longitude" value={String(placeData.longitude)} />
+          </>
+        ) : null}
+        <input name="title" placeholder="Title" defaultValue={defaultTitle} style={{ ...inputStyle, width: "100%" }} />
+        <input name="scope" placeholder="Scope" defaultValue={defaultScope} style={{ ...inputStyle, width: "100%" }} />
+        <select
         name="country_code"
         value={selectedCountry}
         onChange={(e) => setSelectedCountry(e.target.value)}
@@ -136,10 +226,9 @@ export default function JobEditForm({
       <select
         name="region_code"
         key={selectedCountry}
+        value={regionValue}
+        onChange={(e) => setSelectedRegion(e.target.value || null)}
         style={{ ...inputStyle, width: "100%" }}
-        defaultValue={
-          !selectedCountry ? "" : selectedCountry === initialCountry ? initialRegion : regionOptions[0]?.code ?? ""
-        }
       >
         <option value="">Select Province/State</option>
         {regionOptions.map((r) => (
@@ -158,5 +247,6 @@ export default function JobEditForm({
         Save
       </button>
     </form>
+    </>
   );
 }
