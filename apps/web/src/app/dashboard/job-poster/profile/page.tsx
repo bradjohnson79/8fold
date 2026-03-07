@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { useUser } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/routerApi";
 import {
   GoogleAddressAutocomplete,
   type GoogleAddressResult,
@@ -59,17 +60,16 @@ function isGeoSelected(form: FormState): boolean {
 
 function validate(form: FormState): string | null {
   if (!form.phone.trim()) return "Phone number is required.";
-  if (!(form.country === "US" || form.country === "CA"))
-    return "Country is required.";
+  if (!(form.country === "US" || form.country === "CA")) return "Country is required.";
   if (!form.region.trim()) return "State/Province is required.";
   if (!form.city.trim()) return "City is required.";
   if (!form.selectedAddress.trim()) return "Map location is required.";
-  if (!isGeoSelected(form))
-    return "Please select a Google Places result for map location.";
+  if (!isGeoSelected(form)) return "Please select a Google Places result for map location.";
   return null;
 }
 
 export default function JobPosterProfilePage() {
+  const { getToken } = useAuth();
   const { user, isLoaded } = useUser();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -77,30 +77,18 @@ export default function JobPosterProfilePage() {
   const [toast, setToast] = React.useState("");
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM);
 
-  const regionOptions = React.useMemo(
-    () => REGION_OPTIONS[form.country],
-    [form.country],
-  );
+  const regionOptions = React.useMemo(() => REGION_OPTIONS[form.country], [form.country]);
 
   const loadProfile = React.useCallback(async () => {
-    const resp = await fetch("/api/web/v4/job-poster/profile", {
-      cache: "no-store",
-      credentials: "include",
-    });
-    const json = (await resp
-      .json()
-      .catch(() => null)) as ProfileResponse | null;
+    const resp = await apiFetch("/api/web/v4/job-poster/profile", getToken);
+    const json = (await resp.json().catch(() => null)) as ProfileResponse | null;
     if (!resp.ok) {
-      const message =
-        (json as any)?.error?.message ??
-        (json as any)?.error ??
-        "Failed to load profile.";
+      const message = (json as any)?.error?.message ?? (json as any)?.error ?? "Failed to load profile.";
       throw new Error(String(message));
     }
 
     const p = json?.profile ?? {};
-    const country =
-      String(p.country ?? "US").toUpperCase() === "CA" ? "CA" : "US";
+    const country = String(p.country ?? "US").toUpperCase() === "CA" ? "CA" : "US";
     const address = String(p.address ?? "").trim();
     const lat = typeof p.latitude === "number" ? p.latitude : null;
     const lng = typeof p.longitude === "number" ? p.longitude : null;
@@ -108,16 +96,14 @@ export default function JobPosterProfilePage() {
     setForm({
       phone: String(p.phone ?? "").trim(),
       country,
-      region: String(p.region ?? "")
-        .trim()
-        .toUpperCase(),
+      region: String(p.region ?? "").trim().toUpperCase(),
       city: String(p.city ?? "").trim(),
       addressInput: address,
       selectedAddress: address,
       latitude: lat,
       longitude: lng,
     });
-  }, []);
+  }, [getToken]);
 
   React.useEffect(() => {
     let active = true;
@@ -132,10 +118,7 @@ export default function JobPosterProfilePage() {
         if (active) setLoading(false);
       }
     })();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [loadProfile]);
 
   React.useEffect(() => {
@@ -144,26 +127,19 @@ export default function JobPosterProfilePage() {
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  const fullName = [user?.firstName, user?.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
   const email = user?.primaryEmailAddress?.emailAddress?.trim() ?? "";
 
   async function onSave() {
     setError("");
     const issue = validate(form);
-    if (issue) {
-      setError(issue);
-      return;
-    }
+    if (issue) { setError(issue); return; }
 
     setSaving(true);
     try {
-      const resp = await fetch("/api/web/v4/job-poster/profile", {
+      const resp = await apiFetch("/api/web/v4/job-poster/profile", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           phone: form.phone.trim(),
           country: form.country,
@@ -176,11 +152,9 @@ export default function JobPosterProfilePage() {
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok) {
-        const message =
-          json?.error?.message ?? json?.error ?? "Failed to save profile.";
+        const message = json?.error?.message ?? json?.error ?? "Failed to save profile.";
         throw new Error(String(message));
       }
-
       await loadProfile();
       setToast("Profile saved");
     } catch (e) {
@@ -198,64 +172,48 @@ export default function JobPosterProfilePage() {
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          This information is used for job location and routing.
-        </p>
+      <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-900">Profile</h1>
+        <p className="mt-1 text-sm text-slate-600">This information is used for job location and routing.</p>
 
         {error ? (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
         ) : null}
 
-        <div className="mt-6 rounded-xl border border-gray-200 p-4">
-          <div className="text-sm font-semibold text-gray-900">Account</div>
+        <div className="mt-6 rounded-xl border border-slate-200 p-4">
+          <div className="text-sm font-semibold text-slate-900">Account</div>
           <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="block">
-              <div className="text-sm font-medium text-gray-700">Full Name</div>
-              <input
-                value={isLoaded ? fullName : ""}
-                readOnly
-                className="mt-1 block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
-              />
+              <div className="text-sm font-medium text-slate-700">Full Name</div>
+              <input value={isLoaded ? fullName : ""} readOnly disabled className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600" />
             </label>
             <label className="block">
-              <div className="text-sm font-medium text-gray-700">Email</div>
-              <input
-                value={isLoaded ? email : ""}
-                readOnly
-                className="mt-1 block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600"
-              />
+              <div className="text-sm font-medium text-slate-700">Email</div>
+              <input value={isLoaded ? email : ""} readOnly disabled className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600" />
             </label>
           </div>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="block">
-            <div className="text-sm font-medium text-gray-700">
-              Phone Number *
-            </div>
+            <div className="text-sm font-medium text-slate-700">Phone Number *</div>
             <input
               value={form.phone}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, phone: e.target.value }))
-              }
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+              onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
               placeholder="+1 555 123 4567"
             />
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium text-gray-700">Country *</div>
+            <div className="text-sm font-medium text-slate-700">Country *</div>
             <select
               value={form.country}
               onChange={(e) => {
                 const next = e.target.value === "CA" ? "CA" : "US";
                 setForm((s) => ({ ...s, country: next, region: "" }));
               }}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
             >
               <option value="US">United States</option>
               <option value="CA">Canada</option>
@@ -263,31 +221,25 @@ export default function JobPosterProfilePage() {
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium text-gray-700">
-              State/Province *
-            </div>
+            <div className="text-sm font-medium text-slate-700">State/Province *</div>
             <select
               value={form.region}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, region: e.target.value.toUpperCase() }))
-              }
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+              onChange={(e) => setForm((s) => ({ ...s, region: e.target.value.toUpperCase() }))}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
             >
               <option value="">Select...</option>
               {regionOptions.map((opt) => (
-                <option key={opt.code} value={opt.code}>
-                  {opt.name}
-                </option>
+                <option key={opt.code} value={opt.code}>{opt.name}</option>
               ))}
             </select>
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium text-gray-700">City *</div>
+            <div className="text-sm font-medium text-slate-700">City *</div>
             <input
               value={form.city}
               onChange={(e) => setForm((s) => ({ ...s, city: e.target.value }))}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
               placeholder="City"
             />
           </label>
@@ -330,7 +282,7 @@ export default function JobPosterProfilePage() {
             placeholder="Start typing an address..."
           />
 
-          <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             {form.selectedAddress.trim()
               ? `Selected address: ${form.selectedAddress}`
               : "Selected address: none"}
