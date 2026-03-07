@@ -1,9 +1,12 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { users } from "@/db/schema/user";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
+import { haversineKm } from "@/jobs/geo";
+
+const KM_TO_MILES = 0.621371;
 
 export async function getV4RouterRoutedJobs(userId: string) {
   const raw = await db
@@ -20,6 +23,9 @@ export async function getV4RouterRoutedJobs(userId: string) {
       routerEarningsCents: jobs.router_earnings_cents,
       estimatedCompletionDate: jobs.estimated_completion_date,
       contractorUserId: jobs.contractor_user_id,
+      lat: jobs.lat,
+      lng: jobs.lng,
+      countryCode: jobs.country_code,
     })
     .from(jobs)
     .where(eq(jobs.claimed_by_user_id, userId))
@@ -43,6 +49,8 @@ export async function getV4RouterRoutedJobs(userId: string) {
             contactName: contractorProfilesV4.contactName,
             businessName: contractorProfilesV4.businessName,
             city: contractorProfilesV4.city,
+            homeLatitude: contractorProfilesV4.homeLatitude,
+            homeLongitude: contractorProfilesV4.homeLongitude,
           })
           .from(v4ContractorJobInvites)
           .innerJoin(contractorProfilesV4, eq(contractorProfilesV4.userId, v4ContractorJobInvites.contractorUserId))
@@ -50,15 +58,74 @@ export async function getV4RouterRoutedJobs(userId: string) {
           .orderBy(v4ContractorJobInvites.createdAt)
       : [];
 
-  const inviteMap = new Map<string, { contractorId: string; contactName: string; businessName: string; city: string | null }[]>();
+  // Build a lookup of job coords for distance calculation
+  const jobCoordsMap = new Map(
+    raw.map((j) => [j.id, { lat: j.lat, lng: j.lng }]),
+  );
+
+  type InvitedContractor = {
+    contractorId: string;
+    contactName: string;
+    businessName: string;
+    city: string | null;
+    distanceKm: number | null;
+    distanceMiles: number | null;
+    availabilityStatus: "AVAILABLE" | "BUSY";
+  };
+
+  const inviteMap = new Map<string, InvitedContractor[]>();
   for (const row of inviteRows) {
     if (!inviteMap.has(row.jobId)) inviteMap.set(row.jobId, []);
+    const jobCoords = jobCoordsMap.get(row.jobId);
+    let distanceKm: number | null = null;
+    let distanceMiles: number | null = null;
+    if (
+      jobCoords &&
+      Number.isFinite(jobCoords.lat) &&
+      Number.isFinite(jobCoords.lng) &&
+      Number.isFinite(row.homeLatitude) &&
+      Number.isFinite(row.homeLongitude)
+    ) {
+      distanceKm = haversineKm(
+        { lat: jobCoords.lat!, lng: jobCoords.lng! },
+        { lat: row.homeLatitude, lng: row.homeLongitude },
+      );
+      distanceMiles = distanceKm * KM_TO_MILES;
+    }
     inviteMap.get(row.jobId)!.push({
       contractorId: row.contractorId,
       contactName: row.contactName,
       businessName: row.businessName,
       city: row.city,
+      distanceKm,
+      distanceMiles,
+      availabilityStatus: "AVAILABLE",
     });
+  }
+
+  // Batch availability query for all invited contractors
+  const allContractorIds = [...new Set(inviteRows.map((r) => r.contractorId))];
+  if (allContractorIds.length > 0) {
+    const activeJobs = await db
+      .select({
+        contractorUserId: jobs.contractor_user_id,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(jobs)
+      .where(
+        and(
+          inArray(jobs.contractor_user_id, allContractorIds),
+          inArray(jobs.status, ["ASSIGNED", "IN_PROGRESS", "JOB_STARTED"]),
+        ),
+      )
+      .groupBy(jobs.contractor_user_id);
+
+    const busySet = new Set(activeJobs.map((r) => r.contractorUserId));
+    for (const contractors of inviteMap.values()) {
+      for (const c of contractors) {
+        if (busySet.has(c.contractorId)) c.availabilityStatus = "BUSY";
+      }
+    }
   }
 
   return {
@@ -69,6 +136,7 @@ export async function getV4RouterRoutedJobs(userId: string) {
       scope: j.scope,
       region: j.region,
       routingStatus: j.routingStatus,
+      countryCode: j.countryCode,
       claimedAt: j.claimedAt ? j.claimedAt.toISOString() : null,
       routedAt: j.routedAt ? j.routedAt.toISOString() : null,
       tradeCategory: j.tradeCategory ?? "",
