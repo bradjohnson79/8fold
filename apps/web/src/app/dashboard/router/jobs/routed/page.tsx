@@ -3,12 +3,16 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
+import AvailabilityBadge from "@/components/AvailabilityBadge";
 
 type InvitedContractor = {
   contractorId: string;
   contactName: string;
   businessName: string;
   city: string | null;
+  distanceKm: number | null;
+  distanceMiles: number | null;
+  availabilityStatus: "AVAILABLE" | "BUSY";
 };
 
 type Job = {
@@ -17,6 +21,7 @@ type Job = {
   region: string;
   status: string;
   routingStatus: string;
+  countryCode: string;
   claimedAt: string | null;
   routedAt: string | null;
   invitedContractors: InvitedContractor[];
@@ -105,16 +110,28 @@ export default function RouterRoutedJobsPage() {
                 <div className="text-sm font-medium text-slate-600">Invited Contractors</div>
                 {job.invitedContractors?.length ? (
                   <div className="mt-2 space-y-2">
-                    {job.invitedContractors.map((c) => (
-                      <div key={c.contractorId} className="text-sm">
-                        <div className="font-medium text-slate-800">
-                          {c.contactName} &mdash; {c.businessName}
+                    {job.invitedContractors.map((c) => {
+                      const distance =
+                        c.distanceKm != null
+                          ? job.countryCode === "US"
+                            ? `${(c.distanceMiles ?? 0).toFixed(1)} mi`
+                            : `${Math.round(c.distanceKm)} km`
+                          : null;
+                      return (
+                        <div key={c.contractorId} className="text-sm">
+                          <div className="font-medium text-slate-800">
+                            {c.contactName} &mdash; {c.businessName}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+                            {c.city ? <span>{c.city}</span> : null}
+                            {c.city && distance ? <span>&middot;</span> : null}
+                            {distance ? <span>{distance}</span> : null}
+                            {(c.city || distance) && <span>&middot;</span>}
+                            <AvailabilityBadge status={c.availabilityStatus} />
+                          </div>
                         </div>
-                        {c.city ? (
-                          <div className="text-xs text-slate-500">{c.city}</div>
-                        ) : null}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="mt-1 text-sm text-slate-400">No contractors invited yet</div>
