@@ -1,16 +1,27 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import confetti from "canvas-confetti";
 import { apiFetch } from "@/lib/routerApi";
 import { useContractorReadiness } from "@/hooks/useContractorReadiness";
+import { formatInviteCountdown, countdownColor } from "@/utils/formatInviteCountdown";
 
 type SummaryData = {
   pendingInvites: number;
   assignedJobsCount: number;
   completedJobsCount: number;
   availableEarnings: number;
+};
+
+type InvitePreview = {
+  inviteId: string;
+  jobId: string;
+  jobTitle: string;
+  tradeCategory: string;
+  address: string;
+  expiresAt: string;
 };
 
 function GateCard({
@@ -86,25 +97,49 @@ export default function ContractorOverviewClient() {
   const [error, setError] = useState("");
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
+  const [invitePreviews, setInvitePreviews] = useState<InvitePreview[]>([]);
   const [debugData, setDebugData] = useState<Record<string, unknown> | null>(null);
+  const confettiFired = useRef(false);
 
   useEffect(() => {
     if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, notifResp] = await Promise.all([
+        const [summaryResp, notifResp, invitesResp] = await Promise.all([
           apiFetch("/api/web/v4/contractor/dashboard/summary", getToken).catch(() => null),
           apiFetch("/api/web/v4/contractor/notifications?page=1&pageSize=1", getToken).catch(() => null),
+          apiFetch("/api/web/v4/contractor/invites", getToken).catch(() => null),
         ]);
         if (!alive) return;
 
         const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
         const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
+        const invitesJson = invitesResp ? await invitesResp.json().catch(() => null) : null;
         if (!alive) return;
 
         setSummary(summaryJson ?? null);
         setUnreadNotifs(typeof notifJson?.unreadCount === "number" ? notifJson.unreadCount : 0);
+
+        const rawInvites: InvitePreview[] = Array.isArray(invitesJson?.invites)
+          ? invitesJson.invites
+              .filter((inv: any) => new Date(inv.expiresAt).getTime() > Date.now())
+              .slice(0, 5)
+              .map((inv: any) => ({
+                inviteId: inv.inviteId,
+                jobId: inv.jobId,
+                jobTitle: inv.jobTitle ?? "Untitled Job",
+                tradeCategory: inv.tradeCategory ?? "",
+                address: inv.address ?? "",
+                expiresAt: inv.expiresAt,
+              }))
+          : [];
+        setInvitePreviews(rawInvites);
+
+        if (rawInvites.length > 0 && !confettiFired.current) {
+          confettiFired.current = true;
+          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+        }
 
         if (DEBUG) {
           setDebugData({
@@ -112,6 +147,7 @@ export default function ContractorOverviewClient() {
             notifKeys: notifJson ? Object.keys(notifJson) : [],
             pendingInvites: summaryJson?.pendingInvites,
             assignedJobsCount: summaryJson?.assignedJobsCount,
+            inviteCount: rawInvites.length,
           });
         }
       } catch {
@@ -198,12 +234,54 @@ export default function ContractorOverviewClient() {
           subtitle="Active assigned jobs"
           href="/dashboard/contractor/jobs"
         />
-        <SummaryCard
-          title="Pending Invites"
-          value={String(pendingInvites)}
-          subtitle={pendingInvites > 0 ? "Job invitations waiting" : "No pending invites"}
-          href="/dashboard/contractor/invites"
-        />
+        {invitePreviews.length === 0 ? (
+          <SummaryCard
+            title="Pending Invites"
+            value={String(pendingInvites)}
+            subtitle={pendingInvites > 0 ? "Job invitations waiting" : "No pending invites"}
+            href="/dashboard/contractor/invites"
+          />
+        ) : (
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-2xl" role="img" aria-label="celebration">
+                  🎉
+                </span>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">Congratulations!</h3>
+                <p className="text-sm text-slate-600">
+                  You&apos;ve been invited to {invitePreviews.length === 1 ? "a new job" : `${invitePreviews.length} new jobs`}.
+                </p>
+              </div>
+              <Link
+                href="/dashboard/contractor/invites"
+                className="shrink-0 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
+              >
+                View Invites &rarr;
+              </Link>
+            </div>
+            <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1">
+              {invitePreviews.map((inv) => (
+                <div key={inv.inviteId} className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+                  <div className="font-medium text-slate-800 text-sm leading-snug">{inv.jobTitle}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+                    {inv.address ? <span>{inv.address}</span> : null}
+                    {inv.address && inv.tradeCategory ? <span>&middot;</span> : null}
+                    {inv.tradeCategory ? (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                        {inv.tradeCategory}
+                      </span>
+                    ) : null}
+                    <span>&middot;</span>
+                    <span className={`font-medium ${countdownColor(inv.expiresAt)}`}>
+                      {formatInviteCountdown(inv.expiresAt)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
