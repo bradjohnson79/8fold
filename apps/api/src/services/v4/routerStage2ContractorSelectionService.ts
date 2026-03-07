@@ -351,12 +351,18 @@ export async function routeStage2JobToContractors(
   contractorIds: string[],
 ): Promise<Stage2RouteResult> {
   const snapshot = await getRoleCompletionSnapshot(routerUserId, "ROUTER");
-  if (!snapshot.hasCompletedRouterPaymentSetup) {
+
+  if (!snapshot || !snapshot.hasCompletedRouterPaymentSetup) {
     return { kind: "payment_setup_required" };
   }
 
   const desired = Array.from(new Set(contractorIds)).filter(Boolean);
-  if (desired.length < 1 || desired.length > 5) return { kind: "too_many" };
+
+  if (!desired.length) {
+    return { kind: "contractor_not_eligible" };
+  }
+
+  if (desired.length > 5) return { kind: "too_many" };
 
   const eligible = await getStage2JobContractors(jobId);
   if (eligible.kind === "not_found") return { kind: "not_found" };
@@ -368,80 +374,89 @@ export async function routeStage2JobToContractors(
     return { kind: "contractor_not_eligible" };
   }
 
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
-    // Invite insert safety: prevent overflow if two routers race (max 5 invites per job)
-    const countRes = await tx.execute(
-      sql`SELECT COUNT(*)::int AS cnt FROM v4_contractor_job_invites WHERE job_id = ${jobId}`
-    );
-    const existingCount = Number((countRes.rows[0] as any)?.cnt ?? 0);
-    if (existingCount >= 5 || existingCount + desired.length > 5) return { kind: "job_not_available" as const };
+      const countRes = await tx.execute(
+        sql`SELECT COUNT(*)::int AS cnt FROM v4_contractor_job_invites WHERE job_id = ${jobId}`
+      );
+      const existingCount = Number((countRes.rows[0] as any)?.cnt ?? 0);
+      if (existingCount >= 5 || existingCount + desired.length > 5) return { kind: "job_not_available" as const };
 
-    const existingRows = await tx
-      .select({ contractorUserId: v4ContractorJobInvites.contractorUserId })
-      .from(v4ContractorJobInvites)
-      .where(and(eq(v4ContractorJobInvites.jobId, jobId), inArray(v4ContractorJobInvites.contractorUserId, desired as any)));
-    if (existingRows.length > 0) return { kind: "contractor_not_eligible" as const };
+      const existingRows = await tx
+        .select({ contractorUserId: v4ContractorJobInvites.contractorUserId })
+        .from(v4ContractorJobInvites)
+        .where(and(eq(v4ContractorJobInvites.jobId, jobId), inArray(v4ContractorJobInvites.contractorUserId, desired as any)));
+      if (existingRows.length > 0) return { kind: "contractor_not_eligible" as const };
 
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const updated = await tx
-      .update(jobs)
-      .set({
-        claimed_by_user_id: routerUserId,
-        claimed_at: now,
-        routed_at: now,
-        routing_status: ROUTING_STATUS.INVITES_SENT as any,
-        routing_started_at: now,
-        routing_expires_at: expiresAt,
-      })
-      .where(
-        and(
-          eq(jobs.id, jobId),
-          eq(jobs.status, "OPEN_FOR_ROUTING"),
-          eq(jobs.routing_status, ROUTING_STATUS.UNROUTED),
-          eq(jobs.cancel_request_pending, false),
-          sql`${jobs.claimed_by_user_id} is null`,
-        ),
-      )
-      .returning({ id: jobs.id });
-    if (updated.length !== 1) return { kind: "job_not_available" as const };
-    for (const contractorId of desired) {
-      await tx.insert(v4ContractorJobInvites).values({
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const updated = await tx
+        .update(jobs)
+        .set({
+          claimed_by_user_id: routerUserId,
+          claimed_at: now,
+          routed_at: now,
+          routing_status: ROUTING_STATUS.INVITES_SENT as any,
+          routing_started_at: now,
+          routing_expires_at: expiresAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, jobId),
+            eq(jobs.status, "OPEN_FOR_ROUTING"),
+            eq(jobs.routing_status, ROUTING_STATUS.UNROUTED),
+            eq(jobs.cancel_request_pending, false),
+            sql`${jobs.claimed_by_user_id} is null`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (updated.length !== 1) return { kind: "job_not_available" as const };
+      for (const contractorId of desired) {
+        await tx.insert(v4ContractorJobInvites).values({
+          id: randomUUID(),
+          routeId: routerUserId,
+          jobId,
+          contractorUserId: contractorId,
+          status: "PENDING",
+          createdAt: now,
+          expiresAt,
+        });
+
+        await emitDomainEvent(
+          {
+            type: "ROUTER_JOB_ROUTED",
+            payload: {
+              jobId,
+              contractorId,
+              createdAt: now,
+              dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
+            },
+          },
+          { tx },
+        );
+      }
+
+      await tx.insert(auditLogs).values({
         id: randomUUID(),
-        routeId: routerUserId,
-        jobId,
-        contractorUserId: contractorId,
-        status: "PENDING",
         createdAt: now,
-        expiresAt,
+        actorUserId: routerUserId,
+        action: "JOB_ROUTING_APPLIED",
+        entityType: "Job",
+        entityId: jobId,
+        metadata: { contractorIds: desired, stage: "router_stage2" } as any,
       });
 
-      await emitDomainEvent(
-        {
-          type: "ROUTER_JOB_ROUTED",
-          payload: {
-            jobId,
-            contractorId,
-            createdAt: now,
-            dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
-          },
-        },
-        { tx },
-      );
-    }
-
-    await tx.insert(auditLogs).values({
-      id: randomUUID(),
-      createdAt: now,
-      actorUserId: routerUserId,
-      action: "JOB_ROUTING_APPLIED",
-      entityType: "Job",
-      entityId: jobId,
-      metadata: { contractorIds: desired, stage: "router_stage2" } as any,
+      return { kind: "ok" as const, created: desired.length };
     });
-
-    return { kind: "ok" as const, created: desired.length };
-  });
+  } catch (err) {
+    console.error("[stage2-route-error]", {
+      routerUserId,
+      jobId,
+      contractorIds,
+      err,
+    });
+    throw err;
+  }
 }
