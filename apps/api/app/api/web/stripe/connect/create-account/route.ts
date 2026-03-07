@@ -363,6 +363,14 @@ export async function POST(req: Request) {
     const typedRole = role as "ROUTER" | "CONTRACTOR";
     const country = await getUserCountry(user.userId, typedRole);
     const expectedCurrency = expectedCurrencyForCountry(country);
+    const userInfo = await db
+      .select({ email: users.email, phone: users.phone })
+      .from(users)
+      .where(eq(users.id, user.userId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    const userEmail = String(userInfo?.email ?? "").trim() || null;
+    const userPhone = String(userInfo?.phone ?? "").trim() || null;
     const existing = await getExistingStripeAccountId(user.userId);
 
     if (simulateApproved) {
@@ -399,7 +407,22 @@ export async function POST(req: Request) {
       const account = await stripe.accounts.create({
         type: "express",
         country,
-        ...(accountTypeChoice === "AUTO" ? {} : { business_type: accountTypeChoice.toLowerCase() as "individual" | "company" }),
+        business_type: accountTypeChoice === "AUTO"
+          ? "individual"
+          : accountTypeChoice.toLowerCase() as "individual" | "company",
+        business_profile: {
+          url: "https://8fold.app",
+          product_description:
+            "Marketplace contractor and routing services provided through the 8Fold platform",
+        },
+        ...(userEmail || userPhone
+          ? {
+              individual: {
+                ...(userEmail ? { email: userEmail } : {}),
+                ...(userPhone ? { phone: userPhone } : {}),
+              },
+            }
+          : {}),
         capabilities: requestedCapabilitiesForCountry(country),
         metadata: {
           userId: user.userId,
@@ -469,6 +492,7 @@ export async function POST(req: Request) {
       refresh_url: profileUrl,
       return_url: profileUrl,
       type: "account_onboarding",
+      collect: "eventually_due",
     });
     return NextResponse.json({
       ok: true,

@@ -31,6 +31,7 @@ type ContractorStripeIdentity = {
   userId: string;
   userCountry: "CA" | "US";
   userEmail: string | null;
+  userPhone: string | null;
   contractorId: string | null;
   stripeAccountId: string | null;
   stripePayoutsEnabled: boolean;
@@ -77,13 +78,14 @@ function isStripeSimulationEnabled(): boolean {
 
 async function resolveContractorStripeIdentity(userId: string): Promise<ContractorStripeIdentity> {
   const userRows = await db
-    .select({ email: users.email, country: users.country })
+    .select({ email: users.email, phone: users.phone, country: users.country })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
 
   const user = userRows[0] ?? null;
   const userCountry = normalizeCountry(user?.country ?? null);
+  const userPhone = String(user?.phone ?? "").trim() || null;
 
   const profileRows = await db
     .select({ userId: contractorProfilesV4.userId, email: contractorProfilesV4.email })
@@ -148,6 +150,7 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
     userId,
     userCountry,
     userEmail: lookupEmail,
+    userPhone,
     contractorId: contractor?.id ?? null,
     stripeAccountId: resolvedStripeAccountId,
     stripePayoutsEnabled: resolvedPayoutsEnabled,
@@ -317,6 +320,20 @@ export async function createOrRefreshContractorOnboardingLink(userId: string): P
       type: "express",
       country: identity.userCountry,
       email: identity.userEmail,
+      business_type: "individual",
+      business_profile: {
+        url: "https://8fold.app",
+        product_description:
+          "Marketplace contractor and routing services provided through the 8Fold platform",
+      },
+      ...(identity.userEmail || identity.userPhone
+        ? {
+            individual: {
+              ...(identity.userEmail ? { email: identity.userEmail } : {}),
+              ...(identity.userPhone ? { phone: identity.userPhone } : {}),
+            },
+          }
+        : {}),
       capabilities: {
         transfers: { requested: true },
       },
@@ -355,6 +372,7 @@ export async function createOrRefreshContractorOnboardingLink(userId: string): P
     refresh_url: returnUrl,
     return_url: returnUrl,
     type: "account_onboarding",
+    collect: "eventually_due",
   });
 
   return { ok: true, url: accountLink.url };
