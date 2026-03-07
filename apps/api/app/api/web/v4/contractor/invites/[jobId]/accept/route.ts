@@ -9,17 +9,26 @@ export async function POST(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   let requestId: string | undefined;
+  let inviteId: string | undefined;
+  let userId: string | undefined;
   try {
     const ctx = await requireContractorV4(req);
     if (ctx instanceof Response) return ctx;
     requestId = ctx.requestId;
-    const completionGuard = await requireRoleCompletion(ctx.internalUser.id, "CONTRACTOR");
+    userId = ctx.internalUser.id;
+    const completionGuard = await requireRoleCompletion(userId, "CONTRACTOR");
     if (completionGuard) return completionGuard;
-    const { jobId: inviteId } = await params;
+    const resolved = await params;
+    inviteId = resolved.jobId;
     if (!inviteId) return NextResponse.json({ error: "inviteId required" }, { status: 400 });
-    const result = await acceptInviteById(ctx.internalUser.id, inviteId);
+    const result = await acceptInviteById(userId, inviteId);
     return NextResponse.json({ success: true, jobId: result.jobId });
   } catch (err) {
+    console.error("[contractor-invite-accept-error]", {
+      inviteId: inviteId ?? "unknown",
+      contractorUserId: userId ?? "unknown",
+      err,
+    });
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_ACCEPT_INVITE_FAILED");
     return NextResponse.json(toV4ErrorResponse(wrapped, requestId), { status: wrapped.status });
   }
