@@ -15,7 +15,7 @@ type Invite = {
   jobPosterFirstName: string;
   jobPosterLastName: string;
   tradeCategory: string;
-  availability: string;
+  availability: Record<string, Record<string, boolean>> | string | null;
   contractorAmount: number;
   address: string;
   latitude: number | null;
@@ -61,6 +61,28 @@ function formatCountdown(remainingMs: number): string {
     return `${hours} ${hours === 1 ? "Hour" : "Hours"}`;
   }
   return `${totalMinutes} ${totalMinutes === 1 ? "Minute" : "Minutes"}`;
+}
+
+function formatAvailability(avail: Record<string, Record<string, boolean>> | string | null | undefined): string {
+  if (!avail) return "Not specified";
+  let obj: Record<string, Record<string, boolean>>;
+  if (typeof avail === "string") {
+    try { obj = JSON.parse(avail); } catch { return avail; }
+  } else {
+    obj = avail;
+  }
+  if (typeof obj !== "object" || obj === null) return "Not specified";
+  const days = Object.entries(obj)
+    .map(([day, slots]) => {
+      if (typeof slots !== "object" || slots === null) return null;
+      const active = Object.entries(slots)
+        .filter(([, v]) => v === true)
+        .map(([slot]) => slot.charAt(0).toUpperCase() + slot.slice(1));
+      if (!active.length) return null;
+      return `${day.charAt(0).toUpperCase() + day.slice(1)} — ${active.join(", ")}`;
+    })
+    .filter(Boolean) as string[];
+  return days.length ? days.join(" | ") : "Not specified";
 }
 
 function countdownTone(remainingMs: number): string {
@@ -256,7 +278,7 @@ export default function ContractorInvitesPage() {
                     {[invite.jobPosterFirstName, invite.jobPosterLastName].filter(Boolean).join(" ") || "Unknown"}
                   </p>
                   <p><span className="font-medium">Trade Category:</span> {invite.tradeCategory || "General"}</p>
-                  <p><span className="font-medium">Poster Availability:</span> {invite.availability || "Not provided"}</p>
+                  <p><span className="font-medium">Poster Availability:</span> {formatAvailability(invite.availability)}</p>
                   <p className="text-base font-semibold text-emerald-700">
                     Contractor Amount: {formatMoney(invite.contractorAmount)}
                   </p>
