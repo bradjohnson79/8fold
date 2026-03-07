@@ -4,6 +4,13 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 
+type InvitedContractor = {
+  contractorId: string;
+  contactName: string;
+  businessName: string;
+  city: string | null;
+};
+
 type Job = {
   id: string;
   title: string;
@@ -12,6 +19,7 @@ type Job = {
   routingStatus: string;
   claimedAt: string | null;
   routedAt: string | null;
+  invitedContractors: InvitedContractor[];
 };
 
 export default function RouterRoutedJobsPage() {
@@ -93,6 +101,25 @@ export default function RouterRoutedJobsPage() {
                   Routed: {new Date(job.routedAt).toLocaleString()}
                 </div>
               ) : null}
+              <div className="mt-3">
+                <div className="text-sm font-medium text-slate-600">Invited Contractors</div>
+                {job.invitedContractors?.length ? (
+                  <div className="mt-2 space-y-2">
+                    {job.invitedContractors.map((c) => (
+                      <div key={c.contractorId} className="text-sm">
+                        <div className="font-medium text-slate-800">
+                          {c.contactName} &mdash; {c.businessName}
+                        </div>
+                        {c.city ? (
+                          <div className="text-xs text-slate-500">{c.city}</div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-sm text-slate-400">No contractors invited yet</div>
+                )}
+              </div>
             </li>
           ))}
         </ul>
