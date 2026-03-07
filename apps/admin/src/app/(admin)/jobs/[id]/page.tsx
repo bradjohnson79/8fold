@@ -345,13 +345,25 @@ export default async function JobDetailPage({
     const country_code = String(formData.get("country_code") ?? "").trim().toUpperCase();
     const region_code = String(formData.get("region_code") ?? "").trim().toUpperCase();
     const trade_category = String(formData.get("trade_category") ?? "").trim();
-    if (!title && !scope && !country_code && !region_code && !trade_category) return;
-    const payload: Record<string, string> = {};
+    const address_full = String(formData.get("address_full") ?? "").trim();
+    const city = String(formData.get("city") ?? "").trim();
+    const postal_code = String(formData.get("postal_code") ?? "").trim();
+    const latitudeRaw = formData.get("latitude");
+    const longitudeRaw = formData.get("longitude");
+    const latitude = latitudeRaw != null ? Number(latitudeRaw) : undefined;
+    const longitude = longitudeRaw != null ? Number(longitudeRaw) : undefined;
+    if (!title && !scope && !country_code && !region_code && !trade_category && !address_full && !city && !postal_code && latitude == null && longitude == null) return;
+    const payload: Record<string, string | number> = {};
     if (title) payload.title = title;
     if (scope) payload.scope = scope;
     if (country_code) payload.country_code = country_code;
     if (region_code) payload.region_code = region_code;
     if (trade_category) payload.trade_category = trade_category;
+    if (address_full) payload.address_full = address_full;
+    if (city) payload.city = city;
+    if (postal_code) payload.postal_code = postal_code;
+    if (latitude != null && Number.isFinite(latitude)) payload.latitude = latitude;
+    if (longitude != null && Number.isFinite(longitude)) payload.longitude = longitude;
     try {
       await adminApiFetch(`/api/admin/v4/super/jobs/${encodeURIComponent(id)}`, {
         method: "PATCH",
@@ -535,6 +547,10 @@ export default async function JobDetailPage({
                 defaultCountryCode={job.country ?? "CA"}
                 defaultRegionCode={job.regionCode ?? ""}
                 defaultTradeCategory={job.tradeCategory}
+                defaultAddress={job.addressFull ?? undefined}
+                defaultCity={job.city ?? undefined}
+                defaultPostalCode={job.postalCode ?? undefined}
+                jobId={job.id}
               />
             </div>
             <div>
