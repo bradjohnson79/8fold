@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import confetti from "canvas-confetti";
 import { apiFetch } from "@/lib/routerApi";
 import { useJobPosterReadiness } from "@/hooks/useJobPosterReadiness";
+import StatusBadge from "@/components/StatusBadge";
 
 type Summary = {
   jobsPosted: number;
@@ -44,6 +46,16 @@ type ScoreAppraisalState = {
     totalScore: number | null;
   };
 } | null;
+
+type AcceptNotif = {
+  id: string;
+  metadata?: {
+    jobId?: string;
+    contractorUserId?: string;
+    jobTitle?: string;
+    contractorName?: string;
+  };
+};
 
 function formatMoney(centsLike: number | null | undefined) {
   const cents = Math.max(0, Number(centsLike ?? 0) || 0);
@@ -117,17 +129,20 @@ export default function JobPosterOverviewClient() {
   const [scoreAppraisal, setScoreAppraisal] = useState<ScoreAppraisalState>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
+  const confettiFired = useRef(false);
 
   useEffect(() => {
     if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, jobsResp, assignedResp, appraisalResp] = await Promise.all([
+        const [summaryResp, jobsResp, assignedResp, appraisalResp, notifsResp] = await Promise.all([
           apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null),
           apiFetch("/api/web/v4/job-poster/jobs", getToken).catch(() => null),
           apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken).catch(() => null),
           apiFetch("/api/web/v4/score-appraisal/me", getToken).catch(() => null),
+          apiFetch("/api/web/v4/job-poster/notifications?unreadOnly=true&type=CONTRACTOR_ACCEPTED&page=1&pageSize=5", getToken).catch(() => null),
         ]);
         if (!alive) return;
 
@@ -135,12 +150,20 @@ export default function JobPosterOverviewClient() {
         const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
         const assignedJson = assignedResp ? await assignedResp.json().catch(() => null) : null;
         const appraisalJson = appraisalResp ? await appraisalResp.json().catch(() => null) : null;
+        const notifsJson = notifsResp ? await notifsResp.json().catch(() => null) : null;
         if (!alive) return;
 
         setSummary(summaryJson ?? null);
         setJobs(Array.isArray(jobsJson?.jobs) ? jobsJson.jobs : []);
         setAssigned(assignedJson?.assignment ?? null);
         setScoreAppraisal(appraisalJson?.appraisal ?? null);
+
+        const notifs: AcceptNotif[] = Array.isArray(notifsJson?.notifications) ? notifsJson.notifications : [];
+        setAcceptNotifs(notifs);
+        if (notifs.length > 0 && !confettiFired.current) {
+          confettiFired.current = true;
+          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+        }
       } catch {
         if (alive) setError("Failed to load dashboard data");
       } finally {
@@ -252,6 +275,40 @@ export default function JobPosterOverviewClient() {
 
       {actionError ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p> : null}
 
+      {acceptNotifs.length > 0 && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-emerald-800">
+            Great news! Your job has been accepted.
+          </h2>
+          <div className="mt-3 space-y-2">
+            {acceptNotifs.map((n) => {
+              const meta = n.metadata ?? {};
+              return (
+                <div key={n.id} className="text-sm text-emerald-700">
+                  <span className="font-semibold">{meta.contractorName ?? "A contractor"}</span>
+                  {" has accepted your job: "}
+                  <span className="font-semibold">{meta.jobTitle ?? "a job"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href={`/dashboard/job-poster/messages${acceptNotifs[0]?.metadata?.jobId ? `?jobId=${encodeURIComponent(acceptNotifs[0].metadata.jobId)}` : ""}`}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Open Messenger
+            </Link>
+            <Link
+              href="/dashboard/job-poster/jobs"
+              className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              View Job
+            </Link>
+          </div>
+        </section>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SummaryCard title="Jobs Posted" value={summary ? String(summary.jobsPosted) : "—"} subtitle="Total non-draft jobs" href="/dashboard/job-poster/jobs" />
         <SummaryCard title="Funds Secured" value={summary ? formatMoney(summary.fundsSecured) : "—"} subtitle="Captured job funds" />
@@ -287,8 +344,8 @@ export default function JobPosterOverviewClient() {
                     <div>
                       <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled"}</h3>
                       <div className="mt-1 flex flex-wrap gap-1.5">
-                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{job.status ?? "—"}</span>
-                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{job.routingStatus ?? "—"}</span>
+                        {job.status ? <StatusBadge status={job.status} /> : null}
+                        {job.routingStatus ? <StatusBadge status={job.routingStatus} /> : null}
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
                         Posted {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : "—"}
@@ -328,7 +385,7 @@ export default function JobPosterOverviewClient() {
                 <p><span className="font-medium">Appointment:</span> {new Date(assigned.appointmentAt).toLocaleString()}</p>
               ) : null}
               <div className="pt-1">
-                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">{assignedBadge}</span>
+                <StatusBadge status={assignedBadge} />
               </div>
               {assigned.appointmentAt && !assigned.appointmentAcceptedAt ? (
                 <button

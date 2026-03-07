@@ -4,7 +4,7 @@ import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { users } from "@/db/schema/user";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
-import { haversineKm } from "@/jobs/geo";
+import { haversineKm } from "@/src/jobs/geo";
 
 const KM_TO_MILES = 0.621371;
 

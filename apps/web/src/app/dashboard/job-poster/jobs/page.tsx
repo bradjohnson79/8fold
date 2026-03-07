@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { apiFetch } from "@/lib/routerApi";
+import StatusBadge from "@/components/StatusBadge";
 
 type Job = {
   id: string;
@@ -13,23 +14,6 @@ type Job = {
   amountCents?: number;
   createdAt?: string;
 };
-
-const STATUS_COLORS: Record<string, string> = {
-  OPEN_FOR_ROUTING: "bg-emerald-50 text-emerald-700",
-  ASSIGNED: "bg-blue-50 text-blue-700",
-  IN_PROGRESS: "bg-amber-50 text-amber-700",
-  COMPLETED: "bg-slate-100 text-slate-700",
-  CANCELLED: "bg-red-50 text-red-700",
-};
-
-function StatusBadge({ value }: { value: string }) {
-  const color = STATUS_COLORS[value] ?? "bg-slate-100 text-slate-700";
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>
-      {value}
-    </span>
-  );
-}
 
 function formatMoney(cents: number | null | undefined) {
   return `$${(Math.max(0, Number(cents ?? 0) || 0) / 100).toFixed(2)}`;
@@ -100,8 +84,8 @@ export default function JobPosterJobsPage() {
                 <span className="text-sm font-semibold text-emerald-700">{formatMoney(job.amountCents)}</span>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {job.status ? <StatusBadge value={job.status} /> : null}
-                {job.routingStatus ? <StatusBadge value={job.routingStatus} /> : null}
+                {job.status ? <StatusBadge status={job.status} /> : null}
+                {job.routingStatus ? <StatusBadge status={job.routingStatus} /> : null}
               </div>
               <p className="mt-2 text-sm text-slate-500">
                 Posted {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : "—"}

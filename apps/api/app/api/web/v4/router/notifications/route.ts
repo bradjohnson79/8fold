@@ -14,6 +14,7 @@ export async function GET(req: Request) {
       userId: role.userId,
       role: "ROUTER",
       unreadOnly: String(url.searchParams.get("unreadOnly") ?? "").toLowerCase() === "true",
+      type: url.searchParams.get("type") ?? undefined,
       page: Number(url.searchParams.get("page") ?? "1") || 1,
       pageSize: Number(url.searchParams.get("pageSize") ?? "25") || 25,
     });

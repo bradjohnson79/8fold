@@ -1,5 +1,7 @@
-import { isNull, sql } from "drizzle-orm";
+import { eq, isNull, sql } from "drizzle-orm";
 import { admins } from "@/db/schema/admin";
+import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
+import { jobs } from "@/db/schema/job";
 import { db } from "@/db/drizzle";
 import type {
   DomainEvent,
@@ -148,6 +150,37 @@ export async function notificationEventMapper(
 
       case "CONTRACTOR_ACCEPTED_INVITE": {
         const p = event.payload;
+
+        let jobTitle = "a job";
+        let contractorName = "A contractor";
+        try {
+          const [jobRow] = await (tx ?? db)
+            .select({ title: jobs.title })
+            .from(jobs)
+            .where(eq(jobs.id, String(p.jobId)))
+            .limit(1);
+          const [cpRow] = await (tx ?? db)
+            .select({
+              contactName: contractorProfilesV4.contactName,
+              businessName: contractorProfilesV4.businessName,
+            })
+            .from(contractorProfilesV4)
+            .where(eq(contractorProfilesV4.userId, String(p.contractorId)))
+            .limit(1);
+          if (jobRow?.title) jobTitle = jobRow.title;
+          if (cpRow?.contactName) contractorName = cpRow.contactName;
+          else if (cpRow?.businessName) contractorName = cpRow.businessName;
+        } catch {
+          /* fallback to defaults */
+        }
+
+        const enrichedMeta = {
+          jobId: p.jobId,
+          contractorUserId: p.contractorId,
+          jobTitle: jobTitle ?? "a job",
+          contractorName: contractorName ?? "A contractor",
+        };
+
         await safeNotify(
           event.type,
           p,
@@ -156,10 +189,11 @@ export async function notificationEventMapper(
             role: "CONTRACTOR",
             type: "JOB_ASSIGNED",
             title: "Job assigned",
-            message: "You accepted the invite and are now assigned to this job.",
+            message: `You accepted the invite and are now assigned to: ${jobTitle}`,
             entityType: asEntity("JOB"),
             entityId: p.jobId,
             priority: "NORMAL",
+            metadata: enrichedMeta,
             createdAt: asDate(p.createdAt),
             dedupeKey: `${p.dedupeKeyBase}:contractor`,
             idempotencyKey: `${p.dedupeKeyBase}:contractor`,
@@ -174,10 +208,11 @@ export async function notificationEventMapper(
             role: "JOB_POSTER",
             type: "CONTRACTOR_ACCEPTED",
             title: "Contractor accepted",
-            message: "A contractor accepted your routed job invite.",
+            message: `${contractorName} has accepted your job: ${jobTitle}`,
             entityType: asEntity("INVITE"),
             entityId: p.inviteId,
             priority: "NORMAL",
+            metadata: enrichedMeta,
             createdAt: asDate(p.createdAt),
             dedupeKey: `${p.dedupeKeyBase}:poster`,
             idempotencyKey: `${p.dedupeKeyBase}:poster`,
@@ -192,11 +227,12 @@ export async function notificationEventMapper(
               userId: String(p.routerId),
               role: "ROUTER",
               type: "CONTRACTOR_ACCEPTED",
-              title: "Contractor accepted",
-              message: "A contractor accepted one of your routed invites.",
+              title: "Routing success",
+              message: `${jobTitle} has been accepted by ${contractorName}`,
               entityType: asEntity("INVITE"),
               entityId: p.inviteId,
               priority: "NORMAL",
+              metadata: enrichedMeta,
               createdAt: asDate(p.createdAt),
               dedupeKey: `${p.dedupeKeyBase}:router`,
               idempotencyKey: `${p.dedupeKeyBase}:router`,
