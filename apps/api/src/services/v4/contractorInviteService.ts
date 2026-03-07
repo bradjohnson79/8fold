@@ -156,9 +156,11 @@ export async function getInviteByJob(contractorUserId: string, jobId: string) {
 }
 
 export async function acceptInviteById(contractorUserId: string, inviteId: string): Promise<{ success: true; jobId: string }> {
+  console.log("[invite-accept] starting", { inviteId, contractorUserId });
   const inviteRows = await db.select().from(v4ContractorJobInvites).where(eq(v4ContractorJobInvites.id, inviteId)).limit(1);
   const invite = inviteRows[0] ?? null;
   if (!invite) throw badRequest("V4_INVITE_NOT_FOUND", "Invite not found");
+  console.log("[invite-accept] invite lookup ok", { jobId: invite.jobId });
   if (invite.contractorUserId !== contractorUserId) throw forbidden("V4_INVITE_FORBIDDEN", "Invite does not belong to you");
 
   const now = new Date();
@@ -198,6 +200,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       .limit(1);
     const job = jobRows[0] ?? null;
     if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
+    console.log("[invite-accept] job lookup ok", { status: job.status, routingStatus: job.routingStatus });
     if (job.status === "ASSIGNED") throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
     const status = String(job.status ?? "").toUpperCase();
     const routingStatus = String(job.routingStatus ?? "").toUpperCase();
@@ -209,6 +212,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
     }
     if (!job.jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
 
+    console.log("[invite-accept] updating invite status");
     const accepted = await tx
       .update(v4ContractorJobInvites)
       .set({ status: "ACCEPTED", respondedAt: now })
@@ -234,6 +238,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       .limit(1);
     if (assignmentRows.length > 0) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
 
+    console.log("[invite-accept] creating assignment");
     await tx.insert(v4JobAssignments).values({
       id: randomUUID(),
       jobId: inviteAfterLock.jobId,
@@ -268,6 +273,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       )
       .returning({ id: jobs.id });
     if (updatedJob.length !== 1) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
+    console.log("[invite-accept] job update ok");
 
     await tx
       .insert(v4MessageThreads)
@@ -292,6 +298,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         ),
       );
 
+    console.log("[invite-accept] emitting domain event");
     await emitDomainEvent(
       {
         type: "CONTRACTOR_ACCEPTED_INVITE",
