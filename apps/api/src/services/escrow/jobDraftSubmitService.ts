@@ -12,6 +12,7 @@ import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/le
 import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
 import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
+import { normalizeRegionToCode } from "@/src/services/v4/geocodeService";
 
 type DraftData = Record<string, any>;
 
@@ -93,7 +94,8 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   const title = String(details.title ?? "").trim();
   const scope = String(details.description ?? "").trim();
   const tradeCategory = String(details.tradeCategory ?? "").trim().toUpperCase();
-  const stateCode = String(details.stateCode ?? details.region ?? "").trim().toUpperCase();
+  const rawStateCode = String(details.stateCode ?? details.region ?? "").trim().toUpperCase();
+  const stateCode = normalizeRegionToCode(rawStateCode);
   const countryCode = deriveCountryFromRegion(stateCode) ?? (String(details.countryCode ?? "US").trim().toUpperCase() === "CA" ? "CA" : "US");
   const region = stateCode.toLowerCase();
   const city = String(details.city ?? "").trim();
@@ -101,6 +103,12 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   const address = String(details.address ?? "").trim();
   const lat = Number(details.lat);
   const lon = Number(details.lon);
+
+  if (!countryCode || !stateCode || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    console.warn("[JOB_DRAFT_SUBMIT_LOCATION_INCOMPLETE]", {
+      userId, countryCode, stateCode, city, lat, lon,
+    });
+  }
   const isRegional = Boolean(pricing.isRegional ?? details.isRegional);
 
   const appraisalSubtotalCents = Number(pricing.appraisalPriceCents ?? pricing.selectedPriceCents ?? 0);

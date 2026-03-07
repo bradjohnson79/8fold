@@ -121,6 +121,30 @@ export async function geocodeWithOsm(query: string): Promise<{ ok: true; results
   return { ok: true as const, results };
 }
 
+const PROVINCE_NAME_TO_CODE: Record<string, string> = {
+  "BRITISH COLUMBIA": "BC", "ALBERTA": "AB", "SASKATCHEWAN": "SK", "MANITOBA": "MB",
+  "ONTARIO": "ON", "QUEBEC": "QC", "NEW BRUNSWICK": "NB", "NOVA SCOTIA": "NS",
+  "PRINCE EDWARD ISLAND": "PE", "NEWFOUNDLAND AND LABRADOR": "NL", "YUKON": "YT",
+  "NORTHWEST TERRITORIES": "NT", "NUNAVUT": "NU",
+  "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR", "CALIFORNIA": "CA",
+  "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE", "DISTRICT OF COLUMBIA": "DC",
+  "FLORIDA": "FL", "GEORGIA": "GA", "HAWAII": "HI", "IDAHO": "ID", "ILLINOIS": "IL",
+  "INDIANA": "IN", "IOWA": "IA", "KANSAS": "KS", "KENTUCKY": "KY", "LOUISIANA": "LA",
+  "MAINE": "ME", "MARYLAND": "MD", "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN",
+  "MISSISSIPPI": "MS", "MISSOURI": "MO", "MONTANA": "MT", "NEBRASKA": "NE", "NEVADA": "NV",
+  "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ", "NEW MEXICO": "NM", "NEW YORK": "NY",
+  "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", "OHIO": "OH", "OKLAHOMA": "OK",
+  "OREGON": "OR", "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI", "SOUTH CAROLINA": "SC",
+  "SOUTH DAKOTA": "SD", "TENNESSEE": "TN", "TEXAS": "TX", "UTAH": "UT", "VERMONT": "VT",
+  "VIRGINIA": "VA", "WASHINGTON": "WA", "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY",
+};
+
+export function normalizeRegionToCode(raw: string): string {
+  const upper = raw.trim().toUpperCase();
+  if (upper.length <= 2) return upper;
+  return PROVINCE_NAME_TO_CODE[upper] ?? upper;
+}
+
 export async function reverseGeocodeProvince(latitude: number, longitude: number): Promise<string> {
   const url = new URL("https://nominatim.openstreetmap.org/reverse");
   url.searchParams.set("format", "jsonv2");
@@ -140,11 +164,9 @@ export async function reverseGeocodeProvince(latitude: number, longitude: number
   if (!response.ok) throw internal("V4_GEO_PROVIDER_FAILED", "OSM reverse geocode failed");
 
   const raw = (await response.json()) as any;
-  const candidate = String(
+  const rawCandidate = String(
     raw?.address?.state_code ?? raw?.address?.state ?? raw?.address?.province ?? raw?.address?.region ?? ""
-  )
-    .trim()
-    .toUpperCase();
-  if (!candidate) throw badRequest("V4_GEO_PROVINCE_RESOLVE_FAILED", "Unable to resolve province from coordinates");
-  return candidate;
+  ).trim();
+  if (!rawCandidate) throw badRequest("V4_GEO_PROVINCE_RESOLVE_FAILED", "Unable to resolve province from coordinates");
+  return normalizeRegionToCode(rawCandidate);
 }

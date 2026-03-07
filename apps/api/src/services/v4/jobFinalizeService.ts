@@ -13,6 +13,7 @@ import { stripe } from "@/src/payments/stripe";
 import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
+import { normalizeRegionToCode } from "@/src/services/v4/geocodeService";
 
 export type FinalizeResult = { jobId: string; created: boolean };
 
@@ -94,8 +95,9 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
     throw Object.assign(new Error("Title and description are required."), { status: 400 });
   }
 
-  const stateCode = String(details.stateCode ?? details.region ?? details.province ?? "").trim().toUpperCase();
-  const region = stateCode.toLowerCase() || "unspecified";
+  const rawStateCode = String(details.stateCode ?? details.region ?? details.province ?? "").trim().toUpperCase();
+  const stateCode = normalizeRegionToCode(rawStateCode);
+  const region = stateCode ? stateCode.toLowerCase() : "unspecified";
   const resolvedCountryCode = deriveCountryFromRegion(stateCode) ?? (currencyRaw === "CAD" ? "CA" : "US");
   const isRegional = Boolean(details.isRegional ?? details.isRegionalRequested);
   const jobType = isRegional ? "regional" : "urban";
