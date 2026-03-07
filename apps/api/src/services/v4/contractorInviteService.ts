@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { jobs } from "@/db/schema/job";
@@ -189,6 +189,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       .select({
         id: jobs.id,
         status: jobs.status,
+        routingStatus: jobs.routing_status,
         jobPosterUserId: jobs.job_poster_user_id,
         routerUserId: jobs.claimed_by_user_id,
       })
@@ -198,7 +199,12 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
     const job = jobRows[0] ?? null;
     if (!job) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
     if (job.status === "ASSIGNED") throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
-    if (String(job.status ?? "").toUpperCase() !== "INVITED") {
+    const status = String(job.status ?? "").toUpperCase();
+    const routingStatus = String(job.routingStatus ?? "").toUpperCase();
+    const assignable =
+      status === "INVITED" ||
+      (status === "OPEN_FOR_ROUTING" && routingStatus === "INVITES_SENT");
+    if (!assignable) {
       throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is no longer available for assignment");
     }
     if (!job.jobPosterUserId) throw badRequest("V4_JOB_NOT_FOUND", "Job not found");
@@ -248,7 +254,18 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         routing_expires_at: null,
         updated_at: now,
       })
-      .where(and(eq(jobs.id, inviteAfterLock.jobId), eq(jobs.status, "INVITED" as any)))
+      .where(
+        and(
+          eq(jobs.id, inviteAfterLock.jobId),
+          or(
+            eq(jobs.status, "INVITED" as any),
+            and(
+              eq(jobs.status, "OPEN_FOR_ROUTING" as any),
+              eq(jobs.routing_status, "INVITES_SENT" as any),
+            ),
+          ),
+        ),
+      )
       .returning({ id: jobs.id });
     if (updatedJob.length !== 1) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
 
