@@ -246,6 +246,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       status: "ASSIGNED",
       assignedAt: now,
     });
+    console.log("[invite-accept-step] assignment inserted", { jobId: inviteAfterLock.jobId });
 
     const updatedJob = await tx
       .update(jobs)
@@ -274,7 +275,13 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       .returning({ id: jobs.id });
     if (updatedJob.length !== 1) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
     console.log("[invite-accept] job update ok");
+    console.log("[invite-accept-step] job updated", { jobId: inviteAfterLock.jobId });
 
+    console.log("[invite-accept-step] before thread insert", {
+      jobId: inviteAfterLock.jobId,
+      jobPosterUserId: job.jobPosterUserId,
+      contractorUserId,
+    });
     await tx
       .insert(v4MessageThreads)
       .values({
@@ -285,7 +292,14 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         lastMessageAt: now,
         createdAt: now,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing({
+        target: [
+          v4MessageThreads.jobId,
+          v4MessageThreads.jobPosterUserId,
+          v4MessageThreads.contractorUserId,
+        ],
+      });
+    console.log("[invite-accept-step] after thread insert", { jobId: inviteAfterLock.jobId });
 
     await tx
       .update(v4MessageThreads)
@@ -297,8 +311,10 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
           eq(v4MessageThreads.contractorUserId, contractorUserId),
         ),
       );
+    console.log("[invite-accept-step] thread upserted", { jobId: inviteAfterLock.jobId });
 
     console.log("[invite-accept] emitting domain event");
+    console.log("[invite-accept-step] before emitDomainEvent", { type: "CONTRACTOR_ACCEPTED_INVITE" });
     await emitDomainEvent(
       {
         type: "CONTRACTOR_ACCEPTED_INVITE",
@@ -314,6 +330,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       },
       { tx },
     );
+    console.log("[invite-accept-step] after emitDomainEvent", { type: "CONTRACTOR_ACCEPTED_INVITE" });
 
     return { success: true as const, jobId: inviteAfterLock.jobId };
   });
