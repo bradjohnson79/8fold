@@ -1,6 +1,7 @@
 import { adminApiFetch } from "@/server/adminApiV4";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import JobEditForm from "./JobEditForm";
 import JobStatusEditor from "./JobStatusEditor";
 
 const inputStyle: React.CSSProperties = {
@@ -341,13 +342,15 @@ export default async function JobDetailPage({
     "use server";
     const title = String(formData.get("title") ?? "").trim();
     const scope = String(formData.get("scope") ?? "").trim();
-    const region = String(formData.get("region") ?? "").trim();
+    const country_code = String(formData.get("country_code") ?? "").trim().toUpperCase();
+    const region_code = String(formData.get("region_code") ?? "").trim().toUpperCase();
     const trade_category = String(formData.get("trade_category") ?? "").trim();
-    if (!title && !scope && !region && !trade_category) return;
+    if (!title && !scope && !country_code && !region_code && !trade_category) return;
     const payload: Record<string, string> = {};
     if (title) payload.title = title;
     if (scope) payload.scope = scope;
-    if (region) payload.region = region;
+    if (country_code) payload.country_code = country_code;
+    if (region_code) payload.region_code = region_code;
     if (trade_category) payload.trade_category = trade_category;
     try {
       await adminApiFetch(`/api/admin/v4/super/jobs/${encodeURIComponent(id)}`, {
@@ -525,15 +528,14 @@ export default async function JobDetailPage({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
             <div>
               <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Edit</div>
-              <form action={doSuperEdit} style={{ display: "grid", gap: 6 }}>
-                <input name="title" placeholder="Title" defaultValue={job.title} style={{ ...inputStyle, width: "100%" }} />
-                <input name="scope" placeholder="Scope" defaultValue={job.scope} style={{ ...inputStyle, width: "100%" }} />
-                <input name="region" placeholder="Region" defaultValue={job.regionCode ?? ""} style={{ ...inputStyle, width: "100%" }} />
-                <input name="trade_category" placeholder="Trade" defaultValue={job.tradeCategory} style={{ ...inputStyle, width: "100%" }} />
-                <button type="submit" style={buttonStyle}>
-                  Save
-                </button>
-              </form>
+              <JobEditForm
+                action={doSuperEdit}
+                defaultTitle={job.title}
+                defaultScope={job.scope}
+                defaultCountryCode={job.country ?? "CA"}
+                defaultRegionCode={job.regionCode ?? ""}
+                defaultTradeCategory={job.tradeCategory}
+              />
             </div>
             <div>
               <div style={{ fontWeight: 800, fontSize: 12, color: "rgba(226,232,240,0.78)", marginBottom: 6 }}>Suspend</div>

@@ -25,6 +25,15 @@ const JOB_EDIT_BLOCKED = new Set([
   "payout_status",
 ]);
 
+const VALID_COUNTRY_CODES = ["CA", "US"] as const;
+const CA_PROVINCES = new Set(["BC", "AB", "SK", "MB", "ON", "QC", "NB", "NS", "PE", "NL", "YT", "NT", "NU"]);
+const US_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL",
+  "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE",
+  "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD",
+  "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+]);
+
 const JobPatchSchema = z.object({
   title: z.string().trim().min(1).max(500).optional(),
   scope: z.string().trim().min(1).max(10000).optional(),
@@ -32,8 +41,19 @@ const JobPatchSchema = z.object({
   trade_category: z.string().trim().optional(),
   city: z.string().trim().max(200).optional(),
   postal_code: z.string().trim().max(20).optional(),
-  region_code: z.string().trim().max(10).optional(),
+  region_code: z
+    .string()
+    .trim()
+    .max(10)
+    .optional()
+    .refine((v) => !v || CA_PROVINCES.has(v) || US_STATES.has(v), "Invalid region code"),
   region_name: z.string().trim().max(200).optional(),
+  country_code: z
+    .string()
+    .trim()
+    .max(10)
+    .optional()
+    .refine((v) => !v || VALID_COUNTRY_CODES.includes(v as any), "Invalid country code"),
 });
 
 async function canDeleteJob(jobId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -89,6 +109,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates[k] = v;
     }
     if (Object.keys(updates).length === 0) return err(400, "ADMIN_SUPER_JOB_EDIT_EMPTY", "No fields to update");
+
+    if (updates.country_code && !VALID_COUNTRY_CODES.includes(updates.country_code as any)) {
+      return err(400, "ADMIN_SUPER_JOB_EDIT_INVALID", "Invalid country code");
+    }
+    if (updates.region_code) {
+      const rc = String(updates.region_code).trim().toUpperCase();
+      if (!CA_PROVINCES.has(rc) && !US_STATES.has(rc)) {
+        return err(400, "ADMIN_SUPER_JOB_EDIT_INVALID", "Invalid region code");
+      }
+      updates.region = rc.toLowerCase();
+      updates.state_code = rc;
+    }
+    if (updates.country_code) {
+      updates.country = updates.country_code;
+    }
 
     const existing = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1);
     if (!existing[0]) return err(404, "ADMIN_SUPER_JOB_NOT_FOUND", "Job not found");
