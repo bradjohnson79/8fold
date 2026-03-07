@@ -150,6 +150,9 @@ export async function notificationEventMapper(
 
       case "CONTRACTOR_ACCEPTED_INVITE": {
         const p = event.payload;
+        console.log("[invite-accept-step] CONTRACTOR_ACCEPTED_INVITE mapper entered", {
+          jobId: p?.jobId,
+        });
 
         let jobTitle = "a job";
         let contractorName = "A contractor";
@@ -180,6 +183,7 @@ export async function notificationEventMapper(
           jobTitle: jobTitle ?? "a job",
           contractorName: contractorName ?? "A contractor",
         };
+        console.log("[invite-accept-step] CONTRACTOR_ACCEPTED_INVITE before safeNotify contractor");
 
         await safeNotify(
           event.type,
@@ -200,6 +204,7 @@ export async function notificationEventMapper(
           },
           tx,
         );
+        console.log("[invite-accept-step] CONTRACTOR_ACCEPTED_INVITE after safeNotify contractor");
         await safeNotify(
           event.type,
           p,
@@ -219,6 +224,7 @@ export async function notificationEventMapper(
           },
           tx,
         );
+        console.log("[invite-accept-step] CONTRACTOR_ACCEPTED_INVITE after safeNotify poster");
         if (p.routerId) {
           await safeNotify(
             event.type,
@@ -240,6 +246,7 @@ export async function notificationEventMapper(
             tx,
           );
         }
+        console.log("[invite-accept-step] CONTRACTOR_ACCEPTED_INVITE mapper done");
         return;
       }
 
