@@ -1,0 +1,373 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/routerApi";
+import { useJobPosterReadiness } from "@/hooks/useJobPosterReadiness";
+
+type Summary = {
+  jobsPosted: number;
+  fundsSecured: number;
+  paymentStatus: "CONNECTED" | "NOT_CONNECTED";
+  unreadMessages: number;
+  activeAssignments: number;
+};
+
+type JobItem = {
+  id: string;
+  title?: string;
+  status?: string;
+  routingStatus?: string;
+  amountCents?: number;
+  createdAt?: string;
+};
+
+type Thread = {
+  id: string;
+  jobId: string;
+  jobTitle: string | null;
+  jobStatus?: string | null;
+  contractorName?: string | null;
+  contractorBusinessName?: string | null;
+  appointmentAt?: string | null;
+  appointmentAcceptedAt?: string | null;
+};
+
+type ScoreAppraisalState = {
+  pending: boolean;
+  jobsEvaluated: number;
+  minimumRequired: number;
+  appraisal?: {
+    avgCooperation: number | null;
+    avgCommunication: number | null;
+    totalScore: number | null;
+  };
+} | null;
+
+function formatMoney(centsLike: number | null | undefined) {
+  const cents = Math.max(0, Number(centsLike ?? 0) || 0);
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function toBadgeStatus(thread: Thread): "ASSIGNED" | "APPOINTMENT_BOOKED" | "APPOINTMENT_ACCEPTED" | null {
+  const status = String(thread.jobStatus ?? "").toUpperCase();
+  if (status === "ASSIGNED") return "ASSIGNED";
+  if (thread.appointmentAt && thread.appointmentAcceptedAt) return "APPOINTMENT_ACCEPTED";
+  if (thread.appointmentAt) return "APPOINTMENT_BOOKED";
+  return null;
+}
+
+function GateCard({ label, done, href, compact }: { label: string; done: boolean; href: string; compact: boolean }) {
+  if (compact) {
+    return (
+      <Link href={href} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-emerald-700">
+        <span className="text-emerald-600">&#10003;</span>
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      className={
+        "flex items-center gap-3 rounded-xl border p-4 transition hover:shadow-md " +
+        (done ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")
+      }
+    >
+      <span
+        className={
+          "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold " +
+          (done ? "bg-emerald-600 text-white" : "bg-amber-400 text-white")
+        }
+      >
+        {done ? "\u2713" : "!"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-slate-900">{label}</div>
+        <div className={"text-xs " + (done ? "text-emerald-700" : "text-amber-700")}>
+          {done ? "Complete" : "Action required"}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function SummaryCard({ title, value, subtitle, href }: { title: string; value: string; subtitle: string; href?: string }) {
+  const content = (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+      <div className="text-sm font-medium uppercase tracking-wide text-slate-500">{title}</div>
+      <div className="mt-1 text-3xl font-bold text-slate-900">{value}</div>
+      <div className="mt-1 text-xs text-slate-500">{subtitle}</div>
+    </div>
+  );
+  if (href) return <Link href={href}>{content}</Link>;
+  return content;
+}
+
+export default function JobPosterOverviewClient() {
+  const { getToken } = useAuth();
+  const { readiness, loading: readinessLoading, error: readinessError } = useJobPosterReadiness();
+
+  const [dataLoading, setDataLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [assigned, setAssigned] = useState<Thread | null>(null);
+  const [scoreAppraisal, setScoreAppraisal] = useState<ScoreAppraisalState>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState(false);
+
+  useEffect(() => {
+    if (readinessLoading) return;
+    let alive = true;
+    (async () => {
+      try {
+        const [summaryResp, jobsResp, assignedResp, appraisalResp] = await Promise.all([
+          apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null),
+          apiFetch("/api/web/v4/job-poster/jobs", getToken).catch(() => null),
+          apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken).catch(() => null),
+          apiFetch("/api/web/v4/score-appraisal/me", getToken).catch(() => null),
+        ]);
+        if (!alive) return;
+
+        const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
+        const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
+        const assignedJson = assignedResp ? await assignedResp.json().catch(() => null) : null;
+        const appraisalJson = appraisalResp ? await appraisalResp.json().catch(() => null) : null;
+        if (!alive) return;
+
+        setSummary(summaryJson ?? null);
+        setJobs(Array.isArray(jobsJson?.jobs) ? jobsJson.jobs : []);
+        setAssigned(assignedJson?.assignment ?? null);
+        setScoreAppraisal(appraisalJson?.appraisal ?? null);
+      } catch {
+        if (alive) setError("Failed to load dashboard data");
+      } finally {
+        if (alive) setDataLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [readinessLoading, getToken]);
+
+  async function handleAcceptAppointment(jobId: string) {
+    if (accepting) return;
+    setAccepting(true);
+    setActionError(null);
+    try {
+      const resp = await apiFetch(
+        `/api/web/v4/job-poster/jobs/${encodeURIComponent(jobId)}/accept-appointment`,
+        getToken,
+        { method: "POST" },
+      );
+      const payload = (await resp.json().catch(() => ({}))) as { error?: { message?: string } | string };
+      if (!resp.ok) {
+        const message = typeof payload.error === "string" ? payload.error : payload.error?.message ?? "Failed to accept appointment";
+        setActionError(message);
+        return;
+      }
+      const [sResp, aResp] = await Promise.all([
+        apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null),
+        apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken).catch(() => null),
+      ]);
+      const sJson = sResp ? await sResp.json().catch(() => null) : null;
+      const aJson = aResp ? await aResp.json().catch(() => null) : null;
+      if (sJson) setSummary(sJson);
+      setAssigned(aJson?.assignment ?? null);
+    } catch {
+      setActionError("Failed to accept appointment");
+    } finally {
+      setAccepting(false);
+    }
+  }
+
+  const loading = readinessLoading || dataLoading;
+
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="h-6 w-48 animate-pulse rounded bg-slate-200" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (readinessError || error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {readinessError || error}
+        </div>
+      </div>
+    );
+  }
+
+  const termsOk = readiness?.terms ?? false;
+  const profileOk = readiness?.profile ?? false;
+  const paymentOk = readiness?.payment ?? false;
+  const allGatesComplete = readiness?.complete ?? false;
+
+  const assignedBadge = assigned ? toBadgeStatus(assigned) : null;
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Job Poster Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-600">Manage posted jobs, assignments, payment setup, and messages.</p>
+        </div>
+        <Link
+          href="/post-job"
+          className="inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          Post a Job
+        </Link>
+      </div>
+
+      {allGatesComplete ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <GateCard label="Terms" done href="/dashboard/job-poster/terms" compact />
+            <GateCard label="Profile" done href="/dashboard/job-poster/profile" compact />
+            <GateCard label="Payment" done href="/dashboard/job-poster/payment" compact />
+          </div>
+          <div className="mt-2 text-sm font-semibold text-emerald-700">
+            Account setup complete &mdash; ready to post jobs
+          </div>
+        </div>
+      ) : (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">Complete Your Setup</h2>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <GateCard label="Terms" done={termsOk} href="/dashboard/job-poster/terms" compact={false} />
+            <GateCard label="Profile Setup" done={profileOk} href="/dashboard/job-poster/profile" compact={false} />
+            <GateCard label="Payment Setup" done={paymentOk} href="/dashboard/job-poster/payment" compact={false} />
+          </div>
+        </section>
+      )}
+
+      {actionError ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p> : null}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <SummaryCard title="Jobs Posted" value={summary ? String(summary.jobsPosted) : "—"} subtitle="Total non-draft jobs" href="/dashboard/job-poster/jobs" />
+        <SummaryCard title="Funds Secured" value={summary ? formatMoney(summary.fundsSecured) : "—"} subtitle="Captured job funds" />
+        <SummaryCard
+          title="Payment Status"
+          value={summary ? (summary.paymentStatus === "CONNECTED" ? "Connected" : "Not Connected") : "—"}
+          subtitle="Stripe setup"
+          href="/dashboard/job-poster/payment"
+        />
+        <SummaryCard title="Unread Messages" value={summary ? String(summary.unreadMessages) : "—"} subtitle="New messages in threads" href="/dashboard/job-poster/messages" />
+        <SummaryCard title="Active Assignments" value={summary ? String(summary.activeAssignments) : "—"} subtitle="Assigned or scheduled jobs" />
+        <SummaryCard
+          title="AI Score Appraisal"
+          value={
+            scoreAppraisal?.pending
+              ? `Pending (${scoreAppraisal.jobsEvaluated}/${scoreAppraisal.minimumRequired})`
+              : `${scoreAppraisal?.appraisal?.totalScore ?? "—"} / 10`
+          }
+          subtitle="Internal only"
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Posted Jobs</h2>
+          {jobs.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">No posted jobs yet. Post your first job to start routing.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {jobs.slice(0, 6).map((job) => (
+                <article key={job.id} className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled"}</h3>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{job.status ?? "—"}</span>
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{job.routingStatus ?? "—"}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Posted {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : "—"}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-emerald-700">{formatMoney(job.amountCents)}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link href={`/dashboard/job-poster/jobs/${job.id}`} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                      View Job
+                    </Link>
+                    <Link href={`/dashboard/job-poster/messages?jobId=${encodeURIComponent(job.id)}`} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                      Messenger
+                    </Link>
+                  </div>
+                </article>
+              ))}
+              {jobs.length > 6 ? (
+                <Link href="/dashboard/job-poster/jobs" className="block text-center text-sm font-medium text-emerald-700 hover:underline">
+                  View all {jobs.length} jobs
+                </Link>
+              ) : null}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Assigned Contractor</h2>
+          {!assigned || !assignedBadge ? (
+            <p className="mt-3 text-sm text-slate-500">No assigned contractor context is active right now.</p>
+          ) : (
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">{assigned.jobTitle || `Job ${assigned.jobId.slice(0, 8)}`}</p>
+              <p><span className="font-medium">Contractor:</span> {assigned.contractorName || "Assigned Contractor"}</p>
+              <p><span className="font-medium">Business:</span> {assigned.contractorBusinessName || "Contractor Business"}</p>
+              {assigned.appointmentAt ? (
+                <p><span className="font-medium">Appointment:</span> {new Date(assigned.appointmentAt).toLocaleString()}</p>
+              ) : null}
+              <div className="pt-1">
+                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">{assignedBadge}</span>
+              </div>
+              {assigned.appointmentAt && !assigned.appointmentAcceptedAt ? (
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptAppointment(assigned.jobId)}
+                  disabled={accepting}
+                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {accepting ? "Accepting..." : "Accept Appointment"}
+                </button>
+              ) : (
+                <Link
+                  href={`/dashboard/job-poster/messages?jobId=${encodeURIComponent(assigned.jobId)}`}
+                  className="mt-2 inline-block rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Open Messages
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Link href="/dashboard/job-poster/notifications" className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+          <div>
+            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Notifications</div>
+            <div className="mt-1 text-sm text-slate-600">View and manage notifications</div>
+          </div>
+          <span className="text-slate-400">&rarr;</span>
+        </Link>
+        <Link href="/dashboard/job-poster/support" className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+          <div>
+            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Support</div>
+            <div className="mt-1 text-sm text-slate-600">Submit or view support tickets</div>
+          </div>
+          <span className="text-slate-400">&rarr;</span>
+        </Link>
+      </div>
+    </div>
+  );
+}

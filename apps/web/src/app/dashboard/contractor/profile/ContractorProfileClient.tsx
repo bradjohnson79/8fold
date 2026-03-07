@@ -3,6 +3,10 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { apiFetch } from "@/lib/routerApi";
+import {
+  GoogleAddressAutocomplete,
+  type GoogleAddressResult,
+} from "@/components/GoogleAddressAutocomplete";
 
 type FullProfile = {
   contactName: string;
@@ -148,6 +152,8 @@ export default function ContractorProfileClient() {
   const [success, setSuccess] = useState("");
   const [editing, setEditing] = useState(false);
   const [tradeCatOpen, setTradeCatOpen] = useState(false);
+  const [addressInput, setAddressInput] = useState("");
+  const [addressSelected, setAddressSelected] = useState(false);
 
   const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? "";
 
@@ -161,7 +167,7 @@ export default function ContractorProfileClient() {
       }
       const json = await resp.json().catch(() => null);
       const p = json?.profile ?? json ?? {};
-      setProfile({
+      const loaded: FullProfile = {
         contactName: p.contactName ?? "",
         phone: p.phone ?? "",
         businessName: p.businessName ?? "",
@@ -179,7 +185,11 @@ export default function ContractorProfileClient() {
         homeLongitude: typeof p.homeLongitude === "number" ? p.homeLongitude : 0,
         tosVersion: p.tosVersion ?? "v1.0",
         email: p.email ?? null,
-      });
+      };
+      setProfile(loaded);
+      const existingAddr = loaded.formattedAddress || loaded.streetAddress || "";
+      setAddressInput(existingAddr);
+      setAddressSelected(Boolean(existingAddr && loaded.homeLatitude && loaded.homeLongitude));
     } catch (e: unknown) {
       if (e instanceof Error && (e as any).code === "AUTH_MISSING_TOKEN") {
         setError("Authentication lost — please refresh and sign in again.");
@@ -195,6 +205,10 @@ export default function ContractorProfileClient() {
 
   async function handleSave() {
     if (!profile) return;
+    if (!addressSelected || !profile.homeLatitude || !profile.homeLongitude) {
+      setError("Please select a valid address from the suggestions.");
+      return;
+    }
     setSaving(true);
     setError("");
     setSuccess("");
@@ -260,6 +274,29 @@ export default function ContractorProfileClient() {
           : [...prev.tradeCategories, cat],
       };
     });
+  }
+
+  function handleAddressPick(result: GoogleAddressResult) {
+    setProfile((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        streetAddress: result.formattedAddress,
+        formattedAddress: result.formattedAddress,
+        city: result.city || prev.city,
+        postalCode: result.postalCode || prev.postalCode,
+        countryCode: result.countryCode || prev.countryCode,
+        homeRegionCode: result.regionCode || prev.homeRegionCode,
+        homeLatitude: result.latitude,
+        homeLongitude: result.longitude,
+      };
+    });
+    setAddressSelected(true);
+  }
+
+  function handleAddressInputChange(value: string) {
+    setAddressInput(value);
+    setAddressSelected(false);
   }
 
   function handleCountryChange(newCountry: string) {
@@ -337,6 +374,33 @@ export default function ContractorProfileClient() {
             <div className="text-sm font-medium text-slate-900">{profile?.phone || "—"}</div>
           )}
         </FieldCard>
+
+        {/* Service Address — full-width Google Places autocomplete */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:col-span-2">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+            Service Address
+          </label>
+          <p className="mb-2 text-xs text-slate-400">Used for routing jobs near you.</p>
+          {editing ? (
+            <GoogleAddressAutocomplete
+              label=""
+              value={addressInput}
+              onChange={handleAddressInputChange}
+              onPick={handleAddressPick}
+              placeholder="Start typing your address..."
+              helperText="Select a result to capture coordinates."
+              errorText={
+                addressInput.length > 0 && !addressSelected
+                  ? "Please select a valid address from the suggestions."
+                  : undefined
+              }
+            />
+          ) : (
+            <div className="text-sm font-medium text-slate-900">
+              {profile?.formattedAddress || profile?.streetAddress || "—"}
+            </div>
+          )}
+        </div>
 
         <FieldCard label="Business Name">
           {editing ? (
@@ -472,7 +536,7 @@ export default function ContractorProfileClient() {
           </button>
           <button
             type="button"
-            onClick={() => { setEditing(false); setTradeCatOpen(false); void loadProfile(); }}
+            onClick={() => { setEditing(false); setTradeCatOpen(false); setAddressSelected(false); void loadProfile(); }}
             disabled={saving}
             className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >

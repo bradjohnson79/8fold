@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/routerApi";
 
 type PaymentStatus = {
   connected: boolean;
@@ -29,6 +31,7 @@ function formatMoney(cents: number) {
 }
 
 export default function JobPosterPaymentPage() {
+  const { getToken } = useAuth();
   const [status, setStatus] = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,11 +48,11 @@ export default function JobPosterPaymentPage() {
     setCanceled(params.get("canceled") === "1");
   }, []);
 
-  const fetchStatus = async () => {
+  const fetchStatus = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/web/v4/job-poster/payment/status", { cache: "no-store", credentials: "include" });
+      const resp = await apiFetch("/api/web/v4/job-poster/payment/status", getToken);
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data?.error?.message ?? `Status failed: ${resp.status}`);
@@ -62,18 +65,18 @@ export default function JobPosterPaymentPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getToken]);
 
   useEffect(() => {
     fetchStatus();
-  }, []);
+  }, [fetchStatus]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setBreakdownError(null);
-        const jobsResp = await fetch("/api/web/v4/job-poster/jobs", { cache: "no-store", credentials: "include" });
+        const jobsResp = await apiFetch("/api/web/v4/job-poster/jobs", getToken);
         const jobsJson = (await jobsResp.json().catch(() => ({}))) as { jobs?: Array<{ id: string }> };
         const firstJobId = Array.isArray(jobsJson.jobs) ? String(jobsJson.jobs[0]?.id ?? "") : "";
         if (!alive || !firstJobId) {
@@ -81,9 +84,8 @@ export default function JobPosterPaymentPage() {
           return;
         }
 
-        const confirmResp = await fetch("/api/web/v4/job-poster/payment/confirm", {
+        const confirmResp = await apiFetch("/api/web/v4/job-poster/payment/confirm", getToken, {
           method: "POST",
-          credentials: "include",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ jobId: firstJobId }),
         });
@@ -104,19 +106,14 @@ export default function JobPosterPaymentPage() {
         }
       }
     })();
-    return () => {
-      alive = false;
-    };
-  }, [success]);
+    return () => { alive = false; };
+  }, [success, getToken]);
 
   const handleConnect = async () => {
     setActionLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/web/v4/job-poster/payment/create-setup-session", {
-        method: "POST",
-        credentials: "include",
-      });
+      const resp = await apiFetch("/api/web/v4/job-poster/payment/create-setup-session", getToken, { method: "POST" });
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data?.error?.message ?? "Failed to create setup session");
@@ -130,35 +127,11 @@ export default function JobPosterPaymentPage() {
     }
   };
 
-  const handleUpdate = async () => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      const resp = await fetch("/api/web/v4/job-poster/payment/create-setup-session", {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data?.error?.message ?? "Failed to create setup session");
-      }
-      const { url } = await resp.json();
-      if (url) window.location.href = url;
-      else throw new Error("No redirect URL returned");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update payment method");
-      setActionLoading(false);
-    }
-  };
-
   const handleSimulateSuccess = async () => {
     setSimulating(true);
     setError(null);
     try {
-      const resp = await fetch("/api/web/v4/job-poster/payment/simulate-success", {
-        method: "POST",
-        credentials: "include",
-      });
+      const resp = await apiFetch("/api/web/v4/job-poster/payment/simulate-success", getToken, { method: "POST" });
       const data = await resp.json().catch(() => ({})) as { ok?: boolean; error?: string | { message?: string } };
       if (!resp.ok) {
         const message = typeof data.error === "string" ? data.error : data.error?.message;
@@ -181,95 +154,61 @@ export default function JobPosterPaymentPage() {
   if (loading && !status) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Payment Setup</h1>
-        <p className="mt-2 text-gray-600">Loading…</p>
+        <h1 className="text-2xl font-bold text-slate-900">Payment Setup</h1>
+        <p className="mt-2 text-sm text-slate-600">Loading...</p>
       </div>
     );
   }
 
   const lastUpdated = status?.stripeUpdatedAt
-    ? new Date(status.stripeUpdatedAt).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+    ? new Date(status.stripeUpdatedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
     : null;
 
   return (
-    <div className="p-6 max-w-xl">
-      <h1 className="text-2xl font-bold">Payment Method & Billing</h1>
-      <p className="mt-1 text-gray-600">Add or update your payment method for job activation.</p>
+    <div className="space-y-5 p-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Payment Method &amp; Billing</h1>
+        <p className="mt-1 text-sm text-slate-600">Add or update your payment method for job activation.</p>
+      </div>
 
-      {error && (
-        <div className="mt-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-800" role="alert">
-          {error}
-        </div>
-      )}
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+      ) : null}
+      {success ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">Payment method connected successfully.</div>
+      ) : null}
+      {canceled ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">Setup was canceled. You can try again when ready.</div>
+      ) : null}
 
-      {success && (
-        <div className="mt-4 p-4 rounded-lg bg-green-50 border border-green-200 text-green-800">
-          Payment method connected successfully.
-        </div>
-      )}
-
-      {canceled && (
-        <div className="mt-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
-          Setup was canceled. You can try again when ready.
-        </div>
-      )}
-
-      <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-white">
+      <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         {status?.connected ? (
           <>
-            <p className="font-medium text-gray-900">Status: Connected</p>
-            {status.lastFour && (
-              <p className="mt-1 text-gray-600">Card: •••• {status.lastFour}</p>
-            )}
-            {lastUpdated && (
-              <p className="mt-1 text-gray-600">Last Updated: {lastUpdated}</p>
-            )}
+            <p className="font-medium text-slate-900">Status: Connected</p>
+            {status.lastFour ? <p className="mt-1 text-sm text-slate-600">Card: &bull;&bull;&bull;&bull; {status.lastFour}</p> : null}
+            {lastUpdated ? <p className="mt-1 text-sm text-slate-600">Last Updated: {lastUpdated}</p> : null}
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleUpdate}
-                disabled={actionLoading}
-                className="px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {actionLoading ? "Redirecting…" : "Update Payment Method"}
+              <button type="button" onClick={handleConnect} disabled={actionLoading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {actionLoading ? "Redirecting..." : "Update Payment Method"}
               </button>
               {status?.simulationEnabled ? (
-                <button
-                  type="button"
-                  onClick={handleSimulateSuccess}
-                  disabled={simulating || actionLoading}
-                  className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {simulating ? "Simulating…" : "Stripe Simulation Success"}
+                <button type="button" onClick={handleSimulateSuccess} disabled={simulating || actionLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {simulating ? "Simulating..." : "Stripe Simulation Success"}
                 </button>
               ) : null}
             </div>
           </>
         ) : (
           <>
-            <p className="font-medium text-gray-900">Status: Not Connected</p>
-            <p className="mt-1 text-gray-600">Add a payment method to activate jobs.</p>
+            <p className="font-medium text-slate-900">Status: Not Connected</p>
+            <p className="mt-1 text-sm text-slate-600">Add a payment method to activate jobs.</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleConnect}
-                disabled={actionLoading}
-                className="px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {actionLoading ? "Redirecting…" : "Connect Payment Method"}
+              <button type="button" onClick={handleConnect} disabled={actionLoading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {actionLoading ? "Redirecting..." : "Connect Payment Method"}
               </button>
               {status?.simulationEnabled ? (
-                <button
-                  type="button"
-                  onClick={handleSimulateSuccess}
-                  disabled={simulating || actionLoading}
-                  className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {simulating ? "Simulating…" : "Stripe Simulation Success"}
+                <button type="button" onClick={handleSimulateSuccess} disabled={simulating || actionLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {simulating ? "Simulating..." : "Stripe Simulation Success"}
                 </button>
               ) : null}
             </div>
@@ -277,28 +216,26 @@ export default function JobPosterPaymentPage() {
         )}
       </div>
 
-      <p className="mt-4 text-sm text-gray-500">
+      <p className="text-sm text-slate-500">
         Payment is required before activating a job.{" "}
-        <Link href="/post-job" className="text-blue-600 hover:underline">
-          Post a Job
-        </Link>
+        <Link href="/post-job" className="font-medium text-emerald-700 hover:underline">Post a Job</Link>
       </p>
 
-      <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-white">
-        <h2 className="text-lg font-semibold text-gray-900">Server Payment Breakdown</h2>
+      <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Server Payment Breakdown</h2>
         {breakdownError ? <p className="mt-2 text-sm text-red-700">{breakdownError}</p> : null}
         {!breakdown && !breakdownError ? (
-          <p className="mt-2 text-sm text-gray-600">No jobs available to calculate payment breakdown.</p>
+          <p className="mt-2 text-sm text-slate-600">No jobs available to calculate payment breakdown.</p>
         ) : null}
         {breakdown ? (
-          <div className="mt-3 space-y-1 text-sm text-gray-700">
+          <div className="mt-3 space-y-1 text-sm text-slate-700">
             <p><span className="font-medium">Base:</span> {formatMoney(breakdown.baseCents)}</p>
             <p><span className="font-medium">Contractor (75%):</span> {formatMoney(breakdown.contractorShareCents)}</p>
             <p><span className="font-medium">Router (15%):</span> {formatMoney(breakdown.routerShareCents)}</p>
             <p><span className="font-medium">Platform (10%):</span> {formatMoney(breakdown.platformShareCents)}</p>
             <p><span className="font-medium">Stripe Fee:</span> {formatMoney(breakdown.stripeFeeCents)}</p>
             <p><span className="font-medium">Tax:</span> {formatMoney(breakdown.taxCents)}</p>
-            <p className="pt-1 font-semibold text-gray-900"><span className="font-medium">Total:</span> {formatMoney(breakdown.totalCents)}</p>
+            <p className="pt-1 font-semibold text-slate-900"><span className="font-medium">Total:</span> {formatMoney(breakdown.totalCents)}</p>
           </div>
         ) : null}
       </div>
