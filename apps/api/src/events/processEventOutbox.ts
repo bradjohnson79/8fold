@@ -31,7 +31,7 @@ export async function processEventOutbox(): Promise<void> {
       const payload = restorePayloadDates(event.payload as Record<string, unknown>);
       const domainEvent: DomainEvent = {
         type: event.eventType as DomainEventType,
-        payload,
+        payload: payload as DomainEvent["payload"],
       };
 
       await notificationEventMapper(domainEvent);
