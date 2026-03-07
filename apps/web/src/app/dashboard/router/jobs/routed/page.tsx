@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 import AvailabilityBadge from "@/components/AvailabilityBadge";
+import StatusBadge from "@/components/StatusBadge";
 
 type InvitedContractor = {
   contractorId: string;
@@ -88,18 +89,7 @@ export default function RouterRoutedJobsPage() {
                     {job.region} &middot; {job.routingStatus}
                   </div>
                 </div>
-                <span
-                  className={
-                    "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium " +
-                    (job.status === "ASSIGNED" || job.status === "IN_PROGRESS"
-                      ? "bg-blue-50 text-blue-700"
-                      : job.status === "CONTRACTOR_COMPLETED" || job.status === "CUSTOMER_APPROVED"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-slate-100 text-slate-600")
-                  }
-                >
-                  {job.status}
-                </span>
+                <StatusBadge status={job.status} />
               </div>
               {job.routedAt ? (
                 <div className="mt-2 text-xs text-slate-500">

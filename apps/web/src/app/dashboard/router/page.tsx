@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import confetti from "canvas-confetti";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 
@@ -15,6 +16,16 @@ type SummaryData = {
     event: string;
     updatedAt: string | null;
   }>;
+};
+
+type AcceptNotif = {
+  id: string;
+  metadata?: {
+    jobId?: string;
+    contractorUserId?: string;
+    jobTitle?: string;
+    contractorName?: string;
+  };
 };
 
 function formatTimeAgo(iso: string | null): string {
@@ -91,23 +102,27 @@ export default function RouterOverviewPage() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [availableCount, setAvailableCount] = useState<number>(0);
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
+  const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
+  const confettiFired = useRef(false);
 
   useEffect(() => {
     if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, jobsResp, notifResp] =
+        const [summaryResp, jobsResp, notifResp, acceptResp] =
           await Promise.all([
             routerApiFetch("/api/web/v4/router/dashboard/summary", getToken).catch(() => null),
             routerApiFetch("/api/web/v4/router/available-jobs", getToken).catch(() => null),
             routerApiFetch("/api/web/v4/router/notifications?page=1&pageSize=1", getToken).catch(() => null),
+            routerApiFetch("/api/web/v4/router/notifications?unreadOnly=true&type=CONTRACTOR_ACCEPTED&page=1&pageSize=5", getToken).catch(() => null),
           ]);
         if (!alive) return;
 
         const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
         const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
         const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
+        const acceptJson = acceptResp ? await acceptResp.json().catch(() => null) : null;
         if (!alive) return;
 
         setSummary(summaryJson ?? null);
@@ -115,6 +130,13 @@ export default function RouterOverviewPage() {
           Array.isArray(jobsJson?.jobs) ? jobsJson.jobs.length : Array.isArray(jobsJson) ? jobsJson.length : 0,
         );
         setUnreadNotifs(typeof notifJson?.unreadCount === "number" ? notifJson.unreadCount : 0);
+
+        const notifs: AcceptNotif[] = Array.isArray(acceptJson?.notifications) ? acceptJson.notifications : [];
+        setAcceptNotifs(notifs);
+        if (notifs.length > 0 && !confettiFired.current) {
+          confettiFired.current = true;
+          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+        }
       } catch {
         if (alive) setError("Failed to load dashboard data");
       } finally {
@@ -187,6 +209,35 @@ export default function RouterOverviewPage() {
               href="/dashboard/router/payments"
               compact={false}
             />
+          </div>
+        </section>
+      )}
+
+      {/* Celebration Card */}
+      {acceptNotifs.length > 0 && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-emerald-800">
+            Routing Success
+          </h2>
+          <div className="mt-3 space-y-2">
+            {acceptNotifs.map((n) => {
+              const meta = n.metadata ?? {};
+              return (
+                <div key={n.id} className="text-sm text-emerald-700">
+                  <span className="font-semibold">{meta.jobTitle ?? "A job"}</span>
+                  {" has been accepted by "}
+                  <span className="font-semibold">{meta.contractorName ?? "a contractor"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4">
+            <Link
+              href="/dashboard/router/jobs/routed"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              View Routed Jobs
+            </Link>
           </div>
         </section>
       )}
