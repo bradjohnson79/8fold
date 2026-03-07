@@ -63,6 +63,8 @@ function formatCountdown(remainingMs: number): string {
   return `${totalMinutes} ${totalMinutes === 1 ? "Minute" : "Minutes"}`;
 }
 
+const SLOT_ORDER = ["morning", "afternoon", "evening"];
+
 function formatAvailability(avail: Record<string, Record<string, boolean>> | string | null | undefined): string {
   if (!avail) return "Not specified";
   let obj: Record<string, Record<string, boolean>>;
@@ -75,9 +77,9 @@ function formatAvailability(avail: Record<string, Record<string, boolean>> | str
   const days = Object.entries(obj)
     .map(([day, slots]) => {
       if (typeof slots !== "object" || slots === null) return null;
-      const active = Object.entries(slots)
-        .filter(([, v]) => v === true)
-        .map(([slot]) => slot.charAt(0).toUpperCase() + slot.slice(1));
+      const active = SLOT_ORDER
+        .filter((slot) => slots?.[slot])
+        .map((slot) => slot.charAt(0).toUpperCase() + slot.slice(1));
       if (!active.length) return null;
       return `${day.charAt(0).toUpperCase() + day.slice(1)} — ${active.join(", ")}`;
     })
