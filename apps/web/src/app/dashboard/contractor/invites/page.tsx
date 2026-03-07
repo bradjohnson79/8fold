@@ -36,6 +36,13 @@ type InviteListResponse = {
   invites: Invite[];
 };
 
+const INVALID_INVITE_CODES = [
+  "V4_JOB_NOT_ASSIGNABLE",
+  "V4_JOB_ALREADY_ASSIGNED",
+  "V4_INVITE_EXPIRED",
+  "V4_INVITE_ALREADY_RESPONDED",
+];
+
 function formatMoney(centsLike: number | null | undefined) {
   const cents = Math.max(0, Number(centsLike ?? 0) || 0);
   return `$${(cents / 100).toFixed(2)}`;
@@ -106,6 +113,7 @@ export default function ContractorInvitesPage() {
   const [showIncompleteModal, setShowIncompleteModal] = React.useState(false);
   const [serverOffsetMs, setServerOffsetMs] = React.useState(0);
   const [clockMs, setClockMs] = React.useState(() => Date.now());
+  const [invalidInviteIds, setInvalidInviteIds] = React.useState<Set<string>>(new Set());
   const visibleInvites = React.useMemo(
     () =>
       invites.filter((invite) => {
@@ -135,6 +143,7 @@ export default function ContractorInvitesPage() {
         setServerOffsetMs(serverTimeMs - requestStartedAt);
       }
       setInvites(Array.isArray(data.invites) ? data.invites : []);
+      setInvalidInviteIds(new Set());
       setClockMs(Date.now());
     } catch (e: unknown) {
       if (e instanceof Error && (e as any).code === "AUTH_MISSING_TOKEN") {
@@ -209,6 +218,10 @@ export default function ContractorInvitesPage() {
           setShowIncompleteModal(true);
           return;
         }
+        const code = data?.error?.code ?? "";
+        if (resp.status === 409 && INVALID_INVITE_CODES.includes(code)) {
+          setInvalidInviteIds((prev) => new Set(prev).add(invite.inviteId));
+        }
         setError(data?.error?.message ?? "Failed to accept invite");
         return;
       }
@@ -234,6 +247,10 @@ export default function ContractorInvitesPage() {
       );
       const data = (await resp.json().catch(() => ({}))) as ApiErrorBody;
       if (!resp.ok) {
+        const code = data?.error?.code ?? "";
+        if (resp.status === 409 && INVALID_INVITE_CODES.includes(code)) {
+          setInvalidInviteIds((prev) => new Set(prev).add(invite.inviteId));
+        }
         setError(data?.error?.message ?? "Failed to reject invite");
         return;
       }
@@ -285,9 +302,13 @@ export default function ContractorInvitesPage() {
                     Contractor Amount: {formatMoney(invite.contractorAmount)}
                   </p>
                   <p><span className="font-medium">Address:</span> {invite.address || "Not provided"}</p>
-                  <p className={`font-medium ${countdownTone(remainingMs)}`}>
-                    Expires in: {formatCountdown(remainingMs)}
-                  </p>
+                  {invalidInviteIds.has(invite.inviteId) ? (
+                    <p className="font-medium text-slate-600">Expires in: Expired</p>
+                  ) : (
+                    <p className={`font-medium ${countdownTone(remainingMs)}`}>
+                      Expires in: {formatCountdown(remainingMs)}
+                    </p>
+                  )}
                 </div>
 
                 {mapUrl ? (
