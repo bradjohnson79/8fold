@@ -263,9 +263,48 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
 
 export async function getStage2JobContractors(jobId: string): Promise<Stage2GetContractorsResult> {
   const job = await fetchJobSnapshot(jobId);
-  if (!job) return { kind: "not_found" };
-  if (job.status !== "OPEN_FOR_ROUTING") return { kind: "job_not_available" };
-  if (!Number.isFinite(job.lat) || !Number.isFinite(job.lng)) return { kind: "missing_job_coords" };
+
+  console.error("[stage2-contractors-debug]", {
+    jobId,
+    exists: !!job,
+    status: job?.status,
+    routing_status: (job as any)?.routing_status ?? null,
+    lat: job?.lat,
+    lng: job?.lng,
+    latFinite: Number.isFinite(job?.lat),
+    lngFinite: Number.isFinite(job?.lng),
+  });
+
+  if (!job) {
+    console.error("[stage2-contractors-debug] job not found", { jobId });
+    return { kind: "not_found" };
+  }
+
+  if (job.status !== "OPEN_FOR_ROUTING") {
+    console.error("[stage2-contractors-debug] job_not_available", {
+      jobId,
+      status: job.status,
+    });
+    return { kind: "job_not_available" };
+  }
+
+  if (!Number.isFinite(job.lat) || !Number.isFinite(job.lng)) {
+    console.error("[stage2-contractors-debug] missing_job_coords", {
+      jobId,
+      lat: job.lat,
+      lng: job.lng,
+    });
+    return { kind: "missing_job_coords" };
+  }
+
+  console.error("[stage2-contractors-debug] contractor discovery starting", {
+    jobId,
+    lat: job.lat,
+    lng: job.lng,
+    tradeCategory: job.tradeCategory,
+    regionCode: job.regionCode,
+    countryCode: job.countryCode,
+  });
 
   const contractors = await computeEligibleContractors(job);
   return {
