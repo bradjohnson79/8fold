@@ -46,7 +46,7 @@ export const contractorAccounts = dbSchema.table("contractor_accounts", {
   payoutStatus: text("payoutStatus"),
   stripeAccountId: text("stripeAccountId"),
 
-  isApproved: boolean("isApproved").default(false),
+  isApproved: boolean("isApproved").default(true),
   jobsCompleted: integer("jobsCompleted").default(0),
   rating: doublePrecision("rating"),
 

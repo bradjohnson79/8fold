@@ -347,11 +347,9 @@ export async function list(params: RoleListParams) {
       const regionCode = pickName([r.regionCode, r.userRegionCode]);
       const city = pickName([r.city, profile?.city, r.userCity]);
 
-      const approvalBadge = r.approved === true || String(r.contractorStatus ?? "").toUpperCase() === "APPROVED"
-        ? "APPROVED"
-        : String(r.contractorStatus ?? "").toUpperCase() === "REJECTED"
-          ? "REJECTED"
-          : "PENDING_APPROVAL";
+      const approvalBadge = String(r.contractorStatus ?? "").toUpperCase() === "REJECTED"
+        ? "REJECTED"
+        : "APPROVED";
 
       const payoutStatus = String(r.payoutStatus ?? "").toUpperCase();
       const stripeConnected = Boolean(

@@ -123,8 +123,6 @@ export async function GET(req: Request) {
       .where(
         and(
           eq(users.status, "ACTIVE"),
-          eq(contractors.status, "APPROVED"),
-          // Prisma `tradeCategories: { has: category }` (enum[]). Cast to text[] for safe containment check.
           sql<boolean>`${contractors.tradeCategories}::text[] @> ARRAY[${String(category)}]::text[]`,
           category === "AUTOMOTIVE" ? eq(contractors.automotiveEnabled, true) : sql<boolean>`true`,
         ),

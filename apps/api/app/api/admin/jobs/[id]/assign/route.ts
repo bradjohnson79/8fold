@@ -85,7 +85,7 @@ export async function POST(req: Request) {
         .limit(1);
       const contractor = contractorRows[0] ?? null;
       if (!contractor) return { kind: "contractor_not_found" as const };
-      if (contractor.status !== "APPROVED") {
+      if (contractor.status === "REJECTED") {
         return { kind: "contractor_not_approved" as const };
       }
 

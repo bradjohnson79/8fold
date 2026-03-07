@@ -45,7 +45,7 @@ function formatBadgeLabel(badge: string): string {
   if (b === "PROFILE_CANONICAL_ONLY") return "Profile Canonical Only";
   if (b === "PROFILE_V4_ONLY") return "Profile V4 Only";
   if (b === "PROFILE_MISSING") return "Profile Missing";
-  if (b === "PENDING_APPROVAL") return "Pending Approval";
+  if (b === "PENDING_APPROVAL") return "Approved";
   return b.replace(/_/g, " ");
 }
 

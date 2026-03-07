@@ -33,7 +33,7 @@ export async function GET(req: Request) {
             regionCode: contractors.regionCode,
           })
           .from(contractors)
-          .where(and(ilike(contractors.email, email), eq(contractors.status, "APPROVED")))
+          .where(ilike(contractors.email, email))
           .limit(1)
       )[0] ?? null;
     if (!contractor) return NextResponse.json({ requests: [] });

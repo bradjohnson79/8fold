@@ -81,7 +81,8 @@ export async function POST(req: Request) {
       .insert(contractors)
       .values({
         id,
-        status: "PENDING",
+        status: "APPROVED",
+        approvedAt: now,
         businessName: parsed.data.businessName,
         phone: parsed.data.phone ?? null,
         email: parsed.data.email ?? null,

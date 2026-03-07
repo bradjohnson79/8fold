@@ -5,8 +5,8 @@ import { contractorStatusEnum, contractorTradeEnum, countryCodeEnum, tradeCatego
 // Mirrors Prisma `Contractor` table (route-scoped minimal fields for reads).
 export const contractors = dbSchema.table("Contractor", {
   id: text("id").primaryKey(),
-  // DB authoritative: enum ContractorStatus NOT NULL default PENDING
-  status: contractorStatusEnum("status").notNull().default("PENDING"),
+  // DB authoritative: enum ContractorStatus NOT NULL default APPROVED
+  status: contractorStatusEnum("status").notNull().default("APPROVED"),
 
   businessName: text("businessName").notNull(),
   contactName: text("contactName"),

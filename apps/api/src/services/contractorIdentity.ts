@@ -38,7 +38,7 @@ export async function getApprovedContractorForUserId(
       status: contractors.status,
     })
     .from(contractors)
-    .where(and(ilike(contractors.email, email), eq(contractors.status, "APPROVED" as any)))
+    .where(ilike(contractors.email, email))
     .limit(1);
   const contractor = contractorRows[0] ?? null;
   if (!contractor) return { kind: "no_contractor" as const };
