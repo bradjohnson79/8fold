@@ -374,11 +374,19 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
   });
   } catch (txErr) {
     if (isV4Error(txErr)) throw txErr;
+    const cause = (txErr as any)?.cause;
     console.error("[invite-accept-tx-error]", {
       inviteId,
       contractorUserId,
       message: txErr instanceof Error ? txErr.message : String(txErr),
       code: (txErr as any)?.code,
+      causeMessage: cause instanceof Error ? cause.message : typeof cause === "object" && cause ? JSON.stringify(cause) : String(cause ?? ""),
+      causeCode: cause?.code,
+      severity: cause?.severity,
+      detail: cause?.detail,
+      constraint: cause?.constraint,
+      column: cause?.column,
+      table: cause?.table,
       stack: txErr instanceof Error ? txErr.stack?.slice(0, 500) : undefined,
     });
     throw txErr;

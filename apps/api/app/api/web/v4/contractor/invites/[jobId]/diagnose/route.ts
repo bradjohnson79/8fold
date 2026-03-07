@@ -101,7 +101,38 @@ export async function GET(
     const assignIdx = (assignIndexCheck as any).rows ?? assignIndexCheck ?? [];
     steps["9_assignment_unique_index"] = assignIdx.length > 0 ? "EXISTS" : "MISSING";
 
-    steps["10_diagnosis"] = {
+    const jobColCheck = await db.execute(sql`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'jobs'
+        AND column_name IN (
+          'accepted_at', 'routing_started_at', 'routing_expires_at',
+          'poster_accept_expires_at', 'first_routed_at',
+          'routing_status', 'contractor_user_id'
+        )
+      ORDER BY column_name
+    `);
+    const jobCols = ((jobColCheck as any).rows ?? jobColCheck ?? []).map((r: any) => r.column_name);
+    const requiredCols = [
+      "accepted_at", "routing_started_at", "routing_expires_at",
+      "poster_accept_expires_at", "routing_status", "contractor_user_id",
+    ];
+    const missingJobCols = requiredCols.filter((c) => !jobCols.includes(c));
+    steps["10_jobs_columns"] = {
+      found: jobCols,
+      missing: missingJobCols.length > 0 ? missingJobCols : "NONE",
+    };
+
+    const prefTableCheck = await db.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = 'v4_notification_preferences'
+      ) AS exists
+    `);
+    const prefExists = ((prefTableCheck as any).rows ?? prefTableCheck ?? [])[0]?.exists;
+    steps["11_notification_preferences_table"] = prefExists ? "EXISTS" : "MISSING";
+
+    steps["12_diagnosis"] = {
       invite_status: invite?.status,
       invite_still_valid: invite?.still_valid,
       invite_belongs_to_user: invite?.contractor_user_id === userId,
@@ -109,10 +140,12 @@ export async function GET(
       job_routing_status: job?.routing_status,
       job_already_assigned: !!job?.contractor_user_id,
       existing_assignment_count: assignments.length,
+      missing_job_columns: missingJobCols.length > 0 ? missingJobCols : "NONE",
       assignable:
         invite?.status === "PENDING" &&
         invite?.still_valid === true &&
         invite?.contractor_user_id === userId &&
+        missingJobCols.length === 0 &&
         (job?.status === "INVITED" ||
           (String(job?.status).toUpperCase() === "OPEN_FOR_ROUTING" &&
             String(job?.routing_status).toUpperCase() === "INVITES_SENT")),
