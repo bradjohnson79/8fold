@@ -59,7 +59,7 @@ export async function routeV4Job(
     const updated = await tx
       .update(jobs)
       .set({
-        status: "INVITED" as any,
+        // Keep status OPEN_FOR_ROUTING; INVITED is not in JobStatus enum.
         claimed_by_user_id: routerUserId,
         claimed_at: now,
         routed_at: now,

@@ -6,7 +6,7 @@ import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
-import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { haversineKm } from "@/src/jobs/geo";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
@@ -443,18 +443,18 @@ export async function routeStage2JobToContractors(
             },
           });
 
-        await emitDomainEvent(
-          {
-            type: "ROUTER_JOB_ROUTED",
-            payload: {
-              jobId,
-              contractorId,
-              createdAt: now,
-              dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
-            },
-          },
-          { tx },
-        );
+        await tx.insert(v4EventOutbox).values({
+          id: randomUUID(),
+          eventType: "ROUTER_JOB_ROUTED",
+          payload: {
+            jobId,
+            contractorId,
+            createdAt: now.toISOString(),
+            dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
+          } as Record<string, unknown>,
+          createdAt: now,
+        });
+        console.log("[event-outbox] event queued", { type: "ROUTER_JOB_ROUTED", jobId, contractorId });
       }
 
       await tx.insert(auditLogs).values({

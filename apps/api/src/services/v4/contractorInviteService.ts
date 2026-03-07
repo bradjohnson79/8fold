@@ -1,12 +1,12 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
-import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { badRequest, conflict, forbidden, type V4Error } from "./v4Errors";
 import { expireStaleInvitesAndResetJobs } from "./inviteExpirationService";
@@ -209,9 +209,7 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
     if (job.status === "ASSIGNED") throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
     const status = String(job.status ?? "").toUpperCase();
     const routingStatus = String(job.routingStatus ?? "").toUpperCase();
-    const assignable =
-      status === "INVITED" ||
-      (status === "OPEN_FOR_ROUTING" && routingStatus === "INVITES_SENT");
+    const assignable = status === "OPEN_FOR_ROUTING" && routingStatus === "INVITES_SENT";
     if (!assignable) {
       throw conflict("V4_JOB_NOT_ASSIGNABLE", "Job is no longer available for assignment");
     }
@@ -236,48 +234,87 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
         ),
       );
 
-    const assignmentRows = await tx
-      .select({ id: v4JobAssignments.id })
+    console.log("[invite-accept-step] assignment insert attempted", {
+      jobId: inviteAfterLock.jobId,
+      contractorUserId,
+    });
+    await tx
+      .insert(v4JobAssignments)
+      .values({
+        id: randomUUID(),
+        jobId: inviteAfterLock.jobId,
+        contractorUserId,
+        status: "ASSIGNED",
+        assignedAt: now,
+      })
+      .onConflictDoNothing({
+        target: [v4JobAssignments.jobId],
+      });
+
+    const assignmentCheck = await tx
+      .select({ id: v4JobAssignments.id, contractorUserId: v4JobAssignments.contractorUserId })
       .from(v4JobAssignments)
       .where(eq(v4JobAssignments.jobId, inviteAfterLock.jobId))
       .limit(1);
-    if (assignmentRows.length > 0) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
+    console.log("[invite-accept-step] assignment check", assignmentCheck);
+    const assignment = assignmentCheck[0];
+    if (!assignment || assignment.contractorUserId !== contractorUserId) {
+      throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
+    }
 
-    console.log("[invite-accept] creating assignment");
-    await tx.insert(v4JobAssignments).values({
-      id: randomUUID(),
+    const currentRow = await tx
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        routingStatus: jobs.routing_status,
+        contractorUserId: jobs.contractor_user_id,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, inviteAfterLock.jobId))
+      .limit(1);
+    console.log("[invite-accept-step] job row before update", currentRow[0] ?? null);
+
+    const nextRoutingStatus = ROUTING_STATUS.ROUTED_BY_ROUTER as string;
+    const jobUpdatePayload = {
+      status: "ASSIGNED" as any,
+      contractor_user_id: contractorUserId,
+      accepted_at: now,
+      poster_accept_expires_at: posterAcceptExpiresAt instanceof Date ? posterAcceptExpiresAt : new Date(posterAcceptExpiresAt),
+      routing_status: nextRoutingStatus as any,
+      routing_started_at: null as Date | null,
+      routing_expires_at: null as Date | null,
+      updated_at: now,
+    };
+    console.log("[invite-accept-step] job update payload", {
       jobId: inviteAfterLock.jobId,
-      contractorUserId,
-      status: "ASSIGNED",
-      assignedAt: now,
+      nextStatus: "ASSIGNED",
+      nextRoutingStatus: ROUTING_STATUS.ROUTED_BY_ROUTER,
+      routing_started_at: null,
+      routing_expires_at: null,
+      poster_accept_expires_at: jobUpdatePayload.poster_accept_expires_at?.toISOString(),
     });
-    console.log("[invite-accept-step] assignment inserted", { jobId: inviteAfterLock.jobId });
 
     const updatedJob = await tx
       .update(jobs)
-      .set({
-        status: "ASSIGNED" as any,
-        contractor_user_id: contractorUserId,
-        accepted_at: now,
-        poster_accept_expires_at: posterAcceptExpiresAt,
-        routing_status: ROUTING_STATUS.INVITE_ACCEPTED as any,
-        routing_started_at: null,
-        routing_expires_at: null,
-        updated_at: now,
-      })
+      .set(jobUpdatePayload)
       .where(
         and(
           eq(jobs.id, inviteAfterLock.jobId),
-          or(
-            eq(jobs.status, "INVITED" as any),
-            and(
-              eq(jobs.status, "OPEN_FOR_ROUTING" as any),
-              eq(jobs.routing_status, "INVITES_SENT" as any),
-            ),
-          ),
+          isNull(jobs.contractor_user_id),
         ),
       )
       .returning({ id: jobs.id });
+
+    console.log("[invite-accept-step] job update result", { updatedRows: updatedJob.length });
+    if (updatedJob.length === 0) {
+      console.error("[invite-accept-step] job update mismatch", {
+        jobId: inviteAfterLock.jobId,
+        expectedStatus: ["OPEN_FOR_ROUTING + INVITES_SENT"],
+        actualStatus: currentRow[0]?.status,
+        actualRoutingStatus: currentRow[0]?.routingStatus,
+        actualContractorUserId: currentRow[0]?.contractorUserId,
+      });
+    }
     if (updatedJob.length !== 1) throw conflict("V4_JOB_ALREADY_ASSIGNED", "Job is already assigned");
     console.log("[invite-accept] job update ok");
     console.log("[invite-accept-step] job updated", { jobId: inviteAfterLock.jobId });
@@ -334,40 +371,25 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
       });
     }
 
-    console.log("[invite-accept-step] before emitDomainEvent", {
-      jobId: inviteAfterLock.jobId,
-      inviteId,
-      contractorUserId,
-    });
-    try {
-      await emitDomainEvent(
-        {
-          type: "CONTRACTOR_ACCEPTED_INVITE",
-          payload: {
-            jobId: inviteAfterLock.jobId,
-            inviteId,
-            contractorId: contractorUserId,
-            jobPosterId: String(job.jobPosterUserId),
-            routerId: job.routerUserId ? String(job.routerUserId) : null,
-            createdAt: now,
-            dedupeKeyBase: `contractor_accepted:${inviteId}`,
-          },
-        },
-        { tx },
-      );
-    } catch (eventErr) {
-      console.error("[invite-accept-event-error]", {
+    const acceptEvent = {
+      type: "CONTRACTOR_ACCEPTED_INVITE" as const,
+      payload: {
         jobId: inviteAfterLock.jobId,
         inviteId,
-        contractorUserId,
-        message: eventErr instanceof Error ? eventErr.message : String(eventErr),
-        code: (eventErr as any)?.code,
-        stack: eventErr instanceof Error ? eventErr.stack?.slice(0, 500) : undefined,
-      });
-    }
-    console.log("[invite-accept-step] after emitDomainEvent", {
-      jobId: inviteAfterLock.jobId,
+        contractorId: contractorUserId,
+        jobPosterId: String(job.jobPosterUserId),
+        routerId: job.routerUserId ? String(job.routerUserId) : null,
+        createdAt: now,
+        dedupeKeyBase: `contractor_accepted:${inviteId}`,
+      },
+    };
+    await tx.insert(v4EventOutbox).values({
+      id: randomUUID(),
+      eventType: acceptEvent.type,
+      payload: JSON.parse(JSON.stringify(acceptEvent.payload)) as Record<string, unknown>,
+      createdAt: now,
     });
+    console.log("[event-outbox] event queued", { type: acceptEvent.type, jobId: inviteAfterLock.jobId });
 
     console.log("[invite-accept] transaction completing successfully", { jobId: inviteAfterLock.jobId });
     return { success: true as const, jobId: inviteAfterLock.jobId };
@@ -419,9 +441,8 @@ export async function rejectInviteById(contractorUserId: string, inviteId: strin
       .limit(1);
       const job = jobRows[0] ?? null;
       if (job) {
-      await emitDomainEvent(
-        {
-          type: "CONTRACTOR_REJECTED_INVITE",
+        const rejectEvent = {
+          type: "CONTRACTOR_REJECTED_INVITE" as const,
           payload: {
             inviteId,
             jobId: invite.jobId,
@@ -430,9 +451,14 @@ export async function rejectInviteById(contractorUserId: string, inviteId: strin
             createdAt: now,
             dedupeKeyBase: `invite_rejected:${inviteId}`,
           },
-        },
-        { tx },
-      );
+        };
+        await tx.insert(v4EventOutbox).values({
+          id: randomUUID(),
+          eventType: rejectEvent.type,
+          payload: JSON.parse(JSON.stringify(rejectEvent.payload)) as Record<string, unknown>,
+          createdAt: now,
+        });
+        console.log("[event-outbox] event queued", { type: rejectEvent.type, jobId: invite.jobId });
       }
     return { success: true as const };
   });

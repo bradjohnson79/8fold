@@ -72,6 +72,7 @@ export * from "./v4PmRequest";
 export * from "./v4PmRequestItem";
 export * from "./v4Notification";
 export * from "./v4NotificationPreference";
+export * from "./v4EventOutbox";
 export * from "./scoreAppraisal";
 export * from "./aiEnforcementEvent";
 export * from "./dispute";
