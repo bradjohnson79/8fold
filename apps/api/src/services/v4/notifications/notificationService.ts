@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+/** Use global Web Crypto API to avoid webpack/node resolution issues in instrumentation path */
+function randomUUID(): string {
+  return globalThis.crypto.randomUUID();
+}
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { v4Notifications } from "@/db/schema/v4Notification";
