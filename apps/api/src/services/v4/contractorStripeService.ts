@@ -201,9 +201,9 @@ async function persistPayoutEnabled(args: {
       .update(payoutMethods)
       .set({
         details: sql`jsonb_set(
-          jsonb_set(${payoutMethods.details}, '{stripeAccountId}', to_jsonb(${args.stripeAccountId}), true),
+          jsonb_set(${payoutMethods.details}, '{stripeAccountId}', to_jsonb(${args.stripeAccountId}::text), true),
           '{stripePayoutsEnabled}',
-          to_jsonb(${args.payoutsEnabled}),
+          to_jsonb(${args.payoutsEnabled}::boolean),
           true
         )`,
         updatedAt: now,
@@ -287,12 +287,20 @@ export async function getContractorStripeStatus(userId: string): Promise<Contrac
     ? account.requirements.past_due.filter((v): v is string => typeof v === "string")
     : [];
 
-  await persistPayoutEnabled({
-    userId,
-    contractorId: identity.contractorId,
-    stripeAccountId: identity.stripeAccountId,
-    payoutsEnabled,
-  });
+  try {
+    await persistPayoutEnabled({
+      userId,
+      contractorId: identity.contractorId,
+      stripeAccountId: identity.stripeAccountId,
+      payoutsEnabled,
+    });
+  } catch (err) {
+    console.error("V4_CONTRACTOR_PERSIST_PAYOUT_ERROR", {
+      userId,
+      stripeAccountId: identity.stripeAccountId,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return {
     ok: true,

@@ -711,7 +711,7 @@ async function handleWebhook(req: Request) {
             tx
               .update(payoutMethods)
               .set({
-                details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${payoutsEnabled}), true)`,
+                details: sql`jsonb_set(${payoutMethods.details}, '{stripePayoutsEnabled}', to_jsonb(${payoutsEnabled}::boolean), true)`,
                 updatedAt: now,
               } as any)
               .where(
