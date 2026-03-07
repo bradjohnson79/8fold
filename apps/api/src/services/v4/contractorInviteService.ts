@@ -314,23 +314,29 @@ export async function acceptInviteById(contractorUserId: string, inviteId: strin
     console.log("[invite-accept-step] thread upserted", { jobId: inviteAfterLock.jobId });
 
     console.log("[invite-accept] emitting domain event");
-    console.log("[invite-accept-step] before emitDomainEvent", { type: "CONTRACTOR_ACCEPTED_INVITE" });
-    await emitDomainEvent(
-      {
-        type: "CONTRACTOR_ACCEPTED_INVITE",
-        payload: {
-          jobId: inviteAfterLock.jobId,
-          inviteId,
-          contractorId: contractorUserId,
-          jobPosterId: String(job.jobPosterUserId),
-          routerId: job.routerUserId ? String(job.routerUserId) : null,
-          createdAt: now,
-          dedupeKeyBase: `contractor_accepted:${inviteId}`,
+    try {
+      await emitDomainEvent(
+        {
+          type: "CONTRACTOR_ACCEPTED_INVITE",
+          payload: {
+            jobId: inviteAfterLock.jobId,
+            inviteId,
+            contractorId: contractorUserId,
+            jobPosterId: String(job.jobPosterUserId),
+            routerId: job.routerUserId ? String(job.routerUserId) : null,
+            createdAt: now,
+            dedupeKeyBase: `contractor_accepted:${inviteId}`,
+          },
         },
-      },
-      { tx },
-    );
-    console.log("[invite-accept-step] after emitDomainEvent", { type: "CONTRACTOR_ACCEPTED_INVITE" });
+        { tx },
+      );
+    } catch (eventErr) {
+      console.error("[invite-accept-event-error]", {
+        jobId: inviteAfterLock.jobId,
+        inviteId,
+        message: eventErr instanceof Error ? eventErr.message : String(eventErr),
+      });
+    }
 
     return { success: true as const, jobId: inviteAfterLock.jobId };
   });
