@@ -56,6 +56,6 @@ export async function GET(req: Request) {
     });
   } catch (e) {
     console.error("[admin-reviews]", e);
-    return err("REVIEWS_FETCH_FAILED", "Failed to fetch reviews", 500);
+    return err(500, "REVIEWS_FETCH_FAILED", "Failed to fetch reviews");
   }
 }
