@@ -48,7 +48,7 @@ export async function createAdjustmentRequest(
       status: jobs.status,
       title: jobs.title,
       amount_cents: jobs.amount_cents,
-      user_id: jobs.user_id,
+      user_id: jobs.job_poster_user_id,
       payment_currency: jobs.payment_currency,
     })
     .from(jobs)
