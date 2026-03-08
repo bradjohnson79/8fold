@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 
 export default function RouterSupportPage() {
   const { getToken } = useAuth();
   const [subject, setSubject] = useState("");
-  const [category, setCategory] = useState("HELP");
+  const [category, setCategory] = useState("GENERAL_SUPPORT");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -26,7 +27,7 @@ export default function RouterSupportPage() {
       const resp = await routerApiFetch("/api/web/v4/support/ticket", getToken, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subject: subject.trim(), category, body: body.trim() }),
+        body: JSON.stringify({ subject: subject.trim(), category, ticketType: category, body: body.trim() }),
       });
       const json = (await resp.json().catch(() => null)) as any;
       if (resp.status === 401) {
@@ -43,20 +44,53 @@ export default function RouterSupportPage() {
     }
   }
 
+  if (success) {
+    return (
+      <div className="space-y-5 p-6">
+        <h1 className="text-2xl font-bold text-slate-900">Support</h1>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          Ticket submitted. Check your{" "}
+          <Link href="/dashboard/router/support/inbox" className="font-bold underline">
+            Support Inbox
+          </Link>{" "}
+          for replies.
+        </div>
+        <div className="flex gap-3">
+          <Link
+            href="/dashboard/router/support/inbox"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            View Inbox
+          </Link>
+          <button
+            type="button"
+            onClick={() => setSuccess(false)}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Submit another
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-2xl font-bold text-slate-900">Support</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-2xl font-bold text-slate-900">Support</h1>
+        <Link
+          href="/dashboard/router/support/inbox"
+          className="shrink-0 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          View Inbox
+        </Link>
+      </div>
 
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       ) : null}
-      {success ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Ticket created successfully.
-        </div>
-      ) : null}
 
-      <form onSubmit={onSubmit} className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <form onSubmit={(e) => void onSubmit(e)} className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="space-y-5">
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Subject</span>
@@ -76,10 +110,10 @@ export default function RouterSupportPage() {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
-              <option value="HELP">Help</option>
-              <option value="TECHNICAL">Technical</option>
-              <option value="BILLING">Billing</option>
-              <option value="OTHER">Other</option>
+              <option value="GENERAL_SUPPORT">General Support</option>
+              <option value="ROUTING_ISSUE">Routing Issue</option>
+              <option value="JOB_ISSUE">Job Issue</option>
+              <option value="ACCOUNT_SUPPORT">Account Support</option>
             </select>
           </label>
 
@@ -95,7 +129,7 @@ export default function RouterSupportPage() {
           </label>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 flex items-center gap-4">
           <button
             type="submit"
             disabled={saving}
@@ -103,6 +137,7 @@ export default function RouterSupportPage() {
           >
             {saving ? "Submitting..." : "Submit Ticket"}
           </button>
+          <p className="text-xs text-slate-500">All communication stays internal — no emails shared.</p>
         </div>
       </form>
     </div>

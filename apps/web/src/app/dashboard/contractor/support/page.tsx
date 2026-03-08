@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { apiFetch } from "@/lib/routerApi";
 
 export default function ContractorSupportPage() {
   const { getToken } = useAuth();
   const [subject, setSubject] = useState("");
-  const [category, setCategory] = useState("GENERAL INQUIRY");
+  const [category, setCategory] = useState("GENERAL_SUPPORT");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -25,7 +26,7 @@ export default function ContractorSupportPage() {
       const resp = await apiFetch("/api/web/v4/support/ticket", getToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: subject.trim(), category, body: body.trim() }),
+        body: JSON.stringify({ subject: subject.trim(), category, ticketType: category, body: body.trim() }),
       });
       if (resp.status === 401) {
         setError("Authentication lost — please refresh and sign in again.");
@@ -55,24 +56,44 @@ export default function ContractorSupportPage() {
       <div className="max-w-xl p-6">
         <h1 className="text-2xl font-bold text-slate-900">Support</h1>
         <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          Your support ticket has been submitted. We&apos;ll get back to you soon.
+          Your support ticket has been submitted. We&apos;ll get back to you soon. Check your{" "}
+          <Link href="/dashboard/contractor/support/inbox" className="font-semibold underline">
+            Support Inbox
+          </Link>{" "}
+          for replies.
         </div>
-        <button
-          type="button"
-          onClick={() => setSubmitted(false)}
-          className="mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Submit another ticket
-        </button>
+        <div className="mt-4 flex gap-3">
+          <Link
+            href="/dashboard/contractor/support/inbox"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            View Inbox
+          </Link>
+          <button
+            type="button"
+            onClick={() => setSubmitted(false)}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Submit another ticket
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="max-w-xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Support</h1>
-        <p className="mt-1 text-sm text-slate-600">Submit a support ticket.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Support</h1>
+          <p className="mt-1 text-sm text-slate-600">Submit a support ticket.</p>
+        </div>
+        <Link
+          href="/dashboard/contractor/support/inbox"
+          className="shrink-0 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          View Inbox
+        </Link>
       </div>
 
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
@@ -98,10 +119,11 @@ export default function ContractorSupportPage() {
             onChange={(e) => setCategory(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            <option value="GENERAL INQUIRY">General Inquiry</option>
-            <option value="TECHNICAL INQUIRY">Technical Inquiry</option>
-            <option value="REPORT A BUG">Report a Bug</option>
-            <option value="REPORT A NO-SHOW">Report a No-Show</option>
+            <option value="GENERAL_SUPPORT">General Support</option>
+            <option value="JOB_ISSUE">Job Issue</option>
+            <option value="PAYMENT_ISSUE">Payment Issue</option>
+            <option value="SECOND_APPRAISAL">Second Appraisal</option>
+            <option value="ACCOUNT_SUPPORT">Account Support</option>
             <option value="DISPUTE">Dispute</option>
           </select>
         </div>
@@ -125,7 +147,7 @@ export default function ContractorSupportPage() {
           {submitting ? "Submitting..." : "Submit Ticket"}
         </button>
         <p className="text-xs text-slate-500">
-          &ldquo;Dispute&rdquo; routes directly to Admin Disputes. &ldquo;Report a No-Show&rdquo; routes to Support for office review.
+          All communication happens internally — no email addresses are shared. You&apos;ll receive a reply in your Support Inbox.
         </p>
       </form>
     </div>

@@ -24,18 +24,23 @@ export async function POST(req: Request) {
 
     const raw = await req.json().catch(() => ({}));
     const subject = typeof raw?.subject === "string" ? String(raw.subject).trim() : "";
-    const category = typeof raw?.category === "string" ? String(raw.category).trim() : "GENERAL INQUIRY";
-    const body = typeof raw?.body === "string" ? String(raw.body).trim() : "";
+    const category = typeof raw?.category === "string" ? String(raw.category).trim() : "GENERAL_SUPPORT";
+    const ticketType = typeof raw?.ticketType === "string" ? String(raw.ticketType).trim() : null;
+    const priority = typeof raw?.priority === "string" ? String(raw.priority).trim() : null;
+    const body = typeof raw?.body === "string" ? String(raw.body).trim() : (typeof raw?.message === "string" ? String(raw.message).trim() : "");
     const jobId = typeof raw?.jobId === "string" ? String(raw.jobId).trim() : null;
     const conversationId = typeof raw?.conversationId === "string" ? String(raw.conversationId).trim() : null;
     const attachmentPointers = raw?.attachmentPointers;
+
     if (!subject) throw badRequest("V4_SUPPORT_SUBJECT_REQUIRED", "Subject is required");
-    if (!body) throw badRequest("V4_SUPPORT_BODY_REQUIRED", "Body is required");
+    if (!body) throw badRequest("V4_SUPPORT_BODY_REQUIRED", "Message body is required");
 
     const { id, routedTo } = await createSupportTicket(user.id, role, subject, category, body, {
       jobId,
       conversationId,
       attachmentPointers,
+      ticketType,
+      priority,
     });
     return NextResponse.json({ id, routedTo });
   } catch (err) {

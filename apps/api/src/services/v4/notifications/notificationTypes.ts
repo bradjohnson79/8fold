@@ -47,6 +47,9 @@ export const NOTIFICATION_TYPES = [
   "PAYMENT_RECEIVED",
   "ROUTE_INVITE",
   "SYSTEM_ALERT",
+  // Support
+  "NEW_SUPPORT_TICKET",
+  "SUPPORT_REPLY",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
