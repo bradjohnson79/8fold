@@ -34,7 +34,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ threadI
     return NextResponse.json(result);
   } catch (err) {
     const status = typeof (err as any)?.status === "number" ? Number((err as any).status) : 400;
+    const code = typeof (err as any)?.code === "string" ? (err as any).code : undefined;
     const message = err instanceof Error ? err.message : "Failed to submit completion report";
-    return NextResponse.json({ ok: false, error: message }, { status });
+    console.error("[completion-report-poster]", { threadId: (await params).threadId, code, message, status });
+    return NextResponse.json({ ok: false, error: message, code }, { status });
   }
 }
