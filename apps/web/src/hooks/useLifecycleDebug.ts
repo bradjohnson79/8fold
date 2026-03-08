@@ -1,14 +1,14 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useSession } from "@/lib/useMeSession";
+import { useMeSession } from "@/lib/useMeSession";
 
 const isDev = process.env.NODE_ENV === "development";
 
 /** True when lifecycle debug panel should be visible (admin or dev). */
 export function useLifecycleDebug(): boolean {
   const pathname = usePathname();
-  const { me } = useSession();
+  const { me } = useMeSession();
 
   // Always enabled in development
   if (isDev) return true;
