@@ -521,6 +521,11 @@ export async function submitThreadCompletionReport(input: {
   const hasContractor = reports.some((r) => String(r.submittedByRole).toUpperCase() === "CONTRACTOR");
   const shouldEndConversation = hasPoster && hasContractor;
 
+  if (created && !shouldEndConversation) {
+    const waitingFor = hasPoster ? "Contractor" : "Job Poster";
+    await appendSystemMessage(thread.id, `Waiting for ${waitingFor} to submit their completion report.`);
+  }
+
   if (shouldEndConversation) {
     const threadRows = await db
       .select({ status: v4MessageThreads.status })
@@ -538,8 +543,8 @@ export async function submitThreadCompletionReport(input: {
         })
         .where(eq(v4MessageThreads.id, thread.id));
 
+      await appendSystemMessage(thread.id, "Job completed successfully. Funds are now releasable.");
       await appendSystemMessage(thread.id, "Conversation Ended.");
-      await appendSystemMessage(thread.id, "Visit your dashboard to release funds.");
     }
 
     await Promise.allSettled([

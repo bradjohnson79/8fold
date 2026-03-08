@@ -8,11 +8,18 @@ import { apiFetch } from "@/lib/routerApi";
 import { useContractorReadiness } from "@/hooks/useContractorReadiness";
 import { formatInviteCountdown, countdownColor } from "@/utils/formatInviteCountdown";
 
+type AwaitingCompletion = {
+  jobId: string;
+  title: string | null;
+  completionWindowExpiresAt: string | null;
+};
+
 type SummaryData = {
   pendingInvites: number;
   assignedJobsCount: number;
   completedJobsCount: number;
   availableEarnings: number;
+  awaitingPosterCompletion?: AwaitingCompletion[];
 };
 
 type InvitePreview = {
@@ -283,6 +290,33 @@ export default function ContractorOverviewClient() {
           </div>
         )}
       </div>
+
+      {(summary?.awaitingPosterCompletion ?? []).length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">Completion In Progress</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            You submitted your report. Waiting for the Job Poster to confirm.
+          </p>
+          <div className="mt-3 space-y-2">
+            {(summary?.awaitingPosterCompletion ?? []).map((j) => (
+              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-amber-100 bg-white px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
+                  <div className="text-xs text-slate-500">
+                    1/2 steps completed &middot; Waiting for Job Poster
+                    {j.completionWindowExpiresAt && (
+                      <span> &middot; Auto-completes {new Date(j.completionWindowExpiresAt).toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  PENDING
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Link

@@ -167,6 +167,7 @@ export const jobs = dbSchema.table(
     contractor_marked_complete_at: timestamp("contractor_marked_complete_at", { mode: "date" }),
     poster_marked_complete_at: timestamp("poster_marked_complete_at", { mode: "date" }),
     completed_at: timestamp("completed_at", { mode: "date" }),
+    completion_window_expires_at: timestamp("completion_window_expires_at", { mode: "date" }),
     contractor_completion_summary: text("contractor_completion_summary"),
 
     customer_approved_at: timestamp("customer_approved_at", { mode: "date" }),
