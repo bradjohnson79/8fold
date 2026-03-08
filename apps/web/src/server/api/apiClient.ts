@@ -114,6 +114,7 @@ async function originFetch(reqInit: {
       headers: mergedHeaders,
       body: reqInit.body,
       cache: "no-store",
+      ...(reqInit.body ? { duplex: "half" as any } : {}),
     });
   }
 
@@ -136,6 +137,7 @@ async function originFetch(reqInit: {
       body: reqInit.body,
       cache: "no-store",
       signal: controller.signal,
+      ...(reqInit.body ? { duplex: "half" as any } : {}),
     });
   } finally {
     if (t) clearTimeout(t);
