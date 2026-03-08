@@ -881,7 +881,7 @@ export async function notificationEventMapper(
       }
 
       case "COMPLETED": {
-        // Lifecycle event only; notifications sent by COMPLETED_FINALIZED.
+        // Lifecycle event only; notifications sent by JOB_COMPLETED_FINALIZED.
         return;
       }
 
