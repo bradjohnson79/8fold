@@ -1,5 +1,6 @@
 import { adminApiFetch } from "@/server/adminApiV4";
 import OverviewCardsClient, { type OverviewCardsPayload } from "./OverviewCardsClient";
+import CompactSystemStatus from "./CompactSystemStatus";
 
 type Overview = {
   totalJobs: number;
@@ -58,6 +59,8 @@ export default async function OverviewPage({
           <Card title="Integrity Alerts" value={String(overview.integrityAlerts)} />
         </div>
       ) : null}
+
+      <CompactSystemStatus />
 
       <OverviewCardsClient payload={cardsPayload} />
     </div>
