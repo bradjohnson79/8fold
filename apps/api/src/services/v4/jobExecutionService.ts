@@ -189,7 +189,7 @@ async function finalizeCompletionIfBothMarked(
 
   await exec.insert(v4EventOutbox).values({
     id: randomUUID(),
-    eventType: "JOB_COMPLETED",
+    eventType: "COMPLETED",
     payload: {
       jobId: input.jobId,
       contractorId: input.contractorUserId ? String(input.contractorUserId) : null,

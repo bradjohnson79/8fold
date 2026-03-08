@@ -23,6 +23,7 @@ const TYPE_LABELS: Record<string, string> = {
   NEW_JOB_INVITE: "New Job Invite",
   JOB_ACCEPTED: "Job Accepted",
   JOB_COMPLETED: "Job Completed",
+  COMPLETED: "Job Completed",
   PAYMENT_RELEASED: "Payment Released",
 };
 
@@ -33,6 +34,7 @@ function TypeBadge({ type }: { type?: string }) {
     NEW_JOB_INVITE: "bg-blue-100 text-blue-700",
     JOB_ACCEPTED: "bg-emerald-100 text-emerald-700",
     JOB_COMPLETED: "bg-green-100 text-green-700",
+    COMPLETED: "bg-green-100 text-green-700",
     PAYMENT_RELEASED: "bg-violet-100 text-violet-700",
   };
   const cls = colors[type] ?? "bg-slate-100 text-slate-700";

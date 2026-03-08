@@ -24,6 +24,7 @@ const TYPE_COLORS: Record<string, string> = {
   CONTRACTOR_ACCEPTED: "bg-emerald-50 text-emerald-700",
   JOB_STARTED: "bg-amber-50 text-amber-700",
   JOB_COMPLETED: "bg-slate-100 text-slate-700",
+  COMPLETED: "bg-slate-100 text-slate-700",
   NEW_MESSAGE: "bg-purple-50 text-purple-700",
 };
 
@@ -32,6 +33,7 @@ const FRIENDLY_LABELS: Record<string, string> = {
   CONTRACTOR_ACCEPTED: "Contractor Accepted",
   JOB_STARTED: "Job Started",
   JOB_COMPLETED: "Job Completed",
+  COMPLETED: "Job Completed",
   NEW_MESSAGE: "New Message",
 };
 
