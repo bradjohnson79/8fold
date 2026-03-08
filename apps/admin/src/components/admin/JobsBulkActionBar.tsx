@@ -2,11 +2,13 @@
 
 import React, { useState } from "react";
 
-type JobsBulkAction = "archive" | "delete";
+export type JobsBulkAction = "ARCHIVE" | "UNARCHIVE" | "DELETE_SOFT" | "DELETE_TEST_ONLY";
 
 const ACTION_OPTIONS: { value: JobsBulkAction; label: string }[] = [
-  { value: "archive", label: "Archive" },
-  { value: "delete", label: "Delete" },
+  { value: "ARCHIVE", label: "Archive" },
+  { value: "UNARCHIVE", label: "Unarchive" },
+  { value: "DELETE_SOFT", label: "Delete (soft)" },
+  { value: "DELETE_TEST_ONLY", label: "Delete (mock only)" },
 ];
 
 const selectStyle: React.CSSProperties = {
@@ -17,7 +19,7 @@ const selectStyle: React.CSSProperties = {
   padding: "8px 10px",
   fontSize: 13,
   fontWeight: 700,
-  minWidth: 180,
+  minWidth: 200,
 };
 
 const btnStyle: React.CSSProperties = {

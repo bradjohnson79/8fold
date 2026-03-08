@@ -2,7 +2,7 @@
 
 import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { JobsBulkActionBar } from "@/components/admin/JobsBulkActionBar";
+import { JobsBulkActionBar, type JobsBulkAction } from "@/components/admin/JobsBulkActionBar";
 import { DeleteConfirmModal } from "@/components/admin/DeleteConfirmModal";
 import { AdminToast } from "@/components/admin/AdminToast";
 
@@ -110,7 +110,7 @@ export function JobsTableClient({ rows, loadError }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"archive" | "delete" | null>(null);
+  const [pendingAction, setPendingAction] = useState<JobsBulkAction | null>(null);
   const [applying, setApplying] = useState(false);
 
   const toggleSelect = useCallback((id: string) => {
@@ -126,7 +126,7 @@ export function JobsTableClient({ rows, loadError }: Props) {
     setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))));
   }, [rows]);
 
-  async function executeBulkAction(action: "archive" | "delete") {
+  async function executeBulkAction(action: JobsBulkAction) {
     const ids = Array.from(selected);
     setApplying(true);
     try {
@@ -150,30 +150,23 @@ export function JobsTableClient({ rows, loadError }: Props) {
       }
 
       const data = json?.data ?? {};
-      const archived = data.archived ?? 0;
-      const deleted = data.deleted ?? 0;
-      const failed = data.failed ?? 0;
+      const processed: number = data.processed ?? 0;
+      const skipped: number = data.skipped ?? 0;
 
-      if (action === "archive") {
-        if (failed > 0 && archived > 0) {
-          setToast(`${archived} archived, ${failed} failed`);
-        } else if (failed > 0) {
-          setToast(`${failed} failed`);
-        } else {
-          setToast(`${archived} job${archived === 1 ? "" : "s"} archived`);
-        }
+      const actionLabels: Record<JobsBulkAction, string> = {
+        ARCHIVE: "archived",
+        UNARCHIVE: "unarchived",
+        DELETE_SOFT: "soft-deleted",
+        DELETE_TEST_ONLY: "deleted (mock)",
+      };
+      const label = actionLabels[action] ?? "processed";
+
+      if (processed === 0 && skipped > 0) {
+        setToast(`0 jobs ${label} — ${skipped} skipped (already in target state or not mock)`);
+      } else if (skipped > 0) {
+        setToast(`${processed} job${processed === 1 ? "" : "s"} ${label}, ${skipped} skipped`);
       } else {
-        if (failed > 0 && deleted > 0) {
-          const details = data.failedDetails ?? [];
-          const reasons = details.slice(0, 2).map((f: { id: string; reason: string }) => `${f.id}: ${f.reason}`).join("; ");
-          setToast(`${deleted} deleted, ${failed} failed. ${reasons}`);
-        } else if (failed > 0) {
-          const details = data.failedDetails ?? [];
-          const first = details[0];
-          setToast(first ? `${first.reason}` : `${failed} failed`);
-        } else {
-          setToast(`${deleted} job${deleted === 1 ? "" : "s"} deleted`);
-        }
+        setToast(`${processed} job${processed === 1 ? "" : "s"} ${label}`);
       }
 
       setSelected(new Set());
@@ -187,18 +180,16 @@ export function JobsTableClient({ rows, loadError }: Props) {
     }
   }
 
-  function handleApply(action: "archive" | "delete") {
-    if (action === "delete") {
-      setPendingAction("delete");
+  function handleApply(action: JobsBulkAction) {
+    if (action === "DELETE_SOFT" || action === "DELETE_TEST_ONLY") {
+      setPendingAction(action);
       return;
     }
-    setPendingAction("archive");
+    executeBulkAction(action);
   }
 
   function handleConfirmPending() {
-    if (pendingAction) {
-      executeBulkAction(pendingAction);
-    }
+    if (pendingAction) executeBulkAction(pendingAction);
   }
 
   return (

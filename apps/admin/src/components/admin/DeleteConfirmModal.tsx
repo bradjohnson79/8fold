@@ -73,9 +73,10 @@ export function DeleteConfirmModal({
 }) {
   const [typed, setTyped] = useState("");
 
-  const isDelete = action === "delete";
+  const isDelete = action === "DELETE_SOFT" || action === "DELETE_TEST_ONLY" || action === "delete";
+  const isMockOnly = action === "DELETE_TEST_ONLY";
   const confirmWord = isDelete ? "DELETE" : "ARCHIVE";
-  const label = isDelete ? "permanently delete" : "archive";
+  const label = isMockOnly ? "delete (mock jobs only)" : isDelete ? "soft-delete" : "archive";
   const confirmed = typed === confirmWord;
   const entity = count === 1 ? entityLabel : entityPlural;
 
@@ -87,7 +88,11 @@ export function DeleteConfirmModal({
         </div>
         <div style={{ fontSize: 14, color: "rgba(226,232,240,0.85)", lineHeight: 1.5 }}>
           You are about to <strong>{label}</strong> {count} {entity}.
-          {isDelete ? " This action is permanent and cannot be undone." : " This action cannot be easily undone."}
+          {isMockOnly
+            ? " Only mock jobs will be permanently removed. Real jobs will be skipped."
+            : isDelete
+              ? " Jobs will be archived (soft-deleted) and remain for audit purposes."
+              : " This action can be reversed with Unarchive."}
         </div>
         <div style={{ fontSize: 13, color: "rgba(226,232,240,0.65)", marginTop: 14 }}>
           Type <strong style={{ color: "rgba(239,68,68,0.95)" }}>{confirmWord}</strong> to confirm.
