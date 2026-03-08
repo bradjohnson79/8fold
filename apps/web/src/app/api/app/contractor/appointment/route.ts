@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy contractor API. Contractors now use /dashboard/contractor (V4).
+ * Use /api/web/v4/contractor/* endpoints instead. This route proxies to /api/web/contractor/appointment.
+ */
 import { NextResponse } from "next/server";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";

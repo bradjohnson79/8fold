@@ -1,6 +1,7 @@
 /**
- * Web proxy for V2 contractor profile API.
- * Isolated from legacy /api/app/contractor/profile.
+ * @deprecated Legacy contractor API. Contractors now use /dashboard/contractor (V4).
+ * Use /api/web/v4/contractor/profile instead.
+ * Web proxy for V2 contractor profile API. Isolated from legacy /api/app/contractor/profile.
  */
 
 import { NextResponse } from "next/server";

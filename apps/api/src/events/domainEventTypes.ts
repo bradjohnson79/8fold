@@ -22,6 +22,7 @@ export const DOMAIN_EVENT_TYPES = [
   "JOB_STARTED",
   "CONTRACTOR_MARKED_COMPLETE",
   "POSTER_MARKED_COMPLETE",
+  "JOB_COMPLETED",
   "JOB_COMPLETED_FINALIZED",
   "NEW_MESSAGE",
 ] as const;
@@ -177,6 +178,13 @@ export type DomainEventPayloadByType = {
     jobPosterId: string;
     contractorId?: string | null;
     createdAt?: Date;
+    dedupeKeyBase: string;
+  };
+  JOB_COMPLETED: {
+    jobId: string;
+    contractorId?: string | null;
+    jobPosterId?: string | null;
+    completedAt?: string;
     dedupeKeyBase: string;
   };
   JOB_COMPLETED_FINALIZED: {

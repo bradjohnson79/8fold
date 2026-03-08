@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy contractor API. Contractors now use /dashboard/contractor (V4).
+ * Use /api/web/contractor-waiver directly or /dashboard/contractor/terms.
+ */
 import { NextResponse } from "next/server";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";

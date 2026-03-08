@@ -20,7 +20,7 @@ export default async function SupportLayout({ children }: { children: React.Reac
 
   const role = String(session?.role ?? "").trim().toUpperCase();
   if (role === "ROUTER") redirect("/app/router/support");
-  if (role === "CONTRACTOR") redirect("/app/contractor/support");
+  if (role === "CONTRACTOR") redirect("/dashboard/contractor/support");
   if (role === "JOB_POSTER") redirect("/app/job-poster/support");
 
   // Fallback: render without shell (e.g. unauthenticated).

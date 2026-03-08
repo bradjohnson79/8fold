@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy contractor API. Contractors now use /dashboard/contractor (V4).
+ * Use /api/web/v4/contractor/messages/* instead.
+ */
 import { legacyRouteFrozen } from "@/lib/legacyFreeze";
 
 const NEXT_ROUTE = "/api/web/v4/contractor/messages/thread/{threadId}/send";
