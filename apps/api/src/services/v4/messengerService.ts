@@ -7,6 +7,7 @@ import { jobPosterProfilesV4 } from "@/db/schema/jobPosterProfileV4";
 import { jobs } from "@/db/schema/job";
 import { users } from "@/db/schema/user";
 import { v4CompletionReports } from "@/db/schema/v4CompletionReport";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4MessengerAppointments } from "@/db/schema/v4MessengerAppointment";
 import { appendSystemMessage } from "@/src/services/v4/v4MessageService";
@@ -275,6 +276,18 @@ export async function bookThreadAppointment(input: {
         updated_at: now,
       })
       .where(eq(jobs.id, thread.jobId));
+
+    await tx.insert(v4EventOutbox).values({
+      id: randomUUID(),
+      eventType: "APPOINTMENT_BOOKED",
+      payload: {
+        jobId: thread.jobId,
+        jobPosterId: thread.jobPosterUserId,
+        createdAt: now.toISOString(),
+        dedupeKey: `appointment_booked:${thread.id}:${scheduledAt.toISOString()}`,
+      } as Record<string, unknown>,
+      createdAt: now,
+    });
   });
 
   await appendSystemMessage(thread.id, `Appointment booked for ${formatUtcForSystemMessage(scheduledAt)}.`);

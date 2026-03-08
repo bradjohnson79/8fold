@@ -320,6 +320,13 @@ export async function notificationEventMapper(
 
       case "APPOINTMENT_BOOKED": {
         const p = event.payload;
+        const exec = tx ?? db;
+        const [jobRow] = await exec
+          .select({ title: jobs.title })
+          .from(jobs)
+          .where(eq(jobs.id, p.jobId))
+          .limit(1);
+        const jobTitle = jobRow?.title ?? "a job";
         await safeNotify(
           event.type,
           p,
@@ -327,14 +334,15 @@ export async function notificationEventMapper(
             userId: p.jobPosterId,
             role: "JOB_POSTER",
             type: "APPOINTMENT_BOOKED",
-            title: "Appointment booked",
-            message: "Your contractor booked an appointment.",
+            title: "Appointment Scheduled",
+            message: `A contractor scheduled an appointment for your job: ${jobTitle}`,
             entityType: asEntity("JOB"),
             entityId: p.jobId,
             priority: "NORMAL",
             createdAt: asDate(p.createdAt),
             dedupeKey: p.dedupeKey,
             idempotencyKey: p.dedupeKey,
+            metadata: { jobId: p.jobId, jobTitle },
           },
           tx,
         );

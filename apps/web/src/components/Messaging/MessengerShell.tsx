@@ -112,13 +112,14 @@ function fmtTimeRemaining(appointment: Appointment, nowMs = Date.now()) {
   const target = new Date(appointment.scheduledAtUTC).getTime();
   const delta = target - nowMs;
   if (!Number.isFinite(delta)) return "---";
-  if (delta <= 0) return "Started";
-  const totalMinutes = Math.floor(delta / 60000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
+  if (delta <= 0) return "Job starting now";
+  const totalSeconds = Math.floor(delta / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
   if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  return `${hours}h ${minutes}m`;
+  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
 function toLocalInputValue(isoUtc: string | null | undefined) {
@@ -172,9 +173,10 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
   const [nowMs, setNowMs] = useState(Date.now());
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+    const interval = appointment ? 1000 : 30000;
+    const timer = window.setInterval(() => setNowMs(Date.now()), interval);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [appointment]);
 
   async function loadThreads() {
     setLoadingThreads(true);
