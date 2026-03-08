@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
@@ -14,6 +13,8 @@ import {
   type ExecutionEligibility,
   type ExecutionJobRow,
 } from "./jobExecutionRules";
+
+const randomUUID = () => globalThis.crypto.randomUUID();
 
 type Executor = typeof db | any;
 
