@@ -1,8 +1,9 @@
+import { randomUUID } from "crypto";
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
-import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict } from "./v4Errors";
 import {
   computeExecutionEligibility,
@@ -17,19 +18,20 @@ import {
 type Executor = typeof db | any;
 
 async function emitJobStarted(jobId: string, payload: { contractorId?: string | null; jobPosterId?: string | null }, tx?: Executor) {
-  await emitDomainEvent(
-    {
-      type: "JOB_STARTED",
-      payload: {
-        jobId,
-        contractorId: payload.contractorId ? String(payload.contractorId) : null,
-        jobPosterId: payload.jobPosterId ? String(payload.jobPosterId) : null,
-        createdAt: new Date(),
-        dedupeKeyBase: `job_started:${jobId}`,
-      },
-    },
-    { tx, mode: "best_effort" },
-  );
+  const exec = tx ?? db;
+  const now = new Date();
+  await exec.insert(v4EventOutbox).values({
+    id: randomUUID(),
+    eventType: "JOB_STARTED",
+    payload: {
+      jobId,
+      contractorId: payload.contractorId ? String(payload.contractorId) : null,
+      jobPosterId: payload.jobPosterId ? String(payload.jobPosterId) : null,
+      createdAt: now.toISOString(),
+      dedupeKeyBase: `job_started:${jobId}`,
+    } as Record<string, unknown>,
+    createdAt: now,
+  });
 }
 
 export async function applyJobStartedTransitionIfDue(
@@ -150,34 +152,32 @@ async function finalizeCompletionIfBothMarked(
 
   if (!updated[0]?.id) return { finalized: false, completedAt: null };
 
-  await emitDomainEvent(
-    {
-      type: "JOB_COMPLETED_FINALIZED",
-      payload: {
-        jobId: input.jobId,
-        contractorId: input.contractorUserId ? String(input.contractorUserId) : null,
-        jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
-        routerId: input.routerUserId ? String(input.routerUserId) : null,
-        createdAt: completedAt,
-        dedupeKeyBase: `job_completed_finalized:${input.jobId}`,
-      },
-    },
-    { tx: exec, mode: "best_effort" },
-  );
-  await emitDomainEvent(
-    {
-      type: "FUNDS_RELEASE_ELIGIBLE",
-      payload: {
-        jobId: input.jobId,
-        contractorId: input.contractorUserId ? String(input.contractorUserId) : null,
-        jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
-        routerId: input.routerUserId ? String(input.routerUserId) : null,
-        createdAt: completedAt,
-        dedupeKeyBase: `funds_release_eligible:${input.jobId}`,
-      },
-    },
-    { tx: exec, mode: "best_effort" },
-  );
+  await exec.insert(v4EventOutbox).values({
+    id: randomUUID(),
+    eventType: "JOB_COMPLETED_FINALIZED",
+    payload: {
+      jobId: input.jobId,
+      contractorId: input.contractorUserId ? String(input.contractorUserId) : null,
+      jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
+      routerId: input.routerUserId ? String(input.routerUserId) : null,
+      createdAt: completedAt.toISOString(),
+      dedupeKeyBase: `job_completed_finalized:${input.jobId}`,
+    } as Record<string, unknown>,
+    createdAt: completedAt,
+  });
+  await exec.insert(v4EventOutbox).values({
+    id: randomUUID(),
+    eventType: "FUNDS_RELEASE_ELIGIBLE",
+    payload: {
+      jobId: input.jobId,
+      contractorId: input.contractorUserId ? String(input.contractorUserId) : null,
+      jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
+      routerId: input.routerUserId ? String(input.routerUserId) : null,
+      createdAt: completedAt.toISOString(),
+      dedupeKeyBase: `funds_release_eligible:${input.jobId}`,
+    } as Record<string, unknown>,
+    createdAt: completedAt,
+  });
 
   return { finalized: true, completedAt };
 }
@@ -262,29 +262,30 @@ export async function contractorMarkComplete(input: { contractorUserId: string; 
       return { ok: true as const, idempotent: true, finalized: Boolean(current.posterMarkedCompleteAt) };
     }
 
+    const completionWindowExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     await tx
       .update(jobs)
       .set({
         contractor_marked_complete_at: now,
         contractor_completed_at: current.contractorCompletedAt ?? now,
+        completion_window_expires_at: completionWindowExpiresAt,
         status: normalizeExecutionStatus(current.status) === "IN_PROGRESS" ? ("JOB_STARTED" as any) : (current.status as any),
         updated_at: now,
       })
       .where(eq(jobs.id, input.jobId));
 
-    await emitDomainEvent(
-      {
-        type: "CONTRACTOR_MARKED_COMPLETE",
-        payload: {
-          jobId: input.jobId,
-          jobPosterId: job.jobPosterUserId ? String(job.jobPosterUserId) : null,
-          contractorId: input.contractorUserId,
-          createdAt: now,
-          dedupeKeyBase: `contractor_marked_complete:${input.jobId}`,
-        },
-      },
-      { tx, mode: "best_effort" },
-    );
+    await tx.insert(v4EventOutbox).values({
+      id: randomUUID(),
+      eventType: "CONTRACTOR_MARKED_COMPLETE",
+      payload: {
+        jobId: input.jobId,
+        jobPosterId: job.jobPosterUserId ? String(job.jobPosterUserId) : null,
+        contractorId: input.contractorUserId,
+        createdAt: now.toISOString(),
+        dedupeKeyBase: `contractor_marked_complete:${input.jobId}`,
+      } as Record<string, unknown>,
+      createdAt: now,
+    });
 
     const finalized = await finalizeCompletionIfBothMarked(tx, {
       jobId: input.jobId,
@@ -391,19 +392,18 @@ export async function posterMarkComplete(input: { jobPosterUserId: string; jobId
       })
       .where(eq(jobs.id, input.jobId));
 
-    await emitDomainEvent(
-      {
-        type: "POSTER_MARKED_COMPLETE",
-        payload: {
-          jobId: input.jobId,
-          contractorId: job.contractorUserId ? String(job.contractorUserId) : null,
-          jobPosterId: input.jobPosterUserId,
-          createdAt: now,
-          dedupeKeyBase: `poster_marked_complete:${input.jobId}`,
-        },
-      },
-      { tx, mode: "best_effort" },
-    );
+    await tx.insert(v4EventOutbox).values({
+      id: randomUUID(),
+      eventType: "POSTER_MARKED_COMPLETE",
+      payload: {
+        jobId: input.jobId,
+        contractorId: job.contractorUserId ? String(job.contractorUserId) : null,
+        jobPosterId: input.jobPosterUserId,
+        createdAt: now.toISOString(),
+        dedupeKeyBase: `poster_marked_complete:${input.jobId}`,
+      } as Record<string, unknown>,
+      createdAt: now,
+    });
 
     const finalized = await finalizeCompletionIfBothMarked(tx, {
       jobId: input.jobId,

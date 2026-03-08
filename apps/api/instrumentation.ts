@@ -12,4 +12,7 @@ export async function register() {
 
   const { processEventOutbox } = await import("@/src/events/processEventOutbox");
   setInterval(processEventOutbox, 5000);
+
+  const { processCompletionTimeouts } = await import("@/src/workers/completionTimeoutWorker");
+  setInterval(processCompletionTimeouts, 60_000);
 }
