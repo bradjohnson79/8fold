@@ -84,7 +84,6 @@ export async function POST(req: Request): Promise<Response> {
           metadata: { archived_by_admin_id: identity.userId },
         });
       }
-
       return ok({ archived: count, failed: uniqueIds.length - count });
     }
 
@@ -93,36 +92,48 @@ export async function POST(req: Request): Promise<Response> {
     const failed: Array<{ id: string; reason: string }> = [];
 
     for (const id of uniqueIds) {
-      const existing = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1);
-      if (!existing[0]) {
-        failed.push({ id, reason: "Job not found" });
-        continue;
+      try {
+        const existing = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1);
+        if (!existing[0]) {
+          failed.push({ id, reason: "Job not found" });
+          continue;
+        }
+
+        const deleteCheck = await canDeleteJob(id);
+        if (!deleteCheck.ok) {
+          failed.push({ id, reason: deleteCheck.reason });
+          continue;
+        }
+
+        await adminAuditLog(req, auditAuth(identity), {
+          action: "JOB_DELETED",
+          entityType: "Job",
+          entityId: id,
+          metadata: {
+            deleted_by_admin_id: identity.userId,
+            deleted_reason: "bulk delete",
+            deleted_at: new Date().toISOString(),
+          },
+        });
+
+        await db.delete(jobs).where(eq(jobs.id, id));
+        deleted++;
+      } catch (jobErr) {
+        const reason = jobErr instanceof Error ? jobErr.message : String(jobErr);
+        console.error("[ADMIN_SUPER_JOBS_BULK_JOB_ERROR]", { jobId: id, error: reason });
+        failed.push({ id, reason });
       }
-
-      const deleteCheck = await canDeleteJob(id);
-      if (!deleteCheck.ok) {
-        failed.push({ id, reason: deleteCheck.reason });
-        continue;
-      }
-
-      await adminAuditLog(req, auditAuth(identity), {
-        action: "JOB_DELETED",
-        entityType: "Job",
-        entityId: id,
-        metadata: {
-          deleted_by_admin_id: identity.userId,
-          deleted_reason: "bulk delete",
-          deleted_at: new Date().toISOString(),
-        },
-      });
-
-      await db.delete(jobs).where(eq(jobs.id, id));
-      deleted++;
     }
 
     return ok({ deleted, failed: failed.length, failedDetails: failed });
   } catch (e) {
-    console.error("[ADMIN_SUPER_JOBS_BULK_ERROR]", { message: e instanceof Error ? e.message : String(e) });
+    const errMsg = e instanceof Error ? e.message : String(e);
+    const errStack = e instanceof Error ? e.stack : undefined;
+    console.error("[ADMIN_SUPER_JOBS_BULK_ERROR]", {
+      message: errMsg,
+      stack: errStack,
+      name: e instanceof Error ? e.name : undefined,
+    });
     return err(500, "ADMIN_SUPER_JOBS_BULK_FAILED", "Failed to execute bulk action");
   }
 }
