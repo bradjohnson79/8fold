@@ -61,11 +61,15 @@ export function DeleteConfirmModal({
   count,
   onConfirm,
   onCancel,
+  entityLabel = "account",
+  entityPlural = "accounts",
 }: {
   action: string;
   count: number;
   onConfirm: () => void;
   onCancel: () => void;
+  entityLabel?: string;
+  entityPlural?: string;
 }) {
   const [typed, setTyped] = useState("");
 
@@ -73,6 +77,7 @@ export function DeleteConfirmModal({
   const confirmWord = isDelete ? "DELETE" : "ARCHIVE";
   const label = isDelete ? "permanently delete" : "archive";
   const confirmed = typed === confirmWord;
+  const entity = count === 1 ? entityLabel : entityPlural;
 
   return (
     <div style={overlayStyle} onClick={onCancel} role="dialog" aria-modal="true">
@@ -81,7 +86,7 @@ export function DeleteConfirmModal({
           Dangerous action
         </div>
         <div style={{ fontSize: 14, color: "rgba(226,232,240,0.85)", lineHeight: 1.5 }}>
-          You are about to <strong>{label}</strong> {count} {count === 1 ? "account" : "accounts"}.
+          You are about to <strong>{label}</strong> {count} {entity}.
           {isDelete ? " This action is permanent and cannot be undone." : " This action cannot be easily undone."}
         </div>
         <div style={{ fontSize: 13, color: "rgba(226,232,240,0.65)", marginTop: 14 }}>

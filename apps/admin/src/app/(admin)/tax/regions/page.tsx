@@ -2,6 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+const CANADIAN_PROVINCES = [
+  { code: "AB", name: "Alberta" },
+  { code: "BC", name: "British Columbia" },
+  { code: "MB", name: "Manitoba" },
+  { code: "NB", name: "New Brunswick" },
+  { code: "NL", name: "Newfoundland and Labrador" },
+  { code: "NS", name: "Nova Scotia" },
+  { code: "ON", name: "Ontario" },
+  { code: "PE", name: "Prince Edward Island" },
+  { code: "QC", name: "Quebec" },
+  { code: "SK", name: "Saskatchewan" },
+  { code: "NT", name: "Northwest Territories" },
+  { code: "NU", name: "Nunavut" },
+  { code: "YT", name: "Yukon" },
+];
+
 type TaxRegion = {
   id: string;
   countryCode: string;
@@ -18,7 +34,8 @@ export default function TaxRegionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regions, setRegions] = useState<TaxRegion[]>([]);
-  const [form, setForm] = useState({ countryCode: "CA", regionCode: "", regionName: "", combinedRate: "0" });
+  const [form, setForm] = useState({ countryCode: "CA", regionCode: "", combinedRate: "" });
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,22 +61,38 @@ export default function TaxRegionsPage() {
 
   async function createRegion(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/admin/v4/tax/regions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        countryCode: form.countryCode,
-        regionCode: form.regionCode,
-        regionName: form.regionName,
-        combinedRate: Number(form.combinedRate),
-        gstRate: 0,
-        pstRate: 0,
-        hstRate: 0,
-        active: true,
-      }),
-    });
-    setForm({ countryCode: "CA", regionCode: "", regionName: "", combinedRate: "0" });
-    await load();
+    setSubmitError(null);
+    const rate = Number(form.combinedRate);
+    if (!form.regionCode || (Number.isNaN(rate) || rate < 0 || rate > 100)) {
+      setSubmitError("Select a province and enter a valid tax rate (0–100).");
+      return;
+    }
+    try {
+      const resp = await fetch("/api/admin/v4/tax/regions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          countryCode: "CA",
+          regionCode: form.regionCode,
+          regionName: CANADIAN_PROVINCES.find((p) => p.code === form.regionCode)?.name ?? form.regionCode,
+          combinedRate: rate,
+          gstRate: 0,
+          pstRate: 0,
+          hstRate: 0,
+          active: true,
+        }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        const errMsg = json?.error?.message ?? json?.error ?? json?.message ?? "Failed to add region";
+        setSubmitError(String(errMsg));
+        return;
+      }
+      setForm({ countryCode: "CA", regionCode: "", combinedRate: "" });
+      await load();
+    } catch {
+      setSubmitError("Failed to add region");
+    }
   }
 
   async function toggleActive(r: TaxRegion) {
@@ -71,18 +104,49 @@ export default function TaxRegionsPage() {
     await load();
   }
 
+  function formatRate(v: string | number): string {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(3) : String(v);
+  }
+
   return (
     <div>
       <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Tax Regions</h1>
-      <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)" }}>Manage country/province tax rates.</p>
+      <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)" }}>
+        Manage Canadian province tax rates. US jobs are not taxed.
+      </p>
 
-      <form onSubmit={createRegion} style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input value={form.countryCode} onChange={(e) => setForm((v) => ({ ...v, countryCode: e.target.value.toUpperCase() }))} placeholder="Country" style={inputStyle} />
-        <input value={form.regionCode} onChange={(e) => setForm((v) => ({ ...v, regionCode: e.target.value.toUpperCase() }))} placeholder="Region" style={inputStyle} />
-        <input value={form.regionName} onChange={(e) => setForm((v) => ({ ...v, regionName: e.target.value }))} placeholder="Region Name" style={inputStyle} />
-        <input value={form.combinedRate} onChange={(e) => setForm((v) => ({ ...v, combinedRate: e.target.value }))} placeholder="Rate (0.12)" style={inputStyle} />
+      <form onSubmit={createRegion} style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ color: "rgba(226,232,240,0.8)", fontWeight: 700 }}>Country: CA</span>
+        <select
+          value={form.regionCode}
+          onChange={(e) => setForm((v) => ({ ...v, regionCode: e.target.value }))}
+          style={selectStyle}
+          aria-label="Province"
+        >
+          <option value="">Select province</option>
+          {CANADIAN_PROVINCES.map((p) => (
+            <option key={p.code} value={p.code}>
+              {p.name} ({p.code})
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          step="0.001"
+          min={0}
+          max={100}
+          value={form.combinedRate}
+          onChange={(e) => setForm((v) => ({ ...v, combinedRate: e.target.value }))}
+          placeholder="Tax rate (e.g. 12)"
+          style={inputStyle}
+          aria-label="Tax rate %"
+        />
+        <span style={{ color: "rgba(226,232,240,0.7)", fontSize: 13 }}>%</span>
         <button type="submit" style={buttonStyle}>Add Region</button>
       </form>
+
+      {submitError ? <div style={{ marginTop: 8, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>{submitError}</div> : null}
 
       {loading ? <div style={{ marginTop: 12 }}>Loading regions...</div> : null}
       {error ? (
@@ -98,16 +162,9 @@ export default function TaxRegionsPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {[
-                  "Country",
-                  "Region",
-                  "Name",
-                  "Combined",
-                  "GST",
-                  "PST",
-                  "HST",
-                  "Active",
-                ].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                {["Country", "Region", "Province", "Tax Rate", "Active"].map((h) => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -116,11 +173,12 @@ export default function TaxRegionsPage() {
                   <td style={tdStyle}>{r.countryCode}</td>
                   <td style={tdStyle}>{r.regionCode}</td>
                   <td style={tdStyle}>{r.regionName}</td>
-                  <td style={tdStyle}>{String(r.combinedRate)}</td>
-                  <td style={tdStyle}>{String(r.gstRate)}</td>
-                  <td style={tdStyle}>{String(r.pstRate)}</td>
-                  <td style={tdStyle}>{String(r.hstRate)}</td>
-                  <td style={tdStyle}><button style={buttonStyle} onClick={() => void toggleActive(r)}>{r.active ? "Active" : "Inactive"}</button></td>
+                  <td style={tdStyle}>{formatRate(r.combinedRate)}%</td>
+                  <td style={tdStyle}>
+                    <button style={buttonStyle} onClick={() => void toggleActive(r)}>
+                      {r.active ? "Active" : "Inactive"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -137,7 +195,14 @@ const inputStyle: React.CSSProperties = {
   background: "rgba(2,6,23,0.35)",
   color: "rgba(226,232,240,0.92)",
   padding: "8px 10px",
+  width: 120,
 };
+
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  minWidth: 220,
+};
+
 const buttonStyle: React.CSSProperties = {
   borderRadius: 10,
   border: "1px solid rgba(56,189,248,0.4)",
@@ -147,5 +212,18 @@ const buttonStyle: React.CSSProperties = {
   fontWeight: 900,
   cursor: "pointer",
 };
-const thStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid rgba(148,163,184,0.2)", padding: "8px 10px", fontSize: 12, color: "rgba(226,232,240,0.7)" };
-const tdStyle: React.CSSProperties = { borderBottom: "1px solid rgba(148,163,184,0.1)", padding: "8px 10px", color: "rgba(226,232,240,0.9)", fontSize: 13 };
+
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  borderBottom: "1px solid rgba(148,163,184,0.2)",
+  padding: "8px 10px",
+  fontSize: 12,
+  color: "rgba(226,232,240,0.7)",
+};
+
+const tdStyle: React.CSSProperties = {
+  borderBottom: "1px solid rgba(148,163,184,0.1)",
+  padding: "8px 10px",
+  color: "rgba(226,232,240,0.9)",
+  fontSize: 13,
+};

@@ -1,16 +1,74 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import confetti from "canvas-confetti";
 import { apiFetch } from "@/lib/routerApi";
 import { useJobPosterReadiness } from "@/hooks/useJobPosterReadiness";
-import { useLifecycleDebug } from "@/hooks/useLifecycleDebug";
 import StatusBadge from "@/components/StatusBadge";
-import { LifecycleDebugPanel, type LifecycleState } from "@/components/dashboard/LifecycleDebugPanel";
-import { JobLifecycleTimeline, stepsForLifecycleState } from "@/components/dashboard/JobLifecycleTimeline";
+import { type LifecycleState } from "@/components/dashboard/LifecycleDebugPanel";
 import { ReviewModal } from "@/components/dashboard/ReviewModal";
+
+const STORAGE_PREFIX = "job-poster-dismissed:";
+
+function useDismissedCard(storageKey: string): [boolean, () => void] {
+  const [dismissed, setDismissed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + storageKey);
+      setDismissed(raw === "1");
+    } catch {
+      setDismissed(false);
+    }
+  }, [mounted, storageKey]);
+
+  const dismiss = useCallback(() => {
+    setDismissed(true);
+    try {
+      localStorage.setItem(STORAGE_PREFIX + storageKey, "1");
+    } catch {
+      /* ignore */
+    }
+  }, [storageKey]);
+
+  return [dismissed, dismiss];
+}
+
+function ClosableCard({
+  storageKey,
+  children,
+  className,
+}: {
+  storageKey: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [dismissed, dismiss] = useDismissedCard(storageKey);
+  if (dismissed) return null;
+  return (
+    <section className={`relative ${className ?? ""}`}>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Close"
+        className="absolute right-3 top-3 rounded p-1.5 text-slate-500 hover:bg-black/5 hover:text-slate-700"
+      >
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      {children}
+    </section>
+  );
+}
 
 type AwaitingPosterReport = {
   jobId: string;
@@ -160,8 +218,6 @@ function derivePosterLifecycleState(summary: Summary | null, acceptNotifs: Accep
 export default function JobPosterOverviewClient() {
   const { getToken } = useAuth();
   const { readiness, loading: readinessLoading, error: readinessError } = useJobPosterReadiness();
-  const showLifecycleDebug = useLifecycleDebug();
-  const [overrideState, setOverrideState] = useState<LifecycleState | null>(null);
 
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
@@ -180,7 +236,6 @@ export default function JobPosterOverviewClient() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const realLifecycleState = derivePosterLifecycleState(summary, acceptNotifs);
-  const effectiveState = overrideState ?? realLifecycleState;
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -293,10 +348,10 @@ export default function JobPosterOverviewClient() {
 
   const awaitingReport = summary?.awaitingPosterReport ?? [];
   const completedJobs = summary?.fullyCompletedJobs ?? [];
-  const beyondAcceptance = effectiveState && ["CONTRACTOR_COMPLETED", "AWAITING_POSTER_COMPLETION", "COMPLETED", "PAID", "REVIEW_STAGE"].includes(effectiveState);
+  const beyondAcceptance = realLifecycleState && ["CONTRACTOR_COMPLETED", "AWAITING_POSTER_COMPLETION", "COMPLETED", "PAID", "REVIEW_STAGE"].includes(realLifecycleState);
   const hasCompletionCards = beyondAcceptance || awaitingReport.length > 0 || completedJobs.length > 0;
-  const showCompletionReminder = (overrideState && ["CONTRACTOR_COMPLETED", "AWAITING_POSTER_COMPLETION"].includes(overrideState)) || awaitingReport.length > 0;
-  const showCompletedCard = (overrideState === "COMPLETED" || overrideState === "REVIEW_STAGE") || completedJobs.length > 0;
+  const showCompletionReminder = awaitingReport.length > 0;
+  const showCompletedCard = completedJobs.length > 0;
 
   const loading = readinessLoading || dataLoading;
 
@@ -332,18 +387,6 @@ export default function JobPosterOverviewClient() {
 
   return (
     <div className="space-y-6 p-6">
-      {showLifecycleDebug && (
-        <LifecycleDebugPanel
-          show={showLifecycleDebug}
-          currentState={overrideState ?? realLifecycleState}
-          onApply={setOverrideState}
-        />
-      )}
-
-      {showLifecycleDebug && effectiveState && (
-        <JobLifecycleTimeline steps={stepsForLifecycleState(effectiveState)} />
-      )}
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Job Poster Dashboard</h1>
@@ -382,8 +425,8 @@ export default function JobPosterOverviewClient() {
       {actionError ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p> : null}
 
       {acceptNotifs.length > 0 && !hasCompletionCards && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-emerald-800">
+        <ClosableCard storageKey="great-news" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <h2 className="pr-10 text-xl font-bold text-emerald-800">
             Great news! Your job has been accepted.
           </h2>
           <div className="mt-3 space-y-2">
@@ -412,12 +455,39 @@ export default function JobPosterOverviewClient() {
               View Job
             </Link>
           </div>
-        </section>
+        </ClosableCard>
+      )}
+
+      {assignedBadge === "APPOINTMENT_BOOKED" && (
+        <ClosableCard storageKey="appointment-booked" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <h2 className="pr-10 text-xl font-bold text-emerald-800">
+            Your Job has been booked for an appointment.
+          </h2>
+          <p className="mt-2 text-sm text-emerald-700">
+            {assigned?.appointmentAt
+              ? `Scheduled for ${new Date(assigned.appointmentAt).toLocaleString()}.`
+              : "Check Messenger for details."}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href={`/dashboard/job-poster/messages${assigned?.jobId ? `?jobId=${encodeURIComponent(assigned.jobId)}` : ""}`}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Open Messenger
+            </Link>
+            <Link
+              href="/dashboard/job-poster/jobs"
+              className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              View Job
+            </Link>
+          </div>
+        </ClosableCard>
       )}
 
       {showCompletionReminder && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-amber-800">Job Completion Required</h2>
+        <ClosableCard storageKey="completion-reminder" className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h2 className="pr-10 text-xl font-bold text-amber-800">Job Completion Required</h2>
           <p className="mt-1 text-sm text-amber-700">
             Your contractor has submitted their completion report. Please submit your completion report within 24 hours.
           </p>
@@ -465,12 +535,12 @@ export default function JobPosterOverviewClient() {
               Open Messenger
             </Link>
           </div>
-        </section>
+        </ClosableCard>
       )}
 
       {showCompletedCard && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-emerald-800">Job Completed Successfully</h2>
+        <ClosableCard storageKey="job-completed" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <h2 className="pr-10 text-xl font-bold text-emerald-800">Job Completed Successfully</h2>
           <p className="mt-1 text-sm text-emerald-700">Thank you for using 8Fold!</p>
           <div className="mt-3 space-y-2">
             {completedJobs.length > 0 ? completedJobs.map((j) => (
@@ -496,23 +566,9 @@ export default function JobPosterOverviewClient() {
                   </span>
                 )}
               </div>
-            )) : (overrideState === "COMPLETED" || overrideState === "REVIEW_STAGE") ? (
-              <div className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">[Override] Sample Job</div>
-                  <div className="text-xs text-slate-500">Completed</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setReviewJobId("override"); setReviewJobTitle("[Override] Sample Job"); }}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                >
-                  Leave a Review
-                </button>
-              </div>
-            ) : null}
+            )) : null}
           </div>
-        </section>
+        </ClosableCard>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">

@@ -57,8 +57,10 @@ async function safeResolveRate(country: string, province: string): Promise<numbe
       .from(v4TaxRegions)
       .where(and(eq(v4TaxRegions.countryCode, country), eq(v4TaxRegions.regionCode, province), eq(v4TaxRegions.active, true)))
       .limit(1);
-    const rate = Number(regionRows[0]?.combinedRate ?? 0);
-    return Number.isFinite(rate) && rate > 0 ? rate : 0;
+    // combined_rate stored as percentage (e.g. 12.000 = 12%); convert to decimal for calculations
+    const ratePct = Number(regionRows[0]?.combinedRate ?? 0);
+    const rate = Number.isFinite(ratePct) && ratePct > 0 ? ratePct / 100 : 0;
+    return rate;
   } catch (err) {
     console.warn("[taxResolver] failed to load tax region; defaulting to 0%", {
       country,
