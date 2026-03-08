@@ -975,6 +975,59 @@ export async function notificationEventMapper(
         return;
       }
 
+      case "NEW_SUPPORT_TICKET": {
+        const p = event.payload;
+        // Notify all active admins
+        const adminIds = p.adminIds ?? await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: adminId,
+              role: "ADMIN",
+              type: "NEW_SUPPORT_TICKET",
+              title: "New support ticket",
+              message: `New support ticket from ${p.role}: "${p.subject}"`,
+              entityType: asEntity("SUPPORT_TICKET"),
+              entityId: p.ticketId,
+              priority: "NORMAL",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKey}_admin_${adminId}`,
+              idempotencyKey: `${p.dedupeKey}_admin_${adminId}`,
+              metadata: { ticketId: p.ticketId, userId: p.userId, role: p.role },
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "SUPPORT_REPLY": {
+        const p = event.payload;
+        const userRole = (p.userRole ?? "CONTRACTOR") as "CONTRACTOR" | "JOB_POSTER" | "ROUTER" | "ADMIN";
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.userId,
+            role: userRole,
+            type: "SUPPORT_REPLY",
+            title: "Support reply",
+            message: `Admin replied to your support ticket: "${p.subject}"`,
+            entityType: asEntity("SUPPORT_TICKET"),
+            entityId: p.ticketId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+            metadata: { ticketId: p.ticketId },
+          },
+          tx,
+        );
+        return;
+      }
+
       default: {
         const _never: never = event;
         return _never;

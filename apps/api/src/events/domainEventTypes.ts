@@ -1,4 +1,4 @@
-export type NotificationEntityType = "JOB" | "INVITE" | "THREAD" | "PAYMENT" | "SYSTEM";
+export type NotificationEntityType = "JOB" | "INVITE" | "THREAD" | "PAYMENT" | "SYSTEM" | "SUPPORT_TICKET";
 
 export const DOMAIN_EVENT_TYPES = [
   "ROUTER_JOB_ROUTED",
@@ -25,6 +25,8 @@ export const DOMAIN_EVENT_TYPES = [
   "COMPLETED",
   "JOB_COMPLETED_FINALIZED",
   "NEW_MESSAGE",
+  "NEW_SUPPORT_TICKET",
+  "SUPPORT_REPLY",
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -201,6 +203,24 @@ export type DomainEventPayloadByType = {
     messageId: string;
     recipientUserId: string;
     recipientRole: "CONTRACTOR" | "JOB_POSTER" | "ROUTER" | "ADMIN";
+    createdAt?: Date;
+    dedupeKey: string;
+  };
+  NEW_SUPPORT_TICKET: {
+    ticketId: string;
+    userId: string;
+    role: string;
+    subject: string;
+    adminIds?: string[];
+    createdAt?: Date;
+    dedupeKey: string;
+  };
+  SUPPORT_REPLY: {
+    ticketId: string;
+    userId: string;
+    userRole?: string;
+    subject: string;
+    replierRole: "ADMIN" | "USER";
     createdAt?: Date;
     dedupeKey: string;
   };
