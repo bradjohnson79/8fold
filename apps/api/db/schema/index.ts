@@ -98,3 +98,4 @@ export * from "./v4PaymentFeeConfig";
 export * from "./v4RouterRewardEvents";
 export * from "./admin";
 export * from "./roleTermsAcceptance";
+export * from "./v4FrontpageTicker";

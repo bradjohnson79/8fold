@@ -3,6 +3,7 @@ import './globals.css'
 import "leaflet/dist/leaflet.css";
 import { Header } from '../components/Header'
 import { Footer } from '../components/Footer'
+import { BetaTicker } from '../components/BetaTicker'
 import { ClerkProvider } from "@clerk/nextjs";
 
 export const metadata: Metadata = {
@@ -42,6 +43,7 @@ export default function RootLayout({
             },
           }}
         >
+          <BetaTicker />
           <Header />
           <main className="min-h-screen">{children}</main>
           <Footer />

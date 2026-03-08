@@ -57,6 +57,7 @@ export async function createAdjustmentRequest(
 
   const job = jobRows[0];
   if (!job) throw Object.assign(new Error("Job not found"), { status: 404 });
+  if (!job.user_id) throw Object.assign(new Error("Job has no poster assigned"), { status: 400 });
 
   if (!ALLOWED_JOB_STATUSES.includes(job.status)) {
     throw Object.assign(
@@ -79,7 +80,7 @@ export async function createAdjustmentRequest(
     await db.insert(v4JobPriceAdjustments).values({
       id: adjustmentId,
       jobId,
-      threadId,
+      ...(threadId ? { threadId } : {}),
       contractorUserId,
       jobPosterUserId: job.user_id,
       supportTicketId,
@@ -384,7 +385,7 @@ export async function acceptAdjustment(
   const jobRows = await db.select({ payment_currency: jobs.payment_currency }).from(jobs).where(eq(jobs.id, adj.jobId)).limit(1);
   const currency = (jobRows[0]?.payment_currency ?? "cad") as "usd" | "cad";
 
-  const piParams: Record<string, any> = {
+  const pi = await stripe.paymentIntents.create({
     amount: adj.differenceCents,
     currency,
     customer: poster.stripeCustomerId,
@@ -395,13 +396,8 @@ export async function acceptAdjustment(
     },
     description: `8Fold price adjustment for job ${adj.jobId.slice(0, 8)}`,
     automatic_payment_methods: { enabled: true },
-  };
-
-  if (poster.stripeDefaultPaymentMethodId) {
-    piParams.payment_method = poster.stripeDefaultPaymentMethodId;
-  }
-
-  const pi = await stripe.paymentIntents.create(piParams, {
+    ...(poster.stripeDefaultPaymentMethodId ? { payment_method: poster.stripeDefaultPaymentMethodId } : {}),
+  }, {
     idempotencyKey: `adj_accept_${adjustmentId}`,
   });
 
