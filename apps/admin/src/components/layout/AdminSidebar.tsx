@@ -47,7 +47,10 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
   },
   {
     title: "System",
-    items: [{ label: "Data Coverage", href: "/system/data-coverage", match: "prefix" }],
+    items: [
+      { label: "Data Coverage", href: "/system/data-coverage", match: "prefix" },
+      { label: "Frontpage Ticker", href: "/system/frontpage-ticker", match: "prefix" },
+    ],
   },
 ];
 
