@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { eq, inArray } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
-import { jobs } from "@/db/schema";
+import { jobs, disputes, ledgerEntries, v4FinancialLedger } from "@/db/schema";
+import { escrows } from "@/db/schema/escrow";
 import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 import { adminAuditLog } from "@/src/audit/adminAudit";
 import { err, ok } from "@/src/lib/api/adminV4Response";
-import { ledgerEntries, v4FinancialLedger, disputes } from "@/db/schema";
-import { escrows } from "@/db/schema/escrow";
-import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -110,9 +109,11 @@ export async function POST(req: Request): Promise<Response> {
         action: "JOB_DELETED",
         entityType: "Job",
         entityId: id,
-        metadata: { deleted_by_admin_id: identity.userId,
+        metadata: {
+          deleted_by_admin_id: identity.userId,
           deleted_reason: "bulk delete",
-          deleted_at: new Date().toISOString() },
+          deleted_at: new Date().toISOString(),
+        },
       });
 
       await db.delete(jobs).where(eq(jobs.id, id));
