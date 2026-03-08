@@ -68,6 +68,7 @@ export * from "./v4MessageThread";
 export * from "./v4MessengerAppointment";
 export * from "./v4CompletionReport";
 export * from "./v4SupportTicket";
+export * from "./v4JobPriceAdjustment";
 export * from "./v4SupportMessage";
 export * from "./v4PmRequest";
 export * from "./v4PmRequestItem";

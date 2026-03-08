@@ -50,6 +50,10 @@ export const NOTIFICATION_TYPES = [
   // Support
   "NEW_SUPPORT_TICKET",
   "SUPPORT_REPLY",
+  // 2nd Appraisal
+  "RE_APPRAISAL_REQUESTED",
+  "RE_APPRAISAL_DECLINED",
+  "RE_APPRAISAL_ACCEPTED",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

@@ -1028,6 +1028,81 @@ export async function notificationEventMapper(
         return;
       }
 
+      case "RE_APPRAISAL_REQUESTED": {
+        const p = event.payload;
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: adminId,
+              role: "ADMIN",
+              type: "RE_APPRAISAL_REQUESTED",
+              title: "2nd Appraisal Request",
+              message: `Contractor submitted a re-appraisal request for job ${p.jobId.slice(0, 8)}…`,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: new Date(),
+              dedupeKey: `${p.dedupeKey}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKey}:admin:${adminId}`,
+              metadata: { adjustmentId: p.adjustmentId, jobId: p.jobId },
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "RE_APPRAISAL_DECLINED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "RE_APPRAISAL_DECLINED",
+            title: "Re-Appraisal Declined",
+            message: "The Job Poster declined your re-appraisal request.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: new Date(),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+            metadata: { adjustmentId: p.adjustmentId, jobId: p.jobId },
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "RE_APPRAISAL_ACCEPTED": {
+        const p = event.payload;
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: p.contractorId,
+            role: "CONTRACTOR",
+            type: "RE_APPRAISAL_ACCEPTED",
+            title: "Re-Appraisal Accepted",
+            message: "The Job Poster accepted your re-appraisal request and payment is complete.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: new Date(),
+            dedupeKey: p.dedupeKey,
+            idempotencyKey: p.dedupeKey,
+            metadata: { adjustmentId: p.adjustmentId, jobId: p.jobId },
+          },
+          tx,
+        );
+        return;
+      }
+
       default: {
         const _never: never = event;
         return _never;

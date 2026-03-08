@@ -349,6 +349,7 @@ export async function adminGetSupportTicketWithMessages(ticketId: string): Promi
       status: ticket.status,
       priority: ticket.priority,
       jobId: ticket.jobId,
+      adjustmentId: ticket.adjustmentId ?? null,
       body: ticket.body,
       createdAt: ticket.createdAt?.toISOString?.() ?? "",
       updatedAt: ticket.updatedAt?.toISOString?.() ?? "",

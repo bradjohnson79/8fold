@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AppraisalRequestModal } from "./AppraisalRequestModal";
 
 type MessengerRole = "contractor" | "job-poster";
 
@@ -155,6 +156,8 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
   const [openReschedule, setOpenReschedule] = useState(false);
   const [openCancel, setOpenCancel] = useState(false);
   const [openComplete, setOpenComplete] = useState(false);
+  const [openAppraisal, setOpenAppraisal] = useState(false);
+  const [appraisalStatus, setAppraisalStatus] = useState<string | null>(null);
 
   const [bookAt, setBookAt] = useState("");
   const [rescheduleAt, setRescheduleAt] = useState("");
@@ -237,7 +240,7 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
   async function loadMeta(threadId: string) {
     setLoadingMeta(true);
     try {
-      const [apptResp, summaryResp] = await Promise.all([
+      const fetches: Promise<Response>[] = [
         fetch(`/api/web/v4/${roleApi}/messages/thread/${encodeURIComponent(threadId)}/appointment`, {
           cache: "no-store",
           credentials: "include",
@@ -246,7 +249,18 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
           cache: "no-store",
           credentials: "include",
         }),
-      ]);
+      ];
+
+      if (isContractor) {
+        fetches.push(
+          fetch(`/api/web/v4/contractor/messages/thread/${encodeURIComponent(threadId)}/appraisal-status`, {
+            cache: "no-store",
+            credentials: "include",
+          }),
+        );
+      }
+
+      const [apptResp, summaryResp, appraisalResp] = await Promise.all(fetches);
 
       const apptJson = (await apptResp.json().catch(() => ({}))) as { appointment?: Appointment; error?: string };
       if (apptResp.ok) {
@@ -260,6 +274,13 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
         setSummary(summaryJson.summary);
       } else {
         setSummary(null);
+      }
+
+      if (appraisalResp) {
+        const appraisalJson = (await appraisalResp.json().catch(() => ({}))) as { exists?: boolean; status?: string | null };
+        setAppraisalStatus(appraisalJson?.exists ? (appraisalJson.status ?? null) : null);
+      } else {
+        setAppraisalStatus(null);
       }
     } finally {
       setLoadingMeta(false);
@@ -464,6 +485,25 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
             >
               COMPLETE JOB
             </button>
+            {isContractor && (
+              <button
+                type="button"
+                onClick={() => setOpenAppraisal(true)}
+                disabled={
+                  !selectedId ||
+                  ended ||
+                  !!appraisalStatus
+                }
+                title={
+                  appraisalStatus
+                    ? "A second appraisal has already been submitted for this job."
+                    : undefined
+                }
+                className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50"
+              >
+                2ND APPRAISAL
+              </button>
+            )}
           </div>
         </div>
 
@@ -818,6 +858,22 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
             </button>
           </div>
         </Modal>
+      ) : null}
+
+      {openAppraisal && selectedThread && selectedId ? (
+        <AppraisalRequestModal
+          threadId={selectedId}
+          jobTitle={selectedThread.jobTitle ?? "Untitled Job"}
+          jobDescription={selectedThread.jobDescription ?? null}
+          currentPriceCents={selectedThread.contractorAmount ?? summary?.job?.feeSummary?.amountCents ?? 0}
+          tradeCategory={selectedThread.tradeCategory ?? null}
+          address={selectedThread.address ?? null}
+          onClose={() => setOpenAppraisal(false)}
+          onSuccess={() => {
+            setAppraisalStatus("PENDING");
+            void Promise.all([loadMessages(selectedId), loadMeta(selectedId)]);
+          }}
+        />
       ) : null}
     </div>
   );

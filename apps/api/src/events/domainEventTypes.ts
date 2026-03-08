@@ -27,6 +27,9 @@ export const DOMAIN_EVENT_TYPES = [
   "NEW_MESSAGE",
   "NEW_SUPPORT_TICKET",
   "SUPPORT_REPLY",
+  "RE_APPRAISAL_REQUESTED",
+  "RE_APPRAISAL_DECLINED",
+  "RE_APPRAISAL_ACCEPTED",
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -222,6 +225,27 @@ export type DomainEventPayloadByType = {
     subject: string;
     replierRole: "ADMIN" | "USER";
     createdAt?: Date;
+    dedupeKey: string;
+  };
+  RE_APPRAISAL_REQUESTED: {
+    adjustmentId: string;
+    jobId: string;
+    contractorId: string;
+    jobPosterId: string;
+    dedupeKey: string;
+  };
+  RE_APPRAISAL_DECLINED: {
+    adjustmentId: string;
+    jobId: string;
+    contractorId: string;
+    jobPosterId: string;
+    dedupeKey: string;
+  };
+  RE_APPRAISAL_ACCEPTED: {
+    adjustmentId: string;
+    jobId: string;
+    contractorId: string;
+    jobPosterId: string;
     dedupeKey: string;
   };
 };

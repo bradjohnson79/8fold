@@ -661,6 +661,20 @@ export default function PostJobPage() {
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
               placeholder="Describe the job..."
             />
+            <div className="mt-2 space-y-1 text-xs text-gray-500">
+              <p className="font-medium text-gray-600">
+                Tip: Detailed job descriptions get faster responses.
+              </p>
+              <p>
+                Please describe your job in as much detail as possible, including measurements,
+                materials, access conditions, and any special requirements.
+              </p>
+              <p>
+                If important details are missing and the contractor discovers additional work after
+                reviewing the job, a re-appraisal may be requested to ensure the price accurately
+                reflects the scope of work.
+              </p>
+            </div>
           </section>
 
           <section>
