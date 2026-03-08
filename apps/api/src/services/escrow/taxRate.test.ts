@@ -30,8 +30,8 @@ describe("getTaxRateBps", () => {
     expect(selectMock).not.toHaveBeenCalled();
   });
 
-  test("uses v4_tax_regions combined_rate when available", async () => {
-    nextRows = [{ combinedRate: "0.1275" }];
+  test("uses v4_tax_regions combined_rate when available (stored as percentage)", async () => {
+    nextRows = [{ combinedRate: "12.75" }];
     const bps = await getTaxRateBps({ country: "CA", province: "BC" });
     expect(bps).toBe(1275);
     expect(selectMock).toHaveBeenCalledTimes(1);

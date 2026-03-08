@@ -1,4 +1,5 @@
 import { adminApiFetch } from "@/server/adminApiV4";
+import { JobsTableClient } from "./JobsTableClient";
 
 type Party = { id: string; name: string | null; email: string | null; role: string | null };
 type PaymentState = { label: string; secured: boolean; captured: boolean; paid: boolean; rawPaymentStatus: string | null; rawPayoutStatus: string | null };
@@ -53,80 +54,6 @@ const inputStyle: React.CSSProperties = {
   padding: "9px 10px",
   fontSize: 13,
 };
-
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  fontSize: 12,
-  color: "rgba(226,232,240,0.70)",
-  fontWeight: 900,
-  padding: "10px 10px",
-  borderBottom: "1px solid rgba(148,163,184,0.12)",
-  whiteSpace: "nowrap",
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "10px 10px",
-  borderBottom: "1px solid rgba(148,163,184,0.08)",
-  color: "rgba(226,232,240,0.90)",
-  fontSize: 13,
-  verticalAlign: "top",
-};
-
-function statusPill(label: string) {
-  const upper = label.toUpperCase();
-  const tone = upper.includes("REJECT") || upper.includes("FLAG") ? "rgba(248,113,113,0.12)" : "rgba(2,6,23,0.25)";
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "6px 10px",
-        borderRadius: 999,
-        border: "1px solid rgba(148,163,184,0.14)",
-        background: tone,
-        fontSize: 12,
-        fontWeight: 900,
-      }}
-    >
-      {upper}
-    </span>
-  );
-}
-
-function paymentPill(state: PaymentState) {
-  const tone = state.label === "PAID" ? "rgba(34,197,94,0.14)" : state.label === "CAPTURED" ? "rgba(56,189,248,0.14)" : "rgba(251,191,36,0.14)";
-  return (
-    <span
-      title={`payment=${state.rawPaymentStatus ?? "n/a"} payout=${state.rawPayoutStatus ?? "n/a"}`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "6px 10px",
-        borderRadius: 999,
-        border: "1px solid rgba(148,163,184,0.14)",
-        background: tone,
-        fontSize: 12,
-        fontWeight: 900,
-      }}
-    >
-      {state.label}
-    </span>
-  );
-}
-
-function currency(cents: number) {
-  return `$${(Number(cents || 0) / 100).toFixed(2)}`;
-}
-
-function person(party: Party | null) {
-  if (!party) return "—";
-  return (
-    <div>
-      <div>{party.name ?? "—"}</div>
-      <div style={{ color: "rgba(226,232,240,0.55)", fontSize: 12 }}>{party.email ?? "—"}</div>
-    </div>
-  );
-}
 
 export default async function JobsPage({
   searchParams,
@@ -271,73 +198,7 @@ export default async function JobsPage({
         </form>
       </div>
 
-      {loadError ? <div style={{ marginTop: 12, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>{loadError}</div> : null}
-
-      <div style={{ marginTop: 12, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-          <thead>
-            <tr>
-              {[
-                "Job ID",
-                "Title",
-                "Status",
-                "Is Mock",
-                "Location",
-                "Created",
-                "Updated",
-                "Job Poster",
-                "Router",
-                "Contractor",
-                "Price/Budget",
-                "Payment",
-              ].map((h) => (
-                <th key={h} style={thStyle}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loadError ? (
-              <tr>
-                <td colSpan={12} style={{ ...tdStyle, color: "rgba(254,202,202,0.95)", fontWeight: 900 }}>
-                  {loadError}
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={12} style={tdStyle}>
-                  No jobs found for current filters.
-                </td>
-              </tr>
-            ) : (
-              rows.map((j) => {
-                const displayStatus = j.isMock ? "IN_PROGRESS" : j.displayStatus || j.statusRaw;
-                return (
-                  <tr key={j.id}>
-                    <td style={tdStyle}>
-                      <a href={`/jobs/${encodeURIComponent(j.id)}`} style={{ color: "rgba(191,219,254,0.95)", textDecoration: "none", fontWeight: 900 }}>
-                        {j.id}
-                      </a>
-                    </td>
-                    <td style={tdStyle}>{j.title}</td>
-                    <td style={tdStyle}>{statusPill(displayStatus)}</td>
-                    <td style={tdStyle}>{j.isMock ? statusPill("MOCK") : "REAL"}</td>
-                    <td style={tdStyle}>{[j.city, j.regionCode, j.country].filter(Boolean).join(", ") || "—"}</td>
-                    <td style={tdStyle}>{j.createdAt.slice(0, 19).replace("T", " ")}</td>
-                    <td style={tdStyle}>{j.updatedAt.slice(0, 19).replace("T", " ")}</td>
-                    <td style={tdStyle}>{person(j.jobPoster)}</td>
-                    <td style={tdStyle}>{person(j.router)}</td>
-                    <td style={tdStyle}>{person(j.contractor)}</td>
-                    <td style={tdStyle}>{currency(j.amountCents)}</td>
-                    <td style={tdStyle}>{paymentPill(j.paymentState)}</td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      <JobsTableClient rows={rows} loadError={loadError} />
 
       <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <div style={{ color: "rgba(226,232,240,0.65)", fontSize: 12 }}>

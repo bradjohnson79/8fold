@@ -1,4 +1,4 @@
-import { boolean, index, numeric, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, numeric, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { dbSchema } from "./_dbSchema";
 
 export const v4TaxRegions = dbSchema.table(
@@ -8,7 +8,7 @@ export const v4TaxRegions = dbSchema.table(
     countryCode: text("country_code").notNull(),
     regionCode: text("region_code").notNull(),
     regionName: text("region_name").notNull(),
-    combinedRate: numeric("combined_rate", { precision: 8, scale: 6 }).notNull().default("0"),
+    combinedRate: numeric("combined_rate", { precision: 6, scale: 3 }).notNull().default("0"),
     gstRate: numeric("gst_rate", { precision: 8, scale: 6 }).notNull().default("0"),
     pstRate: numeric("pst_rate", { precision: 8, scale: 6 }).notNull().default("0"),
     hstRate: numeric("hst_rate", { precision: 8, scale: 6 }).notNull().default("0"),
@@ -18,6 +18,7 @@ export const v4TaxRegions = dbSchema.table(
   },
   (t) => ({
     countryRegionIdx: index("v4_tax_regions_country_region_idx").on(t.countryCode, t.regionCode),
+    countryRegionUnique: unique("v4_tax_regions_country_region_unique").on(t.countryCode, t.regionCode),
     activeIdx: index("v4_tax_regions_active_idx").on(t.active),
   }),
 );

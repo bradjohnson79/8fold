@@ -31,10 +31,11 @@ function normalizeProvince(province: string | null | undefined): string {
   return String(province ?? "").trim().toUpperCase();
 }
 
+/** combined_rate stored as percentage (e.g. 12.000 = 12%); convert to basis points */
 function toBpsFromCombinedRate(rate: unknown): number {
-  const numeric = Number(rate ?? 0);
-  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
-  return Math.max(0, Math.round(numeric * 10000));
+  const pct = Number(rate ?? 0);
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  return Math.max(0, Math.round((pct / 100) * 10000));
 }
 
 export async function getTaxRateBps(input: TaxRateLookupInput): Promise<number> {
