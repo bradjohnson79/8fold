@@ -5,13 +5,14 @@
  *
  * Runs on a periodic interval from instrumentation.ts.
  */
-import { randomUUID } from "crypto";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { v4MessageThreads } from "@/db/schema/v4MessageThread";
 import { v4Messages } from "@/db/schema/v4Message";
+
+const randomUUID = () => globalThis.crypto.randomUUID();
 
 export async function processCompletionTimeouts(): Promise<void> {
   const now = new Date();
