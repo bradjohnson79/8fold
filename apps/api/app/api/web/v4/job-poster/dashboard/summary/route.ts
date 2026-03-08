@@ -58,6 +58,8 @@ export async function GET(req: Request) {
         paymentStatus: fallbackPaymentStatus,
         unreadMessages: 0,
         activeAssignments: 0,
+        awaitingPosterReport: [],
+        fullyCompletedJobs: [],
         error: FALLBACK_ERROR,
       },
       { status: 200 },

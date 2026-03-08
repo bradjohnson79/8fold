@@ -35,7 +35,7 @@ export async function GET(req: Request) {
             isNull(jobs.completed_at),
           ),
         )
-        .catch(() => []),
+        .catch((e) => { console.error("[contractor-summary] awaitingPosterCompletion query failed:", e); return []; }),
       db
         .select({
           id: jobs.id,
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
             sql`${jobs.status} = 'COMPLETED'`,
           ),
         )
-        .catch(() => []),
+        .catch((e) => { console.error("[contractor-summary] fullyCompletedJobs query failed:", e); return []; }),
     ]);
 
     return NextResponse.json({

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { users } from "@/db/schema/user";
 import { v4Messages } from "@/db/schema/v4Message";
 import { v4Reviews } from "@/db/schema/v4Review";
 import { logEvent } from "@/src/server/observability/log";
@@ -83,8 +84,10 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
       id: jobs.id,
       title: jobs.title,
       completionWindowExpiresAt: jobs.completion_window_expires_at,
+      contractorName: users.name,
     })
     .from(jobs)
+    .leftJoin(users, eq(users.id, jobs.contractor_user_id))
     .where(
       and(
         eq(jobs.job_poster_user_id, userId),
@@ -93,7 +96,7 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
         isNull(jobs.completed_at),
       ),
     )
-    .catch(() => []);
+    .catch((e) => { console.error("[poster-summary] awaitingPosterRows query failed:", e); return []; });
 
   const completedRows = await db
     .select({
@@ -109,7 +112,7 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
         sql`${jobs.status} = 'COMPLETED'`,
       ),
     )
-    .catch(() => []);
+    .catch((e) => { console.error("[poster-summary] completedRows query failed:", e); return []; });
 
   const completedJobIds = (completedRows ?? []).map((j) => j.id).filter(Boolean);
   let reviewedJobIds = new Set<string>();
@@ -118,7 +121,7 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
       .select({ jobId: v4Reviews.jobId })
       .from(v4Reviews)
       .where(inArray(v4Reviews.jobId, completedJobIds))
-      .catch(() => []);
+      .catch((e) => { console.error("[poster-summary] reviewRows query failed:", e); return []; });
     reviewedJobIds = new Set((reviewRows ?? []).map((r) => r.jobId));
   }
 
@@ -146,7 +149,7 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
       jobId: j.id,
       title: j.title,
       completionWindowExpiresAt: j.completionWindowExpiresAt?.toISOString() ?? null,
-      contractorName: null,
+      contractorName: j.contractorName ?? null,
     })),
     fullyCompletedJobs: (completedRows ?? []).map((j) => ({
       jobId: j.id,
