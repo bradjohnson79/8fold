@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { requireContractorV4 } from "@/src/auth/requireContractorV4";
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
     const userId = ctx.internalUser.id;
 
-    const [pendingInvites, assignedJobs, completedJobs, awaitingPosterCompletion] = await Promise.all([
+    const [pendingInvites, assignedJobs, completedJobs, awaitingPosterCompletion, fullyCompletedJobs] = await Promise.all([
       countPendingInvites(userId).catch(() => 0),
       listJobs(userId, "assigned").catch(() => []),
       listJobs(userId, "completed").catch(() => []),
@@ -36,6 +36,23 @@ export async function GET(req: Request) {
           ),
         )
         .catch(() => []),
+      db
+        .select({
+          id: jobs.id,
+          title: jobs.title,
+          completedAt: jobs.completed_at,
+          payoutStatus: jobs.payout_status,
+          contractorPayoutCents: jobs.contractor_payout_cents,
+        })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.contractor_user_id, userId),
+            isNotNull(jobs.completed_at),
+            sql`${jobs.status} = 'COMPLETED'`,
+          ),
+        )
+        .catch(() => []),
     ]);
 
     return NextResponse.json({
@@ -47,6 +64,13 @@ export async function GET(req: Request) {
         jobId: j.id,
         title: j.title,
         completionWindowExpiresAt: j.completionWindowExpiresAt?.toISOString() ?? null,
+      })),
+      fullyCompletedJobs: (fullyCompletedJobs ?? []).map((j) => ({
+        jobId: j.id,
+        title: j.title,
+        completedAt: j.completedAt?.toISOString() ?? null,
+        payoutStatus: j.payoutStatus,
+        contractorPayoutCents: j.contractorPayoutCents,
       })),
     });
   } catch (err) {

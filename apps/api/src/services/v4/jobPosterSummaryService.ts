@@ -1,9 +1,24 @@
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4Messages } from "@/db/schema/v4Message";
+import { v4Reviews } from "@/db/schema/v4Review";
 import { logEvent } from "@/src/server/observability/log";
 import { getJobPosterPaymentStatus } from "./jobPosterPaymentService";
+
+export type AwaitingPosterReport = {
+  jobId: string;
+  title: string | null;
+  completionWindowExpiresAt: string | null;
+  contractorName: string | null;
+};
+
+export type FullyCompletedJob = {
+  jobId: string;
+  title: string | null;
+  completedAt: string | null;
+  hasReview: boolean;
+};
 
 export type JobPosterSummary = {
   jobsPosted: number;
@@ -11,6 +26,8 @@ export type JobPosterSummary = {
   paymentStatus: "CONNECTED" | "NOT_CONNECTED";
   unreadMessages: number;
   activeAssignments: number;
+  awaitingPosterReport: AwaitingPosterReport[];
+  fullyCompletedJobs: FullyCompletedJob[];
 };
 
 /** Read-only summary. No mutations, no promote-due. */
@@ -61,6 +78,50 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
     );
   const activeAssignments = Number(activeAssignmentRows[0]?.count ?? 0);
 
+  const awaitingPosterRows = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      completionWindowExpiresAt: jobs.completion_window_expires_at,
+    })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.job_poster_user_id, userId),
+        isNotNull(jobs.contractor_marked_complete_at),
+        isNull(jobs.poster_marked_complete_at),
+        isNull(jobs.completed_at),
+      ),
+    )
+    .catch(() => []);
+
+  const completedRows = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      completedAt: jobs.completed_at,
+    })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.job_poster_user_id, userId),
+        isNotNull(jobs.completed_at),
+        sql`${jobs.status} = 'COMPLETED'`,
+      ),
+    )
+    .catch(() => []);
+
+  const completedJobIds = (completedRows ?? []).map((j) => j.id).filter(Boolean);
+  let reviewedJobIds = new Set<string>();
+  if (completedJobIds.length > 0) {
+    const reviewRows = await db
+      .select({ jobId: v4Reviews.jobId })
+      .from(v4Reviews)
+      .where(inArray(v4Reviews.jobId, completedJobIds))
+      .catch(() => []);
+    reviewedJobIds = new Set((reviewRows ?? []).map((r) => r.jobId));
+  }
+
   let paymentStatus: { connected: boolean } = { connected: false };
   try {
     paymentStatus = await getJobPosterPaymentStatus(userId);
@@ -81,5 +142,17 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
     paymentStatus: paymentStatus.connected ? "CONNECTED" : "NOT_CONNECTED",
     unreadMessages,
     activeAssignments,
+    awaitingPosterReport: (awaitingPosterRows ?? []).map((j) => ({
+      jobId: j.id,
+      title: j.title,
+      completionWindowExpiresAt: j.completionWindowExpiresAt?.toISOString() ?? null,
+      contractorName: null,
+    })),
+    fullyCompletedJobs: (completedRows ?? []).map((j) => ({
+      jobId: j.id,
+      title: j.title,
+      completedAt: j.completedAt?.toISOString() ?? null,
+      hasReview: reviewedJobIds.has(j.id),
+    })),
   };
 }
