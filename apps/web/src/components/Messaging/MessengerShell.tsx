@@ -170,13 +170,20 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
   });
 
   const endRef = useRef<HTMLDivElement | null>(null);
-  const [nowMs, setNowMs] = useState(Date.now());
+  const [mounted, setMounted] = useState(false);
+  const [nowMs, setNowMs] = useState(0);
 
   useEffect(() => {
+    setMounted(true);
+    setNowMs(Date.now());
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     const interval = appointment ? 1000 : 30000;
     const timer = window.setInterval(() => setNowMs(Date.now()), interval);
     return () => window.clearInterval(timer);
-  }, [appointment]);
+  }, [mounted, appointment]);
 
   async function loadThreads() {
     setLoadingThreads(true);
@@ -284,7 +291,7 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
 
   const viewApptEnabled = isContractor ? true : Boolean(appointment);
   const canRescheduleOrCancel = Boolean(appointment) && !ended;
-  const appointmentReached = Boolean(appointment && new Date(appointment.scheduledAtUTC).getTime() <= nowMs);
+  const appointmentReached = mounted && Boolean(appointment && new Date(appointment.scheduledAtUTC).getTime() <= nowMs);
   const canComplete = Boolean(appointmentReached && !ended);
 
   async function sendMessage() {
@@ -411,7 +418,7 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
     }
   }
 
-  const apptRemainingLabel = fmtTimeRemaining(appointment, nowMs);
+  const apptRemainingLabel = mounted ? fmtTimeRemaining(appointment, nowMs) : "---";
   const showLateWarning = Boolean(appointment?.timeRemaining?.lateAction);
 
   return (
@@ -670,7 +677,7 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
             <div className="space-y-2 text-sm text-slate-700">
               <p><span className="font-semibold">Scheduled:</span> {new Date(appointment.scheduledAtUTC).toLocaleString()}</p>
               <p><span className="font-semibold">Status:</span> {appointment.status}</p>
-              <p><span className="font-semibold">Time Remaining:</span> {fmtTimeRemaining(appointment, nowMs)}</p>
+              <p><span className="font-semibold">Time Remaining:</span> {apptRemainingLabel}</p>
             </div>
           ) : (
             <p className="text-sm text-slate-500">No appointment has been booked yet.</p>
@@ -680,7 +687,7 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
 
       {openReschedule ? (
         <Modal
-          title={`Reschedule Appointment • Time Remaining Before Appointment: ${appointment ? fmtTimeRemaining(appointment, nowMs) : "---"}`}
+          title={`Reschedule Appointment • Time Remaining Before Appointment: ${apptRemainingLabel}`}
           onClose={() => setOpenReschedule(false)}
         >
           {showLateWarning ? (
@@ -708,7 +715,7 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
 
       {openCancel ? (
         <Modal
-          title={`Cancel Appointment • Time Remaining Before Appointment: ${appointment ? fmtTimeRemaining(appointment, nowMs) : "---"}`}
+          title={`Cancel Appointment • Time Remaining Before Appointment: ${apptRemainingLabel}`}
           onClose={() => setOpenCancel(false)}
         >
           {showLateWarning ? (
