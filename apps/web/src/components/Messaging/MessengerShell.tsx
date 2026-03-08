@@ -368,19 +368,20 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
   async function submitComplete() {
     if (!selectedId || completeSubmitting) return;
     setCompleteSubmitting(true);
+    setError("");
     try {
-      const payload: Record<string, string> = {
+      const payload: Record<string, unknown> = {
         completedOn: completeForm.completedOn,
         completedTime: completeForm.completedTime,
         summaryText: completeForm.summaryText,
       };
       if (isContractor) {
-        payload.cooperation = completeForm.cooperation;
-        payload.communication = completeForm.communication;
+        payload.cooperation = Number(completeForm.cooperation);
+        payload.communication = Number(completeForm.communication);
       } else {
-        payload.punctuality = completeForm.punctuality;
-        payload.communication = completeForm.communication;
-        payload.quality = completeForm.quality;
+        payload.punctuality = Number(completeForm.punctuality);
+        payload.communication = Number(completeForm.communication);
+        payload.quality = Number(completeForm.quality);
       }
 
       const resp = await fetch(`/api/web/v4/${roleApi}/messages/thread/${encodeURIComponent(selectedId)}/complete`, {
@@ -796,7 +797,14 @@ export function MessengerShell({ role }: { role: MessengerRole }) {
             <button
               type="button"
               onClick={() => void submitComplete()}
-              disabled={completeSubmitting || !completeForm.completedOn || !completeForm.completedTime || !completeForm.summaryText.trim()}
+              disabled={
+                completeSubmitting ||
+                !completeForm.completedOn ||
+                !completeForm.completedTime ||
+                !completeForm.summaryText.trim() ||
+                !completeForm.communication ||
+                (isContractor ? !completeForm.cooperation : !completeForm.punctuality || !completeForm.quality)
+              }
               className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300"
             >
               {completeSubmitting ? "Submitting..." : "Submit Completion Report"}
