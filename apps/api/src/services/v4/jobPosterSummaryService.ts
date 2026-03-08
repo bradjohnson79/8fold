@@ -74,7 +74,7 @@ export async function getJobPosterSummary(userId: string): Promise<JobPosterSumm
       and(
         eq(jobs.job_poster_user_id, userId),
         sql`${jobs.contractor_user_id} is not null`,
-        sql`${jobs.status} in ('ASSIGNED', 'PUBLISHED', 'JOB_STARTED', 'IN_PROGRESS', 'CONTRACTOR_COMPLETED', 'COMPLETED')`,
+        inArray(jobs.status, ["ASSIGNED", "PUBLISHED", "JOB_STARTED", "IN_PROGRESS", "CONTRACTOR_COMPLETED"]),
       ),
     );
   const activeAssignments = Number(activeAssignmentRows[0]?.count ?? 0);
