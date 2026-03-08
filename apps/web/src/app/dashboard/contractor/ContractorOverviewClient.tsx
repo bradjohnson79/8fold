@@ -14,12 +14,21 @@ type AwaitingCompletion = {
   completionWindowExpiresAt: string | null;
 };
 
+type CompletedJob = {
+  jobId: string;
+  title: string | null;
+  completedAt: string | null;
+  payoutStatus: string | null;
+  contractorPayoutCents: number | null;
+};
+
 type SummaryData = {
   pendingInvites: number;
   assignedJobsCount: number;
   completedJobsCount: number;
   availableEarnings: number;
   awaitingPosterCompletion?: AwaitingCompletion[];
+  fullyCompletedJobs?: CompletedJob[];
 };
 
 type InvitePreview = {
@@ -303,14 +312,37 @@ export default function ContractorOverviewClient() {
                 <div>
                   <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
                   <div className="text-xs text-slate-500">
-                    1/2 steps completed &middot; Waiting for Job Poster
+                    Completion Reports: 1 / 2 &middot; Waiting for Job Poster
                     {j.completionWindowExpiresAt && (
                       <span> &middot; Auto-completes {new Date(j.completionWindowExpiresAt).toLocaleString()}</span>
                     )}
                   </div>
                 </div>
                 <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                  PENDING
+                  1/2
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(summary?.fullyCompletedJobs ?? []).length > 0 && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">Completed Jobs</h3>
+          <p className="mt-1 text-sm text-slate-600">Jobs that have been finalized. Funds are releasable.</p>
+          <div className="mt-3 space-y-2">
+            {(summary?.fullyCompletedJobs ?? []).map((j) => (
+              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
+                  <div className="text-xs text-slate-500">
+                    Completion Reports: 2 / 2 &middot; Completed {j.completedAt ? new Date(j.completedAt).toLocaleDateString() : ""}
+                    {j.contractorPayoutCents ? <span> &middot; Payout: ${(j.contractorPayoutCents / 100).toFixed(2)}</span> : null}
+                  </div>
+                </div>
+                <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                  {j.payoutStatus === "RELEASED" ? "PAID" : "FUNDS READY"}
                 </span>
               </div>
             ))}

@@ -26,6 +26,7 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Disputes", href: "/disputes", match: "prefix" },
       { label: "Support", href: "/support", match: "prefix" },
       { label: "Notifications", href: "/notifications", match: "prefix" },
+      { label: "Reviews", href: "/reviews", match: "prefix" },
     ],
   },
   {

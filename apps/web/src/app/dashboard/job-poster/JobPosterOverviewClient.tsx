@@ -8,12 +8,28 @@ import { apiFetch } from "@/lib/routerApi";
 import { useJobPosterReadiness } from "@/hooks/useJobPosterReadiness";
 import StatusBadge from "@/components/StatusBadge";
 
+type AwaitingPosterReport = {
+  jobId: string;
+  title: string | null;
+  completionWindowExpiresAt: string | null;
+  contractorName: string | null;
+};
+
+type FullyCompletedJob = {
+  jobId: string;
+  title: string | null;
+  completedAt: string | null;
+  hasReview: boolean;
+};
+
 type Summary = {
   jobsPosted: number;
   fundsSecured: number;
   paymentStatus: "CONNECTED" | "NOT_CONNECTED";
   unreadMessages: number;
   activeAssignments: number;
+  awaitingPosterReport?: AwaitingPosterReport[];
+  fullyCompletedJobs?: FullyCompletedJob[];
 };
 
 type JobItem = {
@@ -131,6 +147,10 @@ export default function JobPosterOverviewClient() {
   const [accepting, setAccepting] = useState(false);
   const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
   const confettiFired = useRef(false);
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   useEffect(() => {
     if (readinessLoading) return;
@@ -204,6 +224,40 @@ export default function JobPosterOverviewClient() {
     }
   }
 
+  async function handleSubmitReview() {
+    if (!reviewJobId || reviewSubmitting) return;
+    setReviewSubmitting(true);
+    setActionError(null);
+    try {
+      const resp = await apiFetch("/api/web/v4/reviews", getToken, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: reviewJobId, rating: reviewRating, comment: reviewComment }),
+      });
+      if (!resp.ok) {
+        const json = await resp.json().catch(() => ({}));
+        setActionError(typeof json?.error === "string" ? json.error : "Failed to submit review");
+        return;
+      }
+      setReviewJobId(null);
+      setReviewRating(5);
+      setReviewComment("");
+      const sResp = await apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null);
+      if (sResp) {
+        const sJson = await sResp.json().catch(() => null);
+        if (sJson) setSummary(sJson);
+      }
+    } catch {
+      setActionError("Failed to submit review");
+    } finally {
+      setReviewSubmitting(false);
+    }
+  }
+
+  const awaitingReport = summary?.awaitingPosterReport ?? [];
+  const completedJobs = summary?.fullyCompletedJobs ?? [];
+  const hasCompletionCards = awaitingReport.length > 0 || completedJobs.length > 0;
+
   const loading = readinessLoading || dataLoading;
 
   if (loading) {
@@ -275,7 +329,7 @@ export default function JobPosterOverviewClient() {
 
       {actionError ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p> : null}
 
-      {acceptNotifs.length > 0 && (
+      {acceptNotifs.length > 0 && !hasCompletionCards && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
           <h2 className="text-xl font-bold text-emerald-800">
             Great news! Your job has been accepted.
@@ -305,6 +359,72 @@ export default function JobPosterOverviewClient() {
             >
               View Job
             </Link>
+          </div>
+        </section>
+      )}
+
+      {awaitingReport.length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-amber-800">Please complete your job report</h2>
+          <p className="mt-1 text-sm text-amber-700">The contractor has submitted their completion report. Please submit yours to finalize the job.</p>
+          <div className="mt-3 space-y-2">
+            {awaitingReport.map((j) => (
+              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-amber-100 bg-white px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
+                  <div className="text-xs text-slate-500">
+                    Completion Reports: 1 / 2 &middot; Your report is needed
+                    {j.completionWindowExpiresAt && (
+                      <span> &middot; Auto-completes {new Date(j.completionWindowExpiresAt).toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  ACTION NEEDED
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href={`/dashboard/job-poster/messages${awaitingReport[0]?.jobId ? `?jobId=${encodeURIComponent(awaitingReport[0].jobId)}` : ""}`}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+            >
+              Open Messenger
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {completedJobs.length > 0 && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-emerald-800">Job Completed Successfully</h2>
+          <p className="mt-1 text-sm text-emerald-700">Thank you for using 8Fold!</p>
+          <div className="mt-3 space-y-2">
+            {completedJobs.map((j) => (
+              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
+                  <div className="text-xs text-slate-500">
+                    Completed {j.completedAt ? new Date(j.completedAt).toLocaleDateString() : ""}
+                    {j.hasReview ? " \u00b7 Reviewed" : ""}
+                  </div>
+                </div>
+                {!j.hasReview ? (
+                  <button
+                    type="button"
+                    onClick={() => { setReviewJobId(j.jobId); setReviewRating(5); setReviewComment(""); }}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Leave a Review
+                  </button>
+                ) : (
+                  <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                    REVIEWED
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -425,6 +545,54 @@ export default function JobPosterOverviewClient() {
           <span className="text-slate-400">&rarr;</span>
         </Link>
       </div>
+
+      {reviewJobId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Leave a Review</h3>
+              <button type="button" onClick={() => setReviewJobId(null)} className="rounded border border-slate-300 px-2 py-1 text-xs">
+                Close
+              </button>
+            </div>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Rating</label>
+                <div className="mt-1 flex gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className={`text-2xl transition ${star <= reviewRating ? "text-amber-400" : "text-slate-300"}`}
+                    >
+                      &#9733;
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Comment</label>
+                <textarea
+                  rows={4}
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="How was your experience?"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSubmitReview()}
+                disabled={reviewSubmitting || !reviewComment.trim()}
+                className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+              >
+                {reviewSubmitting ? "Submitting..." : "Submit Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
