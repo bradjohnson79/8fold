@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
@@ -19,32 +19,130 @@ export const V4_ASSIGNMENT_TRANSITIONS = {
 
 export type JobListStatus = "assigned" | "completed";
 
+const ACTIVE_JOB_STATUSES = ["ASSIGNED", "JOB_STARTED", "IN_PROGRESS"] as const;
+
+/**
+ * List jobs by tab. Filters on jobs.status (source of truth), not assignment status.
+ * v4_job_assignments is left-joined only to retrieve assignedAt for display.
+ */
 export async function listJobs(contractorUserId: string, status: JobListStatus) {
   await promoteDuePublishedJobsForContractor(contractorUserId);
-  const assignmentStatuses = status === "assigned" ? ["ASSIGNED", "IN_PROGRESS"] : ["COMPLETED"];
-  const assignmentRows = await db
-    .select({ jobId: v4JobAssignments.jobId, status: v4JobAssignments.status, assignedAt: v4JobAssignments.assignedAt })
-    .from(v4JobAssignments)
-    .where(
-      and(
-        eq(v4JobAssignments.contractorUserId, contractorUserId),
-        inArray(v4JobAssignments.status, assignmentStatuses)
-      )
-    );
 
-  if (assignmentRows.length === 0) return [];
+  const whereClause =
+    status === "assigned"
+      ? and(
+          eq(jobs.contractor_user_id, contractorUserId),
+          inArray(jobs.status, ACTIVE_JOB_STATUSES as any),
+        )
+      : and(
+          eq(jobs.contractor_user_id, contractorUserId),
+          eq(jobs.status, "COMPLETED" as any),
+          isNotNull(jobs.completed_at),
+        );
 
-  const jobIds = assignmentRows.map((r) => r.jobId);
-  const jobRows = await db.select().from(jobs).where(inArray(jobs.id, jobIds));
-
-  const jobMap = new Map(jobRows.map((j) => [j.id, j]));
-  return assignmentRows
-    .map((a) => {
-      const job = jobMap.get(a.jobId);
-      if (!job) return null;
-      return { job, assignmentStatus: a.status, assignedAt: a.assignedAt };
+  const rows = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      scope: jobs.scope,
+      region: jobs.region,
+      status: jobs.status,
+      appointment_at: jobs.appointment_at,
+      completed_at: jobs.completed_at,
+      contractor_marked_complete_at: jobs.contractor_marked_complete_at,
+      poster_marked_complete_at: jobs.poster_marked_complete_at,
+      payout_status: jobs.payout_status,
+      contractor_payout_cents: jobs.contractor_payout_cents,
+      created_at: jobs.created_at,
+      assignedAt: v4JobAssignments.assignedAt,
     })
-    .filter(Boolean) as { job: (typeof jobRows)[0]; assignmentStatus: string; assignedAt: Date }[];
+    .from(jobs)
+    .leftJoin(
+      v4JobAssignments,
+      and(
+        eq(v4JobAssignments.jobId, jobs.id),
+        eq(v4JobAssignments.contractorUserId, contractorUserId),
+      ),
+    )
+    .where(whereClause);
+
+  return rows.map((r) => ({
+    job: r,
+    assignmentStatus: String(r.status ?? ""),
+    assignedAt: r.assignedAt ?? r.created_at,
+  }));
+}
+
+/**
+ * Returns both tab lists in a single query pass. Preferred for the jobs page.
+ * Assigned: jobs.status IN ('ASSIGNED','JOB_STARTED','IN_PROGRESS')
+ * Completed: jobs.status = 'COMPLETED' AND completed_at IS NOT NULL
+ */
+export async function listJobsBothTabs(contractorUserId: string) {
+  await promoteDuePublishedJobsForContractor(contractorUserId);
+
+  const [assignedRows, completedRows] = await Promise.all([
+    db
+      .select({
+        id: jobs.id,
+        title: jobs.title,
+        scope: jobs.scope,
+        region: jobs.region,
+        status: jobs.status,
+        appointment_at: jobs.appointment_at,
+        completed_at: jobs.completed_at,
+        contractor_marked_complete_at: jobs.contractor_marked_complete_at,
+        poster_marked_complete_at: jobs.poster_marked_complete_at,
+        created_at: jobs.created_at,
+        assignedAt: v4JobAssignments.assignedAt,
+      })
+      .from(jobs)
+      .leftJoin(
+        v4JobAssignments,
+        and(
+          eq(v4JobAssignments.jobId, jobs.id),
+          eq(v4JobAssignments.contractorUserId, contractorUserId),
+        ),
+      )
+      .where(
+        and(
+          eq(jobs.contractor_user_id, contractorUserId),
+          inArray(jobs.status, ACTIVE_JOB_STATUSES as any),
+        ),
+      ),
+    db
+      .select({
+        id: jobs.id,
+        title: jobs.title,
+        scope: jobs.scope,
+        region: jobs.region,
+        status: jobs.status,
+        completed_at: jobs.completed_at,
+        contractor_marked_complete_at: jobs.contractor_marked_complete_at,
+        poster_marked_complete_at: jobs.poster_marked_complete_at,
+        payout_status: jobs.payout_status,
+        contractor_payout_cents: jobs.contractor_payout_cents,
+        created_at: jobs.created_at,
+        assignedAt: v4JobAssignments.assignedAt,
+      })
+      .from(jobs)
+      .leftJoin(
+        v4JobAssignments,
+        and(
+          eq(v4JobAssignments.jobId, jobs.id),
+          eq(v4JobAssignments.contractorUserId, contractorUserId),
+        ),
+      )
+      .where(
+        and(
+          eq(jobs.contractor_user_id, contractorUserId),
+          eq(jobs.status, "COMPLETED" as any),
+          isNotNull(jobs.completed_at),
+        ),
+      ),
+  ]);
+
+  return { assignedRows, completedRows };
 }
 
 export async function getJobById(contractorUserId: string, jobId: string) {
