@@ -104,6 +104,16 @@ function SummaryCard({ title, value, subtitle, href }: { title: string; value: s
   return content;
 }
 
+function fmtCountdown(targetIso: string | null, nowMs: number): string {
+  if (!targetIso || nowMs <= 0) return "---";
+  const diff = new Date(targetIso).getTime() - nowMs;
+  if (diff <= 0) return "Expired — refresh to update";
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+}
+
 const DEBUG = typeof window !== "undefined" && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === "true";
 
 export default function ContractorOverviewClient() {
@@ -116,6 +126,16 @@ export default function ContractorOverviewClient() {
   const [invitePreviews, setInvitePreviews] = useState<InvitePreview[]>([]);
   const [debugData, setDebugData] = useState<Record<string, unknown> | null>(null);
   const confettiFired = useRef(false);
+  const [mounted, setMounted] = useState(false);
+  const [nowMs, setNowMs] = useState(0);
+
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    if (!mounted) return;
+    setNowMs(Date.now());
+    const iv = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [mounted]);
 
   useEffect(() => {
     if (readinessLoading) return;
@@ -300,50 +320,65 @@ export default function ContractorOverviewClient() {
         )}
       </div>
 
-      {(summary?.awaitingPosterCompletion ?? []).length > 0 && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-900">Completion In Progress</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            You submitted your report. Waiting for the Job Poster to confirm.
-          </p>
-          <div className="mt-3 space-y-2">
+      {((summary?.awaitingPosterCompletion ?? []).length > 0 || (summary?.fullyCompletedJobs ?? []).length > 0) && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">Completed Job Actions</h3>
+          <p className="mt-1 text-sm text-slate-600">Track completion reports and fund releases.</p>
+          <div className="mt-3 space-y-3">
             {(summary?.awaitingPosterCompletion ?? []).map((j) => (
-              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-amber-100 bg-white px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
-                  <div className="text-xs text-slate-500">
-                    Completion Reports: 1 / 2 &middot; Waiting for Job Poster
+              <div key={j.jobId} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-800">{j.title ?? "Untitled Job"}</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      Completion Reports: <span className="font-semibold text-amber-700">1 / 2</span> &middot; Waiting for Job Poster
+                    </div>
                     {j.completionWindowExpiresAt && (
-                      <span> &middot; Auto-completes {new Date(j.completionWindowExpiresAt).toLocaleString()}</span>
+                      <div className="mt-1.5 text-xs font-medium text-amber-700">
+                        Funds releasable in: {mounted ? fmtCountdown(j.completionWindowExpiresAt, nowMs) : "---"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                      1/2
+                    </span>
+                    <button
+                      disabled
+                      className="rounded-lg bg-slate-300 px-3 py-1.5 text-xs font-semibold text-white cursor-not-allowed"
+                    >
+                      Release Funds
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(summary?.fullyCompletedJobs ?? []).map((j) => (
+              <div key={j.jobId} className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-800">{j.title ?? "Untitled Job"}</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      Completion Reports: <span className="font-semibold text-emerald-700">2 / 2</span>
+                      {" "}&middot; Completed {j.completedAt ? new Date(j.completedAt).toLocaleDateString() : ""}
+                      {j.contractorPayoutCents ? <span> &middot; Payout: ${(j.contractorPayoutCents / 100).toFixed(2)}</span> : null}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                      2/2
+                    </span>
+                    {j.payoutStatus === "RELEASED" ? (
+                      <span className="inline-flex rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">
+                        PAID
+                      </span>
+                    ) : (
+                      <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
+                        Release Funds
+                      </button>
                     )}
                   </div>
                 </div>
-                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                  1/2
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {(summary?.fullyCompletedJobs ?? []).length > 0 && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-900">Completed Jobs</h3>
-          <p className="mt-1 text-sm text-slate-600">Jobs that have been finalized. Funds are releasable.</p>
-          <div className="mt-3 space-y-2">
-            {(summary?.fullyCompletedJobs ?? []).map((j) => (
-              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
-                  <div className="text-xs text-slate-500">
-                    Completion Reports: 2 / 2 &middot; Completed {j.completedAt ? new Date(j.completedAt).toLocaleDateString() : ""}
-                    {j.contractorPayoutCents ? <span> &middot; Payout: ${(j.contractorPayoutCents / 100).toFixed(2)}</span> : null}
-                  </div>
-                </div>
-                <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                  {j.payoutStatus === "RELEASED" ? "PAID" : "FUNDS READY"}
-                </span>
               </div>
             ))}
           </div>

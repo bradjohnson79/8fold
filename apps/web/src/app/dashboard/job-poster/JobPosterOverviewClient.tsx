@@ -73,6 +73,16 @@ type AcceptNotif = {
   };
 };
 
+function fmtCountdown(targetIso: string | null, nowMs: number): string {
+  if (!targetIso || nowMs <= 0) return "---";
+  const diff = new Date(targetIso).getTime() - nowMs;
+  if (diff <= 0) return "Expired — refresh to update";
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+}
+
 function formatMoney(centsLike: number | null | undefined) {
   const cents = Math.max(0, Number(centsLike ?? 0) || 0);
   return `$${(cents / 100).toFixed(2)}`;
@@ -147,10 +157,20 @@ export default function JobPosterOverviewClient() {
   const [accepting, setAccepting] = useState(false);
   const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
   const confettiFired = useRef(false);
+  const [mounted, setMounted] = useState(false);
+  const [nowMs, setNowMs] = useState(0);
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    if (!mounted) return;
+    setNowMs(Date.now());
+    const iv = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [mounted]);
 
   useEffect(() => {
     if (readinessLoading) return;
@@ -365,23 +385,32 @@ export default function JobPosterOverviewClient() {
 
       {awaitingReport.length > 0 && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-amber-800">Please complete your job report</h2>
-          <p className="mt-1 text-sm text-amber-700">The contractor has submitted their completion report. Please submit yours to finalize the job.</p>
+          <h2 className="text-xl font-bold text-amber-800">Job Completion Required</h2>
+          <p className="mt-1 text-sm text-amber-700">
+            Your contractor has submitted their completion report. Please review the job and submit your completion report.
+          </p>
           <div className="mt-3 space-y-2">
             {awaitingReport.map((j) => (
-              <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-amber-100 bg-white px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
-                  <div className="text-xs text-slate-500">
-                    Completion Reports: 1 / 2 &middot; Your report is needed
+              <div key={j.jobId} className="rounded-lg border border-amber-100 bg-white px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-800">{j.title ?? "Untitled Job"}</div>
+                    {j.contractorName && (
+                      <div className="mt-0.5 text-xs text-slate-500">Contractor: {j.contractorName}</div>
+                    )}
+                    <div className="mt-1 text-xs text-slate-600">
+                      Completion Reports: <span className="font-semibold text-amber-700">1 / 2</span> &middot; Your report is needed
+                    </div>
                     {j.completionWindowExpiresAt && (
-                      <span> &middot; Auto-completes {new Date(j.completionWindowExpiresAt).toLocaleString()}</span>
+                      <div className="mt-1 text-xs font-medium text-amber-700">
+                        Auto-completes in: {mounted ? fmtCountdown(j.completionWindowExpiresAt, nowMs) : "---"}
+                      </div>
                     )}
                   </div>
+                  <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                    ACTION NEEDED
+                  </span>
                 </div>
-                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                  ACTION NEEDED
-                </span>
               </div>
             ))}
           </div>
@@ -389,6 +418,12 @@ export default function JobPosterOverviewClient() {
             <Link
               href={`/dashboard/job-poster/messages${awaitingReport[0]?.jobId ? `?jobId=${encodeURIComponent(awaitingReport[0].jobId)}` : ""}`}
               className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+            >
+              Complete Job Report
+            </Link>
+            <Link
+              href={`/dashboard/job-poster/messages${awaitingReport[0]?.jobId ? `?jobId=${encodeURIComponent(awaitingReport[0].jobId)}` : ""}`}
+              className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
             >
               Open Messenger
             </Link>
