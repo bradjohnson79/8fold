@@ -21,9 +21,28 @@ type SupportTicket = {
   status: string;
   priority: string;
   jobId?: string | null;
+  adjustmentId?: string | null;
   body: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type AdjustmentData = {
+  id: string;
+  jobId: string;
+  originalPriceCents: number;
+  requestedPriceCents: number;
+  differenceCents: number;
+  contractorScopeDetails: string;
+  additionalScopeDetails: string;
+  status: string;
+  secureToken: string | null;
+  tokenExpiresAt: string | null;
+  generatedByAdminId: string | null;
+  generatedAt: string | null;
+  paymentIntentId: string | null;
+  createdAt: string | null;
+  approvedAt: string | null;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -44,7 +63,29 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState("");
+  const [adjustment, setAdjustment] = useState<AdjustmentData | null>(null);
+  const [adjLoading, setAdjLoading] = useState(false);
+  const [adjAction, setAdjAction] = useState("");
+  const [consentLink, setConsentLink] = useState<string | null>(null);
+  const [consentExpiry, setConsentExpiry] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadAdjustment = useCallback(async (adjustmentId: string) => {
+    setAdjLoading(true);
+    try {
+      const resp = await fetch(`/api/admin/v4/support/appraisal/${encodeURIComponent(adjustmentId)}`, { cache: "no-store" });
+      const json = await resp.json().catch(() => null);
+      if (resp.ok && json?.ok && json?.data?.adjustment) {
+        const adj = json.data.adjustment as AdjustmentData;
+        setAdjustment(adj);
+        if (adj.secureToken) {
+          setConsentLink(`https://8fold.app/job-adjustment/${adj.id}?token=${adj.secureToken}`);
+          setConsentExpiry(adj.tokenExpiresAt);
+        }
+      }
+    } catch { /* ignore */ }
+    finally { setAdjLoading(false); }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,14 +97,18 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
         setError(String(json?.error?.message ?? json?.error ?? "Failed to load ticket"));
         return;
       }
-      setTicket((json.data?.ticket as SupportTicket) ?? null);
+      const t = (json.data?.ticket as SupportTicket) ?? null;
+      setTicket(t);
       setMessages(Array.isArray(json.data?.messages) ? (json.data.messages as SupportMessage[]) : []);
+      if (t?.adjustmentId) {
+        void loadAdjustment(t.adjustmentId);
+      }
     } catch {
       setError("Failed to load ticket");
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, loadAdjustment]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -110,6 +155,73 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
       /* ignore */
     }
   };
+
+  const handleGenerateLink = async () => {
+    if (!adjustment) return;
+    setAdjAction("generating");
+    try {
+      const resp = await fetch(`/api/admin/v4/support/appraisal/${encodeURIComponent(adjustment.id)}/generate-link`, {
+        method: "POST",
+      });
+      const json = await resp.json().catch(() => null);
+      if (resp.ok && json?.ok && json?.data) {
+        setConsentLink(json.data.url);
+        setConsentExpiry(json.data.expiresAt);
+        void loadAdjustment(adjustment.id);
+      } else {
+        alert(json?.error?.message ?? json?.data?.error ?? "Failed to generate link");
+      }
+    } catch {
+      alert("Failed to generate link");
+    } finally {
+      setAdjAction("");
+    }
+  };
+
+  const handleResendEmail = async () => {
+    if (!adjustment) return;
+    setAdjAction("resending");
+    try {
+      const resp = await fetch(`/api/admin/v4/support/appraisal/${encodeURIComponent(adjustment.id)}/resend-email`, {
+        method: "POST",
+      });
+      const json = await resp.json().catch(() => null);
+      if (resp.ok && json?.ok) {
+        alert("Email resent successfully.");
+      } else {
+        alert(json?.error?.message ?? json?.data?.error ?? "Failed to resend email");
+      }
+    } catch {
+      alert("Failed to resend email");
+    } finally {
+      setAdjAction("");
+    }
+  };
+
+  const handleRejectAppraisal = async () => {
+    if (!adjustment) return;
+    if (!confirm("Are you sure you want to reject this re-appraisal request?")) return;
+    setAdjAction("rejecting");
+    try {
+      const resp = await fetch(`/api/admin/v4/support/appraisal/${encodeURIComponent(adjustment.id)}/reject`, {
+        method: "POST",
+      });
+      const json = await resp.json().catch(() => null);
+      if (resp.ok && json?.ok) {
+        void loadAdjustment(adjustment.id);
+      } else {
+        alert(json?.error?.message ?? json?.data?.error ?? "Failed to reject");
+      }
+    } catch {
+      alert("Failed to reject");
+    } finally {
+      setAdjAction("");
+    }
+  };
+
+  function fmtCents(cents: number) {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
 
   if (loading) return <div style={{ padding: 24 }}>Loading ticket...</div>;
   if (error || !ticket) {
@@ -186,6 +298,110 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
             Update
           </button>
         </div>
+
+        {ticket.ticketType === "SECOND_APPRAISAL" && (
+          <div style={{ marginTop: 12, borderRadius: 12, border: "1px solid rgba(251,191,36,0.3)", background: "rgba(15,23,42,0.5)", padding: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 900, color: "rgba(251,191,36,0.9)", marginBottom: 12 }}>
+              Re-Appraisal Details
+            </h3>
+            {adjLoading ? (
+              <p style={{ fontSize: 12, color: "rgba(226,232,240,0.5)" }}>Loading…</p>
+            ) : !adjustment ? (
+              <p style={{ fontSize: 12, color: "rgba(226,232,240,0.5)" }}>No adjustment data linked.</p>
+            ) : (
+              <>
+                <MetaRow label="Original Price">{fmtCents(adjustment.originalPriceCents)}</MetaRow>
+                <MetaRow label="Requested Price">{fmtCents(adjustment.requestedPriceCents)}</MetaRow>
+                <MetaRow label="Difference">{fmtCents(adjustment.differenceCents)}</MetaRow>
+                <MetaRow label="Status">
+                  <span style={{ fontWeight: 700, color: adjustment.status === "PAID" ? "rgba(52,211,153,0.9)" : adjustment.status === "DECLINED" || adjustment.status === "REJECTED_BY_ADMIN" ? "rgba(239,68,68,0.9)" : "rgba(251,191,36,0.9)" }}>
+                    {adjustment.status}
+                  </span>
+                </MetaRow>
+
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ display: "block", fontSize: 10, fontWeight: 900, color: "rgba(226,232,240,0.45)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Scope at Current Price</span>
+                  <p style={{ fontSize: 11, color: "rgba(226,232,240,0.75)", whiteSpace: "pre-wrap", marginTop: 2 }}>{adjustment.contractorScopeDetails}</p>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ display: "block", fontSize: 10, fontWeight: 900, color: "rgba(226,232,240,0.45)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Additional Work</span>
+                  <p style={{ fontSize: 11, color: "rgba(226,232,240,0.75)", whiteSpace: "pre-wrap", marginTop: 2 }}>{adjustment.additionalScopeDetails}</p>
+                </div>
+
+                {consentLink && (
+                  <div style={{ marginTop: 8 }}>
+                    <MetaRow label="Consent Link">
+                      <span style={{ wordBreak: "break-all", fontSize: 10 }}>{consentLink}</span>
+                    </MetaRow>
+                    {consentExpiry && (
+                      <MetaRow label="Expires">{new Date(consentExpiry).toLocaleString()}</MetaRow>
+                    )}
+                  </div>
+                )}
+
+                {adjustment.generatedByAdminId && (
+                  <MetaRow label="Generated By">{adjustment.generatedByAdminId.slice(0, 12)}…</MetaRow>
+                )}
+                {adjustment.generatedAt && (
+                  <MetaRow label="Generated At">{new Date(adjustment.generatedAt).toLocaleString()}</MetaRow>
+                )}
+
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {(adjustment.status === "PENDING" || adjustment.status === "SENT_TO_POSTER") && (
+                    <button
+                      onClick={() => void handleGenerateLink()}
+                      disabled={!!adjAction}
+                      style={{
+                        width: "100%", borderRadius: 6, border: "1px solid rgba(52,211,153,0.4)", background: "rgba(52,211,153,0.15)",
+                        color: "rgba(52,211,153,0.9)", padding: "6px 0", fontSize: 11, fontWeight: 800,
+                        cursor: adjAction ? "not-allowed" : "pointer", opacity: adjAction ? 0.5 : 1,
+                      }}
+                    >
+                      {adjAction === "generating" ? "Generating…" : "Generate Poster Consent Link"}
+                    </button>
+                  )}
+                  {consentLink && (
+                    <button
+                      onClick={() => { void navigator.clipboard.writeText(consentLink); alert("Link copied!"); }}
+                      style={{
+                        width: "100%", borderRadius: 6, border: "1px solid rgba(148,163,184,0.3)", background: "rgba(15,23,42,0.7)",
+                        color: "rgba(226,232,240,0.9)", padding: "6px 0", fontSize: 11, fontWeight: 800, cursor: "pointer",
+                      }}
+                    >
+                      Copy Link
+                    </button>
+                  )}
+                  {adjustment.secureToken && (
+                    <button
+                      onClick={() => void handleResendEmail()}
+                      disabled={!!adjAction}
+                      style={{
+                        width: "100%", borderRadius: 6, border: "1px solid rgba(96,165,250,0.4)", background: "rgba(96,165,250,0.15)",
+                        color: "rgba(96,165,250,0.9)", padding: "6px 0", fontSize: 11, fontWeight: 800,
+                        cursor: adjAction ? "not-allowed" : "pointer", opacity: adjAction ? 0.5 : 1,
+                      }}
+                    >
+                      {adjAction === "resending" ? "Resending…" : "Resend Email"}
+                    </button>
+                  )}
+                  {adjustment.status === "PENDING" && (
+                    <button
+                      onClick={() => void handleRejectAppraisal()}
+                      disabled={!!adjAction}
+                      style={{
+                        width: "100%", borderRadius: 6, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.15)",
+                        color: "rgba(239,68,68,0.9)", padding: "6px 0", fontSize: 11, fontWeight: 800,
+                        cursor: adjAction ? "not-allowed" : "pointer", opacity: adjAction ? 0.5 : 1,
+                      }}
+                    >
+                      {adjAction === "rejecting" ? "Rejecting…" : "Reject Re-Appraisal"}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right panel — conversation + reply */}

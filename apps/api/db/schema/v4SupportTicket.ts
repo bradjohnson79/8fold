@@ -15,6 +15,7 @@ export const v4SupportTickets = dbSchema.table(
     ticketType: text("ticket_type"),
     priority: text("priority").notNull().default("NORMAL"),
     jobId: text("job_id"),
+    adjustmentId: text("adjustment_id"),
     body: text("body").notNull(),
     status: text("status").notNull().default("OPEN"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
