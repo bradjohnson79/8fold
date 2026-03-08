@@ -36,7 +36,7 @@ export async function getAssignedContractorForJobPoster(userId: string): Promise
         and(
           eq(jobs.job_poster_user_id, userId),
           isNotNull(jobs.contractor_user_id),
-          inArray(jobs.status, ["ASSIGNED", "PUBLISHED", "JOB_STARTED", "IN_PROGRESS", "CONTRACTOR_COMPLETED", "COMPLETED"]),
+          inArray(jobs.status, ["ASSIGNED", "PUBLISHED", "JOB_STARTED", "IN_PROGRESS", "CONTRACTOR_COMPLETED"]),
         ),
       )
       .orderBy(desc(jobs.appointment_at), desc(jobs.updated_at), desc(jobs.created_at))

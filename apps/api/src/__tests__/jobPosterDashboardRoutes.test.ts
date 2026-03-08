@@ -159,6 +159,8 @@ describe("job poster dashboard routes", () => {
       paymentStatus: "CONNECTED",
       unreadMessages: 0,
       activeAssignments: 0,
+      awaitingPosterReport: [],
+      fullyCompletedJobs: [],
       error: "Partial failure, please retry",
     });
   });

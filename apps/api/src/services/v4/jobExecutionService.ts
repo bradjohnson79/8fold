@@ -416,6 +416,26 @@ export async function posterMarkComplete(input: { jobPosterUserId: string; jobId
       routerUserId: job.routerUserId ? String(job.routerUserId) : null,
     });
 
+    if (finalized.finalized && job.contractorUserId) {
+      const assignmentRows = await tx
+        .select({ id: v4JobAssignments.id, status: v4JobAssignments.status })
+        .from(v4JobAssignments)
+        .where(
+          and(
+            eq(v4JobAssignments.jobId, input.jobId),
+            eq(v4JobAssignments.contractorUserId, job.contractorUserId),
+          ),
+        )
+        .limit(1);
+      const assignment = assignmentRows[0];
+      if (assignment && assignment.status !== "COMPLETED") {
+        await tx
+          .update(v4JobAssignments)
+          .set({ status: "COMPLETED" })
+          .where(eq(v4JobAssignments.id, assignment.id));
+      }
+    }
+
     return { ok: true as const, idempotent: false, finalized: finalized.finalized };
   });
 }

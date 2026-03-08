@@ -6,11 +6,20 @@ import { useAuth } from "@clerk/nextjs";
 import confetti from "canvas-confetti";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
+import { useLifecycleDebug } from "@/hooks/useLifecycleDebug";
+import { LifecycleDebugPanel, type LifecycleState } from "@/components/dashboard/LifecycleDebugPanel";
+import { JobLifecycleTimeline, stepsForLifecycleState } from "@/components/dashboard/JobLifecycleTimeline";
 
 type SummaryData = {
-  capacity: { routesUsedToday: number };
-  actionRequired: { supportTicketsRequiringInput: number };
-  recentActivity: Array<{
+  capacity?: { routesUsedToday?: number };
+  actionRequired?: { supportTicketsRequiringInput?: number };
+  earnings?: {
+    weekCents?: number;
+    monthCents?: number;
+    lifetimeCents?: number;
+    pendingReleaseCents?: number;
+  };
+  recentActivity?: Array<{
     id: number;
     title: string;
     event: string;
@@ -96,6 +105,8 @@ function GateCard({
 export default function RouterOverviewPage() {
   const { getToken } = useAuth();
   const { readiness, loading: readinessLoading, error: readinessError } = useRouterReadiness();
+  const showLifecycleDebug = useLifecycleDebug();
+  const [overrideState, setOverrideState] = useState<LifecycleState | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -182,9 +193,25 @@ export default function RouterOverviewPage() {
   const routedToday = summary?.capacity?.routesUsedToday ?? 0;
   const openTickets = summary?.actionRequired?.supportTicketsRequiringInput ?? 0;
   const recentActivity = (summary?.recentActivity ?? []).slice(0, 5);
+  const earnings = summary?.earnings ?? {};
+  const pendingCents = overrideState === "PAYOUT_READY" ? 1500 : (earnings.pendingReleaseCents ?? 0);
+  const releasedCents = overrideState === "PAID" ? (earnings.lifetimeCents ?? 0) + 1500 : (earnings.lifetimeCents ?? 0);
+  const effectiveState = overrideState;
 
   return (
     <div className="space-y-6 p-6">
+      {showLifecycleDebug && (
+        <LifecycleDebugPanel
+          show={showLifecycleDebug}
+          currentState={overrideState}
+          onApply={setOverrideState}
+        />
+      )}
+
+      {showLifecycleDebug && effectiveState && (
+        <JobLifecycleTimeline steps={stepsForLifecycleState(effectiveState)} />
+      )}
+
       {/* Section 1: Setup Status */}
       {allGatesComplete ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
@@ -241,6 +268,34 @@ export default function RouterOverviewPage() {
           </div>
         </section>
       )}
+
+      {/* Escrow Earnings */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">Escrow Earnings</h3>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <div className="text-xs font-medium uppercase text-slate-500">Pending Escrow</div>
+            <div className="mt-1 text-2xl font-bold text-amber-700">
+              ${(pendingCents / 100).toFixed(2)}
+            </div>
+            <div className="text-xs text-slate-500">Awaiting release</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase text-slate-500">Available Earnings</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">
+              ${((earnings.weekCents ?? 0) / 100).toFixed(2)}
+            </div>
+            <div className="text-xs text-slate-500">This week</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase text-slate-500">Released Earnings</div>
+            <div className="mt-1 text-2xl font-bold text-emerald-700">
+              ${(releasedCents / 100).toFixed(2)}
+            </div>
+            <div className="text-xs text-slate-500">Lifetime</div>
+          </div>
+        </div>
+      </section>
 
       {/* Section 2: Available Jobs (Hero) */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

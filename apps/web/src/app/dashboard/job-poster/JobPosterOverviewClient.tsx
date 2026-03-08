@@ -6,7 +6,11 @@ import { useAuth } from "@clerk/nextjs";
 import confetti from "canvas-confetti";
 import { apiFetch } from "@/lib/routerApi";
 import { useJobPosterReadiness } from "@/hooks/useJobPosterReadiness";
+import { useLifecycleDebug } from "@/hooks/useLifecycleDebug";
 import StatusBadge from "@/components/StatusBadge";
+import { LifecycleDebugPanel, type LifecycleState } from "@/components/dashboard/LifecycleDebugPanel";
+import { JobLifecycleTimeline, stepsForLifecycleState } from "@/components/dashboard/JobLifecycleTimeline";
+import { ReviewModal } from "@/components/dashboard/ReviewModal";
 
 type AwaitingPosterReport = {
   jobId: string;
@@ -143,9 +147,21 @@ function SummaryCard({ title, value, subtitle, href }: { title: string; value: s
   return content;
 }
 
+function derivePosterLifecycleState(summary: Summary | null, acceptNotifs: AcceptNotif[]): LifecycleState | null {
+  if (!summary) return null;
+  const awaiting = summary.awaitingPosterReport ?? [];
+  const completed = summary.fullyCompletedJobs ?? [];
+  if (awaiting.length > 0) return "AWAITING_POSTER_COMPLETION";
+  if (completed.length > 0) return "COMPLETED";
+  if (acceptNotifs.length > 0) return "ACCEPTED";
+  return null;
+}
+
 export default function JobPosterOverviewClient() {
   const { getToken } = useAuth();
   const { readiness, loading: readinessLoading, error: readinessError } = useJobPosterReadiness();
+  const showLifecycleDebug = useLifecycleDebug();
+  const [overrideState, setOverrideState] = useState<LifecycleState | null>(null);
 
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
@@ -160,9 +176,11 @@ export default function JobPosterOverviewClient() {
   const [mounted, setMounted] = useState(false);
   const [nowMs, setNowMs] = useState(0);
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState("");
+  const [reviewJobTitle, setReviewJobTitle] = useState<string | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  const realLifecycleState = derivePosterLifecycleState(summary, acceptNotifs);
+  const effectiveState = overrideState ?? realLifecycleState;
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -244,31 +262,30 @@ export default function JobPosterOverviewClient() {
     }
   }
 
-  async function handleSubmitReview() {
-    if (!reviewJobId || reviewSubmitting) return;
+  async function handleSubmitReview(rating: number, comment: string): Promise<boolean> {
+    if (!reviewJobId || reviewSubmitting) return false;
     setReviewSubmitting(true);
     setActionError(null);
     try {
       const resp = await apiFetch("/api/web/v4/reviews", getToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId: reviewJobId, rating: reviewRating, comment: reviewComment }),
+        body: JSON.stringify({ jobId: reviewJobId, rating, comment }),
       });
       if (!resp.ok) {
         const json = await resp.json().catch(() => ({}));
         setActionError(typeof json?.error === "string" ? json.error : "Failed to submit review");
-        return;
+        return false;
       }
-      setReviewJobId(null);
-      setReviewRating(5);
-      setReviewComment("");
       const sResp = await apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null);
       if (sResp) {
         const sJson = await sResp.json().catch(() => null);
         if (sJson) setSummary(sJson);
       }
+      return true;
     } catch {
       setActionError("Failed to submit review");
+      return false;
     } finally {
       setReviewSubmitting(false);
     }
@@ -276,7 +293,10 @@ export default function JobPosterOverviewClient() {
 
   const awaitingReport = summary?.awaitingPosterReport ?? [];
   const completedJobs = summary?.fullyCompletedJobs ?? [];
-  const hasCompletionCards = awaitingReport.length > 0 || completedJobs.length > 0;
+  const beyondAcceptance = effectiveState && ["CONTRACTOR_COMPLETED", "AWAITING_POSTER_COMPLETION", "COMPLETED", "PAID", "REVIEW_STAGE"].includes(effectiveState);
+  const hasCompletionCards = beyondAcceptance || awaitingReport.length > 0 || completedJobs.length > 0;
+  const showCompletionReminder = (overrideState && ["CONTRACTOR_COMPLETED", "AWAITING_POSTER_COMPLETION"].includes(overrideState)) || awaitingReport.length > 0;
+  const showCompletedCard = (overrideState === "COMPLETED" || overrideState === "REVIEW_STAGE") || completedJobs.length > 0;
 
   const loading = readinessLoading || dataLoading;
 
@@ -312,6 +332,18 @@ export default function JobPosterOverviewClient() {
 
   return (
     <div className="space-y-6 p-6">
+      {showLifecycleDebug && (
+        <LifecycleDebugPanel
+          show={showLifecycleDebug}
+          currentState={overrideState ?? realLifecycleState}
+          onApply={setOverrideState}
+        />
+      )}
+
+      {showLifecycleDebug && effectiveState && (
+        <JobLifecycleTimeline steps={stepsForLifecycleState(effectiveState)} />
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Job Poster Dashboard</h1>
@@ -383,14 +415,14 @@ export default function JobPosterOverviewClient() {
         </section>
       )}
 
-      {awaitingReport.length > 0 && (
+      {showCompletionReminder && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <h2 className="text-xl font-bold text-amber-800">Job Completion Required</h2>
           <p className="mt-1 text-sm text-amber-700">
-            Your contractor has submitted their completion report. Please review the job and submit your completion report.
+            Your contractor has submitted their completion report. Please submit your completion report within 24 hours.
           </p>
           <div className="mt-3 space-y-2">
-            {awaitingReport.map((j) => (
+            {awaitingReport.length > 0 ? awaitingReport.map((j) => (
               <div key={j.jobId} className="rounded-lg border border-amber-100 bg-white px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -412,7 +444,12 @@ export default function JobPosterOverviewClient() {
                   </span>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-lg border border-amber-100 bg-white px-4 py-3">
+                <div className="text-sm font-semibold text-slate-800">[Override] Sample Job</div>
+                <div className="mt-1 text-xs text-slate-600">Completion Reports: <span className="font-semibold text-amber-700">1 / 2</span> &middot; Your report is needed</div>
+              </div>
+            )}
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
@@ -431,12 +468,12 @@ export default function JobPosterOverviewClient() {
         </section>
       )}
 
-      {completedJobs.length > 0 && (
+      {showCompletedCard && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
           <h2 className="text-xl font-bold text-emerald-800">Job Completed Successfully</h2>
           <p className="mt-1 text-sm text-emerald-700">Thank you for using 8Fold!</p>
           <div className="mt-3 space-y-2">
-            {completedJobs.map((j) => (
+            {completedJobs.length > 0 ? completedJobs.map((j) => (
               <div key={j.jobId} className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-4 py-3">
                 <div>
                   <div className="text-sm font-medium text-slate-800">{j.title ?? "Untitled Job"}</div>
@@ -448,7 +485,7 @@ export default function JobPosterOverviewClient() {
                 {!j.hasReview ? (
                   <button
                     type="button"
-                    onClick={() => { setReviewJobId(j.jobId); setReviewRating(5); setReviewComment(""); }}
+                    onClick={() => { setReviewJobId(j.jobId); setReviewJobTitle(j.title ?? null); }}
                     className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                   >
                     Leave a Review
@@ -459,7 +496,21 @@ export default function JobPosterOverviewClient() {
                   </span>
                 )}
               </div>
-            ))}
+            )) : (overrideState === "COMPLETED" || overrideState === "REVIEW_STAGE") ? (
+              <div className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">[Override] Sample Job</div>
+                  <div className="text-xs text-slate-500">Completed</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setReviewJobId("override"); setReviewJobTitle("[Override] Sample Job"); }}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  Leave a Review
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
       )}
@@ -582,51 +633,13 @@ export default function JobPosterOverviewClient() {
       </div>
 
       {reviewJobId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Leave a Review</h3>
-              <button type="button" onClick={() => setReviewJobId(null)} className="rounded border border-slate-300 px-2 py-1 text-xs">
-                Close
-              </button>
-            </div>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="text-sm font-medium text-slate-700">Rating</label>
-                <div className="mt-1 flex gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setReviewRating(star)}
-                      className={`text-2xl transition ${star <= reviewRating ? "text-amber-400" : "text-slate-300"}`}
-                    >
-                      &#9733;
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700">Comment</label>
-                <textarea
-                  rows={4}
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="How was your experience?"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleSubmitReview()}
-                disabled={reviewSubmitting || !reviewComment.trim()}
-                className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
-              >
-                {reviewSubmitting ? "Submitting..." : "Submit Review"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ReviewModal
+          jobId={reviewJobId}
+          jobTitle={reviewJobTitle ?? undefined}
+          onClose={() => { setReviewJobId(null); setReviewJobTitle(null); }}
+          onSubmit={(rating, comment) => handleSubmitReview(rating, comment)}
+          submitting={reviewSubmitting}
+        />
       )}
     </div>
   );

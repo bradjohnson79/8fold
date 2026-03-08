@@ -55,6 +55,7 @@ export async function listJobsForJobPoster(userId: string): Promise<JobListItem[
         FROM jobs
         WHERE job_poster_user_id = ${userId}
           AND archived = false
+          AND status != 'COMPLETED'
         ORDER BY created_at DESC
       `,
     );

@@ -16,10 +16,9 @@ export async function GET(req: Request) {
 
     const userId = ctx.internalUser.id;
 
-    const [pendingInvites, assignedJobs, completedJobs, awaitingPosterCompletion, fullyCompletedJobs] = await Promise.all([
+    const [pendingInvites, assignedJobs, awaitingPosterCompletion, fullyCompletedJobs] = await Promise.all([
       countPendingInvites(userId).catch(() => 0),
       listJobs(userId, "assigned").catch(() => []),
-      listJobs(userId, "completed").catch(() => []),
       db
         .select({
           id: jobs.id,
@@ -55,17 +54,18 @@ export async function GET(req: Request) {
         .catch((e) => { console.error("[contractor-summary] fullyCompletedJobs query failed:", e); return []; }),
     ]);
 
+    const fullyCompleted = fullyCompletedJobs ?? [];
     return NextResponse.json({
       pendingInvites,
       assignedJobsCount: Array.isArray(assignedJobs) ? assignedJobs.length : 0,
-      completedJobsCount: Array.isArray(completedJobs) ? completedJobs.length : 0,
+      completedJobsCount: fullyCompleted.length,
       availableEarnings: 0,
       awaitingPosterCompletion: (awaitingPosterCompletion ?? []).map((j) => ({
         jobId: j.id,
         title: j.title,
         completionWindowExpiresAt: j.completionWindowExpiresAt?.toISOString() ?? null,
       })),
-      fullyCompletedJobs: (fullyCompletedJobs ?? []).map((j) => ({
+      fullyCompletedJobs: fullyCompleted.map((j) => ({
         jobId: j.id,
         title: j.title,
         completedAt: j.completedAt?.toISOString() ?? null,
