@@ -448,7 +448,9 @@ export async function submitThreadCompletionReport(input: {
   cooperation?: unknown;
 }) {
   const thread = await getThreadForRole(input.threadId, input.userId, input.role);
-  assertThreadActive(thread);
+  // Completion reports bypass the thread-active check: Job Poster must be
+  // able to submit feedback even after the 24-hour timeout worker ends the
+  // conversation. The thread-ending logic downstream handles duplicates safely.
 
   const summaryText = String(input.summaryText ?? "").trim();
   if (!summaryText) throw badRequest("V4_COMPLETION_SUMMARY_REQUIRED", "Job Summary is required");
