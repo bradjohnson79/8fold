@@ -3,7 +3,7 @@ import { getCurrentUserState } from "@/lib/auth/getCurrentUserState";
 
 function canonicalRolePath(roleSlug: string): string {
   if (roleSlug === "job-poster") return "/dashboard/job-poster";
-  if (roleSlug === "contractor") return "/app/contractor";
+  if (roleSlug === "contractor") return "/dashboard/contractor";
   if (roleSlug === "router") return "/dashboard/router";
   if (roleSlug === "admin") return "/admin";
   return "/dashboard";

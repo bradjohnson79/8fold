@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * @deprecated Legacy contractor shell. Contractors now use ContractorDashboardShellV4 at /dashboard/contractor.
+ * This component is no longer rendered; /app/contractor redirects to /dashboard/contractor.
+ */
 import React from "react";
 import { DashboardShell } from "../DashboardShell";
 import { useSupportInboxBadge } from "./useSupportInboxBadge";

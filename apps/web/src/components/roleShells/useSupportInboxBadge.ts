@@ -65,7 +65,7 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
   const inboxHref = useMemo(() => {
     if (role === "router") return "/app/router/support/inbox";
     if (role === "job-poster") return "/app/job-poster/support/inbox";
-    return "/app/contractor/support/inbox";
+    return "/dashboard/contractor/support-inbox";
   }, [role]);
 
   const legacyRouterInboxHref = "/app/router/support-inbox";

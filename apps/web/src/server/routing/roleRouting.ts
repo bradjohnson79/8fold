@@ -5,7 +5,7 @@ export function normalizeRole(roleRaw: unknown): string {
 export function roleRootPath(roleRaw: unknown): string {
   const role = normalizeRole(roleRaw);
   if (role === "ROUTER") return "/dashboard/router";
-  if (role === "CONTRACTOR") return "/app/contractor";
+  if (role === "CONTRACTOR") return "/dashboard/contractor";
   if (role === "ADMIN") return "/admin";
   if (role === "JOB_POSTER") return "/app/job-poster";
   return "/forbidden";
@@ -14,7 +14,7 @@ export function roleRootPath(roleRaw: unknown): string {
 export function roleOnboardingPath(roleRaw: unknown): string {
   const role = normalizeRole(roleRaw);
   if (role === "ROUTER") return "/app/router";
-  if (role === "CONTRACTOR") return "/app/contractor/profile";
+  if (role === "CONTRACTOR") return "/dashboard/contractor/profile";
   if (role === "ADMIN") return "/admin";
   return "/app/job-poster/onboarding";
 }

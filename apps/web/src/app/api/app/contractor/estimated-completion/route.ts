@@ -1,3 +1,6 @@
+/**
+ * @deprecated Legacy contractor API. Contractors now use /dashboard/contractor (V4).
+ */
 import { NextResponse } from "next/server";
 import { requireApiToken, requireSession } from "@/server/auth/requireSession";
 import { apiFetch } from "@/server/api/apiClient";

@@ -122,6 +122,8 @@ export async function promoteDuePublishedJobsForRouter(routerUserId: string, tx?
   return bulkPromoteDuePublishedJobs(eq(jobs.claimed_by_user_id, routerUserId), tx);
 }
 
+const FINALIZE_ELIGIBLE_STATUSES = ["JOB_STARTED", "IN_PROGRESS", "CUSTOMER_APPROVED", "CONTRACTOR_COMPLETED"] as const;
+
 async function finalizeCompletionIfBothMarked(
   exec: Executor,
   input: {
@@ -139,6 +141,30 @@ async function finalizeCompletionIfBothMarked(
   }
 
   const completedAt = input.now;
+
+  const preCheck = await exec
+    .select({
+      status: jobs.status,
+      contractorMarkedCompleteAt: jobs.contractor_marked_complete_at,
+      posterMarkedCompleteAt: jobs.poster_marked_complete_at,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, input.jobId))
+    .limit(1);
+  const row = preCheck[0];
+  if (!row) return { finalized: false, completedAt: null };
+
+  const statusOk = FINALIZE_ELIGIBLE_STATUSES.includes(row.status as (typeof FINALIZE_ELIGIBLE_STATUSES)[number]);
+  if (!statusOk) {
+    console.log("[job-completion-check] job not eligible for finalize", {
+      jobId: input.jobId,
+      status: row.status,
+      contractorMarked: !!row.contractorMarkedCompleteAt,
+      posterMarked: !!row.posterMarkedCompleteAt,
+    });
+    return { finalized: false, completedAt: null };
+  }
+
   const updated = await exec
     .update(jobs)
     .set({
@@ -148,11 +174,31 @@ async function finalizeCompletionIfBothMarked(
       customer_approved_at: input.posterMarkedCompleteAt,
       updated_at: completedAt,
     })
-    .where(and(eq(jobs.id, input.jobId), inArray(jobs.status, ["JOB_STARTED", "IN_PROGRESS", "CUSTOMER_APPROVED", "CONTRACTOR_COMPLETED"] as any)))
+    .where(and(eq(jobs.id, input.jobId), inArray(jobs.status, [...FINALIZE_ELIGIBLE_STATUSES] as any)))
     .returning({ id: jobs.id });
 
-  if (!updated[0]?.id) return { finalized: false, completedAt: null };
+  if (!updated[0]?.id) {
+    console.log("[job-completion-check] update matched 0 rows", { jobId: input.jobId, status: row.status });
+    return { finalized: false, completedAt: null };
+  }
 
+  console.log("[job-marked-completed]", {
+    jobId: input.jobId,
+    completedAt: completedAt.toISOString(),
+  });
+
+  await exec.insert(v4EventOutbox).values({
+    id: randomUUID(),
+    eventType: "COMPLETED",
+    payload: {
+      jobId: input.jobId,
+      contractorId: input.contractorUserId ? String(input.contractorUserId) : null,
+      jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
+      completedAt: completedAt.toISOString(),
+      dedupeKeyBase: `job_completed:${input.jobId}`,
+    } as Record<string, unknown>,
+    createdAt: completedAt,
+  });
   await exec.insert(v4EventOutbox).values({
     id: randomUUID(),
     eventType: "JOB_COMPLETED_FINALIZED",
