@@ -76,6 +76,7 @@ export type DomainEventPayloadByType = {
   APPOINTMENT_BOOKED: {
     jobId: string;
     jobPosterId: string;
+    routerId?: string | null;
     createdAt?: Date;
     dedupeKey: string;
   };
@@ -88,6 +89,7 @@ export type DomainEventPayloadByType = {
   RESCHEDULE_REQUESTED: {
     jobId: string;
     jobPosterId: string;
+    routerId?: string | null;
     appointmentAt: string;
     createdAt?: Date;
     dedupeKey: string;
@@ -182,6 +184,7 @@ export type DomainEventPayloadByType = {
     jobId: string;
     jobPosterId: string;
     contractorId?: string | null;
+    routerId?: string | null;
     createdAt?: Date;
     dedupeKeyBase: string;
   };

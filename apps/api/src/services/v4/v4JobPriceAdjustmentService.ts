@@ -8,6 +8,7 @@ import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
 import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { appendSystemMessage } from "./v4MessageService";
 import { sendTransactionalEmail } from "@/src/mailer/sendTransactionalEmail";
+import { logDelivery } from "@/src/services/v4/notifications/notificationDeliveryLogService";
 import { stripe } from "@/src/payments/stripe";
 
 // Job must be ASSIGNED (not already in an appraisal review cycle) to submit.
@@ -293,7 +294,28 @@ export async function generateConsentLink(
 
   const posterEmail = posterRows[0]?.email;
   if (posterEmail) {
-    await sendAdjustmentEmail(posterEmail, adj, url);
+    try {
+      await sendAdjustmentEmail(posterEmail, adj, url);
+      await logDelivery({
+        notificationType: "RE_APPRAISAL_CONSENT_EMAIL",
+        recipientUserId: adj.jobPosterUserId,
+        recipientEmail: posterEmail,
+        channel: "EMAIL",
+        status: "DELIVERED",
+        metadata: { adjustmentId, jobId: adj.jobId },
+      });
+    } catch (emailErr) {
+      console.error("[APPRAISAL] Consent email send failed", { adjustmentId, err: String(emailErr) });
+      await logDelivery({
+        notificationType: "RE_APPRAISAL_CONSENT_EMAIL",
+        recipientUserId: adj.jobPosterUserId,
+        recipientEmail: posterEmail,
+        channel: "EMAIL",
+        status: "FAILED",
+        errorMessage: String(emailErr),
+        metadata: { adjustmentId, jobId: adj.jobId },
+      });
+    }
   }
 
   return { url, expiresAt };
@@ -326,7 +348,29 @@ export async function resendConsentEmail(adjustmentId: string): Promise<void> {
   const posterEmail = posterRows[0]?.email;
   if (!posterEmail) throw Object.assign(new Error("Job poster email not found"), { status: 404 });
 
-  await sendAdjustmentEmail(posterEmail, adj, url);
+  try {
+    await sendAdjustmentEmail(posterEmail, adj, url);
+    await logDelivery({
+      notificationType: "RE_APPRAISAL_CONSENT_EMAIL",
+      recipientUserId: adj.jobPosterUserId,
+      recipientEmail: posterEmail,
+      channel: "EMAIL",
+      status: "DELIVERED",
+      metadata: { adjustmentId, jobId: adj.jobId, resent: true },
+    });
+  } catch (emailErr) {
+    console.error("[APPRAISAL] Consent email resend failed", { adjustmentId, err: String(emailErr) });
+    await logDelivery({
+      notificationType: "RE_APPRAISAL_CONSENT_EMAIL",
+      recipientUserId: adj.jobPosterUserId,
+      recipientEmail: posterEmail,
+      channel: "EMAIL",
+      status: "FAILED",
+      errorMessage: String(emailErr),
+      metadata: { adjustmentId, jobId: adj.jobId, resent: true },
+    });
+    throw Object.assign(new Error("Failed to resend consent email"), { status: 500 });
+  }
 }
 
 async function sendAdjustmentEmail(

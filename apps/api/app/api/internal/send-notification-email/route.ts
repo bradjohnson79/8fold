@@ -56,10 +56,25 @@ export async function POST(req: Request) {
     }
 
     const dashboardLink = `${process.env.WEB_APP_URL ?? ""}/dashboard`;
+
+    // Spread raw metadata first (preserves camelCase keys for any new templates),
+    // then add explicit snake_case aliases so legacy {{snake_case}} templates
+    // render correctly regardless of which key convention the event payload uses.
+    const raw: Record<string, string> = Object.fromEntries(
+      Object.entries(metadata ?? {}).map(([k, v]) => [k, String(v ?? "")]),
+    );
     const vars: Record<string, string> = {
       platform_name: "8Fold",
+      ...raw,
+      // snake_case aliases — resolved from camelCase or pre-existing snake_case
+      job_title: raw.jobTitle ?? raw.job_title ?? "",
+      job_location: raw.jobLocation ?? raw.job_location ?? "",
+      job_price: raw.jobPrice ?? raw.job_price ?? "",
+      contractor_name: raw.contractorName ?? raw.contractor_name ?? "",
+      router_name: raw.routerName ?? raw.router_name ?? "",
+      job_poster_name: raw.jobPosterName ?? raw.job_poster_name ?? "",
+      // dashboard_link always wins over any metadata-provided value
       dashboard_link: dashboardLink,
-      ...Object.fromEntries(Object.entries(metadata ?? {}).map(([k, v]) => [k, String(v ?? "")])),
     };
 
     const subject = renderSubject(tpl.emailSubject, vars);
