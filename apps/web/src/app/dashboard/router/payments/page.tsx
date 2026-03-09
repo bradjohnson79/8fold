@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
+import StripeSimulationButton from "@/components/testing/StripeSimulationButton";
 
 type StripeConnectStatus = {
   ok: true;
@@ -179,6 +180,9 @@ export default function RouterPaymentsPage() {
                   : "Connect Stripe Account"}
           </button>
         </div>
+        {!isVerified ? (
+          <StripeSimulationButton onSuccess={() => void loadStatus()} />
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
