@@ -11,7 +11,7 @@ export const TERMS_DOCUMENT_TYPE = {
 
 export const CURRENT_TERMS_VERSION = {
   JOB_POSTER: "1.0",
-  CONTRACTOR: "v1.0",
+  CONTRACTOR: "v1.1",
   ROUTER: "v1.0",
 } as const;
 
