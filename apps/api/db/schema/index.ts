@@ -103,3 +103,7 @@ export * from "./v4ContractorTradeSkills";
 export * from "./v4ContractorCertifications";
 export * from "./v4NotificationTemplate";
 export * from "./v4NotificationDeliveryLog";
+export * from "./seoSettings";
+export * from "./seoIndexingLog";
+export * from "./seoSitemapCache";
+export * from "./seoPageGenerationQueue";
