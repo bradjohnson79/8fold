@@ -3,11 +3,14 @@ import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
 import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 
-/** Marketplace visibility: only jobs actively available or in progress. */
+/**
+ * Marketplace visibility: active jobs available to route, in progress,
+ * or customer-approved but not yet router-approved.
+ */
 function publicEligibility() {
   return and(
     eq(jobs.archived, false),
-    sql`${jobs.status} IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')`,
+    sql`(${jobs.status} IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (${jobs.status} = 'CUSTOMER_APPROVED' AND ${jobs.router_approved_at} IS NULL))`,
   );
 }
 
@@ -15,7 +18,7 @@ function publicEligibility() {
 function publicEligibilityForLocations() {
   return and(
     eq(jobs.archived, false),
-    sql`${jobs.status} IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')`,
+    sql`(${jobs.status} IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (${jobs.status} = 'CUSTOMER_APPROVED' AND ${jobs.router_approved_at} IS NULL))`,
   );
 }
 
@@ -119,7 +122,7 @@ export async function listCitiesByRegion(
         FROM jobs
         WHERE region_code = ${rc}
           AND country = ${country}
-          AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
+          AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
           AND archived = false
           AND city IS NOT NULL
           AND city != ''
@@ -164,7 +167,7 @@ export async function listCitiesWithJobCounts(
         FROM jobs
         WHERE region_code = ${rc}
           AND country = ${country}
-          AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
+          AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
           AND archived = false
           AND city IS NOT NULL
           AND city != ''
@@ -219,7 +222,7 @@ export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[
         published_at, created_at
       FROM jobs
       WHERE archived = false
-        AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
+        AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
       ORDER BY published_at DESC, id DESC
       LIMIT ${take}
     `,
@@ -283,7 +286,7 @@ export async function listJobsByLocation(opts: {
           published_at, created_at
         FROM jobs
         WHERE archived = false
-          AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
+          AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
           AND region_code IS NOT NULL
           AND region_code = ${rc}
           AND (LOWER(TRIM(city)) = LOWER(TRIM(${city})) OR region = ${regionSlug})
