@@ -476,47 +476,14 @@ export async function routeStage2JobToContractors(
             eq(jobs.id, jobId),
             eq(jobs.status, "OPEN_FOR_ROUTING"),
             eq(jobs.cancel_request_pending, false),
+            eq(jobs.failsafe_routing, false),
             sql`(${jobs.claimed_by_user_id} is null or ${jobs.claimed_by_user_id} = ${routerUserId})`,
           ),
         )
         .returning({ id: jobs.id });
       if (updated.length !== 1) return { kind: "job_not_available" as const };
       for (const contractorId of desired) {
-        await tx
-          .insert(v4ContractorJobInvites)
-          .values({
-            id: randomUUID(),
-            routeId: routerUserId,
-            jobId,
-            contractorUserId: contractorId,
-            status: "PENDING",
-            createdAt: now,
-            expiresAt,
-            respondedAt: null,
-          })
-          .onConflictDoUpdate({
-            target: [v4ContractorJobInvites.jobId, v4ContractorJobInvites.contractorUserId],
-            set: {
-              status: "PENDING",
-              routeId: routerUserId,
-              createdAt: now,
-              expiresAt,
-              respondedAt: null,
-            },
-          });
-
-        await tx.insert(v4EventOutbox).values({
-          id: randomUUID(),
-          eventType: "ROUTER_JOB_ROUTED",
-          payload: {
-            jobId,
-            contractorId,
-            createdAt: now.toISOString(),
-            dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
-          } as Record<string, unknown>,
-          createdAt: now,
-        });
-        console.log("[event-outbox] event queued", { type: "ROUTER_JOB_ROUTED", jobId, contractorId });
+        await insertContractorInviteTx(tx, { routeId: routerUserId, jobId, contractorId, now, expiresAt });
       }
 
       await tx.insert(auditLogs).values({
@@ -538,6 +505,212 @@ export async function routeStage2JobToContractors(
       contractorIds,
       err,
     });
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared invite helper — used by both router and admin routing paths
+// ---------------------------------------------------------------------------
+
+type InviteTxParams = {
+  routeId: string;
+  jobId: string;
+  contractorId: string;
+  now: Date;
+  expiresAt: Date;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function insertContractorInviteTx(tx: any, { routeId, jobId, contractorId, now, expiresAt }: InviteTxParams) {
+  await tx
+    .insert(v4ContractorJobInvites)
+    .values({
+      id: randomUUID(),
+      routeId,
+      jobId,
+      contractorUserId: contractorId,
+      status: "PENDING",
+      createdAt: now,
+      expiresAt,
+      respondedAt: null,
+    })
+    .onConflictDoUpdate({
+      target: [v4ContractorJobInvites.jobId, v4ContractorJobInvites.contractorUserId],
+      set: {
+        status: "PENDING",
+        routeId,
+        createdAt: now,
+        expiresAt,
+        respondedAt: null,
+      },
+    });
+
+  await tx.insert(v4EventOutbox).values({
+    id: randomUUID(),
+    eventType: "ROUTER_JOB_ROUTED",
+    payload: {
+      jobId,
+      contractorId,
+      createdAt: now.toISOString(),
+      dedupeKey: `new_job_invite:${jobId}:${contractorId}`,
+    } as Record<string, unknown>,
+    createdAt: now,
+  });
+
+  console.log("[event-outbox] event queued", { type: "ROUTER_JOB_ROUTED", jobId, contractorId });
+}
+
+// ---------------------------------------------------------------------------
+// Admin eligible contractors — allows OPEN_FOR_ROUTING and APPRAISAL_PENDING
+// ---------------------------------------------------------------------------
+
+export type AdminGetContractorsResult =
+  | {
+      kind: "ok";
+      job: {
+        id: string;
+        title: string;
+        city: string;
+        region: string;
+        provinceCode: string;
+        tradeCategory: string;
+        countryCode: string;
+        urbanOrRegional: "URBAN" | "REGIONAL";
+        maxDistanceKm: number;
+      };
+      contractors: Stage2ContractorCard[];
+    }
+  | { kind: "not_found" }
+  | { kind: "job_not_available" }
+  | { kind: "missing_job_coords" };
+
+export async function adminGetEligibleContractors(jobId: string): Promise<AdminGetContractorsResult> {
+  const job = await fetchJobSnapshot(jobId);
+  if (!job) return { kind: "not_found" };
+
+  const allowedStatuses = new Set(["OPEN_FOR_ROUTING", "APPRAISAL_PENDING"]);
+  if (!allowedStatuses.has(job.status) || job.cancelRequestPending === true) {
+    return { kind: "job_not_available" };
+  }
+
+  if (!Number.isFinite(job.lat) || !Number.isFinite(job.lng)) return { kind: "missing_job_coords" };
+
+  const contractors = await computeEligibleContractors(job);
+  return {
+    kind: "ok",
+    job: {
+      id: job.id,
+      title: job.title,
+      city: job.city,
+      region: job.region,
+      provinceCode: job.provinceCode,
+      tradeCategory: job.tradeCategory,
+      countryCode: job.countryCode,
+      urbanOrRegional: job.jobType === "urban" ? "URBAN" : "REGIONAL",
+      maxDistanceKm: resolveMaxDistanceKm(job.isRegional),
+    },
+    contractors,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Admin routing — no payment-setup check, uses admin_routed_by_id + failsafe lock
+// ---------------------------------------------------------------------------
+
+export type AdminRouteResult =
+  | { kind: "ok"; created: number }
+  | { kind: "not_found" }
+  | { kind: "job_not_available" }
+  | { kind: "missing_job_coords" }
+  | { kind: "too_many" }
+  | { kind: "contractor_not_eligible" };
+
+export async function adminRouteJobToContractors(
+  adminId: string,
+  adminEmail: string,
+  jobId: string,
+  contractorIds: string[],
+): Promise<AdminRouteResult> {
+  const desired = Array.from(new Set(contractorIds)).filter(Boolean);
+
+  if (!desired.length) return { kind: "contractor_not_eligible" };
+  if (desired.length > 5) return { kind: "too_many" };
+
+  // Use fetchJobSnapshot + computeEligibleContractors directly to allow APPRAISAL_PENDING
+  // in addition to OPEN_FOR_ROUTING (getStage2JobContractors only allows the latter).
+  const job = await fetchJobSnapshot(jobId);
+  if (!job) return { kind: "not_found" };
+
+  const allowedStatuses = new Set(["OPEN_FOR_ROUTING", "APPRAISAL_PENDING"]);
+  if (!allowedStatuses.has(job.status) || job.cancelRequestPending === true) {
+    return { kind: "job_not_available" };
+  }
+
+  if (!Number.isFinite(job.lat) || !Number.isFinite(job.lng)) return { kind: "missing_job_coords" };
+
+  const eligibleContractors = await computeEligibleContractors(job);
+  const eligibleIds = new Set(eligibleContractors.map((c) => c.contractorId));
+  if (desired.some((id) => !eligibleIds.has(id))) return { kind: "contractor_not_eligible" };
+
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
+
+      const countRes = await tx.execute(
+        sql`SELECT COUNT(*)::int AS cnt FROM v4_contractor_job_invites WHERE job_id = ${jobId} AND status = 'PENDING'`,
+      );
+      const existingCount = Number((countRes.rows[0] as any)?.cnt ?? 0);
+      if (existingCount + desired.length > 5) return { kind: "job_not_available" as const };
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      const updated = await tx
+        .update(jobs)
+        .set({
+          admin_routed_by_id: adminId,
+          failsafe_routing: true,
+          routed_at: now,
+          routing_status: ROUTING_STATUS.INVITES_SENT as any,
+          routing_started_at: now,
+          routing_expires_at: expiresAt,
+        } as any)
+        .where(
+          and(
+            eq(jobs.id, jobId),
+            inArray(jobs.status as any, ["OPEN_FOR_ROUTING", "APPRAISAL_PENDING"]),
+            eq(jobs.cancel_request_pending, false),
+          ),
+        )
+        .returning({ id: jobs.id });
+
+      if (updated.length !== 1) return { kind: "job_not_available" as const };
+
+      for (const contractorId of desired) {
+        await insertContractorInviteTx(tx, { routeId: adminId, jobId, contractorId, now, expiresAt });
+      }
+
+      await tx.insert(auditLogs).values({
+        id: randomUUID(),
+        createdAt: now,
+        actorUserId: adminId,
+        action: "JOB_ROUTING_APPLIED",
+        entityType: "Job",
+        entityId: jobId,
+        metadata: {
+          contractorIds: desired,
+          stage: "admin_override",
+          initiatedByAdmin: true,
+          adminId,
+          adminEmail,
+        } as any,
+      });
+
+      return { kind: "ok" as const, created: desired.length };
+    });
+  } catch (err) {
+    console.error("[admin-route-error]", { adminId, jobId, contractorIds, err });
     throw err;
   }
 }

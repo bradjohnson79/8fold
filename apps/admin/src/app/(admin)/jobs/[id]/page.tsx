@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import JobEditForm from "./JobEditForm";
 import JobStatusEditor from "./JobStatusEditor";
+import AdminRoutingAccordion from "./AdminRoutingAccordion";
 
 const inputStyle: React.CSSProperties = {
   background: "rgba(2,6,23,0.35)",
@@ -82,6 +83,7 @@ type JobDetail = {
   jobPoster: Party | null;
   router: Party | null;
   contractor: Party | null;
+  adminRoutedById?: string | null;
 };
 
 type TimelineEvent = {
@@ -485,6 +487,13 @@ export default async function JobDetailPage({
           </div>
         </Card>
       </div>
+
+      <AdminRoutingAccordion
+        jobId={job.id}
+        jobStatus={job.statusRaw}
+        existingRouterId={job.router?.id ?? null}
+        adminRoutedById={job.adminRoutedById ?? null}
+      />
 
       <div style={{ marginTop: 12 }}>
         <Card title="Escrow Financial Summary (Read-only)">

@@ -88,6 +88,7 @@ export type AdminJobDetail = {
   jobPoster: AdminPartySummary | null;
   router: AdminPartySummary | null;
   contractor: AdminPartySummary | null;
+  adminRoutedById: string | null;
 };
 
 export type AdminJobRelated = {

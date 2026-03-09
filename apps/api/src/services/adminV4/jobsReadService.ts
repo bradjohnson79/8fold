@@ -14,6 +14,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/server/db/drizzle";
 import {
+  admins,
   auditLogs,
   contractors,
   conversations,
@@ -444,6 +445,7 @@ export async function getAdminJobDetail(jobId: string): Promise<{
       router_approved_at: jobs.router_approved_at,
       contractor_user_id: jobs.contractor_user_id,
       claimed_by_user_id: jobs.claimed_by_user_id,
+      admin_routed_by_id: jobs.admin_routed_by_id,
       job_poster_user_id: jobs.job_poster_user_id,
       first_routed_at: jobs.first_routed_at,
       routed_at: jobs.routed_at,
@@ -563,6 +565,18 @@ export async function getAdminJobDetail(jobId: string): Promise<{
       )[0] ?? null
     : null;
 
+  // Admin-routed jobs: admin_routed_by_id is set and claimed_by_user_id is null (admin not in users table).
+  const adminRouter =
+    !routerUser && row.admin_routed_by_id
+      ? (
+          await db
+            .select({ id: admins.id, email: admins.email })
+            .from(admins)
+            .where(eq(admins.id, row.admin_routed_by_id))
+            .limit(1)
+        )[0] ?? null
+      : null;
+
   const contractorUser = contractorUserRows[0] ?? null;
   const contractor = contractorUser
     ? toParty(contractorUser)
@@ -636,7 +650,17 @@ export async function getAdminJobDetail(jobId: string): Promise<{
           role: row.poster_role,
         }
       : null,
-    router: toParty(routerUser),
+    router: routerUser
+      ? toParty(routerUser)
+      : adminRouter
+        ? {
+            id: adminRouter.id,
+            name: `Admin (${adminRouter.email})`,
+            email: adminRouter.email,
+            role: "ADMIN_OVERRIDE" as string | null,
+          }
+        : null,
+    adminRoutedById: row.admin_routed_by_id ?? null,
     contractor,
   };
 
