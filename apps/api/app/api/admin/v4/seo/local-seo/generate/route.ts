@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { randomUUID } from "crypto";
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 import { ok, err } from "@/src/lib/api/adminV4Response";
 import { db } from "@/db/drizzle";
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
     const [row] = await db
       .insert(seoPageGenerationQueue)
       .values({
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         city,
         service,
         slug,

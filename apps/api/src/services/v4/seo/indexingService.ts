@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { db } from "@/db/drizzle";
 import { seoIndexingLog } from "@/db/schema/seoIndexingLog";
 import { getSeoSettings } from "./seoSettingsService";
@@ -16,7 +15,7 @@ export interface PingResult {
 
 async function writeLog(result: PingResult & { triggeredBy: string }): Promise<void> {
   await db.insert(seoIndexingLog).values({
-    id: randomUUID(),
+    id: crypto.randomUUID(),
     url: result.url,
     engine: result.engine,
     status: result.status,

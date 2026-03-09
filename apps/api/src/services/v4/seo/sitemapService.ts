@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
 import { db } from "@/db/drizzle";
 import { seoSitemapCache } from "@/db/schema/seoSitemapCache";
 import { jobs } from "@/db/schema/job";
@@ -67,7 +66,7 @@ async function writeSitemapCache(type: SitemapType, xmlContent: string, urlCount
   await db
     .insert(seoSitemapCache)
     .values({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       sitemapType: type,
       xmlContent,
       urlCount,
