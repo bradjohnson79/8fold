@@ -77,32 +77,39 @@ export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
   const [loading, setLoading] = React.useState(true);
   const [missing, setMissing] = React.useState<CompletionStep[]>([]);
 
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const resp = role === "ROUTER"
-          ? await routerApiFetch("/api/web/v4/readiness", getToken)
-          : await fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" });
-        const json = (await resp.json().catch(() => null)) as ReadinessPayload | null;
-        if (!alive) return;
-        const completion = json?.roleCompletion;
-        if (!resp.ok || !completion || completion.complete) {
-          setMissing([]);
-          return;
-        }
-        const steps = Array.isArray(completion.missing) ? completion.missing : [];
-        setMissing(steps.filter((step) => step === "TERMS" || step === "PROFILE" || step === "PAYMENT"));
-      } catch {
-        if (alive) setMissing([]);
-      } finally {
-        if (alive) setLoading(false);
+  const fetchReadiness = React.useCallback(async () => {
+    try {
+      const resp = role === "ROUTER"
+        ? await routerApiFetch("/api/web/v4/readiness", getToken)
+        : await fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" });
+      const json = (await resp.json().catch(() => null)) as ReadinessPayload | null;
+      const completion = json?.roleCompletion;
+      if (!resp.ok || !completion || completion.complete) {
+        setMissing([]);
+        return;
       }
-    })();
-    return () => {
-      alive = false;
+      const steps = Array.isArray(completion.missing) ? completion.missing : [];
+      setMissing(steps.filter((step) => step === "TERMS" || step === "PROFILE" || step === "PAYMENT"));
+    } catch {
+      setMissing([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [role, getToken]);
+
+  React.useEffect(() => {
+    void fetchReadiness();
+  }, [fetchReadiness]);
+
+  React.useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void fetchReadiness();
+      }
     };
-  }, []);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [fetchReadiness]);
 
   if (loading || missing.length === 0) return null;
 
