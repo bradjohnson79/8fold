@@ -108,18 +108,24 @@ export async function listCitiesByRegion(
   const res = await db.execute<{ city: string | null; job_count: number; latest_activity: string | null }>(
     sql`
       SELECT
-        INITCAP(TRIM(city)) AS city,
+        city_clean AS city,
         COUNT(*)::int AS job_count,
         MAX(COALESCE(published_at, created_at))::text AS latest_activity
-      FROM jobs
-      WHERE region_code = ${rc}
-        AND country = ${country}
-        AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
-        AND archived = false
-        AND city IS NOT NULL
-        AND city != ''
-      GROUP BY LOWER(TRIM(city))
-      ORDER BY city ASC
+      FROM (
+        SELECT
+          INITCAP(TRIM(city)) AS city_clean,
+          published_at,
+          created_at
+        FROM jobs
+        WHERE region_code = ${rc}
+          AND country = ${country}
+          AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
+          AND archived = false
+          AND city IS NOT NULL
+          AND city != ''
+      ) j
+      GROUP BY city_clean
+      ORDER BY city_clean ASC
     `,
   );
   const rows = (res as { rows?: { city: string | null; job_count: number; latest_activity: string | null }[] })?.rows ?? [];
@@ -147,17 +153,23 @@ export async function listCitiesWithJobCounts(
   const res = await db.execute<{ city: string | null; job_count: number; latest_activity: string | null }>(
     sql`
       SELECT
-        INITCAP(TRIM(city)) AS city,
+        city_clean AS city,
         COUNT(*)::int AS job_count,
         MAX(COALESCE(published_at, created_at))::text AS latest_activity
-      FROM jobs
-      WHERE region_code = ${rc}
-        AND country = ${country}
-        AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
-        AND archived = false
-        AND city IS NOT NULL
-        AND city != ''
-      GROUP BY LOWER(TRIM(city))
+      FROM (
+        SELECT
+          INITCAP(TRIM(city)) AS city_clean,
+          published_at,
+          created_at
+        FROM jobs
+        WHERE region_code = ${rc}
+          AND country = ${country}
+          AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
+          AND archived = false
+          AND city IS NOT NULL
+          AND city != ''
+      ) j
+      GROUP BY city_clean
       ORDER BY job_count DESC
     `,
   );
