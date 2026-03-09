@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type NotificationRow = {
   id: string;
@@ -32,6 +33,160 @@ type PreferenceRow = {
 const PAGE_SIZE = 25;
 const LIST_ENDPOINT = "/api/admin/v4/notifications";
 const PREFS_ENDPOINT = "/api/admin/v4/notification-preferences";
+const SMTP_STATUS_ENDPOINT = "/api/admin/v4/system/smtp-status";
+
+type SmtpStatusData = {
+  smtp: "online" | "error" | "unconfigured";
+  smtpError: string | null;
+  eventOutbox: "idle" | "backed_up";
+  eventOutboxPendingCount: number;
+  lastEmailSentAt: string | null;
+  lastSmtpVerifiedAt: string | null;
+  lastSmtpError: string | null;
+};
+
+function StatusDot({ status }: { status: "green" | "yellow" | "red" | "gray" }) {
+  const color =
+    status === "green"
+      ? "#22c55e"
+      : status === "yellow"
+        ? "#eab308"
+        : status === "red"
+          ? "#ef4444"
+          : "#6b7280";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: color,
+        boxShadow: `0 0 6px ${color}88`,
+        marginRight: 6,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+function SmtpStatusPanel() {
+  const [data, setData] = useState<SmtpStatusData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch(SMTP_STATUS_ENDPOINT, { cache: "no-store", credentials: "include" });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok) throw new Error(json?.error ?? "Failed");
+      setData(json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load status");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const smtpDot: "green" | "yellow" | "red" | "gray" = !data
+    ? "gray"
+    : data.smtp === "online"
+      ? "green"
+      : data.smtp === "error"
+        ? "red"
+        : "gray";
+
+  const outboxDot: "green" | "yellow" | "red" | "gray" = !data
+    ? "gray"
+    : data.eventOutbox === "idle"
+      ? "green"
+      : "yellow";
+
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(148,163,184,0.2)",
+        borderRadius: 12,
+        padding: "14px 16px",
+        background: "rgba(2,6,23,0.4)",
+        marginBottom: 16,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontWeight: 900, fontSize: 14, color: "rgba(226,232,240,0.95)" }}>
+          Notification System Status
+        </div>
+        <button onClick={() => void refresh()} style={{ ...buttonStyle, marginTop: 0, fontSize: 11, padding: "4px 10px" }}>
+          Refresh
+        </button>
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: "rgba(226,232,240,0.55)" }}>Checking status...</div>}
+      {error && <div style={{ fontSize: 12, color: "rgba(254,202,202,0.9)" }}>{error}</div>}
+
+      {!loading && data && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+          <StatusItem
+            dot={smtpDot}
+            label="SMTP Email Service"
+            value={data.smtp === "online" ? "Online" : data.smtp === "error" ? "Error" : "Unconfigured"}
+            detail={data.smtpError ?? undefined}
+          />
+          <StatusItem
+            dot={outboxDot}
+            label="Event Outbox"
+            value={data.eventOutbox === "idle" ? "Idle" : "Backed Up"}
+            detail={`${data.eventOutboxPendingCount} pending`}
+          />
+          <StatusItem
+            dot={data.lastEmailSentAt ? "green" : "gray"}
+            label="Last Email Sent"
+            value={data.lastEmailSentAt ? data.lastEmailSentAt.slice(0, 19).replace("T", " ") : "—"}
+          />
+          <StatusItem
+            dot={data.lastSmtpVerifiedAt ? (data.smtp === "online" ? "green" : "red") : "gray"}
+            label="SMTP Last Verified"
+            value={data.lastSmtpVerifiedAt ? data.lastSmtpVerifiedAt.slice(0, 19).replace("T", " ") : "—"}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusItem({
+  dot,
+  label,
+  value,
+  detail,
+}: {
+  dot: "green" | "yellow" | "red" | "gray";
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(148,163,184,0.15)",
+        borderRadius: 8,
+        padding: "10px 12px",
+        background: "rgba(15,23,42,0.5)",
+      }}
+    >
+      <div style={{ fontSize: 11, color: "rgba(148,163,184,0.85)", fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", fontSize: 13, fontWeight: 900, color: "rgba(226,232,240,0.95)" }}>
+        <StatusDot status={dot} />
+        {value}
+      </div>
+      {detail && <div style={{ fontSize: 11, color: "rgba(148,163,184,0.7)", marginTop: 2 }}>{detail}</div>}
+    </div>
+  );
+}
 
 function priorityColor(priority: string): React.CSSProperties {
   const p = String(priority ?? "").toUpperCase();
@@ -176,10 +331,44 @@ export default function NotificationsPage() {
 
   return (
     <div>
-      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Notifications</h1>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Notification Control Center</h1>
       <p style={{ marginTop: 8, color: "rgba(226,232,240,0.72)" }}>
-        Operational alerts across refunds, payments, routing, and system events.
+        Monitor delivery health, manage templates, audit logs, and test notifications.
       </p>
+
+      {/* Control Center Navigation */}
+      <div style={{ display: "flex", gap: 8, marginTop: 14, marginBottom: 16, flexWrap: "wrap" }}>
+        {[
+          { href: "/notifications/templates", label: "Email Templates", emoji: "✉" },
+          { href: "/notifications/logs", label: "Delivery Logs", emoji: "📋" },
+          { href: "/notifications/test", label: "Send Test", emoji: "🧪" },
+        ].map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 14px",
+              border: "1px solid rgba(56,189,248,0.35)",
+              borderRadius: 10,
+              background: "rgba(56,189,248,0.1)",
+              color: "rgba(125,211,252,0.95)",
+              fontWeight: 900,
+              fontSize: 13,
+              textDecoration: "none",
+              cursor: "pointer",
+            }}
+          >
+            <span>{item.emoji}</span>
+            {item.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* SMTP Status Panel */}
+      <SmtpStatusPanel />
 
       <div style={{ marginTop: 10, color: "rgba(191,219,254,0.95)", fontWeight: 900, fontSize: 12 }}>
         Unread: {unreadCount}

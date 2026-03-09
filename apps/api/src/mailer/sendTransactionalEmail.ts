@@ -1,4 +1,3 @@
-import nodemailer from "nodemailer";
 import { getSmtpConfig } from "@/src/auth/sendLoginCodeEmail";
 
 export async function sendTransactionalEmail(args: {
@@ -12,6 +11,10 @@ export async function sendTransactionalEmail(args: {
     console.error("[MAILER] SMTP not configured — skipping email", { to: args.to, subject: args.subject });
     return;
   }
+
+  // Dynamic import keeps nodemailer out of the instrumentation.ts bundle
+  // (which is compiled by the edge webpack config that can't resolve Node built-ins like 'crypto').
+  const nodemailer = (await import("nodemailer")).default;
 
   const transporter = nodemailer.createTransport({
     host: cfg.host,
