@@ -101,3 +101,5 @@ export * from "./roleTermsAcceptance";
 export * from "./v4FrontpageTicker";
 export * from "./v4ContractorTradeSkills";
 export * from "./v4ContractorCertifications";
+export * from "./v4NotificationTemplate";
+export * from "./v4NotificationDeliveryLog";

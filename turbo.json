@@ -27,7 +27,14 @@
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "TURNSTILE_SECRET_KEY",
-    "NEXT_PUBLIC_TURNSTILE_SITE_KEY"
+    "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASS",
+    "SMTP_FROM",
+    "WEB_APP_URL",
+    "API_APP_URL"
   ],
   "tasks": {
     "dev": {
@@ -63,7 +70,14 @@
         "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
         "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
         "TURNSTILE_SECRET_KEY",
-        "NEXT_PUBLIC_TURNSTILE_SITE_KEY"
+        "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASS",
+        "SMTP_FROM",
+        "WEB_APP_URL",
+        "API_APP_URL"
       ]
     },
     "lint": {

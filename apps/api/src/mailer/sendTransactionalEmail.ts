@@ -1,3 +1,6 @@
+// Static import keeps nodemailer in the Node.js server bundle only.
+// webpack sees this as a server-only dependency and excludes it from edge/middleware bundles.
+// The webpack externals function in next.config.ts handles the instrumentation build path.
 import nodemailer from "nodemailer";
 import { getSmtpConfig } from "@/src/auth/sendLoginCodeEmail";
 

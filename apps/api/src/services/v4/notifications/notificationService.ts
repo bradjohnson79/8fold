@@ -6,6 +6,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { v4Notifications } from "@/db/schema/v4Notification";
 import { v4NotificationPreferences } from "@/db/schema/v4NotificationPreference";
+import { users } from "@/db/schema/user";
 import {
   NOTIFICATION_TYPES,
   type NotificationPriority,
@@ -15,6 +16,16 @@ import {
   normalizeNotificationRole,
   normalizeNotificationType,
 } from "./notificationTypes";
+// Email delivery is handled by an internal API endpoint (/api/internal/send-notification-email)
+// to keep nodemailer (and all Node.js-only mailer code) completely out of this file.
+// This file is statically imported by the instrumentation chain (processEventOutbox →
+// notificationEventMapper → notificationService), which is compiled for the edge runtime
+// by Next.js. Any nodemailer reference here would appear in the edge bundle and fail
+// Vercel's edge function validator.
+async function lazyLogDelivery(data: Parameters<Awaited<typeof import("./notificationDeliveryLogService")>["logDelivery"]>[0]) {
+  const { logDelivery } = await import("./notificationDeliveryLogService");
+  return logDelivery(data);
+}
 
 type Executor = typeof db | any;
 
@@ -301,7 +312,27 @@ export async function sendNotification(
     if (!pref.inApp && !pref.email) return null;
 
     if (pref.email) {
-      console.info("[NOTIFICATION_EMAIL_INTENT]", { userId, role, type });
+      // Delegate email sending to the internal Node.js-only API endpoint.
+      // Using fetch() keeps nodemailer and all mailer code out of this file —
+      // this file is statically bundled into the edge/instrumentation context
+      // and cannot reference nodemailer or any module that imports it.
+      const apiOrigin = process.env.API_ORIGIN ?? "";
+      if (apiOrigin) {
+        void fetch(`${apiOrigin}/api/internal/send-notification-email`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-internal-key": process.env.INTERNAL_DEBUG_SECRET ?? "",
+          },
+          body: JSON.stringify({
+            userId,
+            notificationType: type,
+            metadata: input.metadata ?? {},
+            dedupeKey: input.dedupeKey ?? input.idempotencyKey ?? null,
+            eventId: (input.metadata as any)?._eventId ?? null,
+          }),
+        }).catch((err) => console.error("[NOTIFICATION_EMAIL_TRIGGER_ERROR]", { type, userId, err: String(err) }));
+      }
     }
     if (!pref.inApp) return null;
     const dedupeColumnAvailable = await hasNotificationsDedupeColumn(exec);
@@ -358,7 +389,19 @@ export async function sendNotification(
       }
     }
 
-    return insertWithoutDedupeColumn(exec, valuesBase);
+    const row = await insertWithoutDedupeColumn(exec, valuesBase);
+    if (row) {
+      void lazyLogDelivery({
+        notificationId: row.id,
+        notificationType: type,
+        recipientUserId: userId,
+        channel: "IN_APP",
+        status: "DELIVERED",
+        dedupeKey: input.dedupeKey ?? input.idempotencyKey ?? null,
+        eventId: (input.metadata as any)?._eventId ?? null,
+      });
+    }
+    return row;
   } catch (error) {
     if (error instanceof NotificationSchemaError || isMissingPreferencesTableError(error)) {
       if (!(error instanceof NotificationSchemaError)) {
