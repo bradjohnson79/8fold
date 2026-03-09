@@ -27,12 +27,22 @@ type SupportTicket = {
   updatedAt: string;
 };
 
+type PriceBreakdown = {
+  jobPosterTotal: number;
+  contractorPayout: number;
+  routerCommission: number;
+  platformFee: number;
+};
+
 type AdjustmentData = {
   id: string;
   jobId: string;
   originalPriceCents: number;
   requestedPriceCents: number;
   differenceCents: number;
+  originalPriceBreakdown?: PriceBreakdown;
+  requestedPriceBreakdown?: PriceBreakdown;
+  differencePriceBreakdown?: PriceBreakdown;
   contractorScopeDetails: string;
   additionalScopeDetails: string;
   status: string;
@@ -310,9 +320,21 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
               <p style={{ fontSize: 12, color: "rgba(226,232,240,0.5)" }}>No adjustment data linked.</p>
             ) : (
               <>
-                <MetaRow label="Original Price">{fmtCents(adjustment.originalPriceCents)}</MetaRow>
+                <MetaRow label="Original Price (Poster)">{fmtCents(adjustment.originalPriceCents)}</MetaRow>
                 <MetaRow label="Requested Price">{fmtCents(adjustment.requestedPriceCents)}</MetaRow>
-                <MetaRow label="Difference (calc)">{fmtCents(adjustment.requestedPriceCents - adjustment.originalPriceCents)}</MetaRow>
+                <MetaRow label="Difference">{fmtCents(adjustment.requestedPriceCents - adjustment.originalPriceCents)}</MetaRow>
+
+                {adjustment.requestedPriceBreakdown && (
+                  <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                    <span style={{ display: "block", fontSize: 10, fontWeight: 900, color: "rgba(251,191,36,0.7)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Requested Price Breakdown
+                    </span>
+                    <BreakdownRow label="Contractor Payout (75%)" value={fmtCents(adjustment.requestedPriceBreakdown.contractorPayout)} highlight />
+                    <BreakdownRow label="Router Commission (15%)" value={fmtCents(adjustment.requestedPriceBreakdown.routerCommission)} />
+                    <BreakdownRow label="Platform Fee (10%)" value={fmtCents(adjustment.requestedPriceBreakdown.platformFee)} />
+                  </div>
+                )}
+
                 <MetaRow label="Status">
                   <span style={{ fontWeight: 700, color: adjustment.status === "PAID" ? "rgba(52,211,153,0.9)" : adjustment.status === "DECLINED" || adjustment.status === "REJECTED_BY_ADMIN" ? "rgba(239,68,68,0.9)" : "rgba(251,191,36,0.9)" }}>
                     {adjustment.status}
@@ -516,6 +538,15 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
         {label}
       </span>
       <span style={{ fontSize: 12, color: "rgba(226,232,240,0.85)" }}>{children}</span>
+    </div>
+  );
+}
+
+function BreakdownRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+      <span style={{ fontSize: 11, color: highlight ? "rgba(226,232,240,0.85)" : "rgba(226,232,240,0.55)" }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: highlight ? 800 : 600, color: highlight ? "rgba(251,191,36,0.9)" : "rgba(226,232,240,0.7)" }}>{value}</span>
     </div>
   );
 }

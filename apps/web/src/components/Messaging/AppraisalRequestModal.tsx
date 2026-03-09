@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 
 type Props = {
   threadId: string;
@@ -27,6 +27,24 @@ function formatPriceDisplay(raw: string): string {
   return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function computeBreakdown(totalCents: number) {
+  return {
+    posterTotal: totalCents,
+    contractorPayout: Math.round(totalCents * 0.75),
+    routerCommission: Math.round(totalCents * 0.15),
+    platformFee: Math.round(totalCents * 0.10),
+  };
+}
+
+function BreakdownRow({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div className="flex justify-between text-xs py-0.5">
+      <span className="text-slate-500">{label}</span>
+      <span className={highlight ? "font-semibold text-slate-800" : "text-slate-600"}>{formatMoney(value)}</span>
+    </div>
+  );
+}
+
 export function AppraisalRequestModal({
   threadId,
   jobTitle,
@@ -44,6 +62,12 @@ export function AppraisalRequestModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submittedPriceCents, setSubmittedPriceCents] = useState<number | null>(null);
+
+  const currentBreakdown = useMemo(() => computeBreakdown(currentPriceCents), [currentPriceCents]);
+
+  const enteredDollars = parsePriceInput(requestedPrice);
+  const enteredCents = enteredDollars > 0 ? Math.round(enteredDollars * 100) : 0;
+  const newBreakdown = useMemo(() => (enteredCents > 0 ? computeBreakdown(enteredCents) : null), [enteredCents]);
 
   async function handleSubmit() {
     const priceDollars = parsePriceInput(requestedPrice);
@@ -93,6 +117,7 @@ export function AppraisalRequestModal({
   }
 
   if (submittedPriceCents !== null) {
+    const submitted = computeBreakdown(submittedPriceCents);
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
         <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
@@ -109,9 +134,15 @@ export function AppraisalRequestModal({
               <span className="font-semibold text-slate-700">{formatMoney(currentPriceCents)}</span>
             </div>
             <div className="flex justify-between px-4 py-2.5">
-              <span className="text-slate-500">Requested price</span>
+              <span className="text-slate-500">Requested price (Job Poster total)</span>
               <span className="font-semibold text-emerald-700">{formatMoney(submittedPriceCents)}</span>
             </div>
+          </div>
+          <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-semibold text-emerald-700 mb-1.5">Requested price breakdown</p>
+            <BreakdownRow label="Your payout (75%)" value={submitted.contractorPayout} highlight />
+            <BreakdownRow label="Router commission (15%)" value={submitted.routerCommission} />
+            <BreakdownRow label="Platform fee (10%)" value={submitted.platformFee} />
           </div>
           <button
             type="button"
@@ -135,12 +166,19 @@ export function AppraisalRequestModal({
           </button>
         </div>
 
-        <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
+        {/* Job info + current price breakdown */}
+        <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700 space-y-1">
           <p><span className="font-semibold">Job:</span> {jobTitle}</p>
           {jobDescription && <p><span className="font-semibold">Description:</span> {jobDescription}</p>}
           {tradeCategory && <p><span className="font-semibold">Trade:</span> {tradeCategory}</p>}
           {address && <p><span className="font-semibold">Location:</span> {address}</p>}
-          <p><span className="font-semibold">Current Price:</span> {formatMoney(currentPriceCents)}</p>
+          <div className="pt-2 mt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Current Job Price Breakdown</p>
+            <BreakdownRow label="Job Poster Total" value={currentBreakdown.posterTotal} highlight />
+            <BreakdownRow label="Your payout (75%)" value={currentBreakdown.contractorPayout} />
+            <BreakdownRow label="Router commission (15%)" value={currentBreakdown.routerCommission} />
+            <BreakdownRow label="Platform fee (10%)" value={currentBreakdown.platformFee} />
+          </div>
         </div>
 
         {error && (
@@ -197,9 +235,30 @@ export function AppraisalRequestModal({
               />
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
-              Enter the total price required to complete the job including the additional work described above. The system will calculate the difference automatically.
+              Enter the total price the Job Poster will pay. The system calculates your payout, router commission, and platform fee automatically.
             </p>
           </div>
+
+          {/* Live earnings preview */}
+          {newBreakdown && enteredCents > currentPriceCents && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+              <p className="text-xs font-semibold text-blue-700 mb-1.5">Live Earnings Preview</p>
+              <BreakdownRow label="Job Poster pays" value={newBreakdown.posterTotal} highlight />
+              <BreakdownRow label="Your payout (75%)" value={newBreakdown.contractorPayout} highlight />
+              <BreakdownRow label="Router commission (15%)" value={newBreakdown.routerCommission} />
+              <BreakdownRow label="Platform fee (10%)" value={newBreakdown.platformFee} />
+              <div className="mt-1.5 pt-1.5 border-t border-blue-200 flex justify-between text-xs">
+                <span className="text-blue-600 font-semibold">Additional payment required</span>
+                <span className="font-semibold text-blue-700">{formatMoney(enteredCents - currentPriceCents)}</span>
+              </div>
+            </div>
+          )}
+
+          {newBreakdown && enteredCents > 0 && enteredCents <= currentPriceCents && (
+            <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+              <p className="text-xs text-rose-600">The new total must exceed the current job price of {formatMoney(currentPriceCents)}.</p>
+            </div>
+          )}
 
           <button
             type="button"

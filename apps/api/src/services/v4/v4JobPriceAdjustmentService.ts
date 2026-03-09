@@ -29,6 +29,26 @@ function computeDiff(adj: { requestedPriceCents: number; originalPriceCents: num
   return adj.requestedPriceCents - (adj.originalPriceCents ?? 0);
 }
 
+/** Fee split constants: 75% contractor, 15% router, 10% platform. */
+const CONTRACTOR_SHARE = 0.75;
+const ROUTER_SHARE = 0.15;
+const PLATFORM_SHARE = 0.10;
+
+/** Compute the full price breakdown for a given total (Job Poster price). */
+function computeBreakdown(totalCents: number): {
+  jobPosterTotal: number;
+  contractorPayout: number;
+  routerCommission: number;
+  platformFee: number;
+} {
+  return {
+    jobPosterTotal: totalCents,
+    contractorPayout: Math.round(totalCents * CONTRACTOR_SHARE),
+    routerCommission: Math.round(totalCents * ROUTER_SHARE),
+    platformFee: Math.round(totalCents * PLATFORM_SHARE),
+  };
+}
+
 /**
  * Normalize a price input to integer cents.
  * - If input is already ≥ 100 (looks like cents), use as-is (rounded).
@@ -187,7 +207,7 @@ export async function createAdjustmentRequest(
   if (threadId) {
     await appendSystemMessage(
       threadId,
-      `Contractor submitted a 2nd appraisal request. Requested total price: ${formatCents(requestedPriceCents)}. Awaiting review from 8Fold support.`,
+      `Contractor submitted a revised appraisal for this job.\n\nOriginal price: ${formatCents(originalPriceCents)}\nRequested price: ${formatCents(requestedPriceCents)}\n\nAwaiting review from 8Fold support.`,
     );
   }
 
@@ -509,7 +529,7 @@ export async function acceptAdjustment(
   if (adj.threadId) {
     await appendSystemMessage(
       adj.threadId,
-      "The Job Poster accepted the revised appraisal request. Processing additional payment.",
+      `The Job Poster accepted the revised appraisal.\n\nThe new total job price is ${formatCents(adj.requestedPriceCents)}.\nAdditional payment is now being processed.`,
     );
   }
 
@@ -560,9 +580,10 @@ export async function confirmAdjustmentPayment(
   await syncSupportTicket(adj.supportTicketId, "RESOLVED");
 
   if (adj.threadId) {
+    const breakdown = computeBreakdown(adj.requestedPriceCents);
     await appendSystemMessage(
       adj.threadId,
-      `Additional payment received. The job price has been updated to ${formatCents(adj.requestedPriceCents)}.`,
+      `Additional payment received.\n\nThe job price has been updated to ${formatCents(adj.requestedPriceCents)}.\nContractor payout: ${formatCents(breakdown.contractorPayout)} | Router commission: ${formatCents(breakdown.routerCommission)} | Platform fee: ${formatCents(breakdown.platformFee)}`,
     );
   }
 
@@ -614,6 +635,7 @@ export async function getAdjustmentByIdForAdmin(
   const rows = await db.select().from(v4JobPriceAdjustments).where(eq(v4JobPriceAdjustments.id, adjustmentId)).limit(1);
   const adj = rows[0];
   if (!adj) return null;
+  const differenceCents = computeDiff(adj);
   return {
     id: adj.id,
     jobId: adj.jobId,
@@ -623,8 +645,10 @@ export async function getAdjustmentByIdForAdmin(
     supportTicketId: adj.supportTicketId,
     originalPriceCents: adj.originalPriceCents,
     requestedPriceCents: adj.requestedPriceCents,
-    // Returned as computed value so admin UI always shows the correct figure.
-    differenceCents: computeDiff(adj),
+    differenceCents,
+    originalPriceBreakdown: computeBreakdown(adj.originalPriceCents ?? 0),
+    requestedPriceBreakdown: computeBreakdown(adj.requestedPriceCents),
+    differencePriceBreakdown: computeBreakdown(differenceCents),
     contractorScopeDetails: adj.contractorScopeDetails,
     additionalScopeDetails: adj.additionalScopeDetails,
     status: adj.status,
