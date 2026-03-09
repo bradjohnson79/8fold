@@ -19,7 +19,9 @@ export const V4_ASSIGNMENT_TRANSITIONS = {
 
 export type JobListStatus = "assigned" | "completed";
 
-const ACTIVE_JOB_STATUSES = ["ASSIGNED", "JOB_STARTED", "IN_PROGRESS"] as const;
+// PUBLISHED = appointment booked, awaiting poster acceptance
+// APPOINTMENT_BOOKED = poster accepted the appointment time
+const ACTIVE_JOB_STATUSES = ["ASSIGNED", "PUBLISHED", "APPOINTMENT_BOOKED", "JOB_STARTED", "IN_PROGRESS"] as const;
 
 /**
  * List jobs by tab. Filters on jobs.status (source of truth), not assignment status.

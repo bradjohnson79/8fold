@@ -12,6 +12,7 @@ type AssignedJob = {
   region?: string;
   status: string;
   assignedAt: string;
+  appointmentAt?: string | null;
   executionStatus?: string;
   canMarkComplete?: boolean;
   contractorMarkedCompleteAt?: string | null;
@@ -37,16 +38,37 @@ function statusBadge(status: string) {
   const s = status.toUpperCase();
   const colorMap: Record<string, string> = {
     ASSIGNED: "bg-blue-100 text-blue-800",
+    PUBLISHED: "bg-sky-100 text-sky-800",
+    APPOINTMENT_BOOKED: "bg-violet-100 text-violet-800",
     JOB_STARTED: "bg-amber-100 text-amber-800",
     IN_PROGRESS: "bg-amber-100 text-amber-800",
     COMPLETED: "bg-emerald-100 text-emerald-800",
   };
+  const labelMap: Record<string, string> = {
+    PUBLISHED: "APPT PENDING",
+    APPOINTMENT_BOOKED: "APPT CONFIRMED",
+  };
   const cls = colorMap[s] ?? "bg-slate-100 text-slate-700";
+  const label = labelMap[s] ?? s.replace(/_/g, " ");
   return (
     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
-      {s.replace(/_/g, " ")}
+      {label}
     </span>
   );
+}
+
+function fmtAppointment(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return null;
+  }
 }
 
 function payoutBadge(payoutStatus: string, payoutCents: number) {
@@ -196,6 +218,14 @@ export default function ContractorJobsPage() {
                     {j.region ? <span>{j.region}</span> : null}
                     <span>Assigned {new Date(j.assignedAt).toLocaleDateString()}</span>
                   </div>
+                  {j.appointmentAt ? (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-sky-700">
+                      <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Appointment: {fmtAppointment(j.appointmentAt)}
+                    </div>
+                  ) : null}
                   {j.executionStatus && j.executionStatus !== "none" ? (
                     <div className="mt-2 text-xs font-medium text-amber-700">
                       {j.executionStatus.replace(/_/g, " ")}
