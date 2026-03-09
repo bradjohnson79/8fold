@@ -65,6 +65,7 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "System Status", href: "/system/status", match: "prefix" },
       { label: "Data Coverage", href: "/system/data-coverage", match: "prefix" },
       { label: "Frontpage Ticker", href: "/system/frontpage-ticker", match: "prefix" },
+      { label: "Admin Users", href: "/admin-users", match: "prefix" },
     ],
   },
 ];
