@@ -7,10 +7,19 @@ import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
+import { v4ContractorTradeSkills } from "@/db/schema/v4ContractorTradeSkills";
+import { v4ContractorCertifications } from "@/db/schema/v4ContractorCertifications";
 import { haversineKm } from "@/src/jobs/geo";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
 import { getRoleCompletionSnapshot } from "@/src/services/v4/roleCompletionService";
+
+export type ContractorCertificationPreview = {
+  certificationName: string;
+  issuingOrganization: string | null;
+  verified: boolean;
+  certificateType: string | null;
+};
 
 export type Stage2ContractorCard = {
   contractorId: string;
@@ -21,6 +30,7 @@ export type Stage2ContractorCard = {
   city: string;
   distanceKm: number;
   availabilityStatus: "AVAILABLE" | "BUSY";
+  certifications: ContractorCertificationPreview[];
 };
 
 type Stage2JobSnapshot = {
@@ -187,19 +197,31 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
   const maxDistanceKm = resolveMaxDistanceKm(job.isRegional);
   const bounds = geoBoundingBox(job.lat, job.lng, maxDistanceKm);
 
+  // SQL-level trade filter: INNER JOIN v4_contractor_trade_skills on approved trade matching the job's category.
+  // Because both columns use the TradeCategory pgEnum, this is a direct equality — no UPPER/TRIM needed.
+  const tradeCategory = job.tradeCategory as typeof v4ContractorTradeSkills.$inferInsert["tradeCategory"];
+
   const rows = await db
     .select({
       contractorId: contractorProfilesV4.userId,
       businessName: contractorProfilesV4.businessName,
       contactName: contractorProfilesV4.contactName,
-      yearsExperience: contractorProfilesV4.yearsExperience,
+      tradeSkillId: v4ContractorTradeSkills.id,
+      tradeYearsExperience: v4ContractorTradeSkills.yearsExperience,
       city: contractorProfilesV4.city,
-      tradeCategories: contractorProfilesV4.tradeCategories,
       homeLatitude: contractorProfilesV4.homeLatitude,
       homeLongitude: contractorProfilesV4.homeLongitude,
     })
     .from(contractorProfilesV4)
     .innerJoin(contractorAccounts, eq(contractorAccounts.userId, contractorProfilesV4.userId))
+    .innerJoin(
+      v4ContractorTradeSkills,
+      and(
+        eq(v4ContractorTradeSkills.contractorUserId, contractorProfilesV4.userId),
+        eq(v4ContractorTradeSkills.tradeCategory, tradeCategory),
+        eq(v4ContractorTradeSkills.approved, true),
+      ),
+    )
     .where(
       and(
         sql`upper(trim(coalesce(${contractorProfilesV4.countryCode}, ''))) = ${job.countryCode}`,
@@ -212,9 +234,6 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
 
   const out: Stage2ContractorCard[] = [];
   for (const row of rows) {
-    const categories = parseTradeCategories(row.tradeCategories);
-    if (!categories.includes(job.tradeCategory)) continue;
-
     if (
       typeof row.homeLatitude !== "number" ||
       !Number.isFinite(row.homeLatitude) ||
@@ -232,11 +251,51 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
       businessName: String(row.businessName ?? "").trim() || String(row.contactName ?? "").trim() || "Contractor",
       contactName: String(row.contactName ?? "").trim() || String(row.businessName ?? "").trim() || "Contractor",
       tradeCategory: job.tradeCategory,
-      yearsExperience: Number(row.yearsExperience ?? 0),
+      yearsExperience: Number(row.tradeYearsExperience ?? 0),
       city: String(row.city ?? "").trim(),
       distanceKm,
       availabilityStatus: "AVAILABLE",
+      certifications: [],
     });
+  }
+
+  // Batch-load certifications for all eligible contractors
+  if (out.length > 0) {
+    const contractorIds = out.map((c) => c.contractorId);
+    const certRows = await db
+      .select({
+        contractorUserId: v4ContractorCertifications.contractorUserId,
+        tradeSkillId: v4ContractorCertifications.tradeSkillId,
+        certificationName: v4ContractorCertifications.certificationName,
+        issuingOrganization: v4ContractorCertifications.issuingOrganization,
+        verified: v4ContractorCertifications.verified,
+        certificateType: v4ContractorCertifications.certificateType,
+      })
+      .from(v4ContractorCertifications)
+      .innerJoin(
+        v4ContractorTradeSkills,
+        and(
+          eq(v4ContractorCertifications.tradeSkillId, v4ContractorTradeSkills.id),
+          eq(v4ContractorTradeSkills.tradeCategory, tradeCategory),
+        ),
+      )
+      .where(inArray(v4ContractorCertifications.contractorUserId, contractorIds));
+
+    const certsByContractor = new Map<string, ContractorCertificationPreview[]>();
+    for (const cert of certRows) {
+      const existing = certsByContractor.get(cert.contractorUserId) ?? [];
+      existing.push({
+        certificationName: cert.certificationName,
+        issuingOrganization: cert.issuingOrganization,
+        verified: cert.verified,
+        certificateType: cert.certificateType,
+      });
+      certsByContractor.set(cert.contractorUserId, existing);
+    }
+
+    for (const c of out) {
+      c.certifications = certsByContractor.get(c.contractorId) ?? [];
+    }
   }
 
   const contractorIds = out.map((c) => c.contractorId);
