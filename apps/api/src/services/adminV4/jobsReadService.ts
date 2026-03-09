@@ -215,6 +215,7 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
         router_approved_at: jobs.router_approved_at,
         job_source: jobs.job_source,
         contractor_user_id: jobs.contractor_user_id,
+        claimed_by_user_id: jobs.claimed_by_user_id,
         poster_id: posterUser.id,
         poster_name: posterUser.name,
         poster_email: posterUser.email,
@@ -292,7 +293,10 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
     }
   }
 
-  const routerUserIds = Array.from(new Set(Array.from(latestDispatchByJob.values()).map((d) => d.routerUserId).filter(Boolean)));
+  // Collect router IDs from dispatches first, then fall back to jobs.claimed_by_user_id for V4-routed jobs.
+  const dispatchRouterIds = Array.from(latestDispatchByJob.values()).map((d) => d.routerUserId).filter(Boolean);
+  const claimedRouterIds = jobRows.map((r) => r.claimed_by_user_id).filter((v): v is string => Boolean(v));
+  const routerUserIds = Array.from(new Set([...dispatchRouterIds, ...claimedRouterIds]));
   const contractorUserIds = Array.from(new Set(jobRows.map((r) => r.contractor_user_id).filter((v): v is string => Boolean(v))));
 
   const [routerUsers, contractorUsers] = await Promise.all([
@@ -329,7 +333,8 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
           }
         : null;
 
-    const routerSummary = dispatch ? toParty(routerUserMap.get(dispatch.routerUserId) ?? null) : null;
+    const resolvedRouterId = dispatch?.routerUserId ?? row.claimed_by_user_id ?? null;
+    const routerSummary = resolvedRouterId ? toParty(routerUserMap.get(resolvedRouterId) ?? null) : null;
 
     const statusRaw = String(row.status ?? "");
     const displayStatus = deriveDisplayStatus({
@@ -438,6 +443,7 @@ export async function getAdminJobDetail(jobId: string): Promise<{
       transaction_fee_cents: jobs.transaction_fee_cents,
       router_approved_at: jobs.router_approved_at,
       contractor_user_id: jobs.contractor_user_id,
+      claimed_by_user_id: jobs.claimed_by_user_id,
       job_poster_user_id: jobs.job_poster_user_id,
       first_routed_at: jobs.first_routed_at,
       routed_at: jobs.routed_at,
@@ -544,12 +550,15 @@ export async function getAdminJobDetail(jobId: string): Promise<{
   const latestDispatch = dispatchRows[0] ?? null;
   const latestAssignment = assignmentRows[0] ?? null;
 
-  const routerUser = latestDispatch?.routerUserId
+  // V4 routing stores the router on jobs.claimed_by_user_id; older dispatch records use jobDispatches.routerUserId.
+  // Try dispatch first, then fall back to the claimed_by_user_id snapshot on the job row.
+  const routerUserIdResolved = latestDispatch?.routerUserId ?? row.claimed_by_user_id ?? null;
+  const routerUser = routerUserIdResolved
     ? (
         await db
           .select({ id: users.id, name: users.name, email: users.email, role: users.role })
           .from(users)
-          .where(eq(users.id, latestDispatch.routerUserId))
+          .where(eq(users.id, routerUserIdResolved))
           .limit(1)
       )[0] ?? null
     : null;
