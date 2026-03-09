@@ -312,7 +312,7 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
               <>
                 <MetaRow label="Original Price">{fmtCents(adjustment.originalPriceCents)}</MetaRow>
                 <MetaRow label="Requested Price">{fmtCents(adjustment.requestedPriceCents)}</MetaRow>
-                <MetaRow label="Difference">{fmtCents(adjustment.differenceCents)}</MetaRow>
+                <MetaRow label="Difference (calc)">{fmtCents(adjustment.requestedPriceCents - adjustment.originalPriceCents)}</MetaRow>
                 <MetaRow label="Status">
                   <span style={{ fontWeight: 700, color: adjustment.status === "PAID" ? "rgba(52,211,153,0.9)" : adjustment.status === "DECLINED" || adjustment.status === "REJECTED_BY_ADMIN" ? "rgba(239,68,68,0.9)" : "rgba(251,191,36,0.9)" }}>
                     {adjustment.status}
@@ -347,7 +347,7 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
                 )}
 
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {(adjustment.status === "PENDING" || adjustment.status === "SENT_TO_POSTER") && (
+                  {(adjustment.status === "PENDING_REVIEW" || adjustment.status === "SENT_TO_POSTER") && (
                     <button
                       onClick={() => void handleGenerateLink()}
                       disabled={!!adjAction}
@@ -357,7 +357,7 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
                         cursor: adjAction ? "not-allowed" : "pointer", opacity: adjAction ? 0.5 : 1,
                       }}
                     >
-                      {adjAction === "generating" ? "Generating…" : "Generate Poster Consent Link"}
+                      {adjAction === "generating" ? "Sending…" : "Send to Poster"}
                     </button>
                   )}
                   {consentLink && (
@@ -384,7 +384,7 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
                       {adjAction === "resending" ? "Resending…" : "Resend Email"}
                     </button>
                   )}
-                  {adjustment.status === "PENDING" && (
+                  {(adjustment.status === "PENDING_REVIEW" || adjustment.status === "SENT_TO_POSTER") && (
                     <button
                       onClick={() => void handleRejectAppraisal()}
                       disabled={!!adjAction}
@@ -394,7 +394,7 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
                         cursor: adjAction ? "not-allowed" : "pointer", opacity: adjAction ? 0.5 : 1,
                       }}
                     >
-                      {adjAction === "rejecting" ? "Rejecting…" : "Reject Re-Appraisal"}
+                      {adjAction === "rejecting" ? "Rejecting…" : "Reject Request"}
                     </button>
                   )}
                 </div>

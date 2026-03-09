@@ -1,0 +1,142 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+type Appraisal = {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  originalPriceCents: number | null;
+  requestedPriceCents: number;
+  differenceCents: number;
+  status: string;
+  createdAt: string | null;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING_REVIEW: "Pending Review",
+  SENT_TO_POSTER: "Sent to Poster",
+  DECLINED: "Declined",
+  REJECTED_BY_ADMIN: "Rejected by Admin",
+  PAYMENT_PENDING: "Awaiting Payment",
+  PAID: "Paid",
+  EXPIRED: "Expired",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  PENDING_REVIEW: "bg-amber-100 text-amber-800",
+  SENT_TO_POSTER: "bg-blue-100 text-blue-800",
+  DECLINED: "bg-rose-100 text-rose-800",
+  REJECTED_BY_ADMIN: "bg-rose-100 text-rose-800",
+  PAYMENT_PENDING: "bg-purple-100 text-purple-800",
+  PAID: "bg-emerald-100 text-emerald-800",
+  EXPIRED: "bg-slate-100 text-slate-600",
+};
+
+function formatMoney(cents: number | null): string {
+  if (cents == null) return "—";
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function getApiOrigin() {
+  const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    return "http://localhost:3003";
+  }
+  return "https://api.8fold.app";
+}
+
+export default function ContractorAppraisalsPage() {
+  const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const apiOrigin = getApiOrigin();
+    fetch(`${apiOrigin}/api/web/v4/contractor/appraisals`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && Array.isArray(data.appraisals)) {
+          setAppraisals(data.appraisals as Appraisal[]);
+        } else {
+          setError(data.error ?? "Failed to load appraisals");
+        }
+      })
+      .catch(() => setError("Failed to load appraisals"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold text-slate-900">2nd Appraisals</h1>
+      <p className="mt-1 text-sm text-slate-600">
+        Track the status of your price revision requests.
+      </p>
+
+      {loading && (
+        <p className="mt-8 text-sm text-slate-500">Loading appraisals…</p>
+      )}
+
+      {error && (
+        <div className="mt-6 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+      )}
+
+      {!loading && !error && appraisals.length === 0 && (
+        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <p className="text-slate-500 text-sm">You have not submitted any 2nd appraisal requests yet.</p>
+          <p className="mt-1 text-xs text-slate-400">
+            You can request a price revision from within a job&apos;s Messenger thread.
+          </p>
+        </div>
+      )}
+
+      {!loading && appraisals.length > 0 && (
+        <div className="mt-6 space-y-3">
+          {appraisals.map((a) => {
+            const statusLabel = STATUS_LABELS[a.status] ?? a.status;
+            const statusColor = STATUS_COLORS[a.status] ?? "bg-slate-100 text-slate-600";
+            const diff = a.differenceCents;
+
+            return (
+              <div
+                key={a.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-slate-900 text-sm">{a.jobTitle}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Submitted {formatDate(a.createdAt)}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusColor}`}>
+                    {statusLabel}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-slate-50 py-2 px-3">
+                    <p className="text-xs text-slate-400">Original Price</p>
+                    <p className="mt-0.5 font-bold text-slate-800 text-sm">{formatMoney(a.originalPriceCents)}</p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 py-2 px-3">
+                    <p className="text-xs text-emerald-600">Requested Price</p>
+                    <p className="mt-0.5 font-bold text-emerald-700 text-sm">{formatMoney(a.requestedPriceCents)}</p>
+                  </div>
+                  <div className="rounded-lg bg-amber-50 py-2 px-3">
+                    <p className="text-xs text-amber-600">Difference</p>
+                    <p className="mt-0.5 font-bold text-amber-700 text-sm">{formatMoney(diff)}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
