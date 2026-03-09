@@ -17,6 +17,7 @@ import { getRoleCompletionSnapshot } from "@/src/services/v4/roleCompletionServi
 export type ContractorCertificationPreview = {
   certificationName: string;
   issuingOrganization: string | null;
+  certificateImageUrl: string | null;
   verified: boolean;
   certificateType: string | null;
 };
@@ -268,6 +269,7 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
         tradeSkillId: v4ContractorCertifications.tradeSkillId,
         certificationName: v4ContractorCertifications.certificationName,
         issuingOrganization: v4ContractorCertifications.issuingOrganization,
+        certificateImageUrl: v4ContractorCertifications.certificateImageUrl,
         verified: v4ContractorCertifications.verified,
         certificateType: v4ContractorCertifications.certificateType,
       })
@@ -287,6 +289,7 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
       existing.push({
         certificationName: cert.certificationName,
         issuingOrganization: cert.issuingOrganization,
+        certificateImageUrl: cert.certificateImageUrl,
         verified: cert.verified,
         certificateType: cert.certificateType,
       });

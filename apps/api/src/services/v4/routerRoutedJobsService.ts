@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
 import { jobs } from "@/db/schema/job";
 import { users } from "@/db/schema/user";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
+import { v4ContractorCertifications } from "@/db/schema/v4ContractorCertifications";
 import { haversineKm } from "@/src/jobs/geo";
 
 const KM_TO_MILES = 0.621371;
@@ -63,6 +64,13 @@ export async function getV4RouterRoutedJobs(userId: string) {
     raw.map((j) => [j.id, { lat: j.lat, lng: j.lng }]),
   );
 
+  type CertPreview = {
+    certificationName: string;
+    certificateImageUrl: string;
+    verified: boolean;
+    issuingOrganization: string | null;
+  };
+
   type InvitedContractor = {
     contractorId: string;
     contactName: string;
@@ -71,6 +79,7 @@ export async function getV4RouterRoutedJobs(userId: string) {
     distanceKm: number | null;
     distanceMiles: number | null;
     availabilityStatus: "AVAILABLE" | "BUSY";
+    certifications: CertPreview[];
   };
 
   const inviteMap = new Map<string, InvitedContractor[]>();
@@ -100,6 +109,7 @@ export async function getV4RouterRoutedJobs(userId: string) {
       distanceKm,
       distanceMiles,
       availabilityStatus: "AVAILABLE",
+      certifications: [],
     });
   }
 
@@ -124,6 +134,42 @@ export async function getV4RouterRoutedJobs(userId: string) {
     for (const contractors of inviteMap.values()) {
       for (const c of contractors) {
         if (busySet.has(c.contractorId)) c.availabilityStatus = "BUSY";
+      }
+    }
+
+    // Batch-load certifications that have an image URL (for thumbnail display)
+    const certRows = await db
+      .select({
+        contractorUserId: v4ContractorCertifications.contractorUserId,
+        certificationName: v4ContractorCertifications.certificationName,
+        certificateImageUrl: v4ContractorCertifications.certificateImageUrl,
+        issuingOrganization: v4ContractorCertifications.issuingOrganization,
+        verified: v4ContractorCertifications.verified,
+      })
+      .from(v4ContractorCertifications)
+      .where(
+        and(
+          inArray(v4ContractorCertifications.contractorUserId, allContractorIds),
+          isNotNull(v4ContractorCertifications.certificateImageUrl),
+        ),
+      );
+
+    const certsByContractor = new Map<string, CertPreview[]>();
+    for (const cert of certRows) {
+      if (!cert.certificateImageUrl) continue;
+      const list = certsByContractor.get(cert.contractorUserId) ?? [];
+      list.push({
+        certificationName: cert.certificationName,
+        certificateImageUrl: cert.certificateImageUrl,
+        issuingOrganization: cert.issuingOrganization,
+        verified: cert.verified,
+      });
+      certsByContractor.set(cert.contractorUserId, list);
+    }
+
+    for (const contractors of inviteMap.values()) {
+      for (const c of contractors) {
+        c.certifications = certsByContractor.get(c.contractorId) ?? [];
       }
     }
   }

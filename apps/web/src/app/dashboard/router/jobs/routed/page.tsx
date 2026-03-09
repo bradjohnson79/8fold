@@ -5,6 +5,14 @@ import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 import AvailabilityBadge from "@/components/AvailabilityBadge";
 import StatusBadge from "@/components/StatusBadge";
+import CertificationThumbnails from "@/components/contractors/CertificationThumbnails";
+
+type CertPreview = {
+  certificationName: string;
+  certificateImageUrl: string;
+  verified: boolean;
+  issuingOrganization: string | null;
+};
 
 type InvitedContractor = {
   contractorId: string;
@@ -14,6 +22,7 @@ type InvitedContractor = {
   distanceKm: number | null;
   distanceMiles: number | null;
   availabilityStatus: "AVAILABLE" | "BUSY";
+  certifications: CertPreview[];
 };
 
 type Job = {
@@ -107,7 +116,7 @@ export default function RouterRoutedJobsPage() {
                             ? `${(c.distanceMiles ?? 0).toFixed(1)} mi`
                             : `${Math.round(c.distanceKm)} km`
                           : null;
-                      return (
+                        return (
                         <div key={c.contractorId} className="text-sm">
                           <div className="font-medium text-slate-800">
                             {c.contactName} &mdash; {c.businessName}
@@ -119,6 +128,9 @@ export default function RouterRoutedJobsPage() {
                             {(c.city || distance) && <span>&middot;</span>}
                             <AvailabilityBadge status={c.availabilityStatus} />
                           </div>
+                          {c.certifications && c.certifications.length > 0 ? (
+                            <CertificationThumbnails certifications={c.certifications} />
+                          ) : null}
                         </div>
                       );
                     })}
