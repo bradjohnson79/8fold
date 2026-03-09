@@ -1,10 +1,29 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
+import { db } from "@/db/drizzle";
 import { requireV4Role } from "@/src/auth/requireV4Role";
 import { getTradeSkillsWithCerts, upsertTradeSkills } from "@/src/services/v4/contractorTradeService";
 import { internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
+import { getResolvedSchema } from "@/server/db/schemaLock";
 
 export const runtime = "nodejs";
+
+async function assertTradeTableExists(): Promise<boolean> {
+  try {
+    const schema = getResolvedSchema();
+    const res = await db.execute<{ exists: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ${schema} AND table_name = 'v4_contractor_trade_skills'
+      ) AS exists
+    `);
+    const rows = (res as { rows?: { exists: boolean }[] })?.rows ?? [];
+    return Boolean(rows[0]?.exists);
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(req: Request) {
   let requestId: string | undefined;
@@ -12,6 +31,15 @@ export async function GET(req: Request) {
     const role = await requireV4Role(req, "CONTRACTOR");
     if (role instanceof Response) return role;
     requestId = role.requestId;
+
+    if (!(await assertTradeTableExists())) {
+      console.error("V4_CONTRACTOR_TRADES_SCHEMA_MISSING: v4_contractor_trade_skills not found");
+      return NextResponse.json(
+        { ok: false, error: "Contractor trade system not initialized — migration required" },
+        { status: 503 },
+      );
+    }
+
     const skills = await getTradeSkillsWithCerts(role.userId);
     return NextResponse.json({ ok: true, trades: skills });
   } catch (err) {
@@ -39,6 +67,14 @@ export async function PUT(req: Request) {
     const role = await requireV4Role(req, "CONTRACTOR");
     if (role instanceof Response) return role;
     requestId = role.requestId;
+
+    if (!(await assertTradeTableExists())) {
+      console.error("V4_CONTRACTOR_TRADES_SCHEMA_MISSING: v4_contractor_trade_skills not found");
+      return NextResponse.json(
+        { ok: false, error: "Contractor trade system not initialized — migration required" },
+        { status: 503 },
+      );
+    }
 
     const raw = await req.json().catch(() => ({}));
     const parsed = PutBodySchema.safeParse(raw);

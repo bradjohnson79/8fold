@@ -77,7 +77,7 @@ export async function upsertTradeSkills(
 
   // Upsert each submitted trade
   for (const t of trades) {
-    const tradeCategory = String(t.tradeCategory).toUpperCase() as typeof v4ContractorTradeSkills.$inferInsert["tradeCategory"];
+    const tradeCategory = String(t.tradeCategory).toUpperCase();
     const approved = isApproved(t.yearsExperience);
 
     const existing = await db
@@ -110,16 +110,14 @@ export async function upsertTradeSkills(
   }
 
   // Delete any trades that were removed (not in the submitted list)
-  const submittedCategories = trades.map((t) =>
-    String(t.tradeCategory).toUpperCase(),
-  ) as (typeof v4ContractorTradeSkills.$inferInsert["tradeCategory"])[];
+  const submittedCategories = trades.map((t) => String(t.tradeCategory).toUpperCase());
 
   const allSkills = await db
     .select({ id: v4ContractorTradeSkills.id, tradeCategory: v4ContractorTradeSkills.tradeCategory })
     .from(v4ContractorTradeSkills)
     .where(eq(v4ContractorTradeSkills.contractorUserId, userId));
 
-  const toDelete = allSkills.filter((s) => !submittedCategories.includes(s.tradeCategory as any));
+  const toDelete = allSkills.filter((s) => !submittedCategories.includes(s.tradeCategory));
   if (toDelete.length > 0) {
     await db
       .delete(v4ContractorTradeSkills)

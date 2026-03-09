@@ -199,7 +199,7 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
 
   // SQL-level trade filter: INNER JOIN v4_contractor_trade_skills on approved trade matching the job's category.
   // Because both columns use the TradeCategory pgEnum, this is a direct equality — no UPPER/TRIM needed.
-  const tradeCategory = job.tradeCategory as typeof v4ContractorTradeSkills.$inferInsert["tradeCategory"];
+  const tradeCategory = String(job.tradeCategory);
 
   const rows = await db
     .select({

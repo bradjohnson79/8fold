@@ -1,5 +1,4 @@
 import { boolean, index, integer, timestamp, text, unique } from "drizzle-orm/pg-core";
-import { tradeCategoryEnum } from "./enums";
 import { dbSchema } from "./_dbSchema";
 import { users } from "./user";
 
@@ -12,8 +11,8 @@ export const v4ContractorTradeSkills = dbSchema.table(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
 
-    // pgEnum enforces canonical uppercase values — no UPPER/TRIM normalization needed in queries
-    tradeCategory: tradeCategoryEnum("trade_category").notNull(),
+    // TEXT column — canonical uppercase values enforced by the backend service
+    tradeCategory: text("trade_category").notNull(),
 
     yearsExperience: integer("years_experience").notNull(),
 

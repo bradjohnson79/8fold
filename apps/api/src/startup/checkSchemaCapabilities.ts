@@ -88,7 +88,47 @@ export async function checkSchemaCapabilities(): Promise<void> {
             },
     });
 
-    // 4. Routing status enum — type may be "RoutingStatus" (Drizzle) or "routing_status" (legacy)
+    // 4. Contractor trade skills table
+    const tradeSkillsRes = await db.execute<{ exists: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ${schema} AND table_name = 'v4_contractor_trade_skills'
+      ) AS exists
+    `);
+    const tradeSkillsRows = (tradeSkillsRes as { rows?: { exists: boolean }[] })?.rows ?? [];
+    const tradeSkillsExists = Boolean(tradeSkillsRows[0]?.exists);
+    results.push({
+      name: "v4_contractor_trade_skills table",
+      result: tradeSkillsExists
+        ? { ok: true }
+        : {
+            ok: false,
+            message: "Missing table: v4_contractor_trade_skills",
+            migration: "Run: pnpm -C apps/api exec tsx scripts/apply-contractor-trade-schema.ts",
+          },
+    });
+
+    // 5. Contractor certifications table
+    const certsRes = await db.execute<{ exists: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ${schema} AND table_name = 'v4_contractor_certifications'
+      ) AS exists
+    `);
+    const certsRows = (certsRes as { rows?: { exists: boolean }[] })?.rows ?? [];
+    const certsExists = Boolean(certsRows[0]?.exists);
+    results.push({
+      name: "v4_contractor_certifications table",
+      result: certsExists
+        ? { ok: true }
+        : {
+            ok: false,
+            message: "Missing table: v4_contractor_certifications",
+            migration: "Run: pnpm -C apps/api exec tsx scripts/apply-contractor-trade-schema.ts",
+          },
+    });
+
+    // 6. Routing status enum — type may be "RoutingStatus" (Drizzle) or "routing_status" (legacy)
     const enumRes = await db.execute<{ enumlabel: string }>(sql`
       SELECT e.enumlabel
       FROM pg_enum e
@@ -132,6 +172,7 @@ export async function checkSchemaCapabilities(): Promise<void> {
   }
   if (hasFailure) {
     console.warn("⚠️ Schema mismatch detected — contractor routing/accept flow may fail at runtime");
+    console.warn("   Missing tables: run `pnpm -C apps/api exec tsx scripts/apply-contractor-trade-schema.ts`");
   } else {
     console.log("  ✓ routing/accept pipeline schema verified");
   }
