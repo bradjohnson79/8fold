@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/src/auth/requireAuth";
 import { confirmAdjustmentPayment } from "@/src/services/v4/v4JobPriceAdjustmentService";
 
-export async function POST(req: Request, ctx: { params: Promise<{ adjustmentId: string }> }) {
-  const authed = await requireAuth(req);
-  if (authed instanceof Response) return authed;
-  const user = authed.internalUser;
-  if (!user) return NextResponse.json({ error: "User not found" }, { status: 403 });
+export const dynamic = "force-dynamic";
 
+export async function POST(req: Request, ctx: { params: Promise<{ adjustmentId: string }> }) {
   const { adjustmentId } = await ctx.params;
   const raw = await req.json().catch(() => ({}));
   const paymentIntentId = String(raw?.paymentIntentId ?? "").trim();

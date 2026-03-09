@@ -411,7 +411,10 @@ function validatePosterAccess(
     jobPosterUserId: string;
   },
   token: string,
-  requestingUserId: string,
+  // null = token-only auth (email link flow). When null the valid token itself
+  // proves ownership; no session is required. When a string, the user ID must
+  // match the poster on the adjustment (session-authenticated access).
+  requestingUserId: string | null,
   allowedStatuses: string[],
 ): void {
   if (!adj.secureToken || adj.secureToken !== token) {
@@ -420,7 +423,7 @@ function validatePosterAccess(
   if (!allowedStatuses.includes(adj.status)) {
     throw Object.assign(new Error("This request has already been resolved"), { status: 400 });
   }
-  if (adj.jobPosterUserId !== requestingUserId) {
+  if (requestingUserId !== null && adj.jobPosterUserId !== requestingUserId) {
     throw Object.assign(new Error("Access denied"), { status: 403 });
   }
 }
@@ -428,7 +431,7 @@ function validatePosterAccess(
 export async function getAdjustmentForPoster(
   adjustmentId: string,
   token: string,
-  requestingUserId: string,
+  requestingUserId: string | null,
 ): Promise<Record<string, unknown>> {
   const rows = await db.select().from(v4JobPriceAdjustments).where(eq(v4JobPriceAdjustments.id, adjustmentId)).limit(1);
   const adj = rows[0];
@@ -474,7 +477,7 @@ export async function getAdjustmentForPoster(
 export async function declineAdjustment(
   adjustmentId: string,
   token: string,
-  requestingUserId: string,
+  requestingUserId: string | null,
 ): Promise<void> {
   const rows = await db.select().from(v4JobPriceAdjustments).where(eq(v4JobPriceAdjustments.id, adjustmentId)).limit(1);
   const adj = rows[0];
@@ -516,7 +519,7 @@ export async function declineAdjustment(
 export async function acceptAdjustment(
   adjustmentId: string,
   token: string,
-  requestingUserId: string,
+  requestingUserId: string | null,
 ): Promise<{ clientSecret: string; paymentIntentId: string }> {
   const rows = await db.select().from(v4JobPriceAdjustments).where(eq(v4JobPriceAdjustments.id, adjustmentId)).limit(1);
   const adj = rows[0];

@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/src/auth/requireAuth";
 import { acceptAdjustment } from "@/src/services/v4/v4JobPriceAdjustmentService";
 
-export async function POST(req: Request, ctx: { params: Promise<{ adjustmentId: string }> }) {
-  const authed = await requireAuth(req);
-  if (authed instanceof Response) return authed;
-  const user = authed.internalUser;
-  if (!user) return NextResponse.json({ error: "User not found" }, { status: 403 });
+export const dynamic = "force-dynamic";
 
+export async function POST(req: Request, ctx: { params: Promise<{ adjustmentId: string }> }) {
   const { adjustmentId } = await ctx.params;
   const raw = await req.json().catch(() => ({}));
   const token = String(raw?.token ?? "").trim();
 
+  if (!token) {
+    return NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 });
+  }
+
   try {
-    const { clientSecret, paymentIntentId } = await acceptAdjustment(adjustmentId, token, user.id);
+    // null = token-only auth — the secure token proves poster identity.
+    const { clientSecret, paymentIntentId } = await acceptAdjustment(adjustmentId, token, null);
     return NextResponse.json({ ok: true, clientSecret, paymentIntentId });
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : 400;
