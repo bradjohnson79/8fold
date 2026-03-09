@@ -580,6 +580,11 @@ export default function PostJobPage() {
             tradeCategory: tradeCategory.trim().toUpperCase(),
             stateCode: activeAddress.region.trim(),
             countryCode: activeAddress.country,
+            city: activeAddress.city,
+            postalCode: activeAddress.postalCode,
+            address: activeAddress.address,
+            lat: activeAddress.lat,
+            lon: activeAddress.lon,
             isRegional: urbanOrRegional === "regional",
           },
           payment: {

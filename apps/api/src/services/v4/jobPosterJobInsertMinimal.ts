@@ -29,6 +29,11 @@ export type CreateJobMinimalParams = {
   region?: string | null;
   countryCode?: string | null;
   stateCode?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  addressFull?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 let requiredColumnsPromise: Promise<string[]> | null = null;
@@ -123,6 +128,13 @@ export async function createJobMinimalInsert(
     insertValues.state_code = stateCode || region.toUpperCase() || "";
   }
   insertValues.region_code = stateCode || null;
+
+  // Location snapshot — persist all available fields
+  if (params.city != null) insertValues.city = params.city;
+  if (params.postalCode != null) insertValues.postal_code = params.postalCode;
+  if (params.addressFull != null) insertValues.address_full = params.addressFull;
+  if (params.lat != null) insertValues.lat = params.lat;
+  if (params.lng != null) insertValues.lng = params.lng;
 
   const insertKeys = Object.keys(insertValues);
   const columnSql = sql.join(insertKeys.map((key) => sql.raw(`"${key}"`)), sql`, `);
