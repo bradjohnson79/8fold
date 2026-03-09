@@ -1,3 +1,7 @@
+// Static import keeps nodemailer in the Node.js server bundle only.
+// webpack sees this as a server-only dependency and excludes it from edge/middleware bundles.
+// The webpack externals function in next.config.ts handles the instrumentation build path.
+import nodemailer from "nodemailer";
 import { getSmtpConfig } from "@/src/auth/sendLoginCodeEmail";
 
 export async function sendTransactionalEmail(args: {
@@ -11,10 +15,6 @@ export async function sendTransactionalEmail(args: {
     console.error("[MAILER] SMTP not configured — skipping email", { to: args.to, subject: args.subject });
     return;
   }
-
-  // Dynamic import keeps nodemailer out of the instrumentation.ts bundle
-  // (which is compiled by the edge webpack config that can't resolve Node built-ins like 'crypto').
-  const nodemailer = (await import("nodemailer")).default;
 
   const transporter = nodemailer.createTransport({
     host: cfg.host,
