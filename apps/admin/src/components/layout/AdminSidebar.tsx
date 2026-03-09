@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import styles from "./AdminSidebar.module.css";
 
 type NavItem = {
   label: string;
   href: string;
   match?: "exact" | "prefix";
+  countKey?: "notifications" | "support" | "disputes" | "reviews";
+};
+
+type MessageCounts = {
+  notifications: number;
+  support: number;
+  disputes: number;
+  reviews: number;
 };
 
 const NAV: Array<{ title: string; items: NavItem[] }> = [
@@ -23,10 +32,15 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Job Posters", href: "/job-posters", match: "prefix" },
       { label: "Routers", href: "/routers", match: "prefix" },
       { label: "Payouts", href: "/payouts", match: "prefix" },
-      { label: "Disputes", href: "/disputes", match: "prefix" },
-      { label: "Support", href: "/support", match: "prefix" },
-      { label: "Notifications", href: "/notifications", match: "prefix" },
-      { label: "Reviews", href: "/reviews", match: "prefix" },
+    ],
+  },
+  {
+    title: "Messages",
+    items: [
+      { label: "Notifications", href: "/notifications", match: "prefix", countKey: "notifications" },
+      { label: "Support", href: "/support", match: "prefix", countKey: "support" },
+      { label: "Disputes", href: "/disputes", match: "prefix", countKey: "disputes" },
+      { label: "Reviews", href: "/reviews", match: "prefix", countKey: "reviews" },
     ],
   },
   {
@@ -67,6 +81,41 @@ function isActive(pathname: string, href: string, match: NavItem["match"]): bool
 
 export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname() || "/";
+  const [messageCounts, setMessageCounts] = useState<MessageCounts>({
+    notifications: 0,
+    support: 0,
+    disputes: 0,
+    reviews: 0,
+  });
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const resp = await fetch("/api/admin/v4/messages/counts", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (resp.ok) {
+          const json = await resp.json().catch(() => null);
+          const data = json?.data ?? json;
+          if (data && typeof data === "object") {
+            setMessageCounts({
+              notifications: Number(data.notifications ?? 0) || 0,
+              support: Number(data.support ?? 0) || 0,
+              disputes: Number(data.disputes ?? 0) || 0,
+              reviews: Number(data.reviews ?? 0) || 0,
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void fetchCounts();
+    const id = window.setInterval(fetchCounts, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <div>
@@ -89,6 +138,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
             <div className={styles.links}>
               {section.items.map((item) => {
                 const active = isActive(pathname, item.href, item.match);
+                const count = item.countKey ? messageCounts[item.countKey] : 0;
                 return (
                   <Link
                     key={item.href}
@@ -97,7 +147,17 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     className={`${styles.link} ${active ? styles.active : ""}`}
                     aria-current={active ? "page" : undefined}
                   >
-                    <span>{item.label}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {item.label}
+                      {count > 0 && (
+                        <span
+                          className={styles.badge}
+                          aria-label={`${count} items`}
+                        >
+                          {count > 99 ? "99+" : count}
+                        </span>
+                      )}
+                    </span>
                     {active ? <span className={styles.activeDot} aria-hidden="true" /> : null}
                   </Link>
                 );
