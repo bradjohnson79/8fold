@@ -16,24 +16,12 @@ import {
   normalizeNotificationRole,
   normalizeNotificationType,
 } from "./notificationTypes";
-// These are imported lazily inside the email-send path to keep nodemailer
-// out of the instrumentation.ts bundle (which cannot resolve Node's 'crypto' module).
-async function lazyResolveTemplate(type: string) {
-  const { resolveTemplate } = await import("./notificationTemplateService");
-  return resolveTemplate(type);
-}
-async function lazyRenderSubject(template: string, vars: Record<string, string>) {
-  const { renderSubject } = await import("./notificationTemplateService");
-  return renderSubject(template, vars);
-}
-async function lazyRenderHtml(template: string, vars: Record<string, string>) {
-  const { renderHtml } = await import("./notificationTemplateService");
-  return renderHtml(template, vars);
-}
-async function lazySendEmail(args: { to: string; subject: string; html: string }) {
-  const { sendTransactionalEmail } = await import("@/src/mailer/sendTransactionalEmail");
-  return sendTransactionalEmail(args);
-}
+// Email delivery is handled by an internal API endpoint (/api/internal/send-notification-email)
+// to keep nodemailer (and all Node.js-only mailer code) completely out of this file.
+// This file is statically imported by the instrumentation chain (processEventOutbox →
+// notificationEventMapper → notificationService), which is compiled for the edge runtime
+// by Next.js. Any nodemailer reference here would appear in the edge bundle and fail
+// Vercel's edge function validator.
 async function lazyLogDelivery(data: Parameters<Awaited<typeof import("./notificationDeliveryLogService")>["logDelivery"]>[0]) {
   const { logDelivery } = await import("./notificationDeliveryLogService");
   return logDelivery(data);
@@ -324,60 +312,27 @@ export async function sendNotification(
     if (!pref.inApp && !pref.email) return null;
 
     if (pref.email) {
-      // Fire-and-forget email; do not await so in-app insert is never delayed
-      void (async () => {
-        try {
-          const tpl = await lazyResolveTemplate(type);
-          if (!tpl.emailEnabled || !tpl.emailSubject || !tpl.emailTemplate) return;
-
-          const dashboardLink = `${process.env.WEB_APP_URL ?? ""}/dashboard`;
-          const vars: Record<string, string> = {
-            platform_name: "8Fold",
-            dashboard_link: dashboardLink,
-            ...Object.fromEntries(
-              Object.entries(input.metadata ?? {}).map(([k, v]) => [k, String(v ?? "")]),
-            ),
-          };
-
-          const subject = await lazyRenderSubject(tpl.emailSubject, vars);
-          const html = await lazyRenderHtml(tpl.emailTemplate, vars);
-
-          const userRows = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
-          const recipientEmail = userRows[0]?.email ?? null;
-
-          if (!recipientEmail) return;
-
-          try {
-            await lazySendEmail({ to: recipientEmail, subject, html });
-            await lazyLogDelivery({
-              notificationId: undefined,
-              notificationType: type,
-              recipientUserId: userId,
-              recipientEmail,
-              channel: "EMAIL",
-              status: "DELIVERED",
-              dedupeKey: input.dedupeKey ?? input.idempotencyKey ?? null,
-              eventId: (input.metadata as any)?._eventId ?? null,
-              metadata: { tplSource: tpl.source },
-            });
-          } catch (emailErr) {
-            console.error("[NOTIFICATION_EMAIL_ERROR]", { type, userId, err: String(emailErr) });
-            await lazyLogDelivery({
-              notificationId: undefined,
-              notificationType: type,
-              recipientUserId: userId,
-              recipientEmail,
-              channel: "EMAIL",
-              status: "FAILED",
-              errorMessage: String(emailErr),
-              dedupeKey: input.dedupeKey ?? input.idempotencyKey ?? null,
-              eventId: (input.metadata as any)?._eventId ?? null,
-            });
-          }
-        } catch (outerErr) {
-          console.error("[NOTIFICATION_EMAIL_OUTER_ERROR]", { type, userId, err: String(outerErr) });
-        }
-      })();
+      // Delegate email sending to the internal Node.js-only API endpoint.
+      // Using fetch() keeps nodemailer and all mailer code out of this file —
+      // this file is statically bundled into the edge/instrumentation context
+      // and cannot reference nodemailer or any module that imports it.
+      const apiOrigin = process.env.API_ORIGIN ?? "";
+      if (apiOrigin) {
+        void fetch(`${apiOrigin}/api/internal/send-notification-email`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-internal-key": process.env.INTERNAL_DEBUG_SECRET ?? "",
+          },
+          body: JSON.stringify({
+            userId,
+            notificationType: type,
+            metadata: input.metadata ?? {},
+            dedupeKey: input.dedupeKey ?? input.idempotencyKey ?? null,
+            eventId: (input.metadata as any)?._eventId ?? null,
+          }),
+        }).catch((err) => console.error("[NOTIFICATION_EMAIL_TRIGGER_ERROR]", { type, userId, err: String(err) }));
+      }
     }
     if (!pref.inApp) return null;
     const dedupeColumnAvailable = await hasNotificationsDedupeColumn(exec);
