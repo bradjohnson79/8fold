@@ -529,19 +529,8 @@ export async function acceptAdjustment(
 
   if (!stripe) throw Object.assign(new Error("Stripe not configured"), { status: 500 });
 
-  const userRows = await db
-    .select({ stripeCustomerId: users.stripeCustomerId, stripeDefaultPaymentMethodId: users.stripeDefaultPaymentMethodId })
-    .from(users)
-    .where(eq(users.id, adj.jobPosterUserId))
-    .limit(1);
-
-  const poster = userRows[0];
-  if (!poster?.stripeCustomerId) {
-    throw Object.assign(new Error("Job poster has no Stripe customer on file"), { status: 400 });
-  }
-
   const jobRows = await db.select({ payment_currency: jobs.payment_currency }).from(jobs).where(eq(jobs.id, adj.jobId)).limit(1);
-  const currency = (jobRows[0]?.payment_currency ?? "cad") as "usd" | "cad";
+  const currency = (jobRows[0]?.payment_currency ?? "usd") as "usd" | "cad";
 
   // Compute from snapshot so the Stripe charge is always exactly the agreed difference.
   const differenceCents = computeDiff(adj);
@@ -549,20 +538,19 @@ export async function acceptAdjustment(
     throw Object.assign(new Error("Computed price difference is not positive"), { status: 400 });
   }
 
+  // No customer or payment_method is attached — Stripe Elements handles method
+  // selection client-side via the client_secret. This avoids cus_sim / pm_sim
+  // errors in test/beta environments and is correct practice for Elements flows.
   const pi = await stripe.paymentIntents.create({
     amount: differenceCents,
     currency,
-    customer: poster.stripeCustomerId,
+    automatic_payment_methods: { enabled: true },
     metadata: {
       adjustmentId,
       jobId: adj.jobId,
-      type: "price_adjustment",
+      type: "SECOND_APPRAISAL",
     },
     description: `8Fold price adjustment for job ${adj.jobId.slice(0, 8)}`,
-    // Let Stripe Elements handle payment method selection — never pre-set
-    // payment_method here, as stored IDs may be simulated/invalid and would
-    // break the Elements confirmation flow in any case.
-    automatic_payment_methods: { enabled: true },
   }, {
     idempotencyKey: `adj_accept_${adjustmentId}`,
   });
