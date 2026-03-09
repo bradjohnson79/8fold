@@ -102,9 +102,23 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
   const isRegional = Boolean(details.isRegional ?? details.isRegionalRequested);
   const jobType = isRegional ? "regional" : "urban";
 
+  // Location snapshot — must be captured at creation time
+  const city = String(details.city ?? "").trim() || null;
+  const postalCode = String(details.postalCode ?? "").trim() || null;
+  const addressFull = String(details.address ?? "").trim() || null;
+  const lat = typeof details.lat === "number" && Number.isFinite(details.lat) ? details.lat : null;
+  const lng = typeof details.lon === "number" && Number.isFinite(details.lon) ? details.lon : null;
+
+  if (!city || !postalCode || lat === null || lng === null) {
+    throw Object.assign(
+      new Error("Job location incomplete. City, postal code, and coordinates are required."),
+      { status: 400, code: "JOB_LOCATION_INCOMPLETE" },
+    );
+  }
+
   const jobId = randomUUID();
 
-  // C. Minimal raw SQL insert (16 columns, NO Drizzle .insert)
+  // C. Minimal raw SQL insert with full location snapshot
   try {
   await db.execute(
     sql`
@@ -127,6 +141,11 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
       country_code,
       state_code,
       region_code,
+      city,
+      postal_code,
+      address_full,
+      lat,
+      lng,
       cancel_request_pending,
       created_at,
       updated_at
@@ -149,6 +168,11 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
       ${resolvedCountryCode},
       ${stateCode},
       ${stateCode || null},
+      ${city},
+      ${postalCode},
+      ${addressFull},
+      ${lat},
+      ${lng},
       false,
       NOW(),
       NOW()

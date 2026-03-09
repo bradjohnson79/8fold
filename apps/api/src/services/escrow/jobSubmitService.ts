@@ -153,11 +153,18 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   }
 
   const currency = toSubmitCurrency(pi.currency);
-  const region = String(details.stateCode ?? details.region ?? details.city ?? "")
+  const region = String(details.stateCode ?? details.region ?? "")
     .trim()
     .toLowerCase();
   const countryCode = String(details.countryCode ?? details.country ?? "US").trim().toUpperCase();
   const stateCode = String(details.stateCode ?? details.region ?? "").trim();
+
+  // Location snapshot fields
+  const city = String(details.city ?? "").trim() || null;
+  const postalCode = String(details.postalCode ?? "").trim() || null;
+  const addressFull = String(details.address ?? "").trim() || null;
+  const lat = typeof details.lat === "number" && Number.isFinite(details.lat) ? details.lat : null;
+  const lng = typeof details.lon === "number" && Number.isFinite(details.lon) ? details.lon : null;
 
   const images = parseImages(body.images);
   const uploadIds = images.map((i) => i.uploadId);
@@ -211,6 +218,11 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
           region: region || "unspecified",
           countryCode: countryCode || "US",
           stateCode: stateCode || undefined,
+          city,
+          postalCode,
+          addressFull,
+          lat,
+          lng,
         });
       } catch (err) {
         const dbErr = err as any;

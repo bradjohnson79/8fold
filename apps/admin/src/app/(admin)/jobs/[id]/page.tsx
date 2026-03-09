@@ -424,6 +424,35 @@ export default async function JobDetailPage({
           {kv("Address", job.addressFull || "—")}
           {kv("Latitude", job.lat ?? "—")}
           {kv("Longitude", job.lng ?? "—")}
+          <div style={{ marginTop: 10, borderTop: "1px solid #e5e7eb", paddingTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+              Location Integrity
+            </div>
+            {((): React.ReactNode => {
+              const checks = [
+                { label: "Address", ok: Boolean(job.addressFull) },
+                { label: "City", ok: Boolean(job.city) },
+                { label: "Postal Code", ok: Boolean(job.postalCode) },
+                { label: "Coordinates", ok: job.lat != null && job.lng != null },
+              ];
+              const allOk = checks.every((c) => c.ok);
+              return (
+                <div>
+                  {checks.map((c) => (
+                    <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 2 }}>
+                      <span style={{ color: c.ok ? "#16a34a" : "#dc2626", fontWeight: 700 }}>{c.ok ? "✓" : "⚠"}</span>
+                      <span style={{ color: c.ok ? "#15803d" : "#b91c1c" }}>{c.label}</span>
+                    </div>
+                  ))}
+                  {!allOk && (
+                    <div style={{ marginTop: 6, padding: "4px 8px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 4, fontSize: 12, color: "#b91c1c" }}>
+                      ⚠ Location data incomplete — run repair-job-locations script to backfill
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         </Card>
       </div>
 
