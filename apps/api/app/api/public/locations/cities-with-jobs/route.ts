@@ -31,11 +31,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid query" }, { status: 400 });
     }
 
-    const out = await listCitiesByRegion(country, regionCode);
+    const out = await listCitiesByRegion(country, regionCode).catch((err) => {
+      console.error("PUBLIC_DISCOVERY_ERROR", { route: "/api/public/locations/cities-with-jobs", regionCode, country, error: err });
+      return [];
+    });
     return NextResponse.json(out);
   } catch (err) {
     console.error("PUBLIC_DISCOVERY_ERROR", { route: "/api/public/locations/cities-with-jobs", error: err });
-    return NextResponse.json({ error: "PUBLIC_DISCOVERY_FAILED" }, { status: 500 });
+    return NextResponse.json([]);
   }
 }
 
