@@ -67,6 +67,9 @@ export const jobStatusEnum = pgEnum("JobStatus", [
   "JOB_STARTED",
   // NOTE: Added to Postgres via 0115 migration for admin-approved cancel requests.
   "CANCELLED",
+  // NOTE: Added via apply-appraisal-refactor-migration — locks routing while a
+  // 2nd appraisal request is under review. Resets to ASSIGNED on resolution.
+  "APPRAISAL_PENDING",
 ]);
 
 export const publicJobStatusEnum = pgEnum("PublicJobStatus", ["OPEN", "IN_PROGRESS"]);

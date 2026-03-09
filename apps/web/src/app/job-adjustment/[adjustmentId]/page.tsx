@@ -8,8 +8,10 @@ type AdjustmentData = {
   jobId: string;
   jobTitle: string;
   jobDescription: string;
-  originalPriceCents: number;
+  // Snapshot of the original job price at request creation time.
+  originalPriceCents: number | null;
   requestedPriceCents: number;
+  // Computed by the API as requestedPriceCents - originalPriceCents.
   differenceCents: number;
   contractorScopeDetails: string;
   additionalScopeDetails: string;
@@ -39,6 +41,7 @@ export default function JobAdjustmentPage() {
   const [adjustment, setAdjustment] = useState<AdjustmentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [expired, setExpired] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [declined, setDeclined] = useState(false);
 
@@ -47,12 +50,20 @@ export default function JobAdjustmentPage() {
   const loadAdjustment = useCallback(async () => {
     setLoading(true);
     setError("");
+    setExpired(false);
     try {
       const resp = await fetch(
         `${apiOrigin}/api/web/v4/job-adjustment/${encodeURIComponent(adjustmentId)}?token=${encodeURIComponent(token)}`,
         { credentials: "include" },
       );
       const json = await resp.json().catch(() => ({} as any));
+      if (resp.status === 403) {
+        const msg = String(json?.error ?? "");
+        if (msg.toLowerCase().includes("expired")) {
+          setExpired(true);
+          return;
+        }
+      }
       if (!resp.ok) throw new Error(json?.error ?? "Failed to load adjustment details");
       setAdjustment(json.adjustment as AdjustmentData);
     } catch (e) {
@@ -98,6 +109,24 @@ export default function JobAdjustmentPage() {
     );
   }
 
+  if (expired) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="w-full max-w-md rounded-xl bg-white p-6 shadow text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+            <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900">Link Expired</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            This consent link has expired. Please contact your contractor to request a new link.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (error && !adjustment) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
@@ -113,7 +142,7 @@ export default function JobAdjustmentPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
         <div className="w-full max-w-md rounded-xl bg-white p-6 shadow text-center">
-          <h1 className="text-lg font-semibold text-slate-900">Re-Appraisal Declined</h1>
+          <h1 className="text-lg font-semibold text-slate-900">Revision Declined</h1>
           <p className="mt-2 text-sm text-slate-600">
             You have declined the contractor&apos;s re-appraisal request. The job will proceed under the original agreed price.
           </p>
@@ -124,12 +153,15 @@ export default function JobAdjustmentPage() {
 
   if (!adjustment) return null;
 
+  const originalCents = adjustment.originalPriceCents ?? 0;
+  const differenceCents = adjustment.differenceCents;
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
       <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow">
-        <h1 className="text-xl font-bold text-slate-900">Job Price Adjustment Request</h1>
+        <h1 className="text-xl font-bold text-slate-900">Job Price Revision Request</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Your contractor has requested a price adjustment for the following job.
+          Your contractor has requested a price revision for the following job.
         </p>
 
         <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm space-y-2">
@@ -142,15 +174,15 @@ export default function JobAdjustmentPage() {
         <div className="mt-4 grid grid-cols-3 gap-3 text-center">
           <div className="rounded-lg bg-slate-100 p-3">
             <p className="text-xs text-slate-500">Original Price</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{formatMoney(adjustment.originalPriceCents)}</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{formatMoney(originalCents)}</p>
           </div>
           <div className="rounded-lg bg-emerald-50 p-3">
             <p className="text-xs text-emerald-600">Requested Price</p>
             <p className="mt-1 text-lg font-bold text-emerald-700">{formatMoney(adjustment.requestedPriceCents)}</p>
           </div>
           <div className="rounded-lg bg-amber-50 p-3">
-            <p className="text-xs text-amber-600">Additional Amount</p>
-            <p className="mt-1 text-lg font-bold text-amber-700">{formatMoney(adjustment.differenceCents)}</p>
+            <p className="text-xs text-amber-600">Additional Payment</p>
+            <p className="mt-1 text-lg font-bold text-amber-700">{formatMoney(differenceCents)}</p>
           </div>
         </div>
 
@@ -176,7 +208,7 @@ export default function JobAdjustmentPage() {
             disabled={declining}
             className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            {declining ? "Declining..." : "Decline Re-Appraisal"}
+            {declining ? "Declining..." : "Decline Revision"}
           </button>
           <button
             type="button"
@@ -187,7 +219,7 @@ export default function JobAdjustmentPage() {
             }
             className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
           >
-            Accept Re-Appraisal
+            Accept Revision
           </button>
         </div>
       </div>

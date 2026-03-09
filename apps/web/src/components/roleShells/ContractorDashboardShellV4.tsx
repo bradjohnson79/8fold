@@ -14,6 +14,7 @@ export function ContractorDashboardShellV4({ children }: { children: React.React
     { href: "/dashboard/contractor/notifications", label: "Notifications" },
     { href: "/dashboard/contractor/profile", label: "Profile" },
     { href: "/dashboard/contractor/payment", label: "Payment Setup" },
+    { href: "/dashboard/contractor/appraisals", label: "2nd Appraisals" },
     { href: "/dashboard/contractor/support", label: "Support" },
     { href: "/dashboard/contractor/support-inbox", label: "Support Inbox" },
   ];

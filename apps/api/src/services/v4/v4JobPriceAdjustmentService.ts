@@ -1,5 +1,5 @@
 import { randomUUID, randomBytes } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { users } from "@/db/schema/user";
@@ -10,18 +10,37 @@ import { appendSystemMessage } from "./v4MessageService";
 import { sendTransactionalEmail } from "@/src/mailer/sendTransactionalEmail";
 import { stripe } from "@/src/payments/stripe";
 
+// Job must be ASSIGNED (not already in an appraisal review cycle) to submit.
 const ALLOWED_JOB_STATUSES = ["ASSIGNED"];
-const TOKEN_EXPIRY_HOURS = 48;
-const BLOCKING_STATUSES = [
-  "PENDING",
-  "SENT_TO_POSTER",
-  "POSTER_VIEWED",
-  "ACCEPTED_PENDING_PAYMENT",
-  "PAID",
-];
+
+// 24-hour consent link window.
+const TOKEN_EXPIRY_HOURS = 24;
+
+// Only active in-flight statuses block a new submission.
+// PAID is intentionally excluded so a new request can be made if needed.
+const BLOCKING_STATUSES = ["PENDING_REVIEW", "SENT_TO_POSTER", "PAYMENT_PENDING"];
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/** Compute the price difference from the snapshot stored at request time. */
+function computeDiff(adj: { requestedPriceCents: number; originalPriceCents: number | null }): number {
+  return adj.requestedPriceCents - (adj.originalPriceCents ?? 0);
+}
+
+/** Sync the linked support ticket to a terminal status. No-op if no ticket. */
+async function syncSupportTicket(supportTicketId: string | null, status: "CLOSED" | "RESOLVED"): Promise<void> {
+  if (!supportTicketId) return;
+  try {
+    await db
+      .update(v4SupportTickets)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(v4SupportTickets.id, supportTicketId));
+  } catch (err) {
+    // Non-fatal — ticket sync failure must never block the primary action.
+    console.error("[APPRAISAL] Support ticket sync failed", { supportTicketId, status, err: String(err) });
+  }
 }
 
 export async function createAdjustmentRequest(
@@ -66,10 +85,13 @@ export async function createAdjustmentRequest(
     );
   }
 
+  // Snapshot the current job price at submission time.
+  // This is stored permanently and used as the historical baseline for all
+  // downstream calculations (difference, Stripe PI amount, consent page display).
   const originalPriceCents = job.amount_cents;
-  const differenceCents = opts.requestedPriceCents - originalPriceCents;
-  if (differenceCents <= 0) {
-    throw Object.assign(new Error("Requested price must be higher than the original price"), { status: 400 });
+
+  if (opts.requestedPriceCents <= originalPriceCents) {
+    throw Object.assign(new Error("Requested price must exceed the current job price"), { status: 400 });
   }
 
   const adjustmentId = randomUUID();
@@ -86,10 +108,10 @@ export async function createAdjustmentRequest(
       supportTicketId,
       originalPriceCents,
       requestedPriceCents: opts.requestedPriceCents,
-      differenceCents,
+      // differenceCents intentionally omitted — computed dynamically.
       contractorScopeDetails: scope,
       additionalScopeDetails: additional,
-      status: "PENDING",
+      status: "PENDING_REVIEW",
       createdAt: now,
     });
   } catch (err: any) {
@@ -102,6 +124,11 @@ export async function createAdjustmentRequest(
     throw err;
   }
 
+  // Lock the job so routers cannot re-route while the appraisal is under review.
+  await db.update(jobs).set({ status: "APPRAISAL_PENDING" }).where(eq(jobs.id, jobId));
+
+  const diff = opts.requestedPriceCents - originalPriceCents;
+
   await db.insert(v4SupportTickets).values({
     id: supportTicketId,
     userId: contractorUserId,
@@ -112,16 +139,18 @@ export async function createAdjustmentRequest(
     priority: "HIGH",
     jobId,
     adjustmentId,
-    body: `Contractor requests price adjustment from ${formatCents(originalPriceCents)} to ${formatCents(opts.requestedPriceCents)} (difference: ${formatCents(differenceCents)}).\n\nScope willing to do at current price:\n${scope}\n\nAdditional work required:\n${additional}`,
+    body: `Contractor requests price adjustment from ${formatCents(originalPriceCents)} to ${formatCents(opts.requestedPriceCents)} (difference: ${formatCents(diff)}).\n\nScope willing to do at current price:\n${scope}\n\nAdditional work required:\n${additional}`,
     status: "OPEN",
     createdAt: now,
     updatedAt: now,
   });
 
-  await appendSystemMessage(
-    threadId,
-    "The contractor has submitted a 2nd appraisal request for this job. Admin will review the request and contact the Job Poster if an adjustment is approved.",
-  );
+  if (threadId) {
+    await appendSystemMessage(
+      threadId,
+      `Contractor submitted a 2nd appraisal request. Requested total price: ${formatCents(opts.requestedPriceCents)}. Awaiting review from 8Fold support.`,
+    );
+  }
 
   await db.insert(v4EventOutbox).values({
     id: randomUUID(),
@@ -170,8 +199,8 @@ export async function generateConsentLink(
 
   const adj = rows[0];
   if (!adj) throw Object.assign(new Error("Adjustment not found"), { status: 404 });
-  if (adj.status !== "PENDING" && adj.status !== "SENT_TO_POSTER") {
-    throw Object.assign(new Error(`Cannot generate link for adjustment in status: ${adj.status}`), { status: 400 });
+  if (adj.status !== "PENDING_REVIEW" && adj.status !== "SENT_TO_POSTER") {
+    throw Object.assign(new Error(`Cannot send to poster for adjustment in status: ${adj.status}`), { status: 400 });
   }
 
   const token = randomBytes(32).toString("hex");
@@ -189,6 +218,13 @@ export async function generateConsentLink(
     .where(eq(v4JobPriceAdjustments.id, adjustmentId));
 
   const url = `https://8fold.app/job-adjustment/${adjustmentId}?token=${token}`;
+
+  if (adj.threadId) {
+    await appendSystemMessage(
+      adj.threadId,
+      "8Fold has reviewed a 2nd appraisal request for this job. The Job Poster has been notified to review the revised price.",
+    );
+  }
 
   const posterRows = await db
     .select({ email: users.email })
@@ -236,9 +272,11 @@ export async function resendConsentEmail(adjustmentId: string): Promise<void> {
 
 async function sendAdjustmentEmail(
   to: string,
-  adj: { originalPriceCents: number; requestedPriceCents: number },
+  adj: { originalPriceCents: number | null; requestedPriceCents: number },
   url: string,
 ): Promise<void> {
+  const original = adj.originalPriceCents ?? 0;
+  const diff = adj.requestedPriceCents - original;
   await sendTransactionalEmail({
     to,
     subject: "Contractor Requested a Job Price Adjustment",
@@ -247,17 +285,18 @@ async function sendAdjustmentEmail(
         <h2 style="margin:0 0 16px;">Job Price Adjustment Request</h2>
         <p>Your contractor has reported additional work required that was not included in the original job description.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-          <tr><td style="padding:8px 0;color:#64748b;">Original Price</td><td style="padding:8px 0;font-weight:700;">${formatCents(adj.originalPriceCents)}</td></tr>
-          <tr><td style="padding:8px 0;color:#64748b;">Re-Appraised Price</td><td style="padding:8px 0;font-weight:700;">${formatCents(adj.requestedPriceCents)}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b;">Original Price</td><td style="padding:8px 0;font-weight:700;">${formatCents(original)}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b;">Requested Price</td><td style="padding:8px 0;font-weight:700;">${formatCents(adj.requestedPriceCents)}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b;">Additional Amount</td><td style="padding:8px 0;font-weight:700;">${formatCents(diff)}</td></tr>
         </table>
         <p>Please review the request and choose whether to accept the adjustment.</p>
         <a href="${url}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
           Review Re-Appraisal
         </a>
-        <p style="margin-top:24px;font-size:12px;color:#94a3b8;">This link expires in 48 hours.</p>
+        <p style="margin-top:24px;font-size:12px;color:#94a3b8;">This link expires in ${TOKEN_EXPIRY_HOURS} hours.</p>
       </div>
     `,
-    text: `Your contractor has requested a price adjustment. Original: ${formatCents(adj.originalPriceCents)}, Requested: ${formatCents(adj.requestedPriceCents)}. Review at: ${url}`,
+    text: `Your contractor has requested a price adjustment. Original: ${formatCents(original)}, Requested: ${formatCents(adj.requestedPriceCents)}, Additional: ${formatCents(diff)}. Review at: ${url}`,
   });
 }
 
@@ -274,9 +313,6 @@ function validatePosterAccess(
 ): void {
   if (!adj.secureToken || adj.secureToken !== token) {
     throw Object.assign(new Error("Invalid or expired link"), { status: 403 });
-  }
-  if (!adj.tokenExpiresAt || adj.tokenExpiresAt < new Date()) {
-    throw Object.assign(new Error("This link has expired"), { status: 403 });
   }
   if (!allowedStatuses.includes(adj.status)) {
     throw Object.assign(new Error("This request has already been resolved"), { status: 400 });
@@ -295,17 +331,28 @@ export async function getAdjustmentForPoster(
   const adj = rows[0];
   if (!adj) throw Object.assign(new Error("Adjustment not found"), { status: 404 });
 
-  validatePosterAccess(adj, token, requestingUserId, ["SENT_TO_POSTER", "POSTER_VIEWED"]);
-
-  if (adj.status === "SENT_TO_POSTER") {
-    await db.update(v4JobPriceAdjustments).set({ status: "POSTER_VIEWED" }).where(eq(v4JobPriceAdjustments.id, adjustmentId));
+  // Check token validity first — set EXPIRED and sync ticket if stale.
+  if (!adj.secureToken || adj.secureToken !== token) {
+    throw Object.assign(new Error("Invalid or expired link"), { status: 403 });
   }
+  if (adj.tokenExpiresAt && adj.tokenExpiresAt < new Date()) {
+    await db
+      .update(v4JobPriceAdjustments)
+      .set({ status: "EXPIRED" })
+      .where(eq(v4JobPriceAdjustments.id, adjustmentId));
+    await syncSupportTicket(adj.supportTicketId, "CLOSED");
+    throw Object.assign(new Error("This link has expired. Please contact your contractor."), { status: 403 });
+  }
+
+  validatePosterAccess(adj, token, requestingUserId, ["SENT_TO_POSTER", "POSTER_VIEWED"]);
 
   const jobRows = await db
     .select({ title: jobs.title, scope: jobs.scope })
     .from(jobs)
     .where(eq(jobs.id, adj.jobId))
     .limit(1);
+
+  const differenceCents = computeDiff(adj);
 
   return {
     id: adj.id,
@@ -314,10 +361,10 @@ export async function getAdjustmentForPoster(
     jobDescription: jobRows[0]?.scope ?? "",
     originalPriceCents: adj.originalPriceCents,
     requestedPriceCents: adj.requestedPriceCents,
-    differenceCents: adj.differenceCents,
+    differenceCents,
     contractorScopeDetails: adj.contractorScopeDetails,
     additionalScopeDetails: adj.additionalScopeDetails,
-    status: adj.status === "SENT_TO_POSTER" ? "POSTER_VIEWED" : adj.status,
+    status: adj.status,
   };
 }
 
@@ -337,10 +384,15 @@ export async function declineAdjustment(
     .set({ status: "DECLINED" })
     .where(eq(v4JobPriceAdjustments.id, adjustmentId));
 
+  // Unlock the job so it can proceed normally under the original price.
+  await db.update(jobs).set({ status: "ASSIGNED" }).where(eq(jobs.id, adj.jobId));
+
+  await syncSupportTicket(adj.supportTicketId, "CLOSED");
+
   if (adj.threadId) {
     await appendSystemMessage(
       adj.threadId,
-      "The Job Poster has declined the contractor's re-appraisal request. The job will proceed under the original agreed price.",
+      "The Job Poster declined the revised appraisal request. The job will continue under the original agreed price.",
     );
   }
 
@@ -385,8 +437,14 @@ export async function acceptAdjustment(
   const jobRows = await db.select({ payment_currency: jobs.payment_currency }).from(jobs).where(eq(jobs.id, adj.jobId)).limit(1);
   const currency = (jobRows[0]?.payment_currency ?? "cad") as "usd" | "cad";
 
+  // Compute from snapshot so the Stripe charge is always exactly the agreed difference.
+  const differenceCents = computeDiff(adj);
+  if (differenceCents <= 0) {
+    throw Object.assign(new Error("Computed price difference is not positive"), { status: 400 });
+  }
+
   const pi = await stripe.paymentIntents.create({
-    amount: adj.differenceCents,
+    amount: differenceCents,
     currency,
     customer: poster.stripeCustomerId,
     metadata: {
@@ -404,10 +462,17 @@ export async function acceptAdjustment(
   await db
     .update(v4JobPriceAdjustments)
     .set({
-      status: "ACCEPTED_PENDING_PAYMENT",
+      status: "PAYMENT_PENDING",
       paymentIntentId: pi.id,
     })
     .where(eq(v4JobPriceAdjustments.id, adjustmentId));
+
+  if (adj.threadId) {
+    await appendSystemMessage(
+      adj.threadId,
+      "The Job Poster accepted the revised appraisal request. Processing additional payment.",
+    );
+  }
 
   return { clientSecret: pi.client_secret!, paymentIntentId: pi.id };
 }
@@ -422,7 +487,7 @@ export async function confirmAdjustmentPayment(
   const adj = rows[0];
   if (!adj) throw Object.assign(new Error("Adjustment not found"), { status: 404 });
 
-  if (adj.status !== "ACCEPTED_PENDING_PAYMENT") {
+  if (adj.status !== "PAYMENT_PENDING") {
     throw Object.assign(new Error(`Cannot confirm payment for status: ${adj.status}`), { status: 400 });
   }
   if (adj.paymentIntentId !== paymentIntentId) {
@@ -435,12 +500,15 @@ export async function confirmAdjustmentPayment(
   }
 
   const now = new Date();
+  const differenceCents = computeDiff(adj);
 
   await db
     .update(jobs)
     .set({
       amount_cents: adj.requestedPriceCents,
-      price_adjustment_cents: adj.differenceCents,
+      price_adjustment_cents: differenceCents,
+      // Restore job to ASSIGNED so normal post-payment lifecycle resumes.
+      status: "ASSIGNED",
       updated_at: now,
     })
     .where(eq(jobs.id, adj.jobId));
@@ -450,10 +518,12 @@ export async function confirmAdjustmentPayment(
     .set({ status: "PAID", approvedAt: now })
     .where(eq(v4JobPriceAdjustments.id, adjustmentId));
 
+  await syncSupportTicket(adj.supportTicketId, "RESOLVED");
+
   if (adj.threadId) {
     await appendSystemMessage(
       adj.threadId,
-      `The Job Poster has accepted the re-appraisal. Original price: ${formatCents(adj.originalPriceCents)} → New price: ${formatCents(adj.requestedPriceCents)}. Additional payment processed successfully.`,
+      `Additional payment received. The job price has been updated to ${formatCents(adj.requestedPriceCents)}.`,
     );
   }
 
@@ -473,17 +543,30 @@ export async function confirmAdjustmentPayment(
 
 export async function rejectByAdmin(adjustmentId: string): Promise<void> {
   const rows = await db
-    .select({ status: v4JobPriceAdjustments.status })
+    .select()
     .from(v4JobPriceAdjustments)
     .where(eq(v4JobPriceAdjustments.id, adjustmentId))
     .limit(1);
 
-  if (!rows[0]) throw Object.assign(new Error("Adjustment not found"), { status: 404 });
+  const adj = rows[0];
+  if (!adj) throw Object.assign(new Error("Adjustment not found"), { status: 404 });
 
   await db
     .update(v4JobPriceAdjustments)
     .set({ status: "REJECTED_BY_ADMIN" })
     .where(eq(v4JobPriceAdjustments.id, adjustmentId));
+
+  // Restore the job so it can continue under the original price.
+  await db.update(jobs).set({ status: "ASSIGNED" }).where(eq(jobs.id, adj.jobId));
+
+  await syncSupportTicket(adj.supportTicketId, "CLOSED");
+
+  if (adj.threadId) {
+    await appendSystemMessage(
+      adj.threadId,
+      "8Fold has declined the 2nd appraisal request. The job will continue under the original agreed price.",
+    );
+  }
 }
 
 export async function getAdjustmentByIdForAdmin(
@@ -501,7 +584,8 @@ export async function getAdjustmentByIdForAdmin(
     supportTicketId: adj.supportTicketId,
     originalPriceCents: adj.originalPriceCents,
     requestedPriceCents: adj.requestedPriceCents,
-    differenceCents: adj.differenceCents,
+    // Returned as computed value so admin UI always shows the correct figure.
+    differenceCents: computeDiff(adj),
     contractorScopeDetails: adj.contractorScopeDetails,
     additionalScopeDetails: adj.additionalScopeDetails,
     status: adj.status,
@@ -513,4 +597,43 @@ export async function getAdjustmentByIdForAdmin(
     createdAt: adj.createdAt?.toISOString() ?? null,
     approvedAt: adj.approvedAt?.toISOString() ?? null,
   };
+}
+
+export async function listAdjustmentsForContractor(contractorUserId: string): Promise<
+  Array<{
+    id: string;
+    jobId: string;
+    jobTitle: string;
+    originalPriceCents: number | null;
+    requestedPriceCents: number;
+    differenceCents: number;
+    status: string;
+    createdAt: Date | null;
+  }>
+> {
+  const rows = await db
+    .select({
+      id: v4JobPriceAdjustments.id,
+      jobId: v4JobPriceAdjustments.jobId,
+      jobTitle: jobs.title,
+      originalPriceCents: v4JobPriceAdjustments.originalPriceCents,
+      requestedPriceCents: v4JobPriceAdjustments.requestedPriceCents,
+      status: v4JobPriceAdjustments.status,
+      createdAt: v4JobPriceAdjustments.createdAt,
+    })
+    .from(v4JobPriceAdjustments)
+    .leftJoin(jobs, eq(v4JobPriceAdjustments.jobId, jobs.id))
+    .where(eq(v4JobPriceAdjustments.contractorUserId, contractorUserId))
+    .orderBy(desc(v4JobPriceAdjustments.createdAt));
+
+  return rows.map((row) => ({
+    id: row.id,
+    jobId: row.jobId,
+    jobTitle: row.jobTitle ?? "Unknown Job",
+    originalPriceCents: row.originalPriceCents,
+    requestedPriceCents: row.requestedPriceCents,
+    differenceCents: computeDiff(row),
+    status: row.status,
+    createdAt: row.createdAt,
+  }));
 }

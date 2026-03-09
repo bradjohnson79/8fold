@@ -25,6 +25,9 @@ export const JobStatusSchema = z.enum([
   "JOB_STARTED",
   // Admin-approved cancel (terminal; added via 0115 migration).
   "CANCELLED",
+  // Appraisal review lock — set when a 2nd appraisal request is pending.
+  // Resets to ASSIGNED once the appraisal is resolved.
+  "APPRAISAL_PENDING",
 ]);
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
@@ -56,7 +59,8 @@ export const JobAllowedTransitions: Readonly<
   DRAFT: ["OPEN_FOR_ROUTING", "PUBLISHED"],
   OPEN_FOR_ROUTING: ["ASSIGNED"],
   PUBLISHED: ["ASSIGNED", "JOB_STARTED"],
-  ASSIGNED: ["IN_PROGRESS", "JOB_STARTED"],
+  ASSIGNED: ["IN_PROGRESS", "JOB_STARTED", "APPRAISAL_PENDING"],
+  APPRAISAL_PENDING: ["ASSIGNED"],
   JOB_STARTED: ["CONTRACTOR_COMPLETED"],
   IN_PROGRESS: ["CONTRACTOR_COMPLETED"],
   CONTRACTOR_COMPLETED: ["CUSTOMER_APPROVED", "CUSTOMER_REJECTED"],

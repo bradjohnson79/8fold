@@ -13,9 +13,13 @@ export const v4JobPriceAdjustments = dbSchema.table(
     contractorUserId: text("contractor_user_id").notNull(),
     jobPosterUserId: text("job_poster_user_id").notNull(),
     supportTicketId: text("support_ticket_id"),
-    originalPriceCents: integer("original_price_cents").notNull(),
+    // Snapshot of job.amount_cents at the time the contractor submitted the request.
+    // Made nullable for backward compatibility; always populated for new rows.
+    originalPriceCents: integer("original_price_cents"),
     requestedPriceCents: integer("requested_price_cents").notNull(),
-    differenceCents: integer("difference_cents").notNull(),
+    // No longer written — computed dynamically as requestedPriceCents - originalPriceCents.
+    // Nullable so existing rows (which had this set) are preserved.
+    differenceCents: integer("difference_cents"),
     contractorScopeDetails: text("contractor_scope_details").notNull(),
     additionalScopeDetails: text("additional_scope_details").notNull(),
     status: text("status").notNull().default("PENDING"),
