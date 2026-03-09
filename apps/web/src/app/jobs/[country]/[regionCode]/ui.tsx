@@ -4,15 +4,21 @@ import React from "react";
 import Link from "next/link";
 import { LocationSelector } from "../../../../components/LocationSelector";
 import { slugify } from "@/utils/slug";
-import { slugCity } from "@/utils/slug";
 
-type CityWithJobs = { city: string; jobCount: number };
+type CityWithJobs = { city: string; jobCount: number; latestActivity: string | null };
 
-function titleCaseFromSlug(slug: string): string {
-  return slug
-    .trim()
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+function timeAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "just now";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `updated ${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `updated ${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  return `updated ${days}d ago`;
 }
 
 export function StateJobsClient(props: { country: string; regionCode: string }) {
@@ -75,16 +81,22 @@ export function StateJobsClient(props: { country: string; regionCode: string }) 
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cities.map((c) => (
-              <Link
-                key={c.city}
-                href={`/jobs/${country}/${regionCode}/${slugify(c.city)}`}
-                className="block border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition-shadow"
-              >
-                <div className="font-bold text-gray-900">{titleCaseFromSlug(c.city)}</div>
-                <div className="text-sm text-gray-600 mt-1">{c.jobCount} jobs</div>
-              </Link>
-            ))}
+            {cities.map((c) => {
+              const ago = timeAgo(c.latestActivity);
+              return (
+                <Link
+                  key={c.city}
+                  href={`/jobs/${country}/${regionCode}/${slugify(c.city)}`}
+                  className="block border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition-shadow"
+                >
+                  <div className="font-bold text-gray-900">{c.city}</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    {c.jobCount} {c.jobCount === 1 ? "job" : "jobs"}
+                    {ago && <span className="text-gray-400 ml-1">&middot; {ago}</span>}
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
