@@ -23,11 +23,17 @@ async function proxy(req: Request, pathSegments: string[]) {
   const sessionToken = await requireApiToken(req);
   const url = new URL(req.url);
   const query = url.search ? `?${url.searchParams.toString()}` : "";
+
+  // Forward Content-Type so the API can parse the body correctly.
+  const contentType = req.headers.get("content-type");
+  const extraHeaders: Record<string, string> = contentType ? { "content-type": contentType } : {};
+
   const resp = await apiFetch({
     path: path + query,
     method: req.method,
     sessionToken,
     request: req,
+    headers: extraHeaders,
     body: req.method !== "GET" && req.method !== "HEAD" ? req.body : null,
   });
   const text = await resp.text();

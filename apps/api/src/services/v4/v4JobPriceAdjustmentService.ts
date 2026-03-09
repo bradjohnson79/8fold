@@ -29,6 +29,26 @@ function computeDiff(adj: { requestedPriceCents: number; originalPriceCents: num
   return adj.requestedPriceCents - (adj.originalPriceCents ?? 0);
 }
 
+/**
+ * Normalize a price input to integer cents.
+ * - If input is already ≥ 100 (looks like cents), use as-is (rounded).
+ * - If input is < 100 but > 0 (looks like a dollar amount), multiply by 100.
+ * - Handles both { requestedPriceCents } and legacy { requestedPrice } fields.
+ */
+function normalizePriceToCents(input: unknown): number {
+  const raw = input as Record<string, unknown> | undefined;
+  if (!raw) return 0;
+
+  if (typeof raw.requestedPriceCents === "number" && raw.requestedPriceCents > 0) {
+    return Math.round(raw.requestedPriceCents);
+  }
+  if (typeof raw.requestedPrice === "number" && raw.requestedPrice > 0) {
+    // Treat as dollars — convert to cents.
+    return Math.round(raw.requestedPrice * 100);
+  }
+  return 0;
+}
+
 /** Sync the linked support ticket to a terminal status. No-op if no ticket. */
 async function syncSupportTicket(supportTicketId: string | null, status: "CLOSED" | "RESOLVED"): Promise<void> {
   if (!supportTicketId) return;
@@ -57,7 +77,12 @@ export async function createAdjustmentRequest(
   const additional = String(opts.additionalScopeDetails ?? "").trim();
   if (!scope) throw Object.assign(new Error("Scope details are required"), { status: 400 });
   if (!additional) throw Object.assign(new Error("Additional details are required"), { status: 400 });
-  if (!Number.isInteger(opts.requestedPriceCents) || opts.requestedPriceCents <= 0) {
+
+  // Normalize to ensure we always have an integer cents value, even if the
+  // caller sends a dollar float (e.g. 1200 instead of 120000).
+  const requestedPriceCents = normalizePriceToCents(opts) || Math.round(Number(opts.requestedPriceCents));
+
+  if (!Number.isInteger(requestedPriceCents) || requestedPriceCents <= 0) {
     throw Object.assign(new Error("Requested price must be a positive integer (cents)"), { status: 400 });
   }
 
@@ -90,8 +115,22 @@ export async function createAdjustmentRequest(
   // downstream calculations (difference, Stripe PI amount, consent page display).
   const originalPriceCents = job.amount_cents;
 
-  if (opts.requestedPriceCents <= originalPriceCents) {
-    throw Object.assign(new Error("Requested price must exceed the current job price"), { status: 400 });
+  // Diagnostic log — remove once pricing bugs are confirmed stable in production.
+  console.info("[APPRAISAL_REQUEST_INPUT]", {
+    requestedPriceCents,
+    originalPriceCents,
+    rawOptsValue: opts.requestedPriceCents,
+    jobId,
+    contractorUserId,
+  });
+
+  if (requestedPriceCents <= originalPriceCents) {
+    throw Object.assign(
+      new Error(
+        `Requested price must exceed the current job price (requested: ${formatCents(requestedPriceCents)}, current: ${formatCents(originalPriceCents)})`,
+      ),
+      { status: 400 },
+    );
   }
 
   const adjustmentId = randomUUID();
@@ -107,7 +146,7 @@ export async function createAdjustmentRequest(
       jobPosterUserId: job.user_id,
       supportTicketId,
       originalPriceCents,
-      requestedPriceCents: opts.requestedPriceCents,
+      requestedPriceCents,
       // differenceCents intentionally omitted — computed dynamically.
       contractorScopeDetails: scope,
       additionalScopeDetails: additional,
@@ -127,7 +166,7 @@ export async function createAdjustmentRequest(
   // Lock the job so routers cannot re-route while the appraisal is under review.
   await db.update(jobs).set({ status: "APPRAISAL_PENDING" }).where(eq(jobs.id, jobId));
 
-  const diff = opts.requestedPriceCents - originalPriceCents;
+  const diff = requestedPriceCents - originalPriceCents;
 
   await db.insert(v4SupportTickets).values({
     id: supportTicketId,
@@ -139,7 +178,7 @@ export async function createAdjustmentRequest(
     priority: "HIGH",
     jobId,
     adjustmentId,
-    body: `Contractor requests price adjustment from ${formatCents(originalPriceCents)} to ${formatCents(opts.requestedPriceCents)} (difference: ${formatCents(diff)}).\n\nScope willing to do at current price:\n${scope}\n\nAdditional work required:\n${additional}`,
+    body: `Contractor requests price adjustment from ${formatCents(originalPriceCents)} to ${formatCents(requestedPriceCents)} (difference: ${formatCents(diff)}).\n\nScope willing to do at current price:\n${scope}\n\nAdditional work required:\n${additional}`,
     status: "OPEN",
     createdAt: now,
     updatedAt: now,
@@ -148,7 +187,7 @@ export async function createAdjustmentRequest(
   if (threadId) {
     await appendSystemMessage(
       threadId,
-      `Contractor submitted a 2nd appraisal request. Requested total price: ${formatCents(opts.requestedPriceCents)}. Awaiting review from 8Fold support.`,
+      `Contractor submitted a 2nd appraisal request. Requested total price: ${formatCents(requestedPriceCents)}. Awaiting review from 8Fold support.`,
     );
   }
 

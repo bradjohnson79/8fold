@@ -23,7 +23,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ threadId: stri
   }
 
   const raw = await req.json().catch(() => ({}));
-  const requestedPriceCents = Number(raw?.requestedPriceCents);
+
+  // Normalize: accept either requestedPriceCents (integer cents, preferred)
+  // or legacy requestedPrice (float dollars) and convert automatically.
+  let requestedPriceCents: number;
+  if (typeof raw?.requestedPriceCents === "number" && raw.requestedPriceCents > 0) {
+    requestedPriceCents = Math.round(raw.requestedPriceCents);
+  } else if (typeof raw?.requestedPrice === "number" && raw.requestedPrice > 0) {
+    requestedPriceCents = Math.round(raw.requestedPrice * 100);
+  } else {
+    requestedPriceCents = Number(raw?.requestedPriceCents ?? 0);
+  }
+
   const contractorScopeDetails = String(raw?.contractorScopeDetails ?? "").trim();
   const additionalScopeDetails = String(raw?.additionalScopeDetails ?? "").trim();
 
