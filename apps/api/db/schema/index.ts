@@ -99,3 +99,5 @@ export * from "./v4RouterRewardEvents";
 export * from "./admin";
 export * from "./roleTermsAcceptance";
 export * from "./v4FrontpageTicker";
+export * from "./v4ContractorTradeSkills";
+export * from "./v4ContractorCertifications";

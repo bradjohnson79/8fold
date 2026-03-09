@@ -127,6 +127,7 @@ export default function ContractorOverviewClient() {
   const confettiFired = useRef(false);
   const [mounted, setMounted] = useState(false);
   const [nowMs, setNowMs] = useState(0);
+  const [zeroApprovedTrades, setZeroApprovedTrades] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -141,20 +142,31 @@ export default function ContractorOverviewClient() {
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, notifResp, invitesResp] = await Promise.all([
+        const [summaryResp, notifResp, invitesResp, tradesResp] = await Promise.all([
           apiFetch("/api/web/v4/contractor/dashboard/summary", getToken).catch(() => null),
           apiFetch("/api/web/v4/contractor/notifications?page=1&pageSize=1", getToken).catch(() => null),
           apiFetch("/api/web/v4/contractor/invites", getToken).catch(() => null),
+          apiFetch("/api/web/v4/contractor/trades", getToken).catch(() => null),
         ]);
         if (!alive) return;
 
         const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
         const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
         const invitesJson = invitesResp ? await invitesResp.json().catch(() => null) : null;
+        const tradesJson = tradesResp ? await tradesResp.json().catch(() => null) : null;
         if (!alive) return;
 
         setSummary(summaryJson ?? null);
         setUnreadNotifs(typeof notifJson?.unreadCount === "number" ? notifJson.unreadCount : 0);
+
+        // Check if contractor has zero approved trades (suspended warning)
+        if (tradesJson?.ok && Array.isArray(tradesJson.trades)) {
+          const hasApproved = (tradesJson.trades as Array<{ approved: boolean }>).some((t) => t.approved);
+          // Only show banner if they have trade records but none are approved
+          if (tradesJson.trades.length > 0 && !hasApproved) {
+            setZeroApprovedTrades(true);
+          }
+        }
 
         const rawInvites: InvitePreview[] = Array.isArray(invitesJson?.invites)
           ? invitesJson.invites
@@ -238,6 +250,27 @@ export default function ContractorOverviewClient() {
         <h1 className="text-2xl font-bold text-slate-900">Contractor Dashboard</h1>
         <p className="mt-1 text-sm text-slate-600">Track your jobs, invites, and earnings.</p>
       </div>
+
+      {zeroApprovedTrades ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <span className="text-lg text-amber-500 mt-0.5">⚠</span>
+            <div>
+              <div className="text-sm font-semibold text-amber-800">Your account is temporarily inactive.</div>
+              <div className="mt-0.5 text-sm text-amber-700">
+                At least one trade requires 3+ years of experience to qualify for routing.
+                Update your trade experience to activate your account.
+              </div>
+              <Link
+                href="/dashboard/contractor/profile"
+                className="mt-2 inline-block text-sm font-semibold text-amber-800 underline hover:text-amber-900"
+              >
+                Update Trade Skills →
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {allGatesComplete ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">

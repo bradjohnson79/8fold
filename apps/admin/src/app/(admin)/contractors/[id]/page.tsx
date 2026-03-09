@@ -1,7 +1,24 @@
 import { adminApiFetch } from "@/server/adminApiV4";
 import { redirect } from "next/navigation";
+import React from "react";
 
 type JobRef = { id: string; title: string; statusRaw: string; displayStatus: string; createdAt: string; updatedAt: string; amountCents: number };
+type CertRef = {
+  id: string;
+  certificationName: string;
+  issuingOrganization: string | null;
+  certificateImageUrl: string | null;
+  certificateType: string | null;
+  issuedAt: string | null;
+  verified: boolean;
+};
+type TradeRef = {
+  id: string;
+  tradeCategory: string;
+  yearsExperience: number;
+  approved: boolean;
+  certifications: CertRef[];
+};
 type DetailResp = {
   profile: {
     id: string;
@@ -35,6 +52,22 @@ function toActionError(error: unknown): string {
   const status = typeof (error as any)?.status === "number" ? (error as any).status : null;
   const msg = error instanceof Error ? error.message : "Action failed";
   return `${status ? `HTTP ${status}: ` : ""}${msg}`.slice(0, 240);
+}
+
+async function doVerifyCertification(certificationId: string, verified: boolean, contractorId: string) {
+  "use server";
+  try {
+    await adminApiFetch(`/api/admin/v4/contractor/certifications/verify`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ certificationId, verified }),
+    });
+    redirect(`/contractors/${encodeURIComponent(contractorId)}?certVerified=1`);
+  } catch (error) {
+    redirect(
+      `/contractors/${encodeURIComponent(contractorId)}?certVerifyError=${encodeURIComponent(toActionError(error))}`,
+    );
+  }
 }
 
 async function doRefreshStripe(contractorUserId: string) {
@@ -90,13 +123,25 @@ export default async function ContractorDetailPage({
   const stripeRefreshError = String(
     Array.isArray(sp.stripeRefreshError) ? sp.stripeRefreshError[0] : sp.stripeRefreshError ?? "",
   );
+  const certVerified = String(Array.isArray(sp.certVerified) ? sp.certVerified[0] : sp.certVerified ?? "");
+  const certVerifyError = String(Array.isArray(sp.certVerifyError) ? sp.certVerifyError[0] : sp.certVerifyError ?? "");
 
   let data: DetailResp | null = null;
   let err: string | null = null;
+  let trades: TradeRef[] = [];
   try {
-    data = await adminApiFetch<DetailResp>(`/api/admin/v4/contractors/${encodeURIComponent(id)}`);
+    [data] = await Promise.all([
+      adminApiFetch<DetailResp>(`/api/admin/v4/contractors/${encodeURIComponent(id)}`),
+    ]);
   } catch (e) {
     err = e instanceof Error ? e.message : "Failed to load contractor";
+  }
+  // Trades are fetched separately so a failure doesn't break the whole page
+  try {
+    const tradesResp = await adminApiFetch<{ trades: TradeRef[] }>(`/api/admin/v4/contractors/${encodeURIComponent(id)}/trades`);
+    trades = tradesResp?.trades ?? [];
+  } catch {
+    // non-fatal — trades section will show empty
   }
 
   if (!data || err) {
@@ -130,6 +175,16 @@ export default async function ContractorDetailPage({
       {stripeRefreshError ? (
         <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900, fontSize: 12 }}>
           {stripeRefreshError}
+        </div>
+      ) : null}
+      {certVerified === "1" ? (
+        <div style={{ marginTop: 10, color: "rgba(134,239,172,0.95)", fontWeight: 900, fontSize: 12 }}>
+          Certification verification updated.
+        </div>
+      ) : null}
+      {certVerifyError ? (
+        <div style={{ marginTop: 10, color: "rgba(254,202,202,0.95)", fontWeight: 900, fontSize: 12 }}>
+          {certVerifyError}
         </div>
       ) : null}
 
@@ -200,6 +255,85 @@ export default async function ContractorDetailPage({
               Open Full Enforcement Controls (suspend/archive/delete)
             </a>
           </div>
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <Card title="Trade Skills &amp; Certifications">
+          {trades.length === 0 ? (
+            <div style={{ color: "rgba(226,232,240,0.68)", fontSize: 13 }}>No trade skills declared.</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+              {trades.map((trade) => (
+                <div key={trade.id} style={{ border: "1px solid rgba(148,163,184,0.14)", borderRadius: 10, padding: 10, background: "rgba(15,23,42,0.25)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 900, fontSize: 13, color: "rgba(226,232,240,0.92)" }}>
+                      {trade.tradeCategory.replace(/_/g, " ")}
+                    </span>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: "2px 7px",
+                      borderRadius: 8,
+                      background: trade.approved ? "rgba(22,163,74,0.18)" : "rgba(245,158,11,0.18)",
+                      color: trade.approved ? "rgba(134,239,172,0.95)" : "rgba(253,230,138,0.95)",
+                    }}>
+                      {trade.approved ? "Approved" : "Not Approved"}
+                    </span>
+                  </div>
+                  {kv("Years Experience", String(trade.yearsExperience))}
+                  {trade.certifications.length > 0 ? (
+                    <div style={{ marginTop: 8 }}>
+                      {trade.certifications.map((cert) => (
+                        <div key={cert.id} style={{ marginTop: 6, padding: "6px 8px", background: "rgba(15,23,42,0.35)", borderRadius: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(226,232,240,0.92)", marginBottom: 4 }}>
+                            {cert.certificationName}
+                            {cert.verified ? (
+                              <span style={{ marginLeft: 6, color: "rgba(134,239,172,0.95)" }}>✔ Verified</span>
+                            ) : (
+                              <span style={{ marginLeft: 6, color: "rgba(253,230,138,0.90)" }}>Unverified</span>
+                            )}
+                          </div>
+                          {cert.issuingOrganization ? (
+                            <div style={{ fontSize: 11, color: "rgba(226,232,240,0.65)" }}>{cert.issuingOrganization}</div>
+                          ) : null}
+                          {cert.certificateImageUrl ? (
+                            <div style={{ marginTop: 4 }}>
+                              <a
+                                href={cert.certificateImageUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: "rgba(191,219,254,0.90)", fontSize: 11, textDecoration: "none", fontWeight: 800 }}
+                              >
+                                View Certificate ({cert.certificateType ?? "file"}) ↗
+                              </a>
+                            </div>
+                          ) : null}
+                          <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+                            {!cert.verified ? (
+                              <form action={doVerifyCertification.bind(null, cert.id, true, id)}>
+                                <button type="submit" style={{ border: "1px solid rgba(134,239,172,0.3)", borderRadius: 6, padding: "4px 8px", background: "rgba(22,163,74,0.15)", color: "rgba(134,239,172,0.95)", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+                                  Mark Verified
+                                </button>
+                              </form>
+                            ) : (
+                              <form action={doVerifyCertification.bind(null, cert.id, false, id)}>
+                                <button type="submit" style={{ border: "1px solid rgba(148,163,184,0.24)", borderRadius: 6, padding: "4px 8px", background: "rgba(15,23,42,0.45)", color: "rgba(253,230,138,0.90)", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+                                  Revoke Verification
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 6, fontSize: 12, color: "rgba(226,232,240,0.50)" }}>No certification uploaded.</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 

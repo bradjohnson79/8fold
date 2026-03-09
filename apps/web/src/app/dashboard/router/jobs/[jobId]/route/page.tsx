@@ -10,6 +10,13 @@ import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 import AvailabilityBadge from "@/components/AvailabilityBadge";
 
+type CertPreview = {
+  certificationName: string;
+  issuingOrganization: string | null;
+  verified: boolean;
+  certificateType: string | null;
+};
+
 type EligibleContractor = {
   contractorId: string;
   businessName: string;
@@ -19,6 +26,7 @@ type EligibleContractor = {
   city: string;
   distanceKm: number;
   availabilityStatus: "AVAILABLE" | "BUSY";
+  certifications: CertPreview[];
 };
 
 type EligibleResponse = {
@@ -250,6 +258,27 @@ export default function RouterRouteJobPage() {
                     <div className="text-sm text-slate-600">
                       {contractor.city || "Unknown city"} &middot; {contractor.distanceKm.toFixed(1)} km away
                     </div>
+                    {contractor.certifications && contractor.certifications.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {contractor.certifications.map((cert, i) => {
+                          const tradeName = contractor.tradeCategory.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                          return (
+                            <span
+                              key={i}
+                              className={
+                                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium " +
+                                (cert.verified
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-slate-50 text-slate-600 border border-slate-200")
+                              }
+                              title={cert.issuingOrganization ?? undefined}
+                            >
+                              {cert.verified ? "✔" : "📄"} {cert.verified ? `Certified ${tradeName}` : cert.certificationName}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 </label>
               </li>
