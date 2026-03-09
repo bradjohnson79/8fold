@@ -135,6 +135,19 @@ type AcceptNotif = {
   };
 };
 
+type PendingAppraisal = {
+  adjustmentId: string;
+  jobId: string;
+  jobTitle: string;
+  originalPriceCents: number;
+  requestedPriceCents: number;
+  additionalPriceCents: number;
+  location: string | null;
+  secureToken: string | null;
+  expiresAt: string | null;
+  expired: boolean;
+};
+
 function fmtCountdown(targetIso: string | null, nowMs: number): string {
   if (!targetIso || nowMs <= 0) return "---";
   const diff = new Date(targetIso).getTime() - nowMs;
@@ -228,6 +241,7 @@ export default function JobPosterOverviewClient() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
+  const [pendingAppraisals, setPendingAppraisals] = useState<PendingAppraisal[]>([]);
   const confettiFired = useRef(false);
   const [mounted, setMounted] = useState(false);
   const [nowMs, setNowMs] = useState(0);
@@ -250,12 +264,13 @@ export default function JobPosterOverviewClient() {
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, jobsResp, assignedResp, appraisalResp, notifsResp] = await Promise.all([
+        const [summaryResp, jobsResp, assignedResp, appraisalResp, notifsResp, appraisalsResp] = await Promise.all([
           apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null),
           apiFetch("/api/web/v4/job-poster/jobs", getToken).catch(() => null),
           apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken).catch(() => null),
           apiFetch("/api/web/v4/score-appraisal/me", getToken).catch(() => null),
           apiFetch("/api/web/v4/job-poster/notifications?unreadOnly=true&type=CONTRACTOR_ACCEPTED&page=1&pageSize=5", getToken).catch(() => null),
+          apiFetch("/api/web/v4/job-poster/appraisals/pending", getToken).catch(() => null),
         ]);
         if (!alive) return;
 
@@ -264,12 +279,14 @@ export default function JobPosterOverviewClient() {
         const assignedJson = assignedResp ? await assignedResp.json().catch(() => null) : null;
         const appraisalJson = appraisalResp ? await appraisalResp.json().catch(() => null) : null;
         const notifsJson = notifsResp ? await notifsResp.json().catch(() => null) : null;
+        const appraisalsJson = appraisalsResp ? await appraisalsResp.json().catch(() => null) : null;
         if (!alive) return;
 
         setSummary(summaryJson ?? null);
         setJobs(Array.isArray(jobsJson?.jobs) ? jobsJson.jobs : []);
         setAssigned(assignedJson?.assignment ?? null);
         setScoreAppraisal(appraisalJson?.appraisal ?? null);
+        setPendingAppraisals(Array.isArray(appraisalsJson?.pendingAppraisals) ? appraisalsJson.pendingAppraisals : []);
 
         const notifs: AcceptNotif[] = Array.isArray(notifsJson?.notifications) ? notifsJson.notifications : [];
         setAcceptNotifs(notifs);
@@ -569,6 +586,102 @@ export default function JobPosterOverviewClient() {
             )) : null}
           </div>
         </ClosableCard>
+      )}
+
+      {pendingAppraisals.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">
+              ⚠ Price Adjustment Pending
+              {pendingAppraisals.length > 1 && (
+                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-sm font-bold text-amber-700">
+                  {pendingAppraisals.length}
+                </span>
+              )}
+            </h2>
+          </div>
+          <div className="space-y-3">
+            {pendingAppraisals.map((ap) => {
+              const additionalDollars = (ap.additionalPriceCents / 100).toFixed(2);
+              const originalDollars = (ap.originalPriceCents / 100).toFixed(2);
+              const requestedDollars = (ap.requestedPriceCents / 100).toFixed(2);
+              const appraisalHref = ap.secureToken
+                ? `/job-adjustment/${encodeURIComponent(ap.adjustmentId)}?token=${encodeURIComponent(ap.secureToken)}`
+                : `/job-adjustment/${encodeURIComponent(ap.adjustmentId)}`;
+
+              return (
+                <div
+                  key={ap.adjustmentId}
+                  className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5 shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      <h3 className="font-bold text-amber-800">Price Adjustment Request</h3>
+                    </div>
+                    {ap.expired ? (
+                      <span className="inline-flex shrink-0 rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                        EXPIRED
+                      </span>
+                    ) : (
+                      <span className="inline-flex shrink-0 rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                        ACTION NEEDED
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-2 text-sm text-amber-700">
+                    A contractor has requested a revised price for your job.
+                  </p>
+
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-700 space-y-1">
+                    <div className="font-semibold text-slate-900">{ap.jobTitle}</div>
+                    {ap.location && (
+                      <div className="text-xs text-slate-500">{ap.location}</div>
+                    )}
+                    <div className="mt-2 grid grid-cols-1 gap-y-1 sm:grid-cols-3 text-xs">
+                      <div>
+                        <span className="text-slate-500">Original Price</span>
+                        <div className="font-semibold text-slate-800">${originalDollars}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Requested Price</span>
+                        <div className="font-semibold text-slate-800">${requestedDollars}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Additional Payment</span>
+                        <div className="font-bold text-amber-700">+${additionalDollars}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {ap.expired ? (
+                    <p className="mt-3 text-xs text-slate-500">
+                      This appraisal request has expired. Please contact support if you still wish to review it.
+                    </p>
+                  ) : (
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Link
+                        href={appraisalHref}
+                        className="rounded-lg bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                      >
+                        Review Appraisal
+                      </Link>
+                      <Link
+                        href={`/dashboard/job-poster/messages?jobId=${encodeURIComponent(ap.jobId)}`}
+                        className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                      >
+                        Open Messenger
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
