@@ -9,10 +9,12 @@ import { parseMissingSteps, type MissingStep } from "@/lib/accountIncomplete";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 import AvailabilityBadge from "@/components/AvailabilityBadge";
+import CertificationThumbnails from "@/components/contractors/CertificationThumbnails";
 
 type CertPreview = {
   certificationName: string;
   issuingOrganization: string | null;
+  certificateImageUrl: string | null;
   verified: boolean;
   certificateType: string | null;
 };
@@ -259,25 +261,37 @@ export default function RouterRouteJobPage() {
                       {contractor.city || "Unknown city"} &middot; {contractor.distanceKm.toFixed(1)} km away
                     </div>
                     {contractor.certifications && contractor.certifications.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {contractor.certifications.map((cert, i) => {
-                          const tradeName = contractor.tradeCategory.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-                          return (
-                            <span
-                              key={i}
-                              className={
-                                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium " +
-                                (cert.verified
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-slate-50 text-slate-600 border border-slate-200")
-                              }
-                              title={cert.issuingOrganization ?? undefined}
-                            >
-                              {cert.verified ? "✔" : "📄"} {cert.verified ? `Certified ${tradeName}` : cert.certificationName}
-                            </span>
-                          );
-                        })}
-                      </div>
+                      <>
+                        {/* Image thumbnails — click to preview full certificate */}
+                        <CertificationThumbnails certifications={contractor.certifications} />
+                        {/* Text badges for certs without an uploaded image */}
+                        {contractor.certifications.some((c) => !c.certificateImageUrl) ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {contractor.certifications
+                              .filter((c) => !c.certificateImageUrl)
+                              .map((cert, i) => {
+                                const tradeName = contractor.tradeCategory
+                                  .replace(/_/g, " ")
+                                  .replace(/\b\w/g, (ch) => ch.toUpperCase());
+                                return (
+                                  <span
+                                    key={i}
+                                    className={
+                                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium " +
+                                      (cert.verified
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        : "bg-slate-50 text-slate-600 border border-slate-200")
+                                    }
+                                    title={cert.issuingOrganization ?? undefined}
+                                  >
+                                    {cert.verified ? "✔" : "📄"}{" "}
+                                    {cert.verified ? `Certified ${tradeName}` : cert.certificationName}
+                                  </span>
+                                );
+                              })}
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
                 </label>
