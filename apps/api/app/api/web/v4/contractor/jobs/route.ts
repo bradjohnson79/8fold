@@ -34,6 +34,7 @@ export async function GET(req: Request) {
           region: j.region,
           status: String(j.status ?? ""),
           assignedAt: (j.assignedAt ?? j.created_at).toISOString(),
+          appointmentAt: j.appointment_at instanceof Date ? j.appointment_at.toISOString() : (j.appointment_at ? String(j.appointment_at) : null),
           canMarkComplete: eligibility.canMarkComplete,
           executionStatus: eligibility.executionStatus,
           contractorMarkedCompleteAt: j.contractor_marked_complete_at?.toISOString?.() ?? null,
