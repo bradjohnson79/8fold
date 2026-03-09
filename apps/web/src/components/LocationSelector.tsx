@@ -11,6 +11,7 @@ type RegionRow = { country: "US" | "CA"; regionCode: string; regionName: string 
 type CityJobCount = {
   city: string;
   jobCount: number;
+  latestActivity: string | null;
 };
 
 export function LocationSelector(props: {
@@ -65,8 +66,6 @@ export function LocationSelector(props: {
     }
   }, []);
 
-  const gridRef = React.useRef<HTMLDivElement>(null);
-
   React.useEffect(() => {
     let cancelled = false;
 
@@ -118,18 +117,6 @@ export function LocationSelector(props: {
     };
   }, [selectedRegion?.country, selectedRegion?.regionCode]);
 
-  React.useEffect(() => {
-    if (!selectedRegion || regionCities.length === 0 || loadingCities) return;
-
-    const isMobile =
-      typeof window !== "undefined" &&
-      window.matchMedia("(max-width: 640px)").matches;
-
-    if (isMobile && gridRef.current) {
-      gridRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [selectedRegion, regionCities.length, loadingCities]);
-
   const usRegions = regions.filter((r) => r.country === "US");
   const caRegions = regions.filter((r) => r.country === "CA");
 
@@ -154,11 +141,6 @@ export function LocationSelector(props: {
     );
   };
 
-  const gridCities = React.useMemo(
-    () => [...regionCities].sort((a, b) => (b.jobCount ?? 0) - (a.jobCount ?? 0)),
-    [regionCities]
-  );
-
   return (
     <div className="mb-8">
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6">
@@ -178,7 +160,7 @@ export function LocationSelector(props: {
           </div>
         ) : null}
 
-        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
           {/* REGION SELECT */}
           <div>
             <div className="text-sm font-semibold text-gray-700 mb-2">
@@ -239,37 +221,36 @@ export function LocationSelector(props: {
 
               {regionCities.map((c) => (
                 <option key={c.city} value={c.city}>
-                  {c.city} · {c.jobCount}
+                  {c.city} ({c.jobCount})
                 </option>
               ))}
             </select>
-
-            {selectedRegion && (
-              <div className="mt-2">
-                <Link
-                  href={`/jobs/${selectedRegion.country}/${selectedRegion.regionCode}`}
-                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
-                >
-                  View all cities in {selectedRegion.regionName} →
-                </Link>
-              </div>
-            )}
           </div>
+        </div>
 
-          {/* BUTTON */}
-          <div className="flex">
-            <button
-              disabled={!canGo}
-              onClick={go}
-              className={`w-full font-semibold px-4 py-2 rounded-lg transition-colors ${
-                canGo
-                  ? "bg-8fold-green hover:bg-8fold-green-dark text-white"
-                  : "bg-gray-200 text-gray-500"
-              }`}
+        {selectedRegion && (
+          <div className="mt-4">
+            <Link
+              href={`/jobs/${selectedRegion.country}/${selectedRegion.regionCode}`}
+              className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
             >
-              View jobs
-            </button>
+              View all cities in {selectedRegion.regionName} →
+            </Link>
           </div>
+        )}
+
+        <div className="mt-4">
+          <button
+            disabled={!canGo}
+            onClick={go}
+            className={`w-full font-semibold px-4 py-2 rounded-lg transition-colors ${
+              canGo
+                ? "bg-8fold-green hover:bg-8fold-green-dark text-white"
+                : "bg-gray-200 text-gray-500"
+            }`}
+          >
+            View jobs
+          </button>
         </div>
 
         {loadingCities && selectedRegion && (
@@ -280,32 +261,6 @@ export function LocationSelector(props: {
         )}
       </div>
 
-      {selectedRegion && (
-        <div ref={gridRef} className="mt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">
-            Browse Cities in {selectedRegion.regionName}
-          </h3>
-
-          {regionCities.length === 0 && !loadingCities ? (
-            <p className="text-gray-500 text-sm">
-              No active jobs in this region yet.
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              {gridCities.map((c) => (
-                <button
-                  key={c.city}
-                  type="button"
-                  onClick={() => setCity(c.city)}
-                  className="text-left px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors text-sm"
-                >
-                  {c.city} ({c.jobCount})
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

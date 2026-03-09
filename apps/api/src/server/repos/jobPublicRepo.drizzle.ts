@@ -1,28 +1,21 @@
-import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs } from "../../../db/schema/job";
 import { getRegionName, type CountryCode2 } from "../../locations/datasets";
 
-/**
- * Public discovery eligibility - jobs available to route.
- * Includes OPEN_FOR_ROUTING, ASSIGNED, and CUSTOMER_APPROVED (when router not yet approved).
- */
+/** Marketplace visibility: only jobs actively available or in progress. */
 function publicEligibility() {
   return and(
     eq(jobs.archived, false),
-    or(
-      eq(jobs.status, "OPEN_FOR_ROUTING" as any),
-      eq(jobs.status, "ASSIGNED" as any),
-      and(eq(jobs.status, "CUSTOMER_APPROVED" as any), isNull(jobs.router_approved_at)),
-    )!,
+    sql`${jobs.status} IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')`,
   );
 }
 
-/** Simpler eligibility for city/region lists: OPEN_FOR_ROUTING or ASSIGNED only. */
+/** Same marketplace filter used for city/region aggregation queries. */
 function publicEligibilityForLocations() {
   return and(
     eq(jobs.archived, false),
-    sql`${jobs.status} IN ('OPEN_FOR_ROUTING', 'ASSIGNED')`,
+    sql`${jobs.status} IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')`,
   );
 }
 
@@ -101,65 +94,80 @@ export async function listRegionsWithJobs(): Promise<
 }
 
 /**
- * Minimal city list for dropdown (cities-with-jobs). Restored to avoid Option B regression.
- * SELECT DISTINCT city only. No GROUP BY, no counts.
+ * City list with job counts and latest activity for dropdowns and region pages.
+ * Groups by LOWER(TRIM(city)) to merge case/whitespace variants.
  */
 export async function listCitiesByRegion(
   country: CountryCode2,
   regionCode: string,
-): Promise<Array<{ city: string; jobCount: number }>> {
+): Promise<Array<{ city: string; jobCount: number; latestActivity: string | null }>> {
   const rc = regionCode.trim().toUpperCase();
   if (!rc) return [];
   if (!isAllowedRegion(country, rc)) return [];
 
-  const res = await db.execute<{ city: string | null }>(
+  const res = await db.execute<{ city: string | null; job_count: number; latest_activity: string | null }>(
     sql`
-      SELECT DISTINCT city
+      SELECT
+        INITCAP(TRIM(city)) AS city,
+        COUNT(*)::int AS job_count,
+        MAX(COALESCE(published_at, created_at))::text AS latest_activity
       FROM jobs
       WHERE region_code = ${rc}
         AND country = ${country}
-        AND status IN ('OPEN_FOR_ROUTING', 'ASSIGNED')
+        AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
         AND archived = false
         AND city IS NOT NULL
         AND city != ''
+      GROUP BY LOWER(TRIM(city))
       ORDER BY city ASC
     `,
   );
-  const rows = (res as { rows?: { city: string | null }[] })?.rows ?? [];
+  const rows = (res as { rows?: { city: string | null; job_count: number; latest_activity: string | null }[] })?.rows ?? [];
   return rows
-    .map((r) => ({ city: String(r.city ?? "").trim(), jobCount: 0 }))
+    .map((r) => ({
+      city: String(r.city ?? "").trim(),
+      jobCount: Number(r.job_count ?? 0),
+      latestActivity: r.latest_activity ?? null,
+    }))
     .filter((r) => Boolean(r.city));
 }
 
 /**
- * Cities with job counts for Option B grid. Isolated — does not affect existing endpoints.
+ * Cities with job counts for grid display. Normalized grouping merges case/whitespace variants.
  * Powers /api/public/jobs/cities only.
  */
 export async function listCitiesWithJobCounts(
   country: CountryCode2,
   regionCode: string,
-): Promise<Array<{ city: string; jobCount: number }>> {
+): Promise<Array<{ city: string; jobCount: number; latestActivity: string | null }>> {
   const rc = regionCode.trim().toUpperCase();
   if (!rc) return [];
   if (!isAllowedRegion(country, rc)) return [];
 
-  const res = await db.execute<{ city: string | null; job_count: number }>(
+  const res = await db.execute<{ city: string | null; job_count: number; latest_activity: string | null }>(
     sql`
-      SELECT city, COUNT(*)::int AS job_count
+      SELECT
+        INITCAP(TRIM(city)) AS city,
+        COUNT(*)::int AS job_count,
+        MAX(COALESCE(published_at, created_at))::text AS latest_activity
       FROM jobs
       WHERE region_code = ${rc}
         AND country = ${country}
-        AND status IN ('OPEN_FOR_ROUTING', 'ASSIGNED')
+        AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
         AND archived = false
         AND city IS NOT NULL
         AND city != ''
-      GROUP BY city
+      GROUP BY LOWER(TRIM(city))
       ORDER BY job_count DESC
     `,
   );
-  const rows = (res as { rows?: { city: string | null; job_count: number }[] })?.rows ?? [];
+  const rows = (res as { rows?: { city: string | null; job_count: number; latest_activity: string | null }[] })?.rows ?? [];
   return rows
-    .map((r) => ({ city: String(r.city ?? "").trim(), jobCount: Number(r.job_count ?? 0) }))
+    .map((r) => ({
+      city: String(r.city ?? "").trim(),
+      jobCount: Number(r.job_count ?? 0),
+      latestActivity: r.latest_activity ?? null,
+    }))
     .filter((r) => Boolean(r.city));
 }
 
@@ -185,7 +193,7 @@ export type PublicNewestJobRow = {
 
 /**
  * Canonical projection for public newest jobs. Strict column list prevents schema drift.
- * Includes OPEN_FOR_ROUTING, ASSIGNED, CUSTOMER_APPROVED (router not approved).
+ * Marketplace visibility: OPEN_FOR_ROUTING and IN_PROGRESS only.
  */
 export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[]> {
   const take = Math.max(1, Math.min(50, Math.trunc(limit || 9)));
@@ -199,7 +207,7 @@ export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[
         published_at, created_at
       FROM jobs
       WHERE archived = false
-        AND (status = 'OPEN_FOR_ROUTING' OR status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+        AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
       ORDER BY published_at DESC, id DESC
       LIMIT ${take}
     `,
@@ -263,10 +271,10 @@ export async function listJobsByLocation(opts: {
           published_at, created_at
         FROM jobs
         WHERE archived = false
-          AND (status = 'OPEN_FOR_ROUTING' OR status = 'ASSIGNED' OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+          AND status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS')
           AND region_code IS NOT NULL
           AND region_code = ${rc}
-          AND (lower(city) = lower(${city}) OR region = ${regionSlug})
+          AND (LOWER(TRIM(city)) = LOWER(TRIM(${city})) OR region = ${regionSlug})
         ORDER BY published_at DESC, id DESC
         LIMIT 200
       `,
