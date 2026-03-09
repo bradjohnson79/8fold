@@ -14,7 +14,17 @@ type Props = {
 };
 
 function formatMoney(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function parsePriceInput(raw: string): number {
+  return parseFloat(raw.replace(/[^0-9.]/g, "")) || 0;
+}
+
+function formatPriceDisplay(raw: string): string {
+  const num = parsePriceInput(raw);
+  if (!num) return raw;
+  return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function AppraisalRequestModal({
@@ -30,19 +40,20 @@ export function AppraisalRequestModal({
   const [contractorScope, setContractorScope] = useState("");
   const [additionalScope, setAdditionalScope] = useState("");
   const [requestedPrice, setRequestedPrice] = useState("");
+  const [priceEditing, setPriceEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedPriceCents, setSubmittedPriceCents] = useState<number | null>(null);
 
   async function handleSubmit() {
-    const priceDollars = parseFloat(requestedPrice);
+    const priceDollars = parsePriceInput(requestedPrice);
     if (!priceDollars || priceDollars <= 0) {
-      setError("Enter a valid price.");
+      setError("Enter a valid total price.");
       return;
     }
     const requestedPriceCents = Math.round(priceDollars * 100);
     if (requestedPriceCents <= currentPriceCents) {
-      setError("Requested price must be higher than the current price.");
+      setError("The new total price must be greater than the current job price.");
       return;
     }
     if (!contractorScope.trim()) {
@@ -72,7 +83,7 @@ export function AppraisalRequestModal({
       );
       const json = await resp.json().catch(() => ({} as any));
       if (!resp.ok) throw new Error(json?.error ?? "Failed to submit request");
-      setSubmitted(true);
+      setSubmittedPriceCents(requestedPriceCents);
       onSuccess();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit request");
@@ -81,20 +92,33 @@ export function AppraisalRequestModal({
     }
   }
 
-  if (submitted) {
+  if (submittedPriceCents !== null) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
         <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
-          <h3 className="text-lg font-semibold text-emerald-700">Request Submitted</h3>
-          <p className="mt-3 text-sm text-slate-700">
-            Thank you. Your 2nd appraisal request has been submitted for admin review. Please allow up to 24 hours for processing. You will be notified once a decision is made.
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-lg">✓</span>
+            <h3 className="text-lg font-semibold text-emerald-700">Request Submitted</h3>
+          </div>
+          <p className="mt-3 text-sm text-slate-600">
+            Your 2nd appraisal request has been submitted. Our team will review the request and contact the Job Poster within 24 hours.
           </p>
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-sm">
+            <div className="flex justify-between px-4 py-2.5">
+              <span className="text-slate-500">Current job price</span>
+              <span className="font-semibold text-slate-700">{formatMoney(currentPriceCents)}</span>
+            </div>
+            <div className="flex justify-between px-4 py-2.5">
+              <span className="text-slate-500">Requested price</span>
+              <span className="font-semibold text-emerald-700">{formatMoney(submittedPriceCents)}</span>
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
           >
-            Close
+            Done
           </button>
         </div>
       </div>
@@ -152,17 +176,29 @@ export function AppraisalRequestModal({
 
           <div>
             <label className="text-sm font-medium text-slate-700">
-              New Adjusted Appraisal Price ($)
+              New Total Price for the Job ($)
             </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={requestedPrice}
-              onChange={(e) => setRequestedPrice(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              placeholder="e.g. 750.00"
-            />
+            <div className="relative mt-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={priceEditing ? requestedPrice : (requestedPrice ? formatPriceDisplay(requestedPrice) : "")}
+                onFocus={() => {
+                  setPriceEditing(true);
+                  setRequestedPrice(requestedPrice.replace(/[^0-9.]/g, ""));
+                }}
+                onBlur={() => {
+                  setPriceEditing(false);
+                }}
+                onChange={(e) => setRequestedPrice(e.target.value)}
+                className="w-full rounded-md border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                placeholder="1,200.00"
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Enter the total price required to complete the job including the additional work described above. The system will calculate the difference automatically.
+            </p>
           </div>
 
           <button
