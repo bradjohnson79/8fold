@@ -346,6 +346,27 @@ export async function notificationEventMapper(
           },
           tx,
         );
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "APPOINTMENT_BOOKED",
+              title: "Appointment Scheduled",
+              message: `A contractor scheduled an appointment for a job you routed: ${jobTitle}`,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKey}:router`,
+              idempotencyKey: `${p.dedupeKey}:router`,
+              metadata: { jobId: p.jobId, jobTitle },
+            },
+            tx,
+          );
+        }
         return;
       }
 
@@ -393,6 +414,27 @@ export async function notificationEventMapper(
           },
           tx,
         );
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "RESCHEDULE_REQUEST",
+              title: "Appointment reschedule requested",
+              message: "A contractor on your routed job proposed a new appointment time.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKey}:router`,
+              idempotencyKey: `${p.dedupeKey}:router`,
+              metadata: { appointmentAt: p.appointmentAt },
+            },
+            tx,
+          );
+        }
         return;
       }
 
@@ -877,6 +919,26 @@ export async function notificationEventMapper(
             tx,
           );
         }
+        if (p.routerId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.routerId),
+              role: "ROUTER",
+              type: "POSTER_ACCEPTED",
+              title: "Job poster confirmed completion",
+              message: "The job poster confirmed completion on a job you routed.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "LOW",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKeyBase}:router`,
+              idempotencyKey: `${p.dedupeKeyBase}:router`,
+            },
+            tx,
+          );
+        }
         return;
       }
 
@@ -1076,6 +1138,27 @@ export async function notificationEventMapper(
           },
           tx,
         );
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "RE_APPRAISAL_DECLINED",
+              title: "Re-Appraisal Declined",
+              message: "You declined the re-appraisal request. The job will continue at the original price.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: new Date(),
+              dedupeKey: `${p.dedupeKey}:poster`,
+              idempotencyKey: `${p.dedupeKey}:poster`,
+              metadata: { adjustmentId: p.adjustmentId, jobId: p.jobId },
+            },
+            tx,
+          );
+        }
         return;
       }
 
@@ -1100,6 +1183,27 @@ export async function notificationEventMapper(
           },
           tx,
         );
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "RE_APPRAISAL_ACCEPTED",
+              title: "Re-Appraisal Payment Complete",
+              message: "Your additional payment has been processed. The job price has been updated.",
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: new Date(),
+              dedupeKey: `${p.dedupeKey}:poster`,
+              idempotencyKey: `${p.dedupeKey}:poster`,
+              metadata: { adjustmentId: p.adjustmentId, jobId: p.jobId },
+            },
+            tx,
+          );
+        }
         return;
       }
 

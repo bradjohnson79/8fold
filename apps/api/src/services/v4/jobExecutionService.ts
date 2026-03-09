@@ -446,6 +446,7 @@ export async function posterMarkComplete(input: { jobPosterUserId: string; jobId
         jobId: input.jobId,
         contractorId: job.contractorUserId ? String(job.contractorUserId) : null,
         jobPosterId: input.jobPosterUserId,
+        routerId: job.routerUserId ? String(job.routerUserId) : null,
         createdAt: now.toISOString(),
         dedupeKeyBase: `poster_marked_complete:${input.jobId}`,
       } as Record<string, unknown>,

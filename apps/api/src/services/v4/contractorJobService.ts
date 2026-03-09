@@ -282,6 +282,7 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
         status: jobs.status,
         contractorUserId: jobs.contractor_user_id,
         jobPosterUserId: jobs.job_poster_user_id,
+        routerUserId: jobs.claimed_by_user_id,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -318,6 +319,7 @@ export async function bookAppointment(contractorUserId: string, jobId: string, a
           payload: {
             jobId,
             jobPosterId: String(job.jobPosterUserId),
+            routerId: job.routerUserId ? String(job.routerUserId) : null,
             createdAt: now,
             dedupeKey: `appointment_booked:${jobId}:poster`,
           },
@@ -436,6 +438,7 @@ export async function rescheduleAppointment(contractorUserId: string, jobId: str
           payload: {
             jobId,
             jobPosterId: String(job.jobPosterUserId),
+            routerId: job.routerUserId ? String(job.routerUserId) : null,
             appointmentAt: nextAppointmentAt.toISOString(),
             createdAt: now,
             dedupeKey: `reschedule_request:${jobId}:${nextAppointmentAt.toISOString()}:poster`,
