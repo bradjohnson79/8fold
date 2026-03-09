@@ -559,8 +559,10 @@ export async function acceptAdjustment(
       type: "price_adjustment",
     },
     description: `8Fold price adjustment for job ${adj.jobId.slice(0, 8)}`,
+    // Let Stripe Elements handle payment method selection — never pre-set
+    // payment_method here, as stored IDs may be simulated/invalid and would
+    // break the Elements confirmation flow in any case.
     automatic_payment_methods: { enabled: true },
-    ...(poster.stripeDefaultPaymentMethodId ? { payment_method: poster.stripeDefaultPaymentMethodId } : {}),
   }, {
     idempotencyKey: `adj_accept_${adjustmentId}`,
   });
