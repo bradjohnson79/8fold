@@ -230,6 +230,72 @@ export async function listNewestJobs(limit: number): Promise<PublicNewestJobRow[
   return (res as { rows?: PublicNewestJobRow[] })?.rows ?? [];
 }
 
+export type RegionJobPageRow = {
+  id: string;
+  title: string | null;
+  trade_category: string | null;
+  status: string | null;
+  city: string | null;
+  amount_cents: number | null;
+  currency: string | null;
+  created_at: Date | string | null;
+  published_at: Date | string | null;
+  photo_urls: string[] | null;
+  router_earnings_cents: number | null;
+  contractor_payout_cents: number | null;
+  broker_fee_cents: number | null;
+};
+
+/** Paginated newest jobs for a region (powers the regional discovery page). */
+export async function listNewestJobsByRegion(
+  country: CountryCode2,
+  regionCode: string,
+  page = 1,
+  limit = 9,
+): Promise<{ rows: RegionJobPageRow[]; totalJobs: number; totalPages: number }> {
+  const rc = regionCode.trim().toUpperCase();
+  if (!rc || !isAllowedRegion(country, rc)) return { rows: [], totalJobs: 0, totalPages: 0 };
+
+  const take = Math.max(1, Math.min(9, Math.trunc(limit)));
+  const safePage = Math.max(1, Math.trunc(page));
+  const offset = (safePage - 1) * take;
+
+  const [dataRes, countRes] = await Promise.all([
+    db.execute<RegionJobPageRow>(
+      sql`
+        SELECT
+          id, title, trade_category, status, city, photo_urls,
+          amount_cents, currency,
+          router_earnings_cents, contractor_payout_cents, broker_fee_cents,
+          published_at, created_at
+        FROM jobs
+        WHERE archived = false
+          AND country = ${country}
+          AND region_code = ${rc}
+          AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+        ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+        LIMIT ${take} OFFSET ${offset}
+      `,
+    ),
+    db.execute<{ cnt: number }>(
+      sql`
+        SELECT COUNT(*)::int AS cnt
+        FROM jobs
+        WHERE archived = false
+          AND country = ${country}
+          AND region_code = ${rc}
+          AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+      `,
+    ),
+  ]);
+
+  const rows = (dataRes as { rows?: RegionJobPageRow[] })?.rows ?? [];
+  const totalJobs = Number((countRes as { rows?: { cnt: number }[] })?.rows?.[0]?.cnt ?? 0);
+  const totalPages = Math.max(1, Math.ceil(totalJobs / take));
+
+  return { rows, totalJobs, totalPages };
+}
+
 export async function countEligiblePublicJobs(): Promise<number> {
   const rows = await db
     .select({ count: sql<number>`count(*)::int` })
