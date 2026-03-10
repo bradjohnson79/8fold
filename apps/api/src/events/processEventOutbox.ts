@@ -6,6 +6,7 @@ import { eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { notificationEventMapper } from "@/src/services/v4/notifications/notificationEventMapper";
+import { seoEventHandler } from "@/src/services/seo/seoEventHandler";
 import type { DomainEvent, DomainEventType } from "./domainEventTypes";
 
 const BATCH_SIZE = 50;
@@ -35,6 +36,7 @@ export async function processEventOutbox(): Promise<void> {
       } as unknown as DomainEvent;
 
       await notificationEventMapper(domainEvent);
+      await seoEventHandler(domainEvent);
 
       await db
         .update(v4EventOutbox)

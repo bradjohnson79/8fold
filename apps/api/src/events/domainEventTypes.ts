@@ -30,6 +30,12 @@ export const DOMAIN_EVENT_TYPES = [
   "RE_APPRAISAL_REQUESTED",
   "RE_APPRAISAL_DECLINED",
   "RE_APPRAISAL_ACCEPTED",
+  "JOB_CANCELLATION_REQUESTED",
+  "JOB_CANCELLATION_APPROVED",
+  "JOB_ASSIGNED_CANCELLATION_RESOLVED",
+  "JOB_UPDATED",
+  "JOB_ARCHIVED",
+  "JOB_DELETED",
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -249,6 +255,60 @@ export type DomainEventPayloadByType = {
     jobId: string;
     contractorId: string;
     jobPosterId: string;
+    dedupeKey: string;
+  };
+  JOB_CANCELLATION_REQUESTED: {
+    jobId: string;
+    jobPosterId: string;
+    cancelRequestId: string;
+    reason: string;
+    adminIds?: string[];
+    createdAt?: Date;
+    dedupeKey: string;
+  };
+  JOB_CANCELLATION_APPROVED: {
+    jobId: string;
+    jobPosterId: string;
+    cancelRequestId: string;
+    adminId: string;
+    createdAt?: Date;
+    dedupeKey: string;
+  };
+  JOB_ASSIGNED_CANCELLATION_RESOLVED: {
+    jobId: string;
+    jobPosterId: string;
+    contractorId: string;
+    cancelledBy: "JOB_POSTER" | "CONTRACTOR";
+    withinPenaltyWindow: boolean;
+    resolutionType: "FULL_REFUND" | "PARTIAL_REFUND_WITH_CONTRACTOR_PAYOUT" | "FULL_REFUND_WITH_CONTRACTOR_SUSPENSION";
+    refundAmountCents: number;
+    payoutAmountCents: number;
+    suspensionApplied: boolean;
+    adminId: string;
+    dedupeKey: string;
+  };
+  JOB_UPDATED: {
+    jobId: string;
+    country_code?: string | null;
+    state_code?: string | null;
+    city?: string | null;
+    service_type?: string | null;
+    dedupeKey: string;
+  };
+  JOB_ARCHIVED: {
+    jobId: string;
+    country_code?: string | null;
+    state_code?: string | null;
+    city?: string | null;
+    service_type?: string | null;
+    dedupeKey: string;
+  };
+  JOB_DELETED: {
+    jobId: string;
+    country_code?: string | null;
+    state_code?: string | null;
+    city?: string | null;
+    service_type?: string | null;
     dedupeKey: string;
   };
 };
