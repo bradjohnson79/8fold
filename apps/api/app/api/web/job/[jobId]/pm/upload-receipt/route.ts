@@ -51,26 +51,20 @@ export async function POST(req: Request) {
 
     if (!pm) return NextResponse.json({ error: "Not found", traceId: ctx.traceId }, { status: 404 });
     if (pm.status !== "FUNDED" && pm.status !== "RECEIPTS_SUBMITTED" && pm.status !== "PAYMENT_PENDING") {
-      return NextResponse.json({ error: "Receipts can only be uploaded after payment hold/charge.", traceId: ctx.traceId }, { status: 400 });
+      return NextResponse.json({ error: "Receipts can only be uploaded after payment is completed.", traceId: ctx.traceId }, { status: 400 });
     }
 
     let reconcilePaymentIntentId: string | null = null;
     if (pm.status === "PAYMENT_PENDING") {
       const piId = String(pm.stripePaymentIntentId ?? "").trim();
       if (!piId || !stripe) {
-        return NextResponse.json({ error: "Payment hold is required before receipts upload.", traceId: ctx.traceId }, { status: 409 });
+        return NextResponse.json({ error: "Payment must be completed before uploading receipts.", traceId: ctx.traceId }, { status: 409 });
       }
       const pi = await stripe.paymentIntents.retrieve(piId);
-      if (pi.status === "requires_capture") {
-        const captured = await stripe.paymentIntents.capture(piId, undefined, {
-          idempotencyKey: `pm-receipt-capture:${body.pmRequestId}`,
-        });
-        reconcilePaymentIntentId = captured.id;
-      } else if (pi.status !== "succeeded") {
-        return NextResponse.json({ error: "Payment hold is not capturable.", traceId: ctx.traceId }, { status: 409 });
-      } else {
-        reconcilePaymentIntentId = pi.id;
+      if (pi.status !== "succeeded") {
+        return NextResponse.json({ error: "Payment has not been captured.", traceId: ctx.traceId }, { status: 409 });
       }
+      reconcilePaymentIntentId = pi.id;
       await db
         .update(pmRequests)
         .set({
