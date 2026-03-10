@@ -12,6 +12,29 @@ import type {
 import { MAPPED_DOMAIN_EVENT_TYPES } from "@/src/events/domainEventRegistry";
 import { sendNotification } from "./notificationService";
 
+async function safeSeoIndexAndSitemap(jobId: string, triggeredBy: string): Promise<void> {
+  // SEO indexing requires Node runtime — skip silently in Edge context
+  if (process.env.NEXT_RUNTIME === "edge") return;
+
+  try {
+    const { resolveJobUrl } = await import("@/src/services/v4/seo/canonicalUrlService");
+    const { pingUrl } = await import("@/src/services/v4/seo/indexingService");
+    const { invalidateSitemapCache } = await import("@/src/services/v4/seo/sitemapService");
+
+    const jobUrl = await resolveJobUrl(jobId);
+    await Promise.allSettled([
+      pingUrl(jobUrl, triggeredBy),
+      invalidateSitemapCache("jobs"),
+    ]);
+  } catch (err) {
+    console.error("[SEO_AUTO_INDEX_ERROR]", {
+      jobId,
+      triggeredBy,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export function getMappedDomainEventTypes(): DomainEventType[] {
   return [...MAPPED_DOMAIN_EVENT_TYPES];
 }
@@ -458,6 +481,12 @@ export async function notificationEventMapper(
           },
           tx,
         );
+
+        // SEO automation: ping search engines and invalidate sitemap cache (best-effort, non-blocking)
+        if (mode === "best_effort") {
+          void safeSeoIndexAndSitemap(p.jobId, event.type);
+        }
+
         return;
       }
 
