@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/db/drizzle";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
@@ -327,6 +327,70 @@ export async function appendSystemMessage(threadId: string, body: string): Promi
     .update(v4MessageThreads)
     .set({ lastMessageAt: now })
     .where(eq(v4MessageThreads.id, t.id));
+
+  return { id };
+}
+
+/**
+ * Append a SYSTEM message to the thread for a given job, with idempotency.
+ *
+ * The dedupeMarker is embedded as a prefix in the stored body so we can detect
+ * if the message was already written (no separate metadata column exists).
+ * Silently returns if no thread exists yet or if the message was already sent.
+ */
+export async function appendSystemMessageByJobId(
+  jobId: string,
+  body: string,
+  dedupeMarker: string,
+): Promise<{ id: string } | null> {
+  const trimmedBody = String(body ?? "").trim();
+  if (!trimmedBody || !dedupeMarker) return null;
+
+  // Find thread for this job
+  const threadRows = await db
+    .select({ id: v4MessageThreads.id, jobId: v4MessageThreads.jobId })
+    .from(v4MessageThreads)
+    .where(eq(v4MessageThreads.jobId, jobId))
+    .limit(1);
+
+  const thread = threadRows[0] ?? null;
+  if (!thread) return null; // no thread yet — silently skip
+
+  // Idempotency check: look for an existing SYSTEM message with this dedupeMarker embedded
+  const markerPrefix = `[dm:${dedupeMarker}]`;
+  const existingRows = await db
+    .select({ id: v4Messages.id })
+    .from(v4Messages)
+    .where(
+      and(
+        eq(v4Messages.threadId, thread.id),
+        eq(v4Messages.senderRole, "SYSTEM"),
+        sql`${v4Messages.body} LIKE ${`${markerPrefix}%`}`,
+      ),
+    )
+    .limit(1);
+
+  if (existingRows[0]) return { id: existingRows[0].id }; // already sent
+
+  const storedBody = `${markerPrefix} ${trimmedBody}`;
+  const id = randomUUID();
+  const now = new Date();
+
+  await db.insert(v4Messages).values({
+    id,
+    threadId: thread.id,
+    jobId: thread.jobId,
+    fromUserId: null,
+    toUserId: null,
+    senderRole: "SYSTEM",
+    body: storedBody,
+    createdAt: now,
+  });
+
+  await db
+    .update(v4MessageThreads)
+    .set({ lastMessageAt: now })
+    .where(eq(v4MessageThreads.id, thread.id));
 
   return { id };
 }

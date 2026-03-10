@@ -101,10 +101,24 @@ type Related = {
   messages: { threadCount: number; messageCount: number };
 };
 
+type CancelRequest = {
+  id: string;
+  reason: string;
+  requestedByRole: string;
+  withinPenaltyWindow: boolean;
+  status: string;
+  requestedAt: string;
+  supportTicketId: string | null;
+  refundProcessedAt?: string | null;
+  payoutProcessedAt?: string | null;
+  suspensionProcessedAt?: string | null;
+};
+
 type DetailResp = {
   job: JobDetail;
   timeline: TimelineEvent[];
   related: Related;
+  cancelRequest?: CancelRequest | null;
   statusOptions?: string[];
   mutation?: {
     kind: "updated" | "noop";
@@ -328,6 +342,62 @@ export default async function JobDetailPage({
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
+  async function doCancelAssigned() {
+    "use server";
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/cancel-assigned`, { method: "POST" });
+    } catch {
+      // Error handled via revalidate
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async function doPartialRefund(formData: FormData) {
+    "use server";
+    const confirmText = String(formData.get("confirmText") ?? "").trim();
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/partial-refund`, {
+        method: "POST",
+        body: JSON.stringify({ confirmText }),
+      });
+    } catch {
+      // Error handled via revalidate
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async function doContractorPayout(formData: FormData) {
+    "use server";
+    const confirmText = String(formData.get("confirmText") ?? "").trim();
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/contractor-payout`, {
+        method: "POST",
+        body: JSON.stringify({ confirmText }),
+      });
+    } catch {
+      // Error handled via revalidate
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async function doSuspendContractorForCancel(formData: FormData) {
+    "use server";
+    const confirmText = String(formData.get("confirmText") ?? "").trim();
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/suspend-contractor`, {
+        method: "POST",
+        body: JSON.stringify({ confirmText }),
+      });
+    } catch {
+      // Error handled via revalidate
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
   async function doSuperDelete(formData: FormData) {
     "use server";
     const confirm = String(formData.get("confirm") ?? "").trim();
@@ -338,6 +408,32 @@ export default async function JobDetailPage({
       // 403 or 409 if blocked
     }
     redirect("/jobs");
+  }
+
+  async function doApproveCancellation() {
+    "use server";
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/approve-cancellation`, {
+        method: "POST",
+      });
+    } catch {
+      // Error shown via redirect flash
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async function doRefund() {
+    "use server";
+    try {
+      await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/refund`, {
+        method: "POST",
+      });
+    } catch {
+      // Error shown via redirect flash
+    }
+    revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
   async function doSuperEdit(formData: FormData) {
@@ -556,6 +652,294 @@ export default async function JobDetailPage({
           )}
         </Card>
       </div>
+
+      <div style={{ marginTop: 12 }}>
+        {((): React.ReactNode => {
+          const cr = data.cancelRequest ?? null;
+          const crStatus = String(cr?.status ?? "").toLowerCase();
+          const isPending = crStatus === "pending";
+          const isApproved = crStatus === "approved";
+          const isRefunded = crStatus === "refunded";
+          const canRefund = isApproved && (job.paymentStatus === "FUNDS_SECURED" || job.paymentStatus === "FUNDED");
+
+          const cardBorder = cr
+            ? "1px solid rgba(251,146,60,0.4)"
+            : "1px solid rgba(148,163,184,0.14)";
+          const cardBg = cr
+            ? "rgba(124,45,18,0.18)"
+            : "rgba(2,6,23,0.22)";
+
+          return (
+            <div style={{ border: cardBorder, borderRadius: 16, padding: 14, background: cardBg }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ fontWeight: 950, color: "rgba(226,232,240,0.95)" }}>Cancellation Request</div>
+                {cr && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 900,
+                      letterSpacing: 0.5,
+                      padding: "3px 8px",
+                      borderRadius: 8,
+                      background: isRefunded
+                        ? "rgba(34,197,94,0.18)"
+                        : isApproved
+                          ? "rgba(59,130,246,0.18)"
+                          : "rgba(251,146,60,0.22)",
+                      color: isRefunded
+                        ? "rgba(134,239,172,0.95)"
+                        : isApproved
+                          ? "rgba(147,197,253,0.95)"
+                          : "rgba(253,186,116,0.95)",
+                    }}
+                  >
+                    {crStatus.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              {!cr ? (
+                <div style={{ color: "rgba(226,232,240,0.50)", fontSize: 13 }}>No cancellation request on file.</div>
+              ) : (
+                <>
+                  {kv("Requested By", cr.requestedByRole)}
+                  {kv("Reason", cr.reason)}
+                  {kv("Requested At", fmt(cr.requestedAt))}
+                  {kv("Penalty Window", cr.withinPenaltyWindow ? "Yes" : "No")}
+                  {cr.supportTicketId && kv("Support Ticket ID", <code style={{ fontSize: 11 }}>{cr.supportTicketId}</code>)}
+                  <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                    {!isRefunded && (
+                      <form action={doApproveCancellation}>
+                        <button
+                          type="submit"
+                          disabled={!isPending}
+                          style={{
+                            background: isPending ? "rgba(59,130,246,0.18)" : "rgba(71,85,105,0.18)",
+                            border: isPending ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(71,85,105,0.3)",
+                            color: isPending ? "rgba(147,197,253,0.95)" : "rgba(148,163,184,0.4)",
+                            borderRadius: 12,
+                            padding: "9px 14px",
+                            fontSize: 13,
+                            fontWeight: 900,
+                            cursor: isPending ? "pointer" : "not-allowed",
+                          }}
+                        >
+                          Approve Cancellation
+                        </button>
+                      </form>
+                    )}
+                    {!isRefunded && (
+                      <form action={doRefund}>
+                        <button
+                          type="submit"
+                          disabled={!canRefund}
+                          style={{
+                            background: canRefund ? "rgba(248,113,113,0.18)" : "rgba(71,85,105,0.18)",
+                            border: canRefund ? "1px solid rgba(248,113,113,0.4)" : "1px solid rgba(71,85,105,0.3)",
+                            color: canRefund ? "rgba(254,202,202,0.95)" : "rgba(148,163,184,0.4)",
+                            borderRadius: 12,
+                            padding: "9px 14px",
+                            fontSize: 13,
+                            fontWeight: 900,
+                            cursor: canRefund ? "pointer" : "not-allowed",
+                          }}
+                        >
+                          Issue Refund
+                        </button>
+                      </form>
+                    )}
+                    {isRefunded && (
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 900,
+                          color: "rgba(134,239,172,0.95)",
+                          padding: "9px 14px",
+                          border: "1px solid rgba(34,197,94,0.3)",
+                          borderRadius: 12,
+                          background: "rgba(34,197,94,0.12)",
+                        }}
+                      >
+                        Refund Issued
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Assigned Job Cancellation Card — shown when an assigned job has a cancel request */}
+      {data.cancelRequest && (data.cancelRequest.requestedByRole === "JOB_POSTER" || data.cancelRequest.requestedByRole === "CONTRACTOR") && (job.statusRaw === "ASSIGNED_CANCEL_PENDING" || job.statusRaw === "CANCELLED") && (() => {
+        const cr = data.cancelRequest!;
+        const jobStatus = String(job.statusRaw ?? "");
+        const crStatus = String(cr.status ?? "").toLowerCase();
+        const isAwaitingCancel = jobStatus === "ASSIGNED_CANCEL_PENDING";
+        const isCancelled = jobStatus === "CANCELLED" || crStatus === "approved" || crStatus === "refunded";
+
+        const posterInWindow = cr.requestedByRole === "JOB_POSTER" && cr.withinPenaltyWindow;
+        const contractorInWindow = cr.requestedByRole === "CONTRACTOR" && cr.withinPenaltyWindow;
+
+        const refundDone = Boolean(cr.refundProcessedAt);
+        const payoutDone = Boolean(cr.payoutProcessedAt);
+        const suspensionDone = Boolean(cr.suspensionProcessedAt);
+
+        // Determine which refund label to show
+        const refundLabel = posterInWindow ? "75% Refund" : "100% Refund";
+        const refundActive = isCancelled && !refundDone;
+
+        // Payout applies only for poster+inWindow
+        const payoutActive = isCancelled && posterInWindow && !payoutDone;
+        const showPayout = posterInWindow;
+
+        // Suspension applies only for contractor+inWindow
+        const suspendActive = isCancelled && contractorInWindow && !suspensionDone;
+        const showSuspend = contractorInWindow;
+
+        const btnBase: React.CSSProperties = {
+          borderRadius: 12,
+          padding: "9px 14px",
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: "pointer",
+          border: "none",
+        };
+        const activeBtn = (color: string): React.CSSProperties => ({
+          ...btnBase,
+          background: `rgba(${color},0.18)`,
+          border: `1px solid rgba(${color},0.4)`,
+          color: `rgba(${color},0.95)`,
+          cursor: "pointer",
+        });
+        const disabledBtn: React.CSSProperties = {
+          ...btnBase,
+          background: "rgba(71,85,105,0.18)",
+          border: "1px solid rgba(71,85,105,0.3)",
+          color: "rgba(148,163,184,0.4)",
+          cursor: "not-allowed",
+        };
+        const doneTag = (ts: string | null | undefined) => ts ? (
+          <span style={{ fontSize: 11, color: "rgba(134,239,172,0.9)", fontWeight: 700 }}>
+            Done {fmt(ts)}
+          </span>
+        ) : null;
+
+        return (
+          <div style={{ marginTop: 12, border: "1px solid rgba(251,146,60,0.35)", borderRadius: 16, padding: 14, background: "rgba(120,53,15,0.18)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ fontWeight: 950, color: "rgba(226,232,240,0.95)" }}>Assigned Job Cancellation</div>
+              <span style={{
+                fontSize: 10, fontWeight: 900, letterSpacing: 0.5, padding: "3px 8px", borderRadius: 8,
+                background: isAwaitingCancel ? "rgba(251,146,60,0.22)" : "rgba(59,130,246,0.18)",
+                color: isAwaitingCancel ? "rgba(253,186,116,0.95)" : "rgba(147,197,253,0.95)",
+              }}>
+                {isAwaitingCancel ? "AWAITING ADMIN CANCEL" : crStatus.toUpperCase()}
+              </span>
+            </div>
+
+            {kv("Cancelled By", cr.requestedByRole)}
+            {kv("Within 8h Window", cr.withinPenaltyWindow ? "YES" : "NO")}
+            {kv("Reason", cr.reason)}
+            {kv("Requested At", fmt(cr.requestedAt))}
+            {cr.supportTicketId && kv("Support Ticket", <code style={{ fontSize: 11 }}>{cr.supportTicketId}</code>)}
+
+            <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {/* Step 1: Cancel Job */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <form action={doCancelAssigned}>
+                  <button
+                    type="submit"
+                    disabled={!isAwaitingCancel}
+                    style={isAwaitingCancel ? activeBtn("251,146,60") : disabledBtn}
+                  >
+                    Cancel Job
+                  </button>
+                </form>
+                {!isAwaitingCancel && isCancelled && (
+                  <span style={{ fontSize: 11, color: "rgba(134,239,172,0.9)", fontWeight: 700 }}>Done</span>
+                )}
+              </div>
+
+              {/* Step 2a: Refund */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {refundDone ? (
+                  <div>
+                    <button type="button" disabled style={disabledBtn}>{refundLabel}</button>
+                    {doneTag(cr.refundProcessedAt)}
+                  </div>
+                ) : (
+                  <form action={doPartialRefund} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <input
+                      name="confirmText"
+                      placeholder='Type "REFUND" to confirm'
+                      style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 8, padding: "6px 10px", color: "rgba(226,232,240,0.9)", fontSize: 12, width: 160 }}
+                    />
+                    <button type="submit" disabled={!refundActive} style={refundActive ? activeBtn("248,113,113") : disabledBtn}>
+                      {refundLabel}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Step 2b: Contractor Payout (poster+inWindow only) */}
+              {showPayout && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {payoutDone ? (
+                    <div>
+                      <button type="button" disabled style={disabledBtn}>25% Contractor Payout</button>
+                      {doneTag(cr.payoutProcessedAt)}
+                    </div>
+                  ) : (
+                    <form action={doContractorPayout} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <input
+                        name="confirmText"
+                        placeholder='Type "PAYOUT" to confirm'
+                        style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 8, padding: "6px 10px", color: "rgba(226,232,240,0.9)", fontSize: 12, width: 160 }}
+                      />
+                      <button type="submit" disabled={!payoutActive} style={payoutActive ? activeBtn("250,204,21") : disabledBtn}>
+                        25% Contractor Payout
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2c: Suspend Contractor (contractor+inWindow only) */}
+              {showSuspend && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {suspensionDone ? (
+                    <div>
+                      <button type="button" disabled style={disabledBtn}>Suspend Contractor</button>
+                      {doneTag(cr.suspensionProcessedAt)}
+                    </div>
+                  ) : (
+                    <form action={doSuspendContractorForCancel} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <input
+                        name="confirmText"
+                        placeholder='Type "SUSPEND" to confirm'
+                        style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 8, padding: "6px 10px", color: "rgba(226,232,240,0.9)", fontSize: 12, width: 160 }}
+                      />
+                      <button type="submit" disabled={!suspendActive} style={suspendActive ? activeBtn("167,139,250") : disabledBtn}>
+                        Suspend Contractor (7d)
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Policy reminder */}
+            <div style={{ marginTop: 12, fontSize: 11, color: "rgba(148,163,184,0.6)", lineHeight: "18px" }}>
+              Policy: {posterInWindow
+                ? "Poster cancelled in window → 75% refund to poster + 25% payout to contractor."
+                : contractorInWindow
+                  ? "Contractor cancelled in window → 100% refund to poster + 7-day contractor suspension."
+                  : "Outside penalty window → 100% refund, no payout, no suspension."}
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ marginTop: 12 }}>
         <Card title="">

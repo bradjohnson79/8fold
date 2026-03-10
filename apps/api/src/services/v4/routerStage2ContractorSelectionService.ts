@@ -9,6 +9,7 @@ import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
 import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { v4ContractorTradeSkills } from "@/db/schema/v4ContractorTradeSkills";
 import { v4ContractorCertifications } from "@/db/schema/v4ContractorCertifications";
+import { v4ContractorSuspensions } from "@/db/schema/v4ContractorSuspension";
 import { haversineKm } from "@/src/jobs/geo";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { geoBoundingBox } from "@/src/utils/geoBoundingBox";
@@ -229,6 +230,12 @@ async function computeEligibleContractors(job: Stage2JobSnapshot): Promise<Stage
         sql`upper(trim(coalesce(${contractorProfilesV4.homeRegionCode}, ''))) = ${job.regionCode}`,
         sql`${contractorProfilesV4.homeLatitude} BETWEEN ${bounds.latMin} AND ${bounds.latMax}`,
         sql`${contractorProfilesV4.homeLongitude} BETWEEN ${bounds.lngMin} AND ${bounds.lngMax}`,
+        // Exclude contractors under an active suspension
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${v4ContractorSuspensions}
+          WHERE ${v4ContractorSuspensions.contractorUserId} = ${contractorProfilesV4.userId}
+            AND ${v4ContractorSuspensions.suspendedUntil} > NOW()
+        )`,
       ),
     )
     .limit(500);

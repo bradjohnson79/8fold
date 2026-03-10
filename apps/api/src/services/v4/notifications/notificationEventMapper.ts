@@ -1236,6 +1236,180 @@ export async function notificationEventMapper(
         return;
       }
 
+      case "JOB_CANCELLATION_REQUESTED": {
+        const p = event.payload;
+        // Notify all admins that a cancellation request has been submitted
+        const adminIds = p.adminIds?.length ? p.adminIds : await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "JOB_CANCELLATION_REQUESTED",
+              title: "Job Cancellation Request",
+              message: `A Job Poster has requested to cancel job ${p.jobId}. Reason: ${p.reason}`,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: asDate(p.createdAt),
+              dedupeKey: `${p.dedupeKey}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKey}:admin:${adminId}`,
+              metadata: { jobId: p.jobId, cancelRequestId: p.cancelRequestId, reason: p.reason },
+            },
+            tx,
+          );
+        }
+        // Confirm receipt to job poster
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: String(p.jobPosterId),
+            role: "JOB_POSTER",
+            type: "JOB_CANCELLATION_REQUESTED",
+            title: "Cancellation Request Submitted",
+            message: "Your cancellation request has been submitted and is under review by our team.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "NORMAL",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: `${p.dedupeKey}:poster`,
+            idempotencyKey: `${p.dedupeKey}:poster`,
+            metadata: { jobId: p.jobId, cancelRequestId: p.cancelRequestId },
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "JOB_CANCELLATION_APPROVED": {
+        const p = event.payload;
+        // Notify job poster that their cancellation has been approved
+        await safeNotify(
+          event.type,
+          p,
+          {
+            userId: String(p.jobPosterId),
+            role: "JOB_POSTER",
+            type: "JOB_CANCELLATION_APPROVED",
+            title: "Job Cancellation Approved",
+            message: "Your cancellation request has been approved. Your job has been cancelled.",
+            entityType: asEntity("JOB"),
+            entityId: p.jobId,
+            priority: "HIGH",
+            createdAt: asDate(p.createdAt),
+            dedupeKey: `${p.dedupeKey}:poster`,
+            idempotencyKey: `${p.dedupeKey}:poster`,
+            metadata: { jobId: p.jobId, cancelRequestId: p.cancelRequestId, adminId: p.adminId },
+          },
+          tx,
+        );
+        return;
+      }
+
+      case "JOB_ASSIGNED_CANCELLATION_RESOLVED": {
+        const p = event.payload;
+        const now = new Date();
+
+        // Build human-readable messages based on resolutionType
+        let posterMessage: string;
+        let contractorMessage: string | null = null;
+
+        switch (p.resolutionType) {
+          case "PARTIAL_REFUND_WITH_CONTRACTOR_PAYOUT":
+            posterMessage = `Your job cancellation has been resolved. You have received a ${Math.round((p.refundAmountCents / (p.refundAmountCents + p.payoutAmountCents)) * 100)}% refund.`;
+            contractorMessage = `The job was cancelled by the poster within the 8-hour window. You have received a 25% compensation payout.`;
+            break;
+          case "FULL_REFUND_WITH_CONTRACTOR_SUSPENSION":
+            posterMessage = "Your job was cancelled by the contractor within the 8-hour window. You will receive a full refund.";
+            contractorMessage = "You cancelled within the 8-hour penalty window. Your account has been suspended for 7 days.";
+            break;
+          case "FULL_REFUND":
+          default:
+            posterMessage = "Your job has been cancelled and a full refund has been issued.";
+            break;
+        }
+
+        // Notify job poster
+        if (p.jobPosterId) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.jobPosterId),
+              role: "JOB_POSTER",
+              type: "JOB_ASSIGNED_CANCELLATION_RESOLVED",
+              title: "Job Cancellation Resolved",
+              message: posterMessage,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: now,
+              dedupeKey: `${p.dedupeKey}:poster`,
+              idempotencyKey: `${p.dedupeKey}:poster`,
+              metadata: { jobId: p.jobId, resolutionType: p.resolutionType, refundAmountCents: p.refundAmountCents },
+            },
+            tx,
+          );
+        }
+
+        // Notify contractor if applicable
+        if (p.contractorId && contractorMessage) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(p.contractorId),
+              role: "CONTRACTOR",
+              type: "JOB_ASSIGNED_CANCELLATION_RESOLVED",
+              title: p.suspensionApplied ? "Account Suspended" : "Job Cancellation Resolved",
+              message: contractorMessage,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "HIGH",
+              createdAt: now,
+              dedupeKey: `${p.dedupeKey}:contractor`,
+              idempotencyKey: `${p.dedupeKey}:contractor`,
+              metadata: { jobId: p.jobId, resolutionType: p.resolutionType, suspensionApplied: p.suspensionApplied },
+            },
+            tx,
+          );
+        }
+
+        // Notify admins
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "JOB_ASSIGNED_CANCELLATION_RESOLVED",
+              title: "Assigned Cancellation Resolved",
+              message: `Job ${p.jobId} cancellation resolved: ${p.resolutionType}`,
+              entityType: asEntity("JOB"),
+              entityId: p.jobId,
+              priority: "NORMAL",
+              createdAt: now,
+              dedupeKey: `${p.dedupeKey}:admin:${adminId}`,
+              idempotencyKey: `${p.dedupeKey}:admin:${adminId}`,
+              metadata: { jobId: p.jobId, resolutionType: p.resolutionType, adminId: p.adminId },
+            },
+            tx,
+          );
+        }
+        return;
+      }
+
+      case "JOB_UPDATED":
+      case "JOB_ARCHIVED":
+      case "JOB_DELETED":
+        // SEO-only events — handled exclusively by seoEventHandler, no notifications needed
+        return;
+
       default: {
         const _never: never = event;
         return _never;

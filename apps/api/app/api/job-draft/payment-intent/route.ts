@@ -230,7 +230,6 @@ export async function POST(req: Request) {
 
     const result = await createPaymentIntent(totalCents, {
       currency: paymentCurrency,
-      captureMethod: "manual",
       paymentMethodTypes: ["card"],
       automaticPaymentMethodsEnabled: false,
       idempotencyKey: `job-post-v4:${user.userId}:${randomUUID()}`,

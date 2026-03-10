@@ -70,6 +70,9 @@ export const jobStatusEnum = pgEnum("JobStatus", [
   // NOTE: Added via apply-appraisal-refactor-migration — locks routing while a
   // 2nd appraisal request is under review. Resets to ASSIGNED on resolution.
   "APPRAISAL_PENDING",
+  // NOTE: Added via migrate-assigned-cancel-status — assigned job awaiting
+  // admin resolution (cancel + financial actions).
+  "ASSIGNED_CANCEL_PENDING",
 ]);
 
 export const publicJobStatusEnum = pgEnum("PublicJobStatus", ["OPEN", "IN_PROGRESS"]);
@@ -87,7 +90,7 @@ export const routingStatusEnum = pgEnum("RoutingStatus", [
   "INVITES_EXPIRED",
 ]);
 
-export const jobRequestStatusEnum = pgEnum("job_request_status", ["pending", "approved", "rejected"]);
+export const jobRequestStatusEnum = pgEnum("job_request_status", ["pending", "approved", "rejected", "refunded"]);
 
 export const countryCodeEnum = pgEnum("CountryCode", ["CA", "US"]);
 
@@ -104,6 +107,10 @@ export const paymentStatusEnum = pgEnum("PaymentStatus", [
   "AUTHORIZED",
   "FUNDS_SECURED",
   "EXPIRED_UNFUNDED",
+  // NOTE: Added via migrate-payment-status-partial-refund — used when Job Poster
+  // cancels an assigned job within the 8-hour penalty window: 75% refunded to
+  // poster, 25% pending payout to contractor.
+  "PARTIALLY_REFUNDED",
 ]);
 
 // Avoid name collision with existing Postgres enum "PayoutStatus" (PENDING/PAID/FAILED).
@@ -154,7 +161,16 @@ export const ledgerEntryTypeEnum = pgEnum("LedgerEntryType", [
 
 // Escrow + parts/materials (bank-ledger foundations; added in 0008)
 export const escrowKindEnum = pgEnum("EscrowKind", ["JOB_ESCROW", "PARTS_MATERIALS"]);
-export const escrowStatusEnum = pgEnum("EscrowStatus", ["PENDING", "FUNDED", "RELEASED", "REFUNDED", "FAILED"]);
+export const escrowStatusEnum = pgEnum("EscrowStatus", [
+  "PENDING",
+  "FUNDED",
+  "RELEASED",
+  "REFUNDED",
+  "FAILED",
+  // NOTE: Added via migrate-assigned-cancel-status — partial refund case where
+  // Job Poster receives 75% and Contractor receives 25%.
+  "PARTIALLY_REFUNDED",
+]);
 export const partsMaterialStatusEnum = pgEnum("PartsMaterialStatus", [
   "REQUESTED",
   "APPROVED",

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/seo/process-index-queue",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

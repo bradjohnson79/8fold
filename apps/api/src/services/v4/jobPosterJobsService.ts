@@ -1,8 +1,12 @@
+import { randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { jobEditRequests, jobCancelRequests } from "@/db/schema";
+import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
+import { v4SupportMessages } from "@/db/schema/v4SupportMessage";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { refundUnassignedJob } from "@/src/services/escrow/refundService";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict, forbidden } from "@/src/services/v4/v4Errors";
@@ -521,10 +525,83 @@ export async function createCancelRequest(
       jobId,
       jobPosterId: userId,
       reason,
+      requestedByRole: "JOB_POSTER",
     })
     .returning({ id: jobCancelRequests.id });
 
   await db.update(jobs).set({ cancel_request_pending: true, updated_at: new Date() }).where(eq(jobs.id, jobId));
 
-  return { requestId: String(inserted?.id ?? "") };
+  const cancelRequestId = String(inserted?.id ?? "");
+
+  // Create a support ticket so admins see this in the support dashboard
+  const now = new Date();
+  const ticketId = randomUUID();
+  const ticketBody = [
+    `Job Poster has requested to cancel job ${jobId}.`,
+    `Reason: ${reason}`,
+    `Requested at: ${now.toISOString()}`,
+    `Cancel request ID: ${cancelRequestId}`,
+  ].join("\n");
+
+  await db.insert(v4SupportTickets).values({
+    id: ticketId,
+    userId,
+    role: "JOB_POSTER",
+    subject: "Job Cancellation Request",
+    category: "PAYMENT_ISSUE",
+    ticketType: "JOB_CANCELLATION",
+    priority: "HIGH",
+    jobId,
+    body: ticketBody,
+    status: "OPEN",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.insert(v4SupportMessages).values({
+    id: randomUUID(),
+    ticketId,
+    senderUserId: userId,
+    senderRole: "JOB_POSTER",
+    message: ticketBody,
+    createdAt: now,
+  });
+
+  // Link the support ticket back to the cancel request
+  await db
+    .update(jobCancelRequests)
+    .set({ supportTicketId: ticketId })
+    .where(eq(jobCancelRequests.id, cancelRequestId));
+
+  // Notify admins via outbox (reuses existing NEW_SUPPORT_TICKET processing)
+  await db.insert(v4EventOutbox).values({
+    id: randomUUID(),
+    eventType: "NEW_SUPPORT_TICKET",
+    payload: {
+      ticketId,
+      userId,
+      role: "JOB_POSTER",
+      subject: "Job Cancellation Request",
+      dedupeKey: `support_ticket_created_${ticketId}`,
+    },
+    createdAt: now,
+  });
+
+  // Emit dedicated cancellation requested event for targeted notifications
+  await emitDomainEvent(
+    {
+      type: "JOB_CANCELLATION_REQUESTED",
+      payload: {
+        jobId,
+        jobPosterId: userId,
+        cancelRequestId,
+        reason,
+        createdAt: now,
+        dedupeKey: `job_cancel_requested_${cancelRequestId}`,
+      },
+    },
+    { mode: "best_effort" },
+        );
+
+  return { requestId: cancelRequestId };
 }

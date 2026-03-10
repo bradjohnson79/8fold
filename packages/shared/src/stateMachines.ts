@@ -28,6 +28,9 @@ export const JobStatusSchema = z.enum([
   // Appraisal review lock — set when a 2nd appraisal request is pending.
   // Resets to ASSIGNED once the appraisal is resolved.
   "APPRAISAL_PENDING",
+  // Assigned job cancellation pending admin resolution (financial actions).
+  // Added via migrate-assigned-cancel-status.
+  "ASSIGNED_CANCEL_PENDING",
 ]);
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
@@ -73,6 +76,8 @@ export const JobAllowedTransitions: Readonly<
   DISPUTED: [],
   // Terminal; no transitions from CANCELLED.
   CANCELLED: [],
+  // Assigned cancel pending: transitions to CANCELLED after admin confirms.
+  ASSIGNED_CANCEL_PENDING: ["CANCELLED"],
 } as const;
 
 export const PayoutRequestAllowedTransitions: Readonly<

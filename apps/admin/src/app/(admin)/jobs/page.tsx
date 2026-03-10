@@ -20,6 +20,7 @@ type JobRow = {
   router: Party | null;
   contractor: Party | null;
   archived: boolean;
+  cancelRequestPending?: boolean;
 };
 
 type JobsResp = {

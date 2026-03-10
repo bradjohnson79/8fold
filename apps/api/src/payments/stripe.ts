@@ -136,6 +136,44 @@ export async function refundCharge(opts: {
   return { refundId: refund.id, status: refund.status ?? "unknown" };
 }
 
+/**
+ * Transfer funds to a contractor's connected Stripe account.
+ * Throws an actionable error if the contractor is not payout-ready.
+ */
+export async function createContractorTransfer(opts: {
+  stripeAccountId: string | null | undefined;
+  stripePayoutsEnabled: boolean;
+  amountCents: number;
+  currency: string;
+  metadata?: Record<string, string>;
+  idempotencyKey?: string;
+}): Promise<{ transferId: string }> {
+  if (!stripe) {
+    throw Object.assign(new Error("Stripe not configured"), { status: 500 });
+  }
+  if (!opts.stripeAccountId) {
+    throw Object.assign(new Error("CONTRACTOR_NO_STRIPE_ACCOUNT"), { status: 409, code: "ADMIN_V4_CONTRACTOR_NO_STRIPE_ACCOUNT" });
+  }
+  if (!opts.stripePayoutsEnabled) {
+    throw Object.assign(new Error("CONTRACTOR_PAYOUTS_NOT_ENABLED"), { status: 409, code: "ADMIN_V4_CONTRACTOR_NOT_PAYOUT_READY" });
+  }
+  if (!Number.isInteger(opts.amountCents) || opts.amountCents <= 0) {
+    throw Object.assign(new Error("Invalid transfer amount"), { status: 400 });
+  }
+
+  const transfer = await stripe.transfers.create(
+    {
+      amount: opts.amountCents,
+      currency: opts.currency.toLowerCase(),
+      destination: opts.stripeAccountId,
+      metadata: opts.metadata ?? {},
+    },
+    opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
+  );
+
+  return { transferId: transfer.id };
+}
+
 export async function refundPaymentIntent(opts: {
   paymentIntentId: string;
   amountCents?: number;

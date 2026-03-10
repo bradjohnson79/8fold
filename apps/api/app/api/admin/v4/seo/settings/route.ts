@@ -1,52 +1,62 @@
 import { z } from "zod";
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 import { ok, err } from "@/src/lib/api/adminV4Response";
-import { getSeoSettings, upsertSeoSettings } from "@/src/services/v4/seo/seoSettingsService";
+import { getSeoSettings, updateSeoSettings } from "@/src/services/seo/seoSettingsService";
 
 const UpdateSchema = z.object({
-  siteTitle: z.string().max(200).optional(),
-  siteDescription: z.string().max(500).optional(),
-  defaultMetaTitle: z.string().max(200).optional(),
-  defaultMetaDescription: z.string().max(500).optional(),
-  ogTitle: z.string().max(200).optional(),
-  ogDescription: z.string().max(500).optional(),
-  ogImage: z.string().url().optional().or(z.literal("")),
-  twitterCardImage: z.string().url().optional().or(z.literal("")),
-  canonicalDomain: z.string().url().optional().or(z.literal("")),
-  robotsTxt: z.string().max(10000).optional(),
-  ga4MeasurementId: z.string().max(50).optional(),
-  metaPixelId: z.string().max(50).optional(),
-  indexNowKey: z.string().max(200).optional(),
+  metaPixelId: z
+    .string()
+    .regex(/^\d+$/, "Meta Pixel ID must contain only digits")
+    .optional()
+    .nullable(),
+  ga4MeasurementId: z
+    .string()
+    .regex(/^G-[A-Z0-9]+$/, "GA4 Measurement ID must be in G-XXXXXXXXXX format")
+    .optional()
+    .nullable(),
+  indexNowKey: z
+    .string()
+    .min(32, "IndexNow key must be at least 32 characters")
+    .max(128, "IndexNow key must be at most 128 characters")
+    .optional()
+    .nullable(),
+  // canonicalDomain is normalized server-side (strips protocol, trailing slash, lowercased)
+  canonicalDomain: z
+    .string()
+    .min(1)
+    .optional()
+    .nullable(),
+  robotsTxt: z.string().optional().nullable(),
+  ogImage: z.string().url("OG Image must be a valid URL").optional().nullable(),
+  twitterCardImage: z.string().url("Twitter Card Image must be a valid URL").optional().nullable(),
 });
 
 export async function GET(req: Request) {
   const authed = await requireAdminV4(req);
   if (authed instanceof Response) return authed;
 
-  try {
-    const settings = await getSeoSettings();
-    return ok({ settings: settings ?? null });
-  } catch (e) {
-    console.error("[seo/settings GET]", e);
-    return err(500, "SEO_SETTINGS_ERROR", "Failed to load SEO settings");
-  }
+  const settings = await getSeoSettings();
+  return ok(settings ?? null);
 }
 
-export async function PUT(req: Request) {
+export async function PATCH(req: Request) {
   const authed = await requireAdminV4(req);
   if (authed instanceof Response) return authed;
 
+  let body: unknown;
   try {
-    const raw = await req.json().catch(() => null);
-    const parsed = UpdateSchema.safeParse(raw);
-    if (!parsed.success) {
-      return err(400, "SEO_SETTINGS_INVALID", parsed.error.errors[0]?.message ?? "Invalid payload");
-    }
-
-    const settings = await upsertSeoSettings(parsed.data);
-    return ok({ settings });
-  } catch (e) {
-    console.error("[seo/settings PUT]", e);
-    return err(500, "SEO_SETTINGS_ERROR", "Failed to save SEO settings");
+    body = await req.json();
+  } catch {
+    return err(400, "INVALID_JSON", "Request body must be valid JSON");
   }
+
+  const parsed = UpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    const message = parsed.error.errors.map((e) => e.message).join("; ");
+    return err(400, "VALIDATION_ERROR", message);
+  }
+
+  await updateSeoSettings(parsed.data, authed.adminId);
+  const updated = await getSeoSettings();
+  return ok(updated);
 }

@@ -19,6 +19,7 @@ import {
   contractors,
   conversations,
   jobAssignments,
+  jobCancelRequests,
   jobDispatches,
   jobs,
   ledgerEntries,
@@ -217,6 +218,7 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
         job_source: jobs.job_source,
         contractor_user_id: jobs.contractor_user_id,
         claimed_by_user_id: jobs.claimed_by_user_id,
+        cancel_request_pending: jobs.cancel_request_pending,
         poster_id: posterUser.id,
         poster_name: posterUser.name,
         poster_email: posterUser.email,
@@ -371,6 +373,7 @@ export async function listAdminJobs(params: ListParams): Promise<AdminJobsListRe
       tradeCategory: String(row.trade_category ?? ""),
       addressFull: row.address_full,
       archived: Boolean(row.archived),
+      cancelRequestPending: Boolean(row.cancel_request_pending),
     };
   });
 
@@ -395,10 +398,24 @@ function pushTimeline(
   target.push({ at: at.toISOString(), type, label, source, detail, actor });
 }
 
+export type AdminCancelRequest = {
+  id: string;
+  reason: string;
+  requestedByRole: string;
+  withinPenaltyWindow: boolean;
+  status: string;
+  requestedAt: string;
+  supportTicketId: string | null;
+  refundProcessedAt: string | null;
+  payoutProcessedAt: string | null;
+  suspensionProcessedAt: string | null;
+};
+
 export async function getAdminJobDetail(jobId: string): Promise<{
   job: AdminJobDetail;
   timeline: AdminTimelineEvent[];
   related: AdminJobRelated;
+  cancelRequest: AdminCancelRequest | null;
 } | null> {
   const posterUser = alias(users, "poster_user_detail");
 
@@ -468,7 +485,7 @@ export async function getAdminJobDetail(jobId: string): Promise<{
   const row = jobRows[0] ?? null;
   if (!row) return null;
 
-  const [dispatchRows, assignmentRows, contractorUserRows, auditRows, pmRows, receiptRows, messageStats, ledgerSummaryRows] = await Promise.all([
+  const [dispatchRows, assignmentRows, contractorUserRows, auditRows, pmRows, receiptRows, messageStats, ledgerSummaryRows, cancelRequestRows] = await Promise.all([
     db
       .select({
         id: jobDispatches.id,
@@ -547,6 +564,23 @@ export async function getAdminJobDetail(jobId: string): Promise<{
       .from(ledgerEntries)
       .where(eq(ledgerEntries.jobId, jobId))
       .groupBy(ledgerEntries.type),
+    db
+      .select({
+        id: jobCancelRequests.id,
+        reason: jobCancelRequests.reason,
+        requestedByRole: jobCancelRequests.requestedByRole,
+        withinPenaltyWindow: jobCancelRequests.withinPenaltyWindow,
+        status: jobCancelRequests.status,
+        createdAt: jobCancelRequests.createdAt,
+        supportTicketId: jobCancelRequests.supportTicketId,
+        refundProcessedAt: jobCancelRequests.refundProcessedAt,
+        payoutProcessedAt: jobCancelRequests.payoutProcessedAt,
+        suspensionProcessedAt: jobCancelRequests.suspensionProcessedAt,
+      })
+      .from(jobCancelRequests)
+      .where(eq(jobCancelRequests.jobId, jobId))
+      .orderBy(desc(jobCancelRequests.createdAt))
+      .limit(1),
   ]);
 
   const latestDispatch = dispatchRows[0] ?? null;
@@ -752,5 +786,21 @@ export async function getAdminJobDetail(jobId: string): Promise<{
     },
   };
 
-  return { job, timeline, related };
+  const cancelRequestRow = cancelRequestRows[0] ?? null;
+  const cancelRequest: AdminCancelRequest | null = cancelRequestRow
+    ? {
+        id: cancelRequestRow.id,
+        reason: String(cancelRequestRow.reason ?? ""),
+        requestedByRole: String(cancelRequestRow.requestedByRole ?? "JOB_POSTER"),
+        withinPenaltyWindow: Boolean(cancelRequestRow.withinPenaltyWindow),
+        status: String(cancelRequestRow.status ?? ""),
+        requestedAt: cancelRequestRow.createdAt instanceof Date ? cancelRequestRow.createdAt.toISOString() : String(cancelRequestRow.createdAt),
+        supportTicketId: cancelRequestRow.supportTicketId ?? null,
+        refundProcessedAt: cancelRequestRow.refundProcessedAt instanceof Date ? cancelRequestRow.refundProcessedAt.toISOString() : (cancelRequestRow.refundProcessedAt ?? null),
+        payoutProcessedAt: cancelRequestRow.payoutProcessedAt instanceof Date ? cancelRequestRow.payoutProcessedAt.toISOString() : (cancelRequestRow.payoutProcessedAt ?? null),
+        suspensionProcessedAt: cancelRequestRow.suspensionProcessedAt instanceof Date ? cancelRequestRow.suspensionProcessedAt.toISOString() : (cancelRequestRow.suspensionProcessedAt ?? null),
+      }
+    : null;
+
+  return { job, timeline, related, cancelRequest };
 }

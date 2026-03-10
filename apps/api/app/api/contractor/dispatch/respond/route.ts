@@ -154,17 +154,10 @@ export async function POST(req: Request) {
         if (!piId || !stripe) return { kind: "payment_not_authorized" as const };
         try {
           const pi = await stripe.paymentIntents.retrieve(piId);
-          if (pi.status === "requires_capture") {
-            const captured = await stripe.paymentIntents.capture(piId, undefined, {
-              idempotencyKey: `job-accept-capture:${dispatch.jobId}`,
-            });
-            if (captured.status !== "succeeded") return { kind: "payment_not_authorized" as const };
-            reconcilePaymentIntentId = captured.id;
-          } else if (pi.status !== "succeeded") {
+          if (pi.status !== "succeeded") {
             return { kind: "payment_not_authorized" as const };
-          } else {
-            reconcilePaymentIntentId = pi.id;
           }
+          reconcilePaymentIntentId = pi.id;
         } catch {
           return { kind: "payment_not_authorized" as const };
         }
