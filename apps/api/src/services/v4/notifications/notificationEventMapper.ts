@@ -13,6 +13,9 @@ import { MAPPED_DOMAIN_EVENT_TYPES } from "@/src/events/domainEventRegistry";
 import { sendNotification } from "./notificationService";
 
 async function safeSeoIndexAndSitemap(jobId: string, triggeredBy: string): Promise<void> {
+  // SEO indexing requires Node runtime — skip silently in Edge context
+  if (process.env.NEXT_RUNTIME === "edge") return;
+
   try {
     const { resolveJobUrl } = await import("@/src/services/v4/seo/canonicalUrlService");
     const { pingUrl } = await import("@/src/services/v4/seo/indexingService");

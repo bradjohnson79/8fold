@@ -83,11 +83,8 @@ export async function pingGoogle(url: string, triggeredBy: IndexingTrigger = "ma
   }
 
   try {
-    const serviceAccount = JSON.parse(
-      Buffer.from(serviceAccountJson, "base64").toString("utf-8"),
-    );
-
-    // Obtain an access token using the service account JWT flow
+    // atob works in Node ≥18, Edge, and browsers — no Buffer needed
+    const serviceAccount = JSON.parse(atob(serviceAccountJson)) as Record<string, string>;
     const token = await getGoogleAccessToken(serviceAccount);
 
     const resp = await fetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
@@ -123,12 +120,19 @@ export async function pingGoogle(url: string, triggeredBy: IndexingTrigger = "ma
   }
 }
 
+/**
+ * Signs a Google service account JWT using the Web Crypto API (crypto.subtle).
+ * Works in Node.js ≥18, Vercel Edge, and browsers — no Node 'crypto' module needed.
+ */
 async function getGoogleAccessToken(serviceAccount: Record<string, string>): Promise<string> {
-  const { createSign } = await import("crypto");
-
   const now = Math.floor(Date.now() / 1000);
-  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(
+
+  // base64url encode — Web standard, no Buffer needed
+  const toBase64Url = (str: string): string =>
+    btoa(str).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+  const header = toBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = toBase64Url(
     JSON.stringify({
       iss: serviceAccount["client_email"],
       scope: "https://www.googleapis.com/auth/indexing",
@@ -136,12 +140,35 @@ async function getGoogleAccessToken(serviceAccount: Record<string, string>): Pro
       iat: now,
       exp: now + 3600,
     }),
-  ).toString("base64url");
+  );
 
   const signingInput = `${header}.${payload}`;
-  const sign = createSign("RSA-SHA256");
-  sign.update(signingInput);
-  const signature = sign.sign(serviceAccount["private_key"], "base64url");
+
+  // Import the RSA private key using SubtleCrypto — Edge + Node compatible
+  const pemBody = (serviceAccount["private_key"] ?? "")
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+
+  const binaryKey = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    binaryKey,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const signatureBuffer = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+
+  const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
   const jwt = `${signingInput}.${signature}`;
 
   const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
