@@ -113,13 +113,13 @@ export async function generateContractorsSitemap(): Promise<string> {
   const base = await getCanonicalBase();
 
   const rows = await db
-    .select({ id: contractors.id, updatedAt: contractors.updatedAt })
+    .select({ id: contractors.id, approvedAt: contractors.approvedAt })
     .from(contractors)
     .where(eq(contractors.status, "APPROVED"))
     .limit(10000);
 
   const entries = rows.map((c) => {
-    const lastmod = c.updatedAt instanceof Date ? c.updatedAt.toISOString().split("T")[0] : undefined;
+    const lastmod = c.approvedAt instanceof Date ? c.approvedAt.toISOString().split("T")[0] : undefined;
     return urlEntry(`${base}/contractors/${c.id}`, lastmod, "weekly", "0.6");
   });
 
