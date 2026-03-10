@@ -33,6 +33,7 @@ export type AdminJobRow = {
   tradeCategory: string;
   addressFull: string | null;
   archived: boolean;
+  cancelRequestPending: boolean;
 };
 
 export type AdminTimelineEvent = {

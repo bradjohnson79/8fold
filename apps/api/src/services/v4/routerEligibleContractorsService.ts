@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 import { contractorProfilesV4 } from "@/db/schema/contractorProfileV4";
@@ -8,6 +8,7 @@ import { routerProfilesV4 } from "@/db/schema/routerProfileV4";
 import { scoreAppraisals } from "@/db/schema/scoreAppraisal";
 import { users } from "@/db/schema/user";
 import { v4ContractorJobInvites } from "@/db/schema/v4ContractorJobInvite";
+import { v4ContractorSuspensions } from "@/db/schema/v4ContractorSuspension";
 import { haversineKm } from "@/src/jobs/geo";
 import { isSameJurisdiction, normalizeCountryCode, normalizeStateCode } from "@/src/jurisdiction";
 
@@ -166,7 +167,17 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
     .from(contractorProfilesV4)
     .innerJoin(contractorAccounts, eq(contractorAccounts.userId, contractorProfilesV4.userId))
     .innerJoin(users, eq(users.id, contractorProfilesV4.userId))
-    .where(eq(users.status, "ACTIVE"));
+    .where(
+      and(
+        eq(users.status, "ACTIVE"),
+        // Exclude contractors under an active suspension
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${v4ContractorSuspensions}
+          WHERE ${v4ContractorSuspensions.contractorUserId} = ${contractorProfilesV4.userId}
+            AND ${v4ContractorSuspensions.suspendedUntil} > NOW()
+        )`,
+      ),
+    );
 
   const candidateUserIds = candidateRows.map((r) => r.userId);
   const payoutRows =

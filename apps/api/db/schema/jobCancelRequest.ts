@@ -1,4 +1,4 @@
-import { index, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { dbSchema } from "./_dbSchema";
 import { jobRequestStatusEnum } from "./enums";
@@ -11,9 +11,17 @@ export const jobCancelRequests = dbSchema.table(
     jobPosterId: text("job_poster_id").notNull(),
     reason: text("reason").notNull(),
     status: jobRequestStatusEnum("status").notNull().default("pending"),
+    requestedByRole: text("requested_by_role").notNull().default("JOB_POSTER"),
+    withinPenaltyWindow: boolean("within_penalty_window").notNull().default(false),
+    supportTicketId: text("support_ticket_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "date" }),
     reviewedByAdminId: text("reviewed_by_admin_id"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
+    // Resolution tracking columns (added via migrate-assigned-cancel-status)
+    refundProcessedAt: timestamp("refund_processed_at", { withTimezone: true, mode: "date" }),
+    payoutProcessedAt: timestamp("payout_processed_at", { withTimezone: true, mode: "date" }),
+    suspensionProcessedAt: timestamp("suspension_processed_at", { withTimezone: true, mode: "date" }),
   },
   (t) => ({
     jobIdIdx: index("job_cancel_requests_job_id_idx").on(t.jobId),

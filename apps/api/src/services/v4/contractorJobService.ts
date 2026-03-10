@@ -1,7 +1,11 @@
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { jobCancelRequests } from "@/db/schema/jobCancelRequest";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
+import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
+import { v4SupportMessages } from "@/db/schema/v4SupportMessage";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { badRequest, conflict } from "./v4Errors";
 import {
@@ -459,7 +463,7 @@ export async function rescheduleAppointment(contractorUserId: string, jobId: str
   });
 }
 
-export async function cancelAssignedJob(contractorUserId: string, jobId: string) {
+export async function cancelAssignedJob(contractorUserId: string, jobId: string, reason?: string) {
   const now = new Date();
   return db.transaction(async (tx) => {
     await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
@@ -482,6 +486,8 @@ export async function cancelAssignedJob(contractorUserId: string, jobId: string)
         contractorUserId: jobs.contractor_user_id,
         jobPosterUserId: jobs.job_poster_user_id,
         routerUserId: jobs.claimed_by_user_id,
+        appointmentAt: jobs.appointment_at,
+        cancelRequestPending: jobs.cancel_request_pending,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -491,22 +497,111 @@ export async function cancelAssignedJob(contractorUserId: string, jobId: string)
       throw badRequest("V4_JOB_NOT_ASSIGNED_TO_CONTRACTOR", "Job not assigned to you");
     }
 
-    await reopenRoutingAndUnassign(tx, {
+    if (jobRows[0].cancelRequestPending) {
+      throw badRequest("V4_CANCEL_ASSIGNED_ALREADY_PENDING", "A cancellation request is already pending");
+    }
+
+    const appointmentAt = jobRows[0].appointmentAt;
+
+    // 8-hour penalty window: null appointmentAt → outside window by policy
+    const withinPenaltyWindow =
+      appointmentAt instanceof Date &&
+      appointmentAt.getTime() - now.getTime() <= 8 * 3600_000;
+
+    const cancelReason = (reason ?? "").trim() || "Contractor cancelled the assignment.";
+    const cancelRequestId = crypto.randomUUID();
+    const ticketId = crypto.randomUUID();
+    const jobPosterUserId = String(jobRows[0].jobPosterUserId ?? "");
+
+    const ticketBody = [
+      `Contractor has cancelled assigned job ${jobId}.`,
+      `Reason: ${cancelReason}`,
+      `Within 8-hour penalty window: ${withinPenaltyWindow}`,
+      `Appointment at: ${appointmentAt instanceof Date ? appointmentAt.toISOString() : "N/A"}`,
+      `Requested at: ${now.toISOString()}`,
+      `Cancel request ID: ${cancelRequestId}`,
+    ].join("\n");
+
+    // Insert cancel request row
+    await tx.insert(jobCancelRequests).values({
+      id: cancelRequestId,
       jobId,
-      contractorUserId,
-      now,
-      reason: "CONTRACTOR_REJECTED",
-    });
-    await notifyCancellationActors(tx, {
-      jobId,
-      now,
-      jobPosterUserId: String(jobRows[0].jobPosterUserId ?? "") || null,
-      routerUserId: String(jobRows[0].routerUserId ?? "") || null,
-      type: "CONTRACTOR_CANCELLED",
-      message: "Contractor cancelled the assignment and the job returned to routing.",
+      jobPosterId: jobPosterUserId,
+      reason: cancelReason,
+      requestedByRole: "CONTRACTOR",
+      withinPenaltyWindow,
+      supportTicketId: ticketId,
+      createdAt: now,
     });
 
-    return { success: true as const, action: "UNASSIGNED_AND_REOPENED" as const };
+    // Update job to ASSIGNED_CANCEL_PENDING (admin will confirm actual cancel)
+    await tx
+      .update(jobs)
+      .set({
+        status: "ASSIGNED_CANCEL_PENDING" as any,
+        cancel_request_pending: true,
+        updated_at: now,
+      })
+      .where(eq(jobs.id, jobId));
+
+    // Create support ticket
+    if (jobPosterUserId) {
+      await tx.insert(v4SupportTickets).values({
+        id: ticketId,
+        userId: jobPosterUserId,
+        role: "JOB_POSTER",
+        subject: "Assigned Job Cancellation — Contractor Cancelled",
+        category: "PAYMENT_ISSUE",
+        ticketType: "JOB_CANCELLATION",
+        priority: "HIGH",
+        jobId,
+        body: ticketBody,
+        status: "OPEN",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(v4SupportMessages).values({
+        id: crypto.randomUUID(),
+        ticketId,
+        senderUserId: contractorUserId,
+        senderRole: "CONTRACTOR",
+        message: ticketBody,
+        createdAt: now,
+      });
+    }
+
+    // Notify admins via outbox
+    await tx.insert(v4EventOutbox).values({
+      id: crypto.randomUUID(),
+      eventType: "NEW_SUPPORT_TICKET",
+      payload: {
+        ticketId,
+        userId: jobPosterUserId || contractorUserId,
+        role: "CONTRACTOR",
+        subject: "Assigned Job Cancellation — Contractor Cancelled",
+        dedupeKey: `support_ticket_created_${ticketId}`,
+      },
+      createdAt: now,
+    });
+
+    // Emit domain event for targeted notifications
+    await emitDomainEvent(
+      {
+        type: "JOB_CANCELLATION_REQUESTED",
+        payload: {
+          jobId,
+          jobPosterId: jobPosterUserId,
+          cancelRequestId,
+          reason: cancelReason,
+          createdAt: now,
+          dedupeKey: `job_cancel_requested_${cancelRequestId}`,
+        },
+      },
+      { mode: "best_effort" },
+    );
+
+    return { success: true as const, action: "ASSIGNED_CANCEL_PENDING" as const, cancelRequestId };
   });
 }
 

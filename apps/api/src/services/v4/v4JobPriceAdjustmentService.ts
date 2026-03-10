@@ -208,7 +208,7 @@ export async function createAdjustmentRequest(
   if (threadId) {
     await appendSystemMessage(
       threadId,
-      `Contractor submitted a revised appraisal for this job.\n\nOriginal price: ${formatCents(originalPriceCents)}\nRequested price: ${formatCents(requestedPriceCents)}\n\nAwaiting review from 8Fold support.`,
+      `Contractor submitted a 2nd appraisal request. Requested total price: ${formatCents(requestedPriceCents)}. Awaiting review from 8Fold support.`,
     );
   }
 
@@ -442,11 +442,20 @@ export async function getAdjustmentForPoster(
     throw Object.assign(new Error("Invalid or expired link"), { status: 403 });
   }
   if (adj.tokenExpiresAt && adj.tokenExpiresAt < new Date()) {
+    const wasAlreadyExpired = adj.status === "EXPIRED";
     await db
       .update(v4JobPriceAdjustments)
       .set({ status: "EXPIRED" })
       .where(eq(v4JobPriceAdjustments.id, adjustmentId));
     await syncSupportTicket(adj.supportTicketId, "CLOSED");
+    // Unlock the job so it can continue under the original price.
+    await db.update(jobs).set({ status: "ASSIGNED" }).where(eq(jobs.id, adj.jobId));
+    if (adj.threadId && !wasAlreadyExpired) {
+      await appendSystemMessage(
+        adj.threadId,
+        "The 2nd appraisal request expired. The job will continue under the original agreed price.",
+      );
+    }
     throw Object.assign(new Error("This link has expired. Please contact your contractor."), { status: 403 });
   }
 
@@ -566,7 +575,7 @@ export async function acceptAdjustment(
   if (adj.threadId) {
     await appendSystemMessage(
       adj.threadId,
-      `The Job Poster accepted the revised appraisal.\n\nThe new total job price is ${formatCents(adj.requestedPriceCents)}.\nAdditional payment is now being processed.`,
+      "The Job Poster accepted the revised appraisal request. Processing additional payment.",
     );
   }
 
@@ -617,10 +626,9 @@ export async function confirmAdjustmentPayment(
   await syncSupportTicket(adj.supportTicketId, "RESOLVED");
 
   if (adj.threadId) {
-    const breakdown = computeBreakdown(adj.requestedPriceCents);
     await appendSystemMessage(
       adj.threadId,
-      `Additional payment received.\n\nThe job price has been updated to ${formatCents(adj.requestedPriceCents)}.\nContractor payout: ${formatCents(breakdown.contractorPayout)} | Router commission: ${formatCents(breakdown.routerCommission)} | Platform fee: ${formatCents(breakdown.platformFee)}`,
+      `Additional payment received. The job price has been updated to ${formatCents(adj.requestedPriceCents)}.`,
     );
   }
 

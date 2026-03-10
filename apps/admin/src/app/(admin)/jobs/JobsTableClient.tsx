@@ -25,6 +25,7 @@ type JobRow = {
   router: Party | null;
   contractor: Party | null;
   archived: boolean;
+  cancelRequestPending?: boolean;
 };
 
 const thStyle: React.CSSProperties = {
@@ -272,7 +273,28 @@ export function JobsTableClient({ rows, loadError }: Props) {
                       </a>
                     </td>
                     <td style={tdStyle}>{j.title}</td>
-                    <td style={tdStyle}>{statusPill(displayStatus)}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {statusPill(displayStatus)}
+                        {j.cancelRequestPending && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 900,
+                              letterSpacing: 0.4,
+                              padding: "2px 7px",
+                              borderRadius: 6,
+                              background: "rgba(251,146,60,0.22)",
+                              color: "rgba(253,186,116,0.95)",
+                              border: "1px solid rgba(251,146,60,0.35)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Cancellation Requested
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={tdStyle}>{j.isMock ? statusPill("MOCK") : "REAL"}</td>
                     <td style={tdStyle}>{[j.city, j.regionCode, j.country].filter(Boolean).join(", ") || "—"}</td>
                     <td style={tdStyle}>{j.createdAt.slice(0, 19).replace("T", " ")}</td>
