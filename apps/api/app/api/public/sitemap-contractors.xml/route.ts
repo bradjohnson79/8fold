@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const xml = await getOrGenerateSitemap("index");
+    const xml = await getOrGenerateSitemap("contractors");
     return new NextResponse(xml, {
       status: 200,
       headers: {
@@ -14,7 +14,7 @@ export async function GET() {
       },
     });
   } catch (e) {
-    console.error("[public/sitemap.xml]", e);
-    return new NextResponse("Failed to generate sitemap", { status: 500 });
+    console.error("[public/sitemap-contractors.xml]", e);
+    return new NextResponse("Failed to generate contractors sitemap", { status: 500 });
   }
 }

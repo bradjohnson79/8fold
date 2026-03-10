@@ -5,16 +5,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const xml = await getOrGenerateSitemap("index");
+    const xml = await getOrGenerateSitemap("services");
     return new NextResponse(xml, {
       status: 200,
       headers: {
         "Content-Type": "application/xml; charset=utf-8",
-        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
       },
     });
   } catch (e) {
-    console.error("[public/sitemap.xml]", e);
-    return new NextResponse("Failed to generate sitemap", { status: 500 });
+    console.error("[public/sitemap-services.xml]", e);
+    return new NextResponse("Failed to generate services sitemap", { status: 500 });
   }
 }

@@ -68,6 +68,18 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
       { label: "Admin Users", href: "/admin-users", match: "prefix" },
     ],
   },
+  {
+    title: "SEO & Marketing",
+    items: [
+      { label: "SEO Engine", href: "/seo/engine", match: "prefix" },
+      { label: "Indexing / Ping", href: "/seo/indexing", match: "prefix" },
+      { label: "Analytics", href: "/seo/analytics", match: "prefix" },
+      { label: "Advertising", href: "/seo/advertising", match: "prefix" },
+      { label: "Distribution", href: "/seo/distribution", match: "prefix" },
+      { label: "Keyword Discovery", href: "/seo/keywords", match: "prefix" },
+      { label: "Local SEO Generator", href: "/seo/local-seo", match: "prefix" },
+    ],
+  },
 ];
 
 function isActive(pathname: string, href: string, match: NavItem["match"]): boolean {
