@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db/drizzle";
 import { disputes, jobs, ledgerEntries, v4FinancialLedger } from "@/db/schema";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { escrows } from "@/db/schema/escrow";
 import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 import { adminAuditLog } from "@/src/audit/adminAudit";
@@ -166,7 +167,20 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   try {
     const { id } = await ctx.params;
 
-    const existing = await db.select({ id: jobs.id, title: jobs.title }).from(jobs).where(eq(jobs.id, id)).limit(1);
+    const existing = await db
+      .select({
+        id: jobs.id,
+        title: jobs.title,
+        country_code: jobs.country_code,
+        state_code: jobs.state_code,
+        region_code: jobs.region_code,
+        city: jobs.city,
+        service_type: jobs.service_type,
+        trade_category: jobs.trade_category,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, id))
+      .limit(1);
     if (!existing[0]) return err(404, "ADMIN_SUPER_JOB_NOT_FOUND", "Job not found");
 
     const deleteCheck = await canDeleteJob(id);
@@ -175,6 +189,23 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     }
 
     const deletedAt = new Date();
+    const jobRow = existing[0];
+    await db.insert(v4EventOutbox).values({
+      id: crypto.randomUUID(),
+      eventType: "JOB_DELETED",
+      payload: {
+        jobId: id,
+        country_code: jobRow.country_code ?? null,
+        state_code: jobRow.state_code ?? null,
+        region_code: jobRow.region_code ?? null,
+        city: jobRow.city ?? null,
+        service_type: jobRow.service_type ?? null,
+        trade_category: jobRow.trade_category ?? null,
+        dedupeKey: `job_deleted:${id}:${deletedAt.getTime()}`,
+      } as Record<string, unknown>,
+      createdAt: deletedAt,
+    });
+
     await adminAuditLog(req, auditAuth(identity), {
       action: "JOB_DELETED",
       entityType: "Job",

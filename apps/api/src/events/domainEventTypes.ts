@@ -291,24 +291,30 @@ export type DomainEventPayloadByType = {
     jobId: string;
     country_code?: string | null;
     state_code?: string | null;
+    region_code?: string | null;
     city?: string | null;
     service_type?: string | null;
+    trade_category?: string | null;
     dedupeKey: string;
   };
   JOB_ARCHIVED: {
     jobId: string;
     country_code?: string | null;
     state_code?: string | null;
+    region_code?: string | null;
     city?: string | null;
     service_type?: string | null;
+    trade_category?: string | null;
     dedupeKey: string;
   };
   JOB_DELETED: {
     jobId: string;
     country_code?: string | null;
     state_code?: string | null;
+    region_code?: string | null;
     city?: string | null;
     service_type?: string | null;
+    trade_category?: string | null;
     dedupeKey: string;
   };
 };

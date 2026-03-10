@@ -7,6 +7,7 @@ export const seoSitemapTypeEnum = pgEnum("seo_sitemap_type", [
   "services",
   "contractors",
   "cities",
+  "service-locations",
 ]);
 
 export const seoSitemapCache = dbSchema.table(

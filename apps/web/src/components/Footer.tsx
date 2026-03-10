@@ -1,6 +1,13 @@
 import Link from 'next/link'
+import { Facebook, Linkedin, Twitter } from 'lucide-react'
 
-export function Footer() {
+interface FooterProps {
+  facebookUrl?: string | null
+  twitterUrl?: string | null
+  linkedinUrl?: string | null
+}
+
+export function Footer({ facebookUrl, twitterUrl, linkedinUrl }: FooterProps) {
   return (
     <footer className="bg-white border-t border-gray-200">
       {/* Green CTA Section */}
@@ -30,7 +37,46 @@ export function Footer() {
           <div>
             <div className="text-xl font-extrabold text-gray-900">8Fold</div>
             <div className="text-sm text-gray-600 mt-2">A local job routing platform.</div>
-            <div className="text-sm text-gray-600 mt-4">© 2026 ANOINT Inc. All rights reserved.</div>
+            <div className="flex flex-wrap items-center gap-3 mt-4">
+              <span className="text-sm text-gray-600">© 2026 ANOINT Inc. All rights reserved.</span>
+              {(facebookUrl || twitterUrl || linkedinUrl) && (
+                <span className="flex items-center gap-2">
+                  {facebookUrl && (
+                    <a
+                      href={facebookUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-500 hover:text-gray-900 transition-colors"
+                      aria-label="Facebook"
+                    >
+                      <Facebook className="w-5 h-5" />
+                    </a>
+                  )}
+                  {twitterUrl && (
+                    <a
+                      href={twitterUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-500 hover:text-gray-900 transition-colors"
+                      aria-label="X (Twitter)"
+                    >
+                      <Twitter className="w-5 h-5" />
+                    </a>
+                  )}
+                  {linkedinUrl && (
+                    <a
+                      href={linkedinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-500 hover:text-gray-900 transition-colors"
+                      aria-label="LinkedIn"
+                    >
+                      <Linkedin className="w-5 h-5" />
+                    </a>
+                  )}
+                </span>
+              )}
+            </div>
             <div className="text-xs text-gray-500 mt-2">8Fold is a platform operated by ANOINT Inc.</div>
           </div>
 

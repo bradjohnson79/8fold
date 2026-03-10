@@ -96,7 +96,8 @@ export function registerPublicDiscoveryHandlers() {
     if (payload?.limit != null) qs.set("limit", String(payload.limit));
     const data = await fetchJson(`/api/public/jobs/by-location?${qs.toString()}`);
     const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
-    return { ok: true, jobs };
+    const distinctServices = Array.isArray(data?.distinctServices) ? data.distinctServices : [];
+    return { ok: true, jobs, distinctServices };
   });
 
   safeRegister("public.locations.regionsWithJobs", async () => {

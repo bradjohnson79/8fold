@@ -11,6 +11,9 @@ interface SeoSettings {
   robotsTxt?: string | null;
   ogImage?: string | null;
   twitterCardImage?: string | null;
+  facebookUrl?: string | null;
+  twitterUrl?: string | null;
+  linkedinUrl?: string | null;
   updatedAt?: string | null;
   updatedBy?: string | null;
 }
@@ -22,6 +25,9 @@ interface ValidationErrors {
   canonicalDomain?: string;
   ogImage?: string;
   twitterCardImage?: string;
+  facebookUrl?: string;
+  twitterUrl?: string;
+  linkedinUrl?: string;
 }
 
 function validate(form: SeoSettings): ValidationErrors {
@@ -46,6 +52,15 @@ function validate(form: SeoSettings): ValidationErrors {
   if (form.twitterCardImage && form.twitterCardImage.trim()) {
     try { new URL(form.twitterCardImage); } catch { errs.twitterCardImage = "Must be a valid URL"; }
   }
+  if (form.facebookUrl && form.facebookUrl.trim() && !form.facebookUrl.includes("facebook.com")) {
+    errs.facebookUrl = "Must contain facebook.com";
+  }
+  if (form.twitterUrl && form.twitterUrl.trim() && !form.twitterUrl.includes("x.com") && !form.twitterUrl.includes("twitter.com")) {
+    errs.twitterUrl = "Must contain x.com or twitter.com";
+  }
+  if (form.linkedinUrl && form.linkedinUrl.trim() && !form.linkedinUrl.includes("linkedin.com")) {
+    errs.linkedinUrl = "Must contain linkedin.com";
+  }
   return errs;
 }
 
@@ -65,6 +80,9 @@ export default function SeoEnginePage() {
     robotsTxt: "",
     ogImage: "",
     twitterCardImage: "",
+    facebookUrl: "",
+    twitterUrl: "",
+    linkedinUrl: "",
   });
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -87,6 +105,9 @@ export default function SeoEnginePage() {
         robotsTxt: data.robotsTxt ?? "",
         ogImage: data.ogImage ?? "",
         twitterCardImage: data.twitterCardImage ?? "",
+        facebookUrl: data.facebookUrl ?? "",
+        twitterUrl: data.twitterUrl ?? "",
+        linkedinUrl: data.linkedinUrl ?? "",
       });
       if (data.updatedAt) setLastUpdated(new Date(data.updatedAt).toLocaleString());
     } catch {
@@ -267,6 +288,48 @@ export default function SeoEnginePage() {
               value={form.twitterCardImage ?? ""}
               onChange={(e) => setField("twitterCardImage", e.target.value)}
               placeholder="https://8fold.app/twitter-card.jpg"
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field
+            label="Facebook URL"
+            hint="Official Facebook page — must contain facebook.com"
+            error={validationErrors.facebookUrl}
+          >
+            <input
+              type="url"
+              value={form.facebookUrl ?? ""}
+              onChange={(e) => setField("facebookUrl", e.target.value)}
+              placeholder="https://facebook.com/8foldapp"
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field
+            label="X / Twitter URL"
+            hint="Official X (Twitter) profile — must contain x.com or twitter.com"
+            error={validationErrors.twitterUrl}
+          >
+            <input
+              type="url"
+              value={form.twitterUrl ?? ""}
+              onChange={(e) => setField("twitterUrl", e.target.value)}
+              placeholder="https://x.com/8foldapp"
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field
+            label="LinkedIn URL"
+            hint="Official LinkedIn company page — must contain linkedin.com"
+            error={validationErrors.linkedinUrl}
+          >
+            <input
+              type="url"
+              value={form.linkedinUrl ?? ""}
+              onChange={(e) => setField("linkedinUrl", e.target.value)}
+              placeholder="https://linkedin.com/company/8fold"
               style={inputStyle}
             />
           </Field>

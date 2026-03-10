@@ -374,3 +374,108 @@ export async function listJobsByLocation(opts: {
   }
 }
 
+function slugCityForQuery(cityName: string): string {
+  return cityName.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+/** Paginated jobs for a city + trade category (service location pages). */
+export async function listJobsByLocationAndService(opts: {
+  country: CountryCode2;
+  regionCode: string;
+  city: string;
+  tradeCategory: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ rows: RegionJobPageRow[]; totalJobs: number; totalPages: number }> {
+  const rc = opts.regionCode.trim().toUpperCase();
+  const city = opts.city.trim();
+  const tradeCategory = opts.tradeCategory.trim().toUpperCase();
+  if (!rc || !city || !tradeCategory) return { rows: [], totalJobs: 0, totalPages: 0 };
+  if (!isAllowedRegion(opts.country, rc)) return { rows: [], totalJobs: 0, totalPages: 0 };
+
+  const take = Math.max(1, Math.min(9, Math.trunc(opts.limit ?? 9)));
+  const safePage = Math.max(1, Math.trunc(opts.page ?? 1));
+  const offset = (safePage - 1) * take;
+  const regionSlug = `${slugCityForQuery(city)}-${rc.toLowerCase()}`;
+
+  try {
+    const [dataRes, countRes] = await Promise.all([
+      db.execute<RegionJobPageRow>(
+        sql`
+          SELECT
+            id, title, trade_category, status, city, photo_urls,
+            amount_cents, currency,
+            router_earnings_cents, contractor_payout_cents, broker_fee_cents,
+            published_at, created_at
+          FROM jobs
+          WHERE archived = false
+            AND country = ${opts.country}
+            AND region_code = ${rc}
+            AND trade_category = ${tradeCategory}
+            AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+            AND (LOWER(TRIM(city)) = LOWER(TRIM(${city})) OR region = ${regionSlug})
+          ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+          LIMIT ${take} OFFSET ${offset}
+        `,
+      ),
+      db.execute<{ cnt: number }>(
+        sql`
+          SELECT COUNT(*)::int AS cnt
+          FROM jobs
+          WHERE archived = false
+            AND country = ${opts.country}
+            AND region_code = ${rc}
+            AND trade_category = ${tradeCategory}
+            AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+            AND (LOWER(TRIM(city)) = LOWER(TRIM(${city})) OR region = ${regionSlug})
+        `,
+      ),
+    ]);
+
+    const rows = (dataRes as { rows?: RegionJobPageRow[] })?.rows ?? [];
+    const totalJobs = Number((countRes as { rows?: { cnt: number }[] })?.rows?.[0]?.cnt ?? 0);
+    const totalPages = Math.max(1, Math.ceil(totalJobs / take));
+    return { rows, totalJobs, totalPages };
+  } catch (err: unknown) {
+    const pg = (err as { cause?: Record<string, unknown>; code?: string }) ?? {};
+    const cause = (pg.cause ?? pg) as Record<string, unknown>;
+    console.error("[PUBLIC_JOBS_BY_LOCATION_SERVICE] select_failed", {
+      code: cause.code ?? pg.code,
+      message: cause.message ?? (err as Error)?.message,
+    });
+    throw err;
+  }
+}
+
+/** Distinct trade categories with jobs in a city (for "Other Services" links). */
+export async function listDistinctServicesByCity(opts: {
+  country: CountryCode2;
+  regionCode: string;
+  city: string;
+}): Promise<Array<{ tradeCategory: string }>> {
+  const rc = opts.regionCode.trim().toUpperCase();
+  const city = opts.city.trim();
+  if (!rc || !city) return [];
+  if (!isAllowedRegion(opts.country, rc)) return [];
+
+  const regionSlug = `${slugCityForQuery(city)}-${rc.toLowerCase()}`;
+
+  const res = await db.execute<{ trade_category: string | null }>(
+    sql`
+      SELECT DISTINCT trade_category
+      FROM jobs
+      WHERE archived = false
+        AND country = ${opts.country}
+        AND region_code = ${rc}
+        AND (status IN ('OPEN_FOR_ROUTING', 'IN_PROGRESS') OR (status = 'CUSTOMER_APPROVED' AND router_approved_at IS NULL))
+        AND (LOWER(TRIM(city)) = LOWER(TRIM(${city})) OR region = ${regionSlug})
+        AND trade_category IS NOT NULL
+      ORDER BY trade_category ASC
+    `,
+  );
+  const rows = (res as { rows?: { trade_category: string | null }[] })?.rows ?? [];
+  return rows
+    .filter((r) => r.trade_category)
+    .map((r) => ({ tradeCategory: String(r.trade_category) }));
+}
+

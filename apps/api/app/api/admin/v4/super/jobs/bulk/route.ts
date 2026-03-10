@@ -3,6 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { jobs, disputes, ledgerEntries, v4FinancialLedger } from "@/db/schema";
+import { v4EventOutbox } from "@/db/schema/v4EventOutbox";
 import { escrows } from "@/db/schema/escrow";
 import { enforceTier, requireAdminIdentityWithTier } from "../../../../_lib/adminTier";
 import { adminAuditLog } from "@/src/audit/adminAudit";
@@ -64,6 +65,19 @@ export async function POST(req: Request): Promise<Response> {
 
     if (action === "archive") {
       const now = new Date();
+      const jobRows = await db
+        .select({
+          id: jobs.id,
+          country_code: jobs.country_code,
+          state_code: jobs.state_code,
+          region_code: jobs.region_code,
+          city: jobs.city,
+          service_type: jobs.service_type,
+          trade_category: jobs.trade_category,
+        })
+        .from(jobs)
+        .where(inArray(jobs.id, uniqueIds));
+
       const updated = await db
         .update(jobs)
         .set({
@@ -76,13 +90,31 @@ export async function POST(req: Request): Promise<Response> {
         .returning({ id: jobs.id });
 
       const count = updated.length;
-      for (const id of uniqueIds) {
-        await adminAuditLog(req, auditAuth(identity), {
-          action: "JOB_ARCHIVED",
-          entityType: "Job",
-          entityId: id,
-          metadata: { archived_by_admin_id: identity.userId },
-        });
+      const updatedIds = new Set(updated.map((u) => u.id));
+      for (const row of jobRows) {
+        if (updatedIds.has(row.id)) {
+          await db.insert(v4EventOutbox).values({
+            id: crypto.randomUUID(),
+            eventType: "JOB_ARCHIVED",
+            payload: {
+              jobId: row.id,
+              country_code: row.country_code ?? null,
+              state_code: row.state_code ?? null,
+              region_code: row.region_code ?? null,
+              city: row.city ?? null,
+              service_type: row.service_type ?? null,
+              trade_category: row.trade_category ?? null,
+              dedupeKey: `job_archived:${row.id}:${now.getTime()}`,
+            } as Record<string, unknown>,
+            createdAt: now,
+          });
+          await adminAuditLog(req, auditAuth(identity), {
+            action: "JOB_ARCHIVED",
+            entityType: "Job",
+            entityId: row.id,
+            metadata: { archived_by_admin_id: identity.userId },
+          });
+        }
       }
       return ok({ archived: count, failed: uniqueIds.length - count });
     }
@@ -93,7 +125,19 @@ export async function POST(req: Request): Promise<Response> {
 
     for (const id of uniqueIds) {
       try {
-        const existing = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1);
+        const existing = await db
+          .select({
+            id: jobs.id,
+            country_code: jobs.country_code,
+            state_code: jobs.state_code,
+            region_code: jobs.region_code,
+            city: jobs.city,
+            service_type: jobs.service_type,
+            trade_category: jobs.trade_category,
+          })
+          .from(jobs)
+          .where(eq(jobs.id, id))
+          .limit(1);
         if (!existing[0]) {
           failed.push({ id, reason: "Job not found" });
           continue;
@@ -105,6 +149,24 @@ export async function POST(req: Request): Promise<Response> {
           continue;
         }
 
+        const jobRow = existing[0];
+        const deletedAt = new Date();
+        await db.insert(v4EventOutbox).values({
+          id: crypto.randomUUID(),
+          eventType: "JOB_DELETED",
+          payload: {
+            jobId: id,
+            country_code: jobRow.country_code ?? null,
+            state_code: jobRow.state_code ?? null,
+            region_code: jobRow.region_code ?? null,
+            city: jobRow.city ?? null,
+            service_type: jobRow.service_type ?? null,
+            trade_category: jobRow.trade_category ?? null,
+            dedupeKey: `job_deleted:${id}:${deletedAt.getTime()}`,
+          } as Record<string, unknown>,
+          createdAt: deletedAt,
+        });
+
         await adminAuditLog(req, auditAuth(identity), {
           action: "JOB_DELETED",
           entityType: "Job",
@@ -112,7 +174,7 @@ export async function POST(req: Request): Promise<Response> {
           metadata: {
             deleted_by_admin_id: identity.userId,
             deleted_reason: "bulk delete",
-            deleted_at: new Date().toISOString(),
+            deleted_at: deletedAt.toISOString(),
           },
         });
 
