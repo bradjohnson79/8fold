@@ -46,36 +46,44 @@ export default async function HomePage() {
             {/* Left copy */}
             <div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight tracking-tight">
-                Local Work.
-                <br />
-                <span className="text-8fold-green-light">Routed Right.</span>
+                Contractors: Keep{" "}
+                <span className="text-8fold-green-light">75%</span>{" "}
+                of the Job Value
               </h1>
-              <p className="mt-6 text-lg text-gray-300 max-w-xl leading-relaxed">
-                8Fold serves across the United States and Canada — real jobs,
-                real routing, real accountability. We connect job posters,
-                routers, and contractors through a transparent platform where
-                everyone earns fairly.
+              <p className="mt-5 text-xl font-semibold text-gray-200 max-w-xl leading-snug">
+                Get real local jobs without paying lead fees or competing in
+                bidding wars.
+              </p>
+              <p className="mt-4 text-base text-gray-400 max-w-xl leading-relaxed">
+                8Fold connects contractors with verified local work across
+                Canada and the United States through a fair-trade job
+                marketplace.
               </p>
               <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
                 <Link
                   href="/sign-up"
                   className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
                 >
-                  Sign Up Now
+                  Join as a Contractor
                 </Link>
                 <Link
                   href="/workers/router"
                   className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
                 >
-                  Be a Router
+                  Become a Router
                 </Link>
                 <Link
-                  href="/workers/contractor"
+                  href="/sign-up"
                   className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
                 >
-                  Be a Contractor
+                  Post a Job
                 </Link>
               </div>
+              {/* Trust micro-signal */}
+              <p className="mt-5 text-center text-sm text-gray-400/80 max-w-2xl">
+                ⚡ Early access now open for contractors across Canada and the
+                United States
+              </p>
             </div>
 
             {/* Right decorative grid */}
@@ -84,9 +92,9 @@ export default async function HomePage() {
                 { icon: "📍", label: "Local Routing" },
                 { icon: "🔒", label: "Secure Payments" },
                 { icon: "✅", label: "Verified Work" },
-                { icon: "💰", label: "Fair Splits" },
-                { icon: "🛡️", label: "Accountability" },
-                { icon: "⚡", label: "Fast Matching" },
+                { icon: "💰", label: "Contractors Keep 75%" },
+                { icon: "🛡️", label: "Full Accountability" },
+                { icon: "⚡", label: "Fast Job Matching" },
               ].map((item) => (
                 <div
                   key={item.label}
