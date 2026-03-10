@@ -2,7 +2,7 @@ import { z } from "zod";
 import { handleApiError } from "../../../../../src/lib/errorHandler";
 import { badRequest, ok } from "../../../../../src/lib/api/respond";
 import { getRegionDatasets, type CountryCode2 } from "../../../../../src/locations/datasets";
-import { listJobsByLocation } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
+import { listJobsByLocation, listDistinctServicesByCity } from "../../../../../src/server/repos/jobPublicRepo.drizzle";
 import { db } from "@/server/db/drizzle";
 import { asc, inArray } from "drizzle-orm";
 import { jobPhotos } from "../../../../../db/schema/jobPhoto";
@@ -51,7 +51,10 @@ export async function GET(req: Request) {
     }
     const canonicalCountry = countryByRegionCode.get(regionCodeUp) ?? "US";
 
-    const jobRows = await listJobsByLocation({ country: canonicalCountry, regionCode: regionCodeUp, city });
+    const [jobRows, distinctServices] = await Promise.all([
+      listJobsByLocation({ country: canonicalCountry, regionCode: regionCodeUp, city }),
+      listDistinctServicesByCity({ country: canonicalCountry, regionCode: regionCodeUp, city }),
+    ]);
     const ids = jobRows.map((j) => j.id).filter(Boolean) as string[];
 
     const photosByJobId = new Map<string, Array<{ id: string; kind: string; url: string | null }>>();
@@ -104,7 +107,10 @@ export async function GET(req: Request) {
       };
     });
 
-    return ok({ jobs: out });
+    return ok({
+      jobs: out,
+      distinctServices: distinctServices.map((s) => ({ tradeCategory: s.tradeCategory })),
+    });
   } catch (err) {
     return handleApiError(err, "GET /api/public/jobs/by-location");
   }

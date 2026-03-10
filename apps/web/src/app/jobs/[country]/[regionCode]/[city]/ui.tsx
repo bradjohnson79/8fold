@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { LocationSelector } from "../../../../../components/LocationSelector";
 import { JobCard } from "../../../../../components/JobCard";
+import { tradeCategoryToSlug } from "@/utils/slug";
 
 type PublicJob = {
   id: string;
@@ -37,12 +39,20 @@ function titleCaseFromSlug(slug: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function serviceTitle(tc: string): string {
+  return tc
+    .trim()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function CityJobsClient(props: { country: string; regionCode: string; citySlug: string }) {
   const country = props.country.toUpperCase() === "CA" ? "CA" : "US";
   const regionCode = props.regionCode.toUpperCase();
   const city = titleCaseFromSlug(props.citySlug);
 
   const [jobs, setJobs] = React.useState<PublicJob[]>([]);
+  const [distinctServices, setDistinctServices] = React.useState<Array<{ tradeCategory: string }>>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
 
@@ -57,8 +67,10 @@ export function CityJobsClient(props: { country: string; regionCode: string; cit
         const data = await resp.json();
         if (!resp.ok) throw new Error(data?.error ?? "Failed to load jobs");
         const list = Array.isArray(data?.jobs) ? (data.jobs as PublicJob[]) : [];
+        const services = Array.isArray(data?.distinctServices) ? data.distinctServices : [];
         if (cancelled) return;
         setJobs(list);
+        setDistinctServices(services);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load jobs");
@@ -97,6 +109,7 @@ export function CityJobsClient(props: { country: string; regionCode: string; cit
             No jobs found for this city. Please go back and pick a different location.
           </div>
         ) : (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {jobs.map((j) => {
               const photo =
@@ -130,6 +143,28 @@ export function CityJobsClient(props: { country: string; regionCode: string; cit
               );
             })}
           </div>
+
+          {distinctServices.length > 0 ? (
+            <div className="mt-12 pt-8 border-t border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Popular Services in {city}</h2>
+              <div className="flex flex-wrap gap-2">
+                {distinctServices.map((s) => {
+                  const serviceSlug = tradeCategoryToSlug(s.tradeCategory);
+                  const href = `/jobs/${country.toLowerCase()}/${regionCode.toLowerCase()}/${props.citySlug}/${serviceSlug}`;
+                  return (
+                    <Link
+                      key={s.tradeCategory}
+                      href={href}
+                      className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors text-sm font-medium"
+                    >
+                      {serviceTitle(s.tradeCategory)}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          </>
         )}
       </div>
     </main>

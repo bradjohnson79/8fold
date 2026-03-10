@@ -9,6 +9,9 @@ export async function GET() {
     metaPixelId: settings?.metaPixelId ?? null,
     ga4MeasurementId: settings?.ga4MeasurementId ?? null,
     canonicalDomain: settings?.canonicalDomain ?? null,
+    facebookUrl: settings?.facebookUrl ?? null,
+    twitterUrl: settings?.twitterUrl ?? null,
+    linkedinUrl: settings?.linkedinUrl ?? null,
   };
 
   return new Response(JSON.stringify({ ok: true, data }), {

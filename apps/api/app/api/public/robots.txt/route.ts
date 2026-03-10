@@ -12,6 +12,7 @@ Sitemap: ${sitemapBase}/api/public/sitemap-jobs.xml
 Sitemap: ${sitemapBase}/api/public/sitemap-services.xml
 Sitemap: ${sitemapBase}/api/public/sitemap-contractors.xml
 Sitemap: ${sitemapBase}/api/public/sitemap-cities.xml
+Sitemap: ${sitemapBase}/api/public/sitemap-service-locations.xml
 `;
 
 export async function GET() {

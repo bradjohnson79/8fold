@@ -18,8 +18,10 @@ export async function seoEventHandler(event: DomainEvent): Promise<void> {
         .select({
           country_code: jobs.country_code,
           state_code: jobs.state_code,
+          region_code: jobs.region_code,
           city: jobs.city,
           service_type: jobs.service_type,
+          trade_category: jobs.trade_category,
         })
         .from(jobs)
         .where(eq(jobs.id, event.payload.jobId))
@@ -33,8 +35,10 @@ export async function seoEventHandler(event: DomainEvent): Promise<void> {
         {
           country_code: event.payload.country_code,
           state_code: event.payload.state_code,
+          region_code: event.payload.region_code,
           city: event.payload.city,
           service_type: event.payload.service_type,
+          trade_category: event.payload.trade_category,
         },
         "UPDATE",
       );
@@ -45,8 +49,10 @@ export async function seoEventHandler(event: DomainEvent): Promise<void> {
         {
           country_code: event.payload.country_code,
           state_code: event.payload.state_code,
+          region_code: event.payload.region_code,
           city: event.payload.city,
           service_type: event.payload.service_type,
+          trade_category: event.payload.trade_category,
         },
         "DELETE",
       );
@@ -57,8 +63,10 @@ export async function seoEventHandler(event: DomainEvent): Promise<void> {
         {
           country_code: event.payload.country_code,
           state_code: event.payload.state_code,
+          region_code: event.payload.region_code,
           city: event.payload.city,
           service_type: event.payload.service_type,
+          trade_category: event.payload.trade_category,
         },
         "DELETE",
       );

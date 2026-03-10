@@ -1,29 +1,18 @@
 import { db } from "@/db/drizzle";
 import { seoIndexQueue } from "@/db/schema/seoIndexQueue";
+import { slugify, tradeCategoryToSlug } from "@/src/utils/slug";
 
 type IndexAction = "CREATE" | "UPDATE" | "DELETE";
 
 /**
- * Converts a city name to a URL-safe slug.
- * "Fort Langley" → "fort-langley"
- */
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
-}
-
-/**
  * Enqueues the URL hierarchy for a job into seo_index_queue.
  *
- * URL structure derived from job location fields:
+ * URL structure derived from job location fields (uses region_code for consistency with routes):
  *   /jobs
  *   /jobs/{country_code}
- *   /jobs/{country_code}/{state_code}
- *   /jobs/{country_code}/{state_code}/{city}          (if city present)
- *   /jobs/{country_code}/{state_code}/{city}/{service} (if city present)
+ *   /jobs/{country_code}/{region_code}
+ *   /jobs/{country_code}/{region_code}/{city}          (if city present)
+ *   /jobs/{country_code}/{region_code}/{city}/{service} (if city + trade_category present)
  *
  * Only enqueues paths for pages that actually exist in the web app.
  * The partial unique index on (url, action) WHERE processed_at IS NULL
@@ -33,25 +22,32 @@ export async function enqueueJobIndexing(
   job: {
     country_code?: string | null;
     state_code?: string | null;
+    region_code?: string | null;
     city?: string | null;
     service_type?: string | null;
+    trade_category?: string | null;
   },
   action: IndexAction,
 ): Promise<void> {
   const country = job.country_code?.trim().toLowerCase();
-  const state = job.state_code?.trim().toLowerCase();
+  const region = (job.region_code ?? job.state_code)?.trim().toLowerCase();
 
-  if (!country || !state) return; // Skip jobs with incomplete location data
+  if (!country || !region) return; // Skip jobs with incomplete location data
 
-  const urls: string[] = ["/jobs", `/jobs/${country}`, `/jobs/${country}/${state}`];
+  const urls: string[] = ["/jobs", `/jobs/${country}`, `/jobs/${country}/${region}`];
 
   if (job.city?.trim()) {
-    const city = slugify(job.city);
-    urls.push(`/jobs/${country}/${state}/${city}`);
+    const citySlug = slugify(job.city);
+    urls.push(`/jobs/${country}/${region}/${citySlug}`);
 
-    if (job.service_type?.trim()) {
-      const service = job.service_type.trim().toLowerCase().replace(/\s+/g, "-");
-      urls.push(`/jobs/${country}/${state}/${city}/${service}`);
+    const serviceSlug = job.trade_category?.trim()
+      ? tradeCategoryToSlug(job.trade_category)
+      : job.service_type?.trim()
+        ? job.service_type.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+        : null;
+
+    if (serviceSlug) {
+      urls.push(`/jobs/${country}/${region}/${citySlug}/${serviceSlug}`);
     }
   }
 

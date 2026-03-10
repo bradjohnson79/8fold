@@ -24,6 +24,9 @@ interface SeoPublicSettings {
   metaPixelId: string | null;
   ga4MeasurementId: string | null;
   canonicalDomain: string | null;
+  facebookUrl: string | null;
+  twitterUrl: string | null;
+  linkedinUrl: string | null;
 }
 
 async function fetchSeoSettings(): Promise<SeoPublicSettings | null> {
@@ -55,9 +58,26 @@ export default async function RootLayout({
   // Fail gracefully — if SEO API is down, site renders normally without tracking
   const seo = await fetchSeoSettings();
 
+  const sameAs = [seo?.facebookUrl, seo?.twitterUrl, seo?.linkedinUrl].filter(Boolean) as string[];
+  const canonicalBase = `https://${seo?.canonicalDomain ?? "8fold.app"}`;
+
   return (
     <html lang="en">
       <head>
+        {/* Organization JSON-LD — helps search engines associate brand with official social profiles */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "8Fold",
+              url: canonicalBase,
+              logo: `${canonicalBase}/logo.png`,
+              ...(sameAs.length > 0 && { sameAs }),
+            }),
+          }}
+        />
         {/* Meta Pixel — injected only when configured in Admin SEO Engine */}
         {seo?.metaPixelId && (
           <Script
@@ -115,7 +135,11 @@ gtag('config', '${seo.ga4MeasurementId}');`,
           <BetaTicker />
           <Header />
           <main className="min-h-screen">{children}</main>
-          <Footer />
+          <Footer
+            facebookUrl={seo?.facebookUrl ?? null}
+            twitterUrl={seo?.twitterUrl ?? null}
+            linkedinUrl={seo?.linkedinUrl ?? null}
+          />
         </ClerkProvider>
       </body>
     </html>

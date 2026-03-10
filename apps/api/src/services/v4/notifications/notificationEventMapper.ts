@@ -25,6 +25,7 @@ async function safeSeoIndexAndSitemap(jobId: string, triggeredBy: string): Promi
     await Promise.allSettled([
       pingUrl(jobUrl, triggeredBy),
       invalidateSitemapCache("jobs"),
+      invalidateSitemapCache("service-locations"),
     ]);
   } catch (err) {
     console.error("[SEO_AUTO_INDEX_ERROR]", {

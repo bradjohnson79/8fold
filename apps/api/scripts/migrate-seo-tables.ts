@@ -80,6 +80,18 @@ async function main() {
   `);
   console.log("[migrate-seo-tables] Indexes created ✓");
 
+  // 5. Social profile URL columns (for JSON-LD sameAs + footer icons)
+  await client.query(`
+    ALTER TABLE seo_settings ADD COLUMN IF NOT EXISTS facebook_url TEXT
+  `);
+  await client.query(`
+    ALTER TABLE seo_settings ADD COLUMN IF NOT EXISTS twitter_url TEXT
+  `);
+  await client.query(`
+    ALTER TABLE seo_settings ADD COLUMN IF NOT EXISTS linkedin_url TEXT
+  `);
+  console.log("[migrate-seo-tables] Social URL columns added ✓");
+
   await client.end();
 
   console.log("\n[migrate-seo-tables] Migration complete.");

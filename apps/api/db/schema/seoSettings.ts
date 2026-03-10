@@ -29,6 +29,10 @@ export const seoSettings = dbSchema.table(
     metaPixelId: text("meta_pixel_id"),
     // IndexNow
     indexNowKey: text("index_now_key"),
+    // Social profile URLs (for JSON-LD sameAs + footer icons)
+    facebookUrl: text("facebook_url"),
+    twitterUrl: text("twitter_url"),
+    linkedinUrl: text("linkedin_url"),
     // Audit
     updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by"),
