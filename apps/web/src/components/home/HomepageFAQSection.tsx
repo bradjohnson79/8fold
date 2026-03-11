@@ -62,11 +62,12 @@ const FAQ_ITEMS: FAQItem[] = [
     ],
   },
   {
-    question: "How does the 75 / 15 / 10 split work?",
+    question: "How much do contractors earn on 8Fold?",
     answer: [
-      "Each job is divided transparently:",
-      "75% to the Contractor. 15% to the Router. 10% to the Platform.",
-      "This structure ensures fairness and balance across the entire system.",
+      "Contractors keep 80% of the job value on local urban jobs.",
+      "For regional jobs that require travel, contractors keep 85% of the job value.",
+      "Routers earn 10% for coordinating and assigning the job. The platform retains the remaining share.",
+      "All splits are shown upfront — no hidden fees, no surprises.",
     ],
   },
   {

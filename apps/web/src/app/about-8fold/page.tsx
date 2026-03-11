@@ -35,8 +35,8 @@ export default function About8FoldPage() {
                 Every job clearly shows the split up front:
               </div>
               <div className="mt-3 flex gap-4 text-sm text-gray-800">
-                <div className="px-3 py-2 bg-gray-50 rounded-md font-semibold">Contractor: 75%</div>
-                <div className="px-3 py-2 bg-gray-50 rounded-md font-semibold">Router: 15%</div>
+                <div className="px-3 py-2 bg-gray-50 rounded-md font-semibold">Contractor: 80% (85% regional)</div>
+                <div className="px-3 py-2 bg-gray-50 rounded-md font-semibold">Router: 10%</div>
                 <div className="px-3 py-2 bg-gray-50 rounded-md font-semibold">8Fold: 10%</div>
               </div>
               <div className="mt-3 text-gray-600 text-sm">
@@ -65,7 +65,7 @@ export default function About8FoldPage() {
             <div className="border border-gray-200 rounded-2xl p-6">
               <div className="font-semibold text-gray-900">Contractors keep what they earn</div>
               <div className="mt-2 text-gray-700">
-                Contractors receive <strong>75% of labor</strong> and keep <strong>100% of tips</strong>. Parts &amp;
+                Contractors receive <strong>80% of labor</strong> (85% on regional jobs) and keep <strong>100% of tips</strong>. Parts &amp;
                 materials are handled separately through escrow and verified receipts — protecting Job Posters and
                 ensuring transparent reimbursement to contractors.
               </div>

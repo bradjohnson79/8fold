@@ -77,7 +77,7 @@ export default async function HomePage() {
                 { icon: "📍", label: "Local Routing" },
                 { icon: "🔒", label: "Secure Payments" },
                 { icon: "✅", label: "Verified Work" },
-                { icon: "💰", label: "Contractors Keep 75%" },
+                { icon: "💰", label: "Contractors Keep 80%" },
                 { icon: "🛡️", label: "Full Accountability" },
                 { icon: "⚡", label: "Fast Job Matching" },
               ].map((item) => (
@@ -153,7 +153,7 @@ export default async function HomePage() {
                   contractors. Help coordinate local work and get rewarded.
                 </p>
                 <p className="mt-5 text-sm font-bold text-8fold-green">
-                  Earn 15% commission on completed jobs + referral bonuses.
+                  Earn 10% commission on completed jobs + referral bonuses.
                 </p>
               </div>
               <div className="mt-8">
@@ -173,7 +173,7 @@ export default async function HomePage() {
                   Contractor
                 </span>
                 <h3 className="text-xl font-bold text-gray-900">
-                  Keep Up to 75% of the Job Value
+                  Keep Up to 80% of the Job Value
                 </h3>
                 <p className="mt-3 text-gray-600 leading-relaxed">
                   Receive routed local jobs without bidding wars or expensive
@@ -248,9 +248,9 @@ export default async function HomePage() {
                 Contractor Completes the Job
               </h3>
               <p className="mt-3 text-gray-600 leading-relaxed">
-                The contractor completes the work and receives up to 75% of
-                the job value, while routers and the platform receive their
-                share.
+                  The contractor completes the work and receives 80% for local
+                  jobs or 85% for regional jobs, while routers and the platform
+                  receive their share.
               </p>
             </div>
           </div>
@@ -312,21 +312,21 @@ export default async function HomePage() {
               <div className="flex-grow min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-white text-lg">
-                    Contractors Keep 75–80% of the Job Value
+                    Contractors Keep 80–85% of the Job Value
                   </h3>
                   <span
-                    title="Regional jobs over defined distance thresholds qualify for 80% payout."
+                    title="Regional jobs over defined distance thresholds qualify for 85% payout."
                     className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/10 text-gray-400 text-[10px] font-bold cursor-help hover:bg-white/20 transition-colors"
                   >
                     i
                   </span>
                 </div>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  75% standard payout. Up to 80% for approved regional distance jobs.
+                  80% standard payout. Up to 85% for approved regional distance jobs.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0 text-right">
-                <span className="text-2xl font-extrabold text-8fold-green-light">75–80%</span>
+                <span className="text-2xl font-extrabold text-8fold-green-light">80–85%</span>
               </div>
             </div>
 
@@ -339,15 +339,14 @@ export default async function HomePage() {
               </div>
               <div className="flex-grow min-w-0">
                 <h3 className="font-bold text-white text-lg">
-                  Routers Earn 15% Per Completed Job
+                  Routers Earn 10% Per Completed Job
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  Earn consistent income by routing verified local jobs to
-                  qualified contractors.
+                  Earn consistent income by routing verified local jobs to qualified contractors.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0 text-right">
-                <span className="text-2xl font-extrabold text-blue-400">15%</span>
+                <span className="text-2xl font-extrabold text-blue-400">10%</span>
               </div>
             </div>
 
