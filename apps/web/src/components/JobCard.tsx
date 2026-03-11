@@ -107,14 +107,7 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
   // Determine status badge
   const getStatusBadge = () => {
     const s = (job.status || 'PUBLISHED').toUpperCase()
-    if (s === 'OPEN_FOR_ROUTING' || s === 'PUBLISHED') {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-8fold-green text-white">
-          Awaiting Router
-        </span>
-      )
-    }
-    if (s === 'IN_PROGRESS') {
+    if (s === 'OPEN_FOR_ROUTING' || s === 'IN_PROGRESS' || s === 'PUBLISHED') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-500 text-white">
           In Progress
@@ -332,37 +325,15 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
           {(() => {
             const s = String(job.status ?? "").toUpperCase()
 
-            // Available for routing.
-            if (s === "OPEN_FOR_ROUTING" || s === "PUBLISHED") {
-              if (isAuthenticated) {
-                return (
-                  <button className="w-full bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200">
-                    Route this Job
-                  </button>
-                )
-              }
+            // Routing is underway — job is not available to claim.
+            if (s === "OPEN_FOR_ROUTING" || s === "IN_PROGRESS" || s === "PUBLISHED") {
               return (
-                <a
-                  href="/sign-up"
-                  className="block w-full bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 text-center"
+                <button
+                  disabled
+                  className="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed tracking-wide opacity-90"
                 >
-                  Sign Up and Route this Job
-                </a>
-              )
-            }
-
-            // A router has claimed the job and is matching contractors.
-            if (s === "IN_PROGRESS") {
-              return (
-                <div>
-                  <p className="text-xs text-center text-gray-500 mb-1">Awaiting Contractor Assignment</p>
-                  <button
-                    disabled
-                    className="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed tracking-wide"
-                  >
-                    ROUTING IN PROGRESS
-                  </button>
-                </div>
+                  ROUTING IN PROGRESS
+                </button>
               )
             }
 
