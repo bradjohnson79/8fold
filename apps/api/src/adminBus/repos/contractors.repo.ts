@@ -151,6 +151,7 @@ export async function list(params: RoleListParams) {
 
   type BaseRow = {
     id: string;
+    clerkUserId: string | null;
     email: string | null;
     phone: string | null;
     name: string | null;
@@ -186,6 +187,7 @@ export async function list(params: RoleListParams) {
       db
         .select({
           id: users.id,
+          clerkUserId: users.clerkUserId,
           email: users.email,
           phone: users.phone,
           name: users.name,
@@ -232,6 +234,7 @@ export async function list(params: RoleListParams) {
       db
         .select({
           id: users.id,
+          clerkUserId: users.clerkUserId,
           email: users.email,
           phone: users.phone,
           name: users.name,
@@ -280,6 +283,7 @@ export async function list(params: RoleListParams) {
       db
         .select({
           id: users.id,
+          clerkUserId: users.clerkUserId,
           email: users.email,
           phone: users.phone,
           name: users.name,
@@ -370,6 +374,7 @@ export async function list(params: RoleListParams) {
 
       return {
         ...r,
+        clerkUserId: r.clerkUserId ?? null,
         name,
         email,
         businessName,
