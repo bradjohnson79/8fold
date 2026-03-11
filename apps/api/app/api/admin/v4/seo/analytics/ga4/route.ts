@@ -2,6 +2,7 @@
  * GA4 Analytics Data API — returns traffic, top pages, sources, devices, countries.
  * Cached for 5 minutes. Requires GA4_PROPERTY_ID + Google service account credentials.
  */
+import { NextResponse } from "next/server";
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 import { ok, err } from "@/src/lib/api/adminV4Response";
 import { getGa4AnalyticsCached, isGa4AnalyticsConfigured } from "@/src/services/v4/seo/ga4AnalyticsService";
@@ -19,11 +20,12 @@ export async function GET(req: Request) {
   try {
     const data = await getGa4AnalyticsCached();
     if (!data) {
-      return err(500, "GA4_FETCH_FAILED", "Analytics temporarily unavailable.");
+      console.warn("[seo/analytics/ga4 GET] GA4 returned no data — likely an API auth or property access issue");
+      return NextResponse.json({ ok: false, error: "GA4_FETCH_FAILED" }, { status: 200 });
     }
     return ok(data);
   } catch (e) {
     console.error("[seo/analytics/ga4 GET]", e);
-    return err(500, "GA4_ANALYTICS_ERROR", "Analytics temporarily unavailable.");
+    return NextResponse.json({ ok: false, error: "GA4_FETCH_FAILED" }, { status: 200 });
   }
 }
