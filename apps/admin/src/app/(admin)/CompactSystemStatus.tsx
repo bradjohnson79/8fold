@@ -67,8 +67,13 @@ function StatusDot({ status, label, message }: { status: string; label: string; 
   );
 }
 
-export default function CompactSystemStatus() {
-  const [data, setData] = useState<SystemStatus | null>(null);
+type CompactSystemStatusProps = {
+  /** Server-rendered status from Overview page — single source of truth with System Status page */
+  initialData?: SystemStatus | null;
+};
+
+export default function CompactSystemStatus({ initialData }: CompactSystemStatusProps) {
+  const [data, setData] = useState<SystemStatus | null>(initialData ?? null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {

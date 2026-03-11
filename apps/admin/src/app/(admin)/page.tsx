@@ -14,6 +14,14 @@ type Overview = {
   integrityAlerts: number;
 };
 
+type SystemStatusPayload = {
+  database: { status: string; message: string; latencyMs?: number };
+  stripe: { status: string; message: string };
+  support: { status: string; message: string; openTickets?: number };
+  dataCoverage: { status: string; message: string; gaps?: number };
+  timestamp: string;
+};
+
 function money(cents: number) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
 }
@@ -32,9 +40,10 @@ export default async function OverviewPage({
   }
   const cardsQuery = params.toString();
 
-  const [overview, cardsPayload] = await Promise.all([
+  const [overview, cardsPayload, systemStatus] = await Promise.all([
     adminApiFetch<Overview>("/api/admin/v4/overview").catch(() => null),
     adminApiFetch<OverviewCardsPayload>(`/api/admin/v4/overview/cards${cardsQuery ? `?${cardsQuery}` : ""}`).catch(() => null),
+    adminApiFetch<SystemStatusPayload>("/api/admin/v4/system/status").catch(() => null),
   ]);
 
   return (
@@ -60,7 +69,7 @@ export default async function OverviewPage({
         </div>
       ) : null}
 
-      <CompactSystemStatus />
+      <CompactSystemStatus initialData={systemStatus} />
 
       <OverviewCardsClient payload={cardsPayload} />
     </div>
