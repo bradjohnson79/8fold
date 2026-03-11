@@ -80,17 +80,40 @@ async function main() {
   `);
   console.log("[migrate-seo-tables] Indexes created ✓");
 
-  // 5. Social profile URL columns (for JSON-LD sameAs + footer icons)
+  // 5. All full-schema columns — idempotent ADD COLUMN IF NOT EXISTS.
+  //    Covers columns added after the initial CREATE TABLE, including
+  //    page-level metadata, OG fields, JSONB blobs, and social URLs.
   await client.query(`
-    ALTER TABLE seo_settings ADD COLUMN IF NOT EXISTS facebook_url TEXT
+    ALTER TABLE seo_settings
+      ADD COLUMN IF NOT EXISTS site_title             TEXT,
+      ADD COLUMN IF NOT EXISTS site_description       TEXT,
+      ADD COLUMN IF NOT EXISTS default_meta_title     TEXT,
+      ADD COLUMN IF NOT EXISTS default_meta_description TEXT,
+      ADD COLUMN IF NOT EXISTS og_title               TEXT,
+      ADD COLUMN IF NOT EXISTS og_description         TEXT,
+      ADD COLUMN IF NOT EXISTS og_image               TEXT,
+      ADD COLUMN IF NOT EXISTS twitter_card_image     TEXT,
+      ADD COLUMN IF NOT EXISTS canonical_domain       TEXT,
+      ADD COLUMN IF NOT EXISTS robots_txt             TEXT,
+      ADD COLUMN IF NOT EXISTS page_templates         JSONB,
+      ADD COLUMN IF NOT EXISTS distribution_config    JSONB,
+      ADD COLUMN IF NOT EXISTS tracking_events        JSONB,
+      ADD COLUMN IF NOT EXISTS ga4_measurement_id     TEXT,
+      ADD COLUMN IF NOT EXISTS meta_pixel_id          TEXT,
+      ADD COLUMN IF NOT EXISTS index_now_key          TEXT,
+      ADD COLUMN IF NOT EXISTS facebook_url           TEXT,
+      ADD COLUMN IF NOT EXISTS twitter_url            TEXT,
+      ADD COLUMN IF NOT EXISTS linkedin_url           TEXT,
+      ADD COLUMN IF NOT EXISTS updated_by             TEXT
   `);
+  console.log("[migrate-seo-tables] All SEO settings columns ensured ✓");
+
+  // 6. Ensure updated_at has correct type and default (may differ on older installs)
   await client.query(`
-    ALTER TABLE seo_settings ADD COLUMN IF NOT EXISTS twitter_url TEXT
+    ALTER TABLE seo_settings
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
   `);
-  await client.query(`
-    ALTER TABLE seo_settings ADD COLUMN IF NOT EXISTS linkedin_url TEXT
-  `);
-  console.log("[migrate-seo-tables] Social URL columns added ✓");
+  console.log("[migrate-seo-tables] updated_at column ensured ✓");
 
   await client.end();
 
