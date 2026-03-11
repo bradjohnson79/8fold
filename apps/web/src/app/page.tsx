@@ -199,7 +199,84 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ──────────────── 3. BENEFITS STRIP ──────────────────────────── */}
+      {/* ──────────────── 3. HOW IT WORKS ────────────────────────────── */}
+      <section className="bg-gray-50 py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
+              How 8Fold Works
+            </h2>
+            <p className="mt-3 text-gray-500 max-w-2xl mx-auto">
+              A simple system that connects Job Posters, Routers, and
+              Contractors to get local work done quickly and fairly.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Step 1 */}
+            <div className="relative bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-8fold-green text-white font-extrabold text-lg mb-5">
+                1
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">
+                Job Poster Submits Work
+              </h3>
+              <p className="mt-3 text-gray-600 leading-relaxed">
+                A job poster creates a job with AI-assisted pricing. The
+                platform prepares the job for local routing.
+              </p>
+            </div>
+
+            {/* Connector arrow — visible on md+ between steps */}
+            {/* Step 2 */}
+            <div className="relative bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-8fold-green text-white font-extrabold text-lg mb-5">
+                2
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">
+                Router Assigns the Job
+              </h3>
+              <p className="mt-3 text-gray-600 leading-relaxed">
+                Local routers claim jobs and assign them to qualified
+                contractors in their area.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="relative bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-8fold-green text-white font-extrabold text-lg mb-5">
+                3
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">
+                Contractor Completes the Job
+              </h3>
+              <p className="mt-3 text-gray-600 leading-relaxed">
+                The contractor completes the work and receives up to 75% of
+                the job value, while routers and the platform receive their
+                share.
+              </p>
+            </div>
+          </div>
+
+          {/* Section CTA */}
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/sign-up"
+              className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
+            >
+              Join as Contractor →
+            </Link>
+            <Link
+              href="/how-to-earn"
+              className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl border-2 border-gray-300 text-gray-700 font-bold text-base hover:border-8fold-green hover:text-8fold-green transition-colors"
+            >
+              Learn How It Works →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ──────────────── 4. BENEFITS STRIP ──────────────────────────── */}
       <section className="relative overflow-hidden bg-8fold-navy py-20">
         {/* Background accents */}
         <div className="absolute inset-0 opacity-[0.07]">
@@ -210,10 +287,11 @@ export default async function HomePage() {
         <div className="relative max-w-5xl mx-auto px-6">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-              Why 8Fold Is Different
+              Why Contractors Are Choosing 8Fold
             </h2>
             <p className="mt-3 text-gray-400 max-w-xl mx-auto">
-              Transparent earnings. Real accountability. Built for fairness.
+              Transparent earnings. Real accountability. A fair marketplace
+              designed for contractors, routers, and job posters.
             </p>
           </div>
 
@@ -228,7 +306,7 @@ export default async function HomePage() {
               <div className="flex-grow min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-white text-lg">
-                    Up to 80% Contractor Commissions
+                    Contractors Keep 75–80% of the Job Value
                   </h3>
                   <span
                     title="Regional jobs over defined distance thresholds qualify for 80% payout."
@@ -238,7 +316,7 @@ export default async function HomePage() {
                   </span>
                 </div>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  75% standard &middot; 80% for approved regional distance jobs.
+                  75% standard payout. Up to 80% for approved regional distance jobs.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0 text-right">
@@ -255,10 +333,11 @@ export default async function HomePage() {
               </div>
               <div className="flex-grow min-w-0">
                 <h3 className="font-bold text-white text-lg">
-                  15% Router Earnings
+                  Routers Earn 15% Per Completed Job
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  Earn consistently by routing verified local jobs.
+                  Earn consistent income by routing verified local jobs to
+                  qualified contractors.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0 text-right">
@@ -278,7 +357,8 @@ export default async function HomePage() {
                   AI-Assisted Median Pricing
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  Smart sliding scale ensures competitive and fair job pricing.
+                  Smart pricing guidance helps job posters set competitive and
+                  fair job values.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0">
@@ -300,8 +380,8 @@ export default async function HomePage() {
                   100% Money-Back Guarantee
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  If no Contractor responds within 5 business days, posting fees
-                  are refunded.
+                  If no contractor responds within 5 business days, posting
+                  fees are refunded.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0">
@@ -321,7 +401,8 @@ export default async function HomePage() {
                   Weekly Payouts
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
-                  Stripe-powered direct deposit for seamless withdrawals.
+                  Stripe-powered direct deposits provide reliable and
+                  predictable payments.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0">
@@ -330,6 +411,22 @@ export default async function HomePage() {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Section CTA */}
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/sign-up"
+              className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
+            >
+              Join as Contractor →
+            </Link>
+            <Link
+              href="/sign-up"
+              className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
+            >
+              Create an Account →
+            </Link>
           </div>
         </div>
       </section>
