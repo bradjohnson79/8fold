@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LocationSelector } from "../components/LocationSelector";
 import { HomeJobFeedClient } from "./HomeJobFeedClient";
 import { HeroBackgroundVideo } from "./HeroBackgroundVideo";
+import { HeroCopy } from "./HeroCopy";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { HomepageFAQSection } from "@/components/home/HomepageFAQSection";
@@ -43,22 +44,9 @@ export default async function HomePage() {
 
         <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            {/* Left copy */}
+            {/* Left copy — A/B/C variant randomized client-side */}
             <div>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight tracking-tight">
-                Contractors: Keep{" "}
-                <span className="text-8fold-green-light">75%</span>{" "}
-                of the Job Value
-              </h1>
-              <p className="mt-5 text-xl font-semibold text-gray-200 max-w-xl leading-snug">
-                Get real local jobs without paying lead fees or competing in
-                bidding wars.
-              </p>
-              <p className="mt-4 text-base text-gray-400 max-w-xl leading-relaxed">
-                8Fold connects contractors with verified local work across
-                Canada and the United States through a fair-trade job
-                marketplace.
-              </p>
+              <HeroCopy />
               <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
                 <Link
                   href="/sign-up"
