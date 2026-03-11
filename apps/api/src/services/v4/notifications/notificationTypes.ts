@@ -38,6 +38,10 @@ export const NOTIFICATION_TYPES = [
   "DISPUTE_OPENED",
   "HIGH_VALUE_JOB_CANCELLED",
   "SYSTEM_ERROR_EVENT",
+  // Admin signup alerts
+  "NEW_JOB_POSTER_SIGNUP",
+  "NEW_CONTRACTOR_SIGNUP",
+  "NEW_ROUTER_SIGNUP",
   // Existing live/system compatibility
   "JOB_STARTED",
   "CONTRACTOR_COMPLETED_JOB",

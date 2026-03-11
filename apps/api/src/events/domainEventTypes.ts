@@ -36,6 +36,10 @@ export const DOMAIN_EVENT_TYPES = [
   "JOB_UPDATED",
   "JOB_ARCHIVED",
   "JOB_DELETED",
+  // Admin signup alerts
+  "JOB_POSTER_REGISTERED",
+  "CONTRACTOR_REGISTERED",
+  "ROUTER_REGISTERED",
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -285,6 +289,27 @@ export type DomainEventPayloadByType = {
     payoutAmountCents: number;
     suspensionApplied: boolean;
     adminId: string;
+    dedupeKey: string;
+  };
+  JOB_POSTER_REGISTERED: {
+    userId: string;
+    name: string;
+    email: string;
+    createdAt: string;
+    dedupeKey: string;
+  };
+  CONTRACTOR_REGISTERED: {
+    userId: string;
+    name: string;
+    email: string;
+    createdAt: string;
+    dedupeKey: string;
+  };
+  ROUTER_REGISTERED: {
+    userId: string;
+    name: string;
+    email: string;
+    createdAt: string;
     dedupeKey: string;
   };
   JOB_UPDATED: {

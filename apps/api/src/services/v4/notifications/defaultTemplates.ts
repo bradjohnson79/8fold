@@ -506,4 +506,63 @@ export const DEFAULT_TEMPLATES: Record<string, DefaultTemplate> = {
     variables: ["job_title"],
     inAppTemplate: "Your reschedule request for \"{{job_title}}\" has been accepted.",
   },
+
+  // ── Admin Signup Alerts ───────────────────────────────────────────────────
+
+  NEW_JOB_POSTER_SIGNUP: {
+    category: "Admin Signup Alerts",
+    supportsEmail: true,
+    supportsInApp: true,
+    variables: ["name", "email", "createdAt", "dashboard_link"],
+    emailSubject: "New Job Poster Signup — 8Fold",
+    emailTemplate: emailWrap(`
+      ${h1("New Job Poster Signup")}
+      ${p("A new Job Poster has registered on 8Fold.")}
+      <div style="margin:20px 0;padding:16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;">
+        <p style="margin:0 0 6px;font-size:14px;color:#374151;"><strong>Name:</strong> {{name}}</p>
+        <p style="margin:0 0 6px;font-size:14px;color:#374151;"><strong>Email:</strong> {{email}}</p>
+        <p style="margin:0;font-size:14px;color:#374151;"><strong>Registered:</strong> {{createdAt}}</p>
+      </div>
+      ${btn("https://admin.8fold.app/job-posters", "View in Admin Dashboard")}
+    `),
+    inAppTemplate: "New Job Poster signup: {{name}} ({{email}})",
+  },
+
+  NEW_CONTRACTOR_SIGNUP: {
+    category: "Admin Signup Alerts",
+    supportsEmail: true,
+    supportsInApp: true,
+    variables: ["name", "email", "createdAt", "dashboard_link"],
+    emailSubject: "New Contractor Signup — 8Fold",
+    emailTemplate: emailWrap(`
+      ${h1("New Contractor Signup")}
+      ${p("A new Contractor has registered on 8Fold.")}
+      <div style="margin:20px 0;padding:16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;">
+        <p style="margin:0 0 6px;font-size:14px;color:#374151;"><strong>Name:</strong> {{name}}</p>
+        <p style="margin:0 0 6px;font-size:14px;color:#374151;"><strong>Email:</strong> {{email}}</p>
+        <p style="margin:0;font-size:14px;color:#374151;"><strong>Registered:</strong> {{createdAt}}</p>
+      </div>
+      ${btn("https://admin.8fold.app/contractors", "View in Admin Dashboard")}
+    `),
+    inAppTemplate: "New Contractor signup: {{name}} ({{email}})",
+  },
+
+  NEW_ROUTER_SIGNUP: {
+    category: "Admin Signup Alerts",
+    supportsEmail: true,
+    supportsInApp: true,
+    variables: ["name", "email", "createdAt", "dashboard_link"],
+    emailSubject: "New Router Signup — 8Fold",
+    emailTemplate: emailWrap(`
+      ${h1("New Router Signup")}
+      ${p("A new Router has registered on 8Fold.")}
+      <div style="margin:20px 0;padding:16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;">
+        <p style="margin:0 0 6px;font-size:14px;color:#374151;"><strong>Name:</strong> {{name}}</p>
+        <p style="margin:0 0 6px;font-size:14px;color:#374151;"><strong>Email:</strong> {{email}}</p>
+        <p style="margin:0;font-size:14px;color:#374151;"><strong>Registered:</strong> {{createdAt}}</p>
+      </div>
+      ${btn("https://admin.8fold.app/routers", "View in Admin Dashboard")}
+    `),
+    inAppTemplate: "New Router signup: {{name}} ({{email}})",
+  },
 };
