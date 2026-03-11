@@ -58,6 +58,11 @@ export default async function RootLayout({
   // Fail gracefully — if SEO API is down, site renders normally without tracking
   const seo = await fetchSeoSettings();
 
+  // Env-var fallbacks ensure tracking fires even if the Admin SEO Engine DB row
+  // hasn't been saved yet. DB value takes precedence when both are present.
+  const ga4Id = seo?.ga4MeasurementId ?? process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID ?? null;
+  const pixelId = seo?.metaPixelId ?? process.env.NEXT_PUBLIC_META_PIXEL_ID ?? null;
+
   const sameAs = [seo?.facebookUrl, seo?.twitterUrl, seo?.linkedinUrl].filter(Boolean) as string[];
   const canonicalBase = `https://${seo?.canonicalDomain ?? "8fold.app"}`;
 
@@ -78,8 +83,8 @@ export default async function RootLayout({
             }),
           }}
         />
-        {/* Meta Pixel — injected only when configured in Admin SEO Engine */}
-        {seo?.metaPixelId && (
+        {/* Meta Pixel — DB value or NEXT_PUBLIC_META_PIXEL_ID env var */}
+        {pixelId && (
           <Script
             id="meta-pixel-init"
             strategy="afterInteractive"
@@ -93,20 +98,20 @@ t=b.createElement(e);t.async=!0;t.src=v;
 s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}
 (window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-fbq('init','${seo.metaPixelId}');
+fbq('init','${pixelId}');
 fbq('track','PageView');`,
             }}
           />
         )}
       </head>
       <body className="bg-white">
-        {/* GA4 — injected only when configured in Admin SEO Engine */}
-        {seo?.ga4MeasurementId && (
+        {/* GA4 — DB value or NEXT_PUBLIC_GA4_MEASUREMENT_ID env var */}
+        {ga4Id && (
           <>
             <Script
               id="ga4-script"
               strategy="afterInteractive"
-              src={`https://www.googletagmanager.com/gtag/js?id=${seo.ga4MeasurementId}`}
+              src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}
             />
             <Script
               id="ga4-init"
@@ -116,7 +121,7 @@ fbq('track','PageView');`,
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${seo.ga4MeasurementId}');`,
+gtag('config', '${ga4Id}');`,
               }}
             />
           </>
