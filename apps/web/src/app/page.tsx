@@ -523,10 +523,10 @@ export default async function HomePage() {
           </p>
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto">
             <Link
-              href="/sign-up"
+              href="/post-job"
               className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
             >
-              Sign Up Now
+              Post a Job
             </Link>
             <Link
               href="/workers/router"

@@ -24,7 +24,7 @@ const TESTIMONIALS = [
     role: "Job Poster",
     city: "Toronto, ON",
     quote:
-      "The escrow and triple-approval gave me peace of mind. I knew my money was protected until the job was done right.",
+      "The escrow and approval system gave me peace of mind. The contractor and I both confirm the job when it's done, so I know my payment is protected until the work is completed right.",
   },
   {
     name: "Carlos B.",
