@@ -31,6 +31,7 @@ export async function POST(req: Request) {
 
   let body: {
     userId?: string;
+    overrideEmail?: string | null;
     notificationType?: string;
     metadata?: Record<string, unknown>;
     dedupeKey?: string | null;
@@ -43,10 +44,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { userId, notificationType, metadata, dedupeKey, eventId } = body;
+  const { userId, overrideEmail, notificationType, metadata, dedupeKey, eventId } = body;
 
-  if (!userId || !notificationType) {
-    return NextResponse.json({ ok: false, error: "Missing userId or notificationType" }, { status: 400 });
+  // overrideEmail allows sending to a fixed address (e.g. info@8fold.app) without a DB user lookup.
+  // At least one of userId or overrideEmail must be present.
+  if (!overrideEmail && !userId) {
+    return NextResponse.json({ ok: false, error: "Missing userId or overrideEmail" }, { status: 400 });
+  }
+  if (!notificationType) {
+    return NextResponse.json({ ok: false, error: "Missing notificationType" }, { status: 400 });
   }
 
   try {
@@ -80,19 +86,24 @@ export async function POST(req: Request) {
     const subject = renderSubject(tpl.emailSubject, vars);
     const html = renderHtml(tpl.emailTemplate, vars);
 
-    const userRows = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
-    const recipientEmail = userRows[0]?.email ?? null;
+    // Resolve recipient: overrideEmail takes precedence over DB lookup.
+    let recipientEmail: string | null = overrideEmail ?? null;
+    if (!recipientEmail && userId) {
+      const userRows = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+      recipientEmail = userRows[0]?.email ?? null;
+    }
 
     if (!recipientEmail) {
       return NextResponse.json({ ok: true, skipped: true, reason: "no_recipient_email" });
     }
 
+    const recipientUserId = userId ?? `override:${overrideEmail}`;
     try {
       await sendTransactionalEmail({ to: recipientEmail, subject, html });
       await logDelivery({
         notificationId: undefined,
         notificationType,
-        recipientUserId: userId,
+        recipientUserId,
         recipientEmail,
         channel: "EMAIL",
         status: "DELIVERED",
@@ -102,11 +113,11 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ ok: true, sent: true });
     } catch (emailErr) {
-      console.error("[INTERNAL_EMAIL_SEND_ERROR]", { notificationType, userId, err: String(emailErr) });
+      console.error("[INTERNAL_EMAIL_SEND_ERROR]", { notificationType, userId: recipientUserId, err: String(emailErr) });
       await logDelivery({
         notificationId: undefined,
         notificationType,
-        recipientUserId: userId,
+        recipientUserId,
         recipientEmail,
         channel: "EMAIL",
         status: "FAILED",

@@ -6,6 +6,7 @@ import { users } from "@/db/schema/user";
 import { AuthErrorCodes } from "@/src/auth/errors/authErrorCodes";
 import { authErrorResponse, getOrCreateRequestId, withRequestIdHeader } from "@/src/auth/errors/authErrorResponse";
 import { requireAuth } from "@/src/auth/requireAuth";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 const BodySchema = z.object({
   role: z.enum(["JOB_POSTER", "CONTRACTOR", "ROUTER"]),
@@ -96,6 +97,53 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+
+  // Fetch the newly created row to get the internal UUID and any pre-populated fields.
+  // Emit a signup domain event so admins receive an in-app + email notification.
+  void (async () => {
+    try {
+      const newUser = await db
+        .select({ id: users.id, email: users.email, name: users.name })
+        .from(users)
+        .where(eq(users.clerkUserId, authed.clerkUserId))
+        .limit(1);
+
+      const userId = newUser[0]?.id ?? authed.clerkUserId;
+      // Name/email: prefer DB row (may be populated by Clerk sync webhook),
+      // fall back to Clerk JWT claims, then sensible defaults.
+      const claims = authed.safeClaims ?? {};
+      const claimsName = String(
+        claims.name ?? claims.full_name ?? [claims.first_name, claims.last_name].filter(Boolean).join(" ") ?? "",
+      ).trim();
+      const name = newUser[0]?.name ?? (claimsName || "Unknown");
+
+      const claimsEmail = String(claims.email ?? claims.email_address ?? "").trim();
+      const email = newUser[0]?.email ?? claimsEmail;
+
+      const createdAt = new Date().toISOString();
+      const dedupeKey = `signup_${body.data.role}_${authed.clerkUserId}`;
+
+      const roleEventMap = {
+        JOB_POSTER: "JOB_POSTER_REGISTERED",
+        CONTRACTOR: "CONTRACTOR_REGISTERED",
+        ROUTER: "ROUTER_REGISTERED",
+      } as const;
+
+      await emitDomainEvent(
+        {
+          type: roleEventMap[body.data.role],
+          payload: { userId, name, email, createdAt, dedupeKey },
+        },
+        { mode: "best_effort" },
+      );
+    } catch (err) {
+      console.error("[ONBOARDING_SIGNUP_EVENT_ERROR]", {
+        clerkUserId: authed.clerkUserId,
+        role: body.data.role,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
 
   const resp = NextResponse.json({ ok: true, data: { role: body.data.role }, requestId }, { status: 201 });
   return withRequestIdHeader(resp, requestId);

@@ -72,6 +72,35 @@ async function safeNotify(
   }
 }
 
+/**
+ * Fire-and-forget email directly to info@8fold.app for admin signup alerts.
+ * Uses overrideEmail so delivery is guaranteed regardless of whether admin
+ * user records have emails configured in the DB.
+ */
+async function fireSignupAdminEmail(
+  notificationType: string,
+  metadata: Record<string, unknown>,
+  dedupeKey: string,
+): Promise<void> {
+  const apiOrigin = process.env.API_ORIGIN ?? "";
+  if (!apiOrigin) return;
+  void fetch(`${apiOrigin}/api/internal/send-notification-email`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-internal-key": process.env.INTERNAL_DEBUG_SECRET ?? "",
+    },
+    body: JSON.stringify({
+      overrideEmail: "info@8fold.app",
+      notificationType,
+      metadata,
+      dedupeKey: `${dedupeKey}:info8fold`,
+    }),
+  }).catch((err) =>
+    console.error("[SIGNUP_ADMIN_EMAIL_ERROR]", { notificationType, err: String(err) }),
+  );
+}
+
 async function getActiveAdminIds(tx?: any): Promise<string[]> {
   try {
     const exec = tx ?? db;
@@ -1402,6 +1431,90 @@ export async function notificationEventMapper(
             tx,
           );
         }
+        return;
+      }
+
+      case "JOB_POSTER_REGISTERED": {
+        const p = event.payload;
+        const now = new Date();
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "NEW_JOB_POSTER_SIGNUP",
+              title: "New Job Poster Signup",
+              message: `${p.name || p.email} just registered as a Job Poster.`,
+              entityType: asEntity("SYSTEM"),
+              entityId: null,
+              priority: "NORMAL",
+              createdAt: now,
+              dedupeKey: `${p.dedupeKey}:admin:${adminId}`,
+              metadata: { ...p },
+            },
+            tx,
+          );
+        }
+        await fireSignupAdminEmail("NEW_JOB_POSTER_SIGNUP", { ...p }, p.dedupeKey);
+        return;
+      }
+
+      case "CONTRACTOR_REGISTERED": {
+        const p = event.payload;
+        const now = new Date();
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "NEW_CONTRACTOR_SIGNUP",
+              title: "New Contractor Signup",
+              message: `${p.name || p.email} just registered as a Contractor.`,
+              entityType: asEntity("SYSTEM"),
+              entityId: null,
+              priority: "NORMAL",
+              createdAt: now,
+              dedupeKey: `${p.dedupeKey}:admin:${adminId}`,
+              metadata: { ...p },
+            },
+            tx,
+          );
+        }
+        await fireSignupAdminEmail("NEW_CONTRACTOR_SIGNUP", { ...p }, p.dedupeKey);
+        return;
+      }
+
+      case "ROUTER_REGISTERED": {
+        const p = event.payload;
+        const now = new Date();
+        const adminIds = await getActiveAdminIds(tx);
+        for (const adminId of adminIds) {
+          await safeNotify(
+            event.type,
+            p,
+            {
+              userId: String(adminId),
+              role: "ADMIN",
+              type: "NEW_ROUTER_SIGNUP",
+              title: "New Router Signup",
+              message: `${p.name || p.email} just registered as a Router.`,
+              entityType: asEntity("SYSTEM"),
+              entityId: null,
+              priority: "NORMAL",
+              createdAt: now,
+              dedupeKey: `${p.dedupeKey}:admin:${adminId}`,
+              metadata: { ...p },
+            },
+            tx,
+          );
+        }
+        await fireSignupAdminEmail("NEW_ROUTER_SIGNUP", { ...p }, p.dedupeKey);
         return;
       }
 
