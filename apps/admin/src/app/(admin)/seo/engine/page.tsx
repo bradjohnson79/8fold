@@ -14,6 +14,9 @@ interface SeoSettings {
   facebookUrl?: string | null;
   twitterUrl?: string | null;
   linkedinUrl?: string | null;
+  enableGoogleIndexing?: boolean | null;
+  enableIndexNow?: boolean | null;
+  autoIndexNewJobs?: boolean | null;
   updatedAt?: string | null;
   updatedBy?: string | null;
 }
@@ -83,6 +86,9 @@ export default function SeoEnginePage() {
     facebookUrl: "",
     twitterUrl: "",
     linkedinUrl: "",
+    enableGoogleIndexing: true,
+    enableIndexNow: true,
+    autoIndexNewJobs: true,
   });
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -108,6 +114,9 @@ export default function SeoEnginePage() {
         facebookUrl: data.facebookUrl ?? "",
         twitterUrl: data.twitterUrl ?? "",
         linkedinUrl: data.linkedinUrl ?? "",
+        enableGoogleIndexing: data.enableGoogleIndexing ?? true,
+        enableIndexNow: data.enableIndexNow ?? true,
+        autoIndexNewJobs: data.autoIndexNewJobs ?? true,
       });
       if (data.updatedAt) setLastUpdated(new Date(data.updatedAt).toLocaleString());
     } catch {
@@ -119,7 +128,7 @@ export default function SeoEnginePage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  function setField(key: keyof SeoSettings, value: string) {
+  function setField(key: keyof SeoSettings, value: string | boolean) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setSaveStatus("idle");
   }
@@ -136,7 +145,9 @@ export default function SeoEnginePage() {
     setSaving(true);
     try {
       const body = Object.fromEntries(
-        Object.entries(form).map(([k, v]) => [k, v === "" ? null : v]),
+        Object.entries(form)
+          .filter(([k]) => !["id", "updatedAt", "updatedBy"].includes(k))
+          .map(([k, v]) => [k, v === "" ? null : v]),
       );
       const resp = await fetch("/api/admin/v4/seo/settings", {
         method: "PATCH",
@@ -332,6 +343,42 @@ export default function SeoEnginePage() {
               placeholder="https://linkedin.com/company/8fold"
               style={inputStyle}
             />
+          </Field>
+
+          {/* ── Indexing Engine Controls ── */}
+          <SectionHeader>Indexing Engine</SectionHeader>
+
+          <Field label="Enable Google Indexing API" hint="When enabled, new job URLs are submitted to Google Indexing API">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={form.enableGoogleIndexing ?? true}
+                onChange={(e) => setField("enableGoogleIndexing", e.target.checked)}
+              />
+              <span>Enabled</span>
+            </label>
+          </Field>
+
+          <Field label="Enable IndexNow" hint="When enabled, new job URLs are submitted to IndexNow (Bing, Yandex)">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={form.enableIndexNow ?? true}
+                onChange={(e) => setField("enableIndexNow", e.target.checked)}
+              />
+              <span>Enabled</span>
+            </label>
+          </Field>
+
+          <Field label="Auto Index New Jobs" hint="When enabled, indexing triggers automatically when payment is captured">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={form.autoIndexNewJobs ?? true}
+                onChange={(e) => setField("autoIndexNewJobs", e.target.checked)}
+              />
+              <span>Enabled</span>
+            </label>
           </Field>
 
           {/* ── Save ── */}

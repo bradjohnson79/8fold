@@ -1,4 +1,4 @@
-import { index, jsonb, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { dbSchema } from "./_dbSchema";
 
@@ -29,6 +29,10 @@ export const seoSettings = dbSchema.table(
     metaPixelId: text("meta_pixel_id"),
     // IndexNow
     indexNowKey: text("index_now_key"),
+    // Indexing engine controls
+    enableGoogleIndexing: boolean("enable_google_indexing").default(true),
+    enableIndexNow: boolean("enable_index_now").default(true),
+    autoIndexNewJobs: boolean("auto_index_new_jobs").default(true),
     // Social profile URLs (for JSON-LD sameAs + footer icons)
     facebookUrl: text("facebook_url"),
     twitterUrl: text("twitter_url"),

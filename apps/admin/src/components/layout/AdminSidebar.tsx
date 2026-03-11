@@ -72,6 +72,8 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
     title: "SEO & Marketing",
     items: [
       { label: "SEO Engine", href: "/seo/engine", match: "prefix" },
+      { label: "SEO Templates", href: "/seo/templates", match: "prefix" },
+      { label: "Sitemap", href: "/seo/sitemap", match: "prefix" },
       { label: "Indexing / Ping", href: "/seo/indexing", match: "prefix" },
       { label: "Analytics", href: "/seo/analytics", match: "prefix" },
       { label: "Advertising", href: "/seo/advertising", match: "prefix" },
