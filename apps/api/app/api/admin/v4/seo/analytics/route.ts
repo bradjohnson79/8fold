@@ -6,6 +6,7 @@ import { jobs } from "@/db/schema/job";
 import { contractors } from "@/db/schema/contractor";
 import { seoIndexingLog } from "@/db/schema/seoIndexingLog";
 import { getSeoSettings } from "@/src/services/v4/seo/seoSettingsService";
+import { isGa4AnalyticsConfigured } from "@/src/services/v4/seo/ga4AnalyticsService";
 
 export async function GET(req: Request) {
   const authed = await requireAdminV4(req);
@@ -60,9 +61,13 @@ export async function GET(req: Request) {
         indexingErrors7d,
         integrations: {
           ga4Configured: Boolean(settings?.ga4MeasurementId),
+          ga4DataApiConfigured: isGa4AnalyticsConfigured(),
           metaPixelConfigured: Boolean(settings?.metaPixelId),
           indexNowConfigured: Boolean(settings?.indexNowKey || process.env.INDEX_NOW_KEY),
-          googleIndexingConfigured: Boolean(process.env.GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON),
+          googleIndexingConfigured: Boolean(
+            process.env.GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON ||
+              (process.env.GOOGLE_INDEXING_CLIENT_EMAIL && process.env.GOOGLE_INDEXING_PRIVATE_KEY),
+          ),
         },
       },
     });
