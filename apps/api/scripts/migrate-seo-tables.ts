@@ -115,6 +115,89 @@ async function main() {
   `);
   console.log("[migrate-seo-tables] updated_at column ensured ✓");
 
+  // 7. seo_sitemap_type enum — required for seo_sitemap_cache table.
+  //    Postgres has no CREATE TYPE IF NOT EXISTS, so guard via DO block.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'seo_sitemap_type'
+      ) THEN
+        CREATE TYPE seo_sitemap_type AS ENUM (
+          'index', 'jobs', 'services', 'contractors', 'cities', 'service-locations'
+        );
+      END IF;
+    END
+    $$
+  `);
+  console.log("[migrate-seo-tables] seo_sitemap_type enum ensured ✓");
+
+  // 8. seo_sitemap_cache — stores generated XML per sitemap type (1-hour TTL).
+  //    A unique index on sitemap_type enforces the one-row-per-type pattern.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS seo_sitemap_cache (
+      id           TEXT PRIMARY KEY,
+      sitemap_type seo_sitemap_type NOT NULL,
+      xml_content  TEXT NOT NULL,
+      url_count    INTEGER NOT NULL DEFAULT 0,
+      generated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS seo_sitemap_cache_type_uq
+      ON seo_sitemap_cache (sitemap_type)
+  `);
+  console.log("[migrate-seo-tables] seo_sitemap_cache table + index created ✓");
+
+  // 9. seo_indexing_log — audit trail for IndexNow / Google ping submissions.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS seo_indexing_log (
+      id             TEXT PRIMARY KEY,
+      url            TEXT NOT NULL,
+      engine         TEXT NOT NULL,
+      status         TEXT NOT NULL,
+      response_code  INTEGER,
+      error_message  TEXT,
+      triggered_by   TEXT,
+      created_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS seo_indexing_log_engine_created_idx
+      ON seo_indexing_log (engine, created_at)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS seo_indexing_log_status_created_idx
+      ON seo_indexing_log (status, created_at)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS seo_indexing_log_created_idx
+      ON seo_indexing_log (created_at)
+  `);
+  console.log("[migrate-seo-tables] seo_indexing_log table + indexes created ✓");
+
+  // 10. seo_page_generation_queue — admin-driven content generation queue.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS seo_page_generation_queue (
+      id                TEXT PRIMARY KEY,
+      city              TEXT NOT NULL,
+      service           TEXT NOT NULL,
+      slug              TEXT NOT NULL,
+      template_type     TEXT NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'pending',
+      preview_data      JSONB,
+      generated_content JSONB,
+      requested_by      TEXT,
+      created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      processed_at      TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS seo_page_unique_slug
+      ON seo_page_generation_queue (slug)
+  `);
+  console.log("[migrate-seo-tables] seo_page_generation_queue table created ✓");
+
   await client.end();
 
   console.log("\n[migrate-seo-tables] Migration complete.");
