@@ -60,7 +60,6 @@ export default async function RootLayout({
 
   // Env-var fallbacks ensure tracking fires even if the Admin SEO Engine DB row
   // hasn't been saved yet. DB value takes precedence when both are present.
-  const ga4Id = seo?.ga4MeasurementId ?? process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID ?? null;
   const pixelId = seo?.metaPixelId ?? process.env.NEXT_PUBLIC_META_PIXEL_ID ?? null;
 
   const sameAs = [seo?.facebookUrl, seo?.twitterUrl, seo?.linkedinUrl].filter(Boolean) as string[];
@@ -69,6 +68,23 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Google tag (gtag.js) — placed immediately after head per Google setup */}
+        <Script
+          id="google-tag"
+          strategy="beforeInteractive"
+          src="https://www.googletagmanager.com/gtag/js?id=G-WFMKDLCTE8"
+        />
+        <Script
+          id="google-tag-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-WFMKDLCTE8');`,
+          }}
+        />
         {/* Organization JSON-LD — helps search engines associate brand with official social profiles */}
         <script
           type="application/ld+json"
@@ -105,27 +121,6 @@ fbq('track','PageView');`,
         )}
       </head>
       <body className="bg-white">
-        {/* GA4 — DB value or NEXT_PUBLIC_GA4_MEASUREMENT_ID env var */}
-        {ga4Id && (
-          <>
-            <Script
-              id="ga4-script"
-              strategy="afterInteractive"
-              src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}
-            />
-            <Script
-              id="ga4-init"
-              strategy="afterInteractive"
-              dangerouslySetInnerHTML={{
-                __html: `
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${ga4Id}');`,
-              }}
-            />
-          </>
-        )}
         <ClerkProvider
           telemetry={false}
           appearance={{
