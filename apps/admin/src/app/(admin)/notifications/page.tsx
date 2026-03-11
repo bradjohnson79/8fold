@@ -224,7 +224,7 @@ function formatApiError(endpoint: string, status: number, json: any): string {
 }
 
 export default function NotificationsPage() {
-  const [priority, setPriority] = useState("CRITICAL");
+  const [priority, setPriority] = useState("");
   const [type, setType] = useState("");
   const [read, setRead] = useState("");
   const [page, setPage] = useState(1);

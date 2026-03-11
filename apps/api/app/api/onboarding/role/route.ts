@@ -6,6 +6,7 @@ import { users } from "@/db/schema/user";
 import { AuthErrorCodes } from "@/src/auth/errors/authErrorCodes";
 import { authErrorResponse, getOrCreateRequestId, withRequestIdHeader } from "@/src/auth/errors/authErrorResponse";
 import { requireAuth } from "@/src/auth/requireAuth";
+import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 const BodySchema = z.object({
@@ -110,15 +111,26 @@ export async function POST(req: Request) {
 
       const userId = newUser[0]?.id ?? authed.clerkUserId;
       // Name/email: prefer DB row (may be populated by Clerk sync webhook),
-      // fall back to Clerk JWT claims, then sensible defaults.
+      // fall back to Clerk JWT claims, then fetch directly from Clerk REST API.
       const claims = authed.safeClaims ?? {};
       const claimsName = String(
         claims.name ?? claims.full_name ?? [claims.first_name, claims.last_name].filter(Boolean).join(" ") ?? "",
       ).trim();
-      const name = newUser[0]?.name ?? (claimsName || "Unknown");
-
       const claimsEmail = String(claims.email ?? claims.email_address ?? "").trim();
-      const email = newUser[0]?.email ?? claimsEmail;
+
+      let name = newUser[0]?.name ?? claimsName;
+      let email = newUser[0]?.email ?? claimsEmail;
+
+      if (!name || !email) {
+        const identity = await getClerkIdentity(authed.clerkUserId);
+        if (!name) {
+          name =
+            `${identity.firstName ?? ""} ${identity.lastName ?? ""}`.trim() ||
+            identity.email ||
+            "New Contractor";
+        }
+        if (!email) email = identity.email ?? "";
+      }
 
       const createdAt = new Date().toISOString();
       const dedupeKey = `signup_${body.data.role}_${authed.clerkUserId}`;

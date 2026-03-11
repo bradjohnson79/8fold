@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { and, eq, or } from "drizzle-orm";
 import { z } from "zod";
+import { clerkClient } from "@clerk/nextjs/server";
 import { contractorAccounts, users } from "@/db/schema";
 import { contractorsRepo, db, mapUsersRowsToAdminUserDTO, requireAdmin, requireAdminTier } from "@/src/adminBus";
 import { err, ok } from "@/src/lib/api/adminV4Response";
@@ -26,6 +27,32 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const params = contractorsRepo.parseRoleListParams(searchParams);
     const data = await contractorsRepo.list(params);
+
+    const nullRows = (data.rows as any[]).filter((r) => !r.name && !r.email && r.clerkUserId);
+    if (nullRows.length > 0) {
+      const client = await clerkClient();
+      const { data: clerkUsers } = await client.users.getUserList({
+        userId: nullRows.map((r: any) => r.clerkUserId),
+      });
+      const clerkMap = new Map(clerkUsers.map((u) => [u.id, u]));
+      (data as any).rows = (data.rows as any[]).map((row: any) => {
+        if (!row.name && !row.email && row.clerkUserId) {
+          const cu = clerkMap.get(row.clerkUserId);
+          if (cu) {
+            const name =
+              `${cu.firstName ?? ""} ${cu.lastName ?? ""}`.trim() ||
+              cu.username ||
+              "Unknown User";
+            const email =
+              cu.emailAddresses?.find((e: any) => e.id === cu.primaryEmailAddressId)
+                ?.emailAddress ?? null;
+            return { ...row, name, email };
+          }
+        }
+        return row;
+      });
+    }
+
     return ok({ ...data, rows: mapUsersRowsToAdminUserDTO(data.rows as any[]) });
   } catch (error) {
     console.error("[ADMIN_V4_CONTRACTORS_LIST_ERROR]", {

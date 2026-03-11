@@ -103,6 +103,20 @@ export function AdminNotificationDropdown() {
     router.push(route);
   };
 
+  const handleDismiss = async (e: React.MouseEvent, n: Notification) => {
+    e.stopPropagation();
+    setNotifications((prev) => prev.filter((item) => item.id !== n.id));
+    if (!n.read) setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await fetch(`/api/admin/v4/notifications/${encodeURIComponent(n.id)}/read`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
       <button
@@ -182,28 +196,30 @@ export function AdminNotificationDropdown() {
               </div>
             ) : (
               notifications.map((n) => (
-                <button
+                <div
                   key={n.id}
-                  type="button"
                   role="menuitem"
-                  onClick={() => handleNotificationClick(n)}
+                  tabIndex={0}
+                  onClick={() => void handleNotificationClick(n)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void handleNotificationClick(n); }}
                   style={{
+                    position: "relative",
                     display: "block",
                     width: "100%",
-                    padding: "10px 14px",
+                    padding: "10px 36px 10px 14px",
                     textAlign: "left",
-                    border: "none",
                     borderBottom: "1px solid rgb(30 41 59)",
-                    background: n.read ? "transparent" : "rgba(30 41 59 0.6)",
+                    background: n.read ? "transparent" : "rgba(30,41,59,0.6)",
                     color: "rgba(226,232,240,0.95)",
                     fontSize: 13,
                     cursor: "pointer",
+                    boxSizing: "border-box",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(51 65 85 0.8)";
+                    (e.currentTarget as HTMLDivElement).style.background = "rgba(51,65,85,0.8)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = n.read ? "transparent" : "rgba(30 41 59 0.6)";
+                    (e.currentTarget as HTMLDivElement).style.background = n.read ? "transparent" : "rgba(30,41,59,0.6)";
                   }}
                 >
                   <div style={{ fontWeight: 700, marginBottom: 2 }}>{n.title}</div>
@@ -213,7 +229,42 @@ export function AdminNotificationDropdown() {
                   <div style={{ marginTop: 4, fontSize: 11, color: "rgba(148,163,184,0.6)" }}>
                     {timeAgo(n.createdAt)}
                   </div>
-                </button>
+                  <button
+                    type="button"
+                    aria-label="Dismiss notification"
+                    onClick={(e) => void handleDismiss(e, n)}
+                    style={{
+                      position: "absolute",
+                      top: 8,
+                      right: 8,
+                      width: 20,
+                      height: 20,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      borderRadius: 4,
+                      background: "transparent",
+                      color: "rgba(148,163,184,0.6)",
+                      fontSize: 16,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.stopPropagation();
+                      (e.currentTarget as HTMLButtonElement).style.color = "rgba(226,232,240,0.95)";
+                      (e.currentTarget as HTMLButtonElement).style.background = "rgba(51,65,85,0.6)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.stopPropagation();
+                      (e.currentTarget as HTMLButtonElement).style.color = "rgba(148,163,184,0.6)";
+                      (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               ))
             )}
           </div>
