@@ -104,64 +104,96 @@ export default async function HomePage() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
-              Built for Every Role in the Marketplace
+              A Fair Marketplace Where Everyone Wins
             </h2>
             <p className="mt-3 text-gray-500 max-w-2xl mx-auto">
-              8Fold connects Job Posters, Routers, and Contractors through a
-              transparent routing system.
+              8Fold connects Job Posters, Routers, and Contractors through
+              transparent local routing and fair payouts — creating a better
+              way to get work done.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Job Posters */}
-            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-              <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-5">
-                Job Poster
-              </span>
-              <h3 className="text-xl font-bold text-gray-900">
-                Post with Confidence
-              </h3>
-              <p className="mt-3 text-gray-600 leading-relaxed">
-                Set fair, AI-assisted median pricing and get matched with local
-                Contractors fast.
-              </p>
-              <p className="mt-5 text-sm font-bold text-8fold-green">
-                100% Money-Back Guarantee if no response within 5 business days.
-              </p>
+            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
+              <div className="flex-grow">
+                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-5">
+                  Job Poster
+                </span>
+                <h3 className="text-xl font-bold text-gray-900">
+                  Post a Job With Confidence
+                </h3>
+                <p className="mt-3 text-gray-600 leading-relaxed">
+                  Set fair AI-assisted pricing and get matched with trusted
+                  local contractors in your area.
+                </p>
+                <p className="mt-5 text-sm font-bold text-8fold-green">
+                  100% Money-Back Guarantee if no contractor responds within 5
+                  business days.
+                </p>
+              </div>
+              <div className="mt-8">
+                <Link
+                  href="/sign-up"
+                  className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl bg-8fold-green text-white font-bold text-sm hover:bg-8fold-green-dark transition-colors shadow-sm shadow-8fold-green/20"
+                >
+                  Post a Job →
+                </Link>
+              </div>
             </div>
 
             {/* Routers */}
-            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-              <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-blue-100 text-blue-700 mb-5">
-                Router
-              </span>
-              <h3 className="text-xl font-bold text-gray-900">
-                Earn by Routing Local Work
-              </h3>
-              <p className="mt-3 text-gray-600 leading-relaxed">
-                Claim jobs in your area and route them to Contractors. Get
-                rewarded for coordination.
-              </p>
-              <p className="mt-5 text-sm font-bold text-8fold-green">
-                15% Commission on completed jobs. +$5 Referral Reward on completed referred jobs.
-              </p>
+            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
+              <div className="flex-grow">
+                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-blue-100 text-blue-700 mb-5">
+                  Router
+                </span>
+                <h3 className="text-xl font-bold text-gray-900">
+                  Earn by Routing Local Work
+                </h3>
+                <p className="mt-3 text-gray-600 leading-relaxed">
+                  Claim jobs in your area and route them to qualified
+                  contractors. Help coordinate local work and get rewarded.
+                </p>
+                <p className="mt-5 text-sm font-bold text-8fold-green">
+                  Earn 15% commission on completed jobs + referral bonuses.
+                </p>
+              </div>
+              <div className="mt-8">
+                <Link
+                  href="/workers/router"
+                  className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-8fold-green text-8fold-green font-bold text-sm hover:bg-8fold-green hover:text-white transition-colors"
+                >
+                  Become a Router →
+                </Link>
+              </div>
             </div>
 
             {/* Contractors */}
-            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-              <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-purple-100 text-purple-700 mb-5">
-                Contractor
-              </span>
-              <h3 className="text-xl font-bold text-gray-900">
-                Keep the Majority of What You Earn
-              </h3>
-              <p className="mt-3 text-gray-600 leading-relaxed">
-                Receive routed jobs without bidding wars. Book within 5 business
-                days.
-              </p>
-              <p className="mt-5 text-sm font-bold text-8fold-green">
-                75–80% Commission depending on region.
-              </p>
+            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
+              <div className="flex-grow">
+                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-purple-100 text-purple-700 mb-5">
+                  Contractor
+                </span>
+                <h3 className="text-xl font-bold text-gray-900">
+                  Keep Up to 75% of the Job Value
+                </h3>
+                <p className="mt-3 text-gray-600 leading-relaxed">
+                  Receive routed local jobs without bidding wars or expensive
+                  lead platforms.
+                </p>
+                <p className="mt-5 text-sm font-bold text-8fold-green">
+                  Focus on doing the work — not chasing leads.
+                </p>
+              </div>
+              <div className="mt-8">
+                <Link
+                  href="/sign-up"
+                  className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-8fold-green text-8fold-green font-bold text-sm hover:bg-8fold-green hover:text-white transition-colors"
+                >
+                  Join as Contractor →
+                </Link>
+              </div>
             </div>
           </div>
         </div>
