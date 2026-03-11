@@ -1,5 +1,6 @@
 import { db } from "@/db/drizzle";
 import { seoIndexingLog } from "@/db/schema/seoIndexingLog";
+import { getGoogleAccessToken, getGoogleServiceAccount } from "./googleAuthService";
 import { getSeoSettings } from "./seoSettingsService";
 
 export type IndexingEngine = "google" | "indexnow";
@@ -68,24 +69,25 @@ export async function pingIndexNow(url: string, triggeredBy: IndexingTrigger = "
   }
 }
 
-export async function pingGoogle(url: string, triggeredBy: IndexingTrigger = "manual"): Promise<PingResult> {
-  const serviceAccountJson = process.env.GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON;
+const GOOGLE_INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
 
-  if (!serviceAccountJson) {
+export async function pingGoogle(url: string, triggeredBy: IndexingTrigger = "manual"): Promise<PingResult> {
+  const serviceAccount = getGoogleServiceAccount();
+
+  if (!serviceAccount) {
     const result: PingResult = {
       engine: "google",
       url,
       status: "error",
-      errorMessage: "GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON not configured",
+      errorMessage:
+        "Google Indexing not configured. Set GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON (base64) or GOOGLE_INDEXING_CLIENT_EMAIL + GOOGLE_INDEXING_PRIVATE_KEY",
     };
     await writeLog({ ...result, triggeredBy }).catch(() => undefined);
     return result;
   }
 
   try {
-    // atob works in Node ≥18, Edge, and browsers — no Buffer needed
-    const serviceAccount = JSON.parse(atob(serviceAccountJson)) as Record<string, string>;
-    const token = await getGoogleAccessToken(serviceAccount);
+    const token = await getGoogleAccessToken(serviceAccount, GOOGLE_INDEXING_SCOPE);
 
     const resp = await fetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
       method: "POST",
@@ -118,74 +120,6 @@ export async function pingGoogle(url: string, triggeredBy: IndexingTrigger = "ma
     await writeLog({ ...result, triggeredBy }).catch(() => undefined);
     return result;
   }
-}
-
-/**
- * Signs a Google service account JWT using the Web Crypto API (crypto.subtle).
- * Works in Node.js ≥18, Vercel Edge, and browsers — no Node 'crypto' module needed.
- */
-async function getGoogleAccessToken(serviceAccount: Record<string, string>): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-
-  // base64url encode — Web standard, no Buffer needed
-  const toBase64Url = (str: string): string =>
-    btoa(str).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const header = toBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = toBase64Url(
-    JSON.stringify({
-      iss: serviceAccount["client_email"],
-      scope: "https://www.googleapis.com/auth/indexing",
-      aud: "https://oauth2.googleapis.com/token",
-      iat: now,
-      exp: now + 3600,
-    }),
-  );
-
-  const signingInput = `${header}.${payload}`;
-
-  // Import the RSA private key using SubtleCrypto — Edge + Node compatible
-  const pemBody = (serviceAccount["private_key"] ?? "")
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s+/g, "");
-
-  const binaryKey = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    binaryKey,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const signatureBuffer = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    new TextEncoder().encode(signingInput),
-  );
-
-  const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
-    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const jwt = `${signingInput}.${signature}`;
-
-  const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-
-  if (!tokenResp.ok) {
-    throw new Error(`Failed to get Google access token: ${tokenResp.status}`);
-  }
-  const data = (await tokenResp.json()) as { access_token?: string };
-  if (!data.access_token) throw new Error("No access_token in Google token response");
-  return data.access_token;
 }
 
 export async function pingUrl(url: string, triggeredBy: IndexingTrigger = "manual"): Promise<PingResult[]> {
