@@ -30,9 +30,9 @@ function computeDiff(adj: { requestedPriceCents: number; originalPriceCents: num
   return adj.requestedPriceCents - (adj.originalPriceCents ?? 0);
 }
 
-/** Fee split constants: 75% contractor, 15% router, 10% platform. */
-const CONTRACTOR_SHARE = 0.75;
-const ROUTER_SHARE = 0.15;
+/** Fee split constants — Phase 1 model: 80% contractor, 10% router, 10% platform (urban baseline). */
+const CONTRACTOR_SHARE = 0.80;
+const ROUTER_SHARE = 0.10;
 const PLATFORM_SHARE = 0.10;
 
 /** Compute the full price breakdown for a given total (Job Poster price). */
@@ -42,11 +42,13 @@ function computeBreakdown(totalCents: number): {
   routerCommission: number;
   platformFee: number;
 } {
+  const contractorPayout = Math.floor(totalCents * CONTRACTOR_SHARE);
+  const routerCommission = Math.floor(totalCents * ROUTER_SHARE);
   return {
     jobPosterTotal: totalCents,
-    contractorPayout: Math.round(totalCents * CONTRACTOR_SHARE),
-    routerCommission: Math.round(totalCents * ROUTER_SHARE),
-    platformFee: Math.round(totalCents * PLATFORM_SHARE),
+    contractorPayout,
+    routerCommission,
+    platformFee: totalCents - contractorPayout - routerCommission,
   };
 }
 

@@ -32,7 +32,7 @@ export default function RoutersWorkerPage() {
       whyDifferent={[
         "Routing is a real role with real economics — not a hidden middleman layer.",
         "Structured workflow reduces friction between posters and contractors.",
-        "Transparent split: contractor 75%, router 15%, platform 10%.",
+        "Transparent split: contractor 80% (85% regional), router 10%, platform 10%.",
         "Accountability: one router per job, tracked progress, and oversight when needed.",
       ]}
       ctaLabel="Sign Up"

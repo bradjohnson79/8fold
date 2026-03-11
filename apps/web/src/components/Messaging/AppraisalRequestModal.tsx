@@ -30,8 +30,8 @@ function formatPriceDisplay(raw: string): string {
 function computeBreakdown(totalCents: number) {
   return {
     posterTotal: totalCents,
-    contractorPayout: Math.round(totalCents * 0.75),
-    routerCommission: Math.round(totalCents * 0.15),
+    contractorPayout: Math.floor(totalCents * 0.80),
+    routerCommission: Math.floor(totalCents * 0.10),
     platformFee: Math.round(totalCents * 0.10),
   };
 }
@@ -140,8 +140,8 @@ export function AppraisalRequestModal({
           </div>
           <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
             <p className="text-xs font-semibold text-emerald-700 mb-1.5">Requested price breakdown</p>
-            <BreakdownRow label="Your payout (75%)" value={submitted.contractorPayout} highlight />
-            <BreakdownRow label="Router commission (15%)" value={submitted.routerCommission} />
+            <BreakdownRow label="Your payout (80%)" value={submitted.contractorPayout} highlight />
+            <BreakdownRow label="Router commission (10%)" value={submitted.routerCommission} />
             <BreakdownRow label="Platform fee (10%)" value={submitted.platformFee} />
           </div>
           <button
@@ -175,8 +175,8 @@ export function AppraisalRequestModal({
           <div className="pt-2 mt-2 border-t border-slate-200">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Current Job Price Breakdown</p>
             <BreakdownRow label="Job Poster Total" value={currentBreakdown.posterTotal} highlight />
-            <BreakdownRow label="Your payout (75%)" value={currentBreakdown.contractorPayout} />
-            <BreakdownRow label="Router commission (15%)" value={currentBreakdown.routerCommission} />
+            <BreakdownRow label="Your payout (80%)" value={currentBreakdown.contractorPayout} />
+            <BreakdownRow label="Router commission (10%)" value={currentBreakdown.routerCommission} />
             <BreakdownRow label="Platform fee (10%)" value={currentBreakdown.platformFee} />
           </div>
         </div>
@@ -244,8 +244,8 @@ export function AppraisalRequestModal({
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
               <p className="text-xs font-semibold text-blue-700 mb-1.5">Live Earnings Preview</p>
               <BreakdownRow label="Job Poster pays" value={newBreakdown.posterTotal} highlight />
-              <BreakdownRow label="Your payout (75%)" value={newBreakdown.contractorPayout} highlight />
-              <BreakdownRow label="Router commission (15%)" value={newBreakdown.routerCommission} />
+              <BreakdownRow label="Your payout (80%)" value={newBreakdown.contractorPayout} highlight />
+              <BreakdownRow label="Router commission (10%)" value={newBreakdown.routerCommission} />
               <BreakdownRow label="Platform fee (10%)" value={newBreakdown.platformFee} />
               <div className="mt-1.5 pt-1.5 border-t border-blue-200 flex justify-between text-xs">
                 <span className="text-blue-600 font-semibold">Additional payment required</span>

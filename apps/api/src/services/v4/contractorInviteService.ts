@@ -56,7 +56,7 @@ function computeContractorAmountCents(input: {
   const contractorPayoutCents = Number(input.contractorPayoutCents ?? 0);
   if (contractorPayoutCents > 0) return contractorPayoutCents;
   const total = Math.max(Number(input.totalAmountCents ?? 0), Number(input.amountCents ?? 0), 0);
-  return Math.round(total * 0.75);
+  return Math.floor(total * 0.80);
 }
 
 export async function countPendingInvites(contractorUserId: string): Promise<number> {

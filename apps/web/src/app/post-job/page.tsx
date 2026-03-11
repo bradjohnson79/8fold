@@ -924,11 +924,11 @@ export default function PostJobPage() {
                 <summary className="cursor-pointer font-medium text-gray-700">Split Breakdown</summary>
                 <div className="mt-2 space-y-1 text-gray-700">
                   <div className="flex justify-between">
-                    <span>Contractor Payout (75%)</span>
+                    <span>Contractor Payout (80%)</span>
                     <span>{formatMoney(paymentSummary.contractorPayoutCents, paymentSummary.currency)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Router Fee (15%)</span>
+                    <span>Router Fee (10%)</span>
                     <span>{formatMoney(paymentSummary.routerFeeCents, paymentSummary.currency)}</span>
                   </div>
                   <div className="flex justify-between">

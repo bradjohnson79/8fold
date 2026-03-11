@@ -39,10 +39,12 @@ describe("escrow pricing", () => {
       taxAmountCents: 701,
     });
 
+    // New model: percentages apply to appraisalSubtotalCents (10001) only; $20 flat goes to platform.
+    // isRegional=true → contractor 85%, router 10%.
     expect(split.splitBaseCents).toBe(12001);
-    expect(split.contractorCents).toBe(Math.round(12001 * 0.75));
-    expect(split.routerCents).toBe(Math.round(12001 * 0.15));
-    expect(split.platformCents).toBe(12001 - split.contractorCents - split.routerCents);
+    expect(split.contractorCents).toBe(Math.floor(10001 * 0.85)); // 8500
+    expect(split.routerCents).toBe(Math.floor(10001 * 0.10));     // 1000
+    expect(split.platformCents).toBe(12001 - split.contractorCents - split.routerCents); // 2501 (includes $20 flat)
     expect(split.contractorCents + split.routerCents + split.platformCents + split.taxBucketCents).toBe(split.totalCents);
     expect(split.totalCents).toBe(12702);
   });

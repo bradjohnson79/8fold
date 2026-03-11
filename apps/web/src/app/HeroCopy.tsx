@@ -15,12 +15,12 @@ const HERO_VARIANTS: HeroVariant[] = [
     headline: (
       <>
         Contractors: Keep{" "}
-        <span className="text-8fold-green-light">75%</span>{" "}
+        <span className="text-8fold-green-light">80%</span>{" "}
         of the Job Value
       </>
     ),
     subheadline:
-      "Get real local jobs without paying lead fees or competing in bidding wars.",
+      "Earn up to 85% on regional jobs. No lead fees. No bidding wars.",
     supporting:
       "8Fold connects contractors with verified local work across Canada and the United States through a fair-trade job marketplace.",
   },
@@ -34,8 +34,8 @@ const HERO_VARIANTS: HeroVariant[] = [
     ),
     subheadline: (
       <>
-        Join the marketplace where contractors keep up to{" "}
-        <strong className="text-white">75% of the job value</strong>.
+        Join the marketplace where contractors keep{" "}
+        <strong className="text-white">80% of every local job</strong> — up to 85% for regional work.
       </>
     ),
     supporting:
