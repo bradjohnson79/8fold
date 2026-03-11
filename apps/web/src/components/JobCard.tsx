@@ -106,31 +106,45 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
 
   // Determine status badge
   const getStatusBadge = () => {
-    const status = job.status || 'PUBLISHED'
-    if (status === 'OPEN_FOR_ROUTING' || status === 'PUBLISHED') {
+    const s = (job.status || 'PUBLISHED').toUpperCase()
+    if (s === 'OPEN_FOR_ROUTING' || s === 'PUBLISHED') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-8fold-green text-white">
           Awaiting Router
         </span>
       )
     }
-    if (status === 'IN_PROGRESS') {
+    if (s === 'IN_PROGRESS') {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-          Routed
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-500 text-white">
+          In Progress
         </span>
       )
     }
-    if (status === 'PUBLISHED') {
+    if (s === 'ASSIGNED') {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-8fold-green text-white">
-          Available
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          Contractor Assigned
+        </span>
+      )
+    }
+    if (s === 'COMPLETED' || s === 'COMPLETED_APPROVED' || s === 'CUSTOMER_APPROVED' || s === 'CONTRACTOR_COMPLETED') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600">
+          Completed
+        </span>
+      )
+    }
+    if (s === 'CANCELLED' || s === 'ASSIGNED_CANCEL_PENDING') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+          Cancelled
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-        Routing Pending
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        Pending
       </span>
     )
   }
@@ -317,10 +331,9 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
         <div className="mt-6">
           {(() => {
             const s = String(job.status ?? "").toUpperCase()
-            const routable = s === "OPEN_FOR_ROUTING" || s === "PUBLISHED"
-            const assigned = s === "IN_PROGRESS" || s === "ASSIGNED"
 
-            if (routable) {
+            // Available for routing.
+            if (s === "OPEN_FOR_ROUTING" || s === "PUBLISHED") {
               if (isAuthenticated) {
                 return (
                   <button className="w-full bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200">
@@ -329,29 +342,72 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
                 )
               }
               return (
-                <button className="w-full bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200">
+                <a
+                  href="/sign-up"
+                  className="block w-full bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 text-center"
+                >
                   Sign Up and Route this Job
+                </a>
+              )
+            }
+
+            // A router has claimed the job and is matching contractors.
+            if (s === "IN_PROGRESS") {
+              return (
+                <div>
+                  <p className="text-xs text-center text-gray-500 mb-1">Awaiting Contractor Assignment</p>
+                  <button
+                    disabled
+                    className="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed tracking-wide"
+                  >
+                    ROUTING IN PROGRESS
+                  </button>
+                </div>
+              )
+            }
+
+            // Contractor has been matched.
+            if (s === "ASSIGNED" || s === "JOB_STARTED") {
+              return (
+                <button
+                  disabled
+                  className="w-full bg-gray-200 text-gray-500 font-semibold py-3 px-4 rounded-lg cursor-not-allowed"
+                >
+                  Contractor Assigned
                 </button>
               )
             }
 
-            // Default for IN_PROGRESS / ASSIGNED (and any non-routable states).
-            if (job.isMock && assigned) {
+            // Terminal states.
+            if (s === "COMPLETED" || s === "COMPLETED_APPROVED" || s === "CUSTOMER_APPROVED" || s === "CONTRACTOR_COMPLETED") {
               return (
                 <button
                   disabled
-                  className="w-full bg-orange-100 text-orange-900 font-semibold py-3 px-4 rounded-lg cursor-not-allowed border border-orange-200"
+                  className="w-full bg-gray-200 text-gray-500 font-semibold py-3 px-4 rounded-lg cursor-not-allowed"
                 >
-                  Routing in Progress
+                  Job Completed
                 </button>
               )
             }
+
+            if (s === "CANCELLED" || s === "ASSIGNED_CANCEL_PENDING") {
+              return (
+                <button
+                  disabled
+                  className="w-full bg-gray-200 text-gray-500 font-semibold py-3 px-4 rounded-lg cursor-not-allowed"
+                >
+                  Job Cancelled
+                </button>
+              )
+            }
+
+            // Fallback for any unhandled status.
             return (
               <button
                 disabled
                 className="w-full bg-gray-200 text-gray-500 font-semibold py-3 px-4 rounded-lg cursor-not-allowed"
               >
-                Router Assigned
+                Unavailable
               </button>
             )
           })()}

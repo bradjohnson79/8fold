@@ -154,7 +154,7 @@ export async function fetchGa4Analytics(): Promise<Ga4AnalyticsResult | null> {
     };
   } catch (e) {
     console.error("[GA4 Analytics] fetch failed:", e instanceof Error ? e.message : e);
-    throw e;
+    return null;
   }
 }
 

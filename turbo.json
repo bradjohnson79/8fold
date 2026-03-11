@@ -34,7 +34,10 @@
     "SMTP_PASS",
     "SMTP_FROM",
     "WEB_APP_URL",
-    "API_APP_URL"
+    "API_APP_URL",
+    "GA4_PROPERTY_ID",
+    "GOOGLE_INDEXING_CLIENT_EMAIL",
+    "GOOGLE_INDEXING_PRIVATE_KEY"
   ],
   "tasks": {
     "dev": {
@@ -77,7 +80,10 @@
         "SMTP_PASS",
         "SMTP_FROM",
         "WEB_APP_URL",
-        "API_APP_URL"
+        "API_APP_URL",
+        "GA4_PROPERTY_ID",
+        "GOOGLE_INDEXING_CLIENT_EMAIL",
+        "GOOGLE_INDEXING_PRIVATE_KEY"
       ]
     },
     "lint": {
