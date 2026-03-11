@@ -699,6 +699,8 @@ export async function notificationEventMapper(
             tx,
           );
         }
+        // SEO: job is now public — ping search engines and invalidate sitemap (best-effort, non-blocking)
+        void safeSeoIndexAndSitemap(p.jobId, "PAYMENT_CAPTURED");
         return;
       }
 
