@@ -6,6 +6,7 @@ import { HeroCopy } from "./HeroCopy";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { HomepageFAQSection } from "@/components/home/HomepageFAQSection";
+import { HomeTestimonials } from "@/components/home/HomeTestimonials";
 
 /**
  * Homepage is public. No auth or API calls in SSR.
@@ -47,25 +48,21 @@ export default async function HomePage() {
             {/* Left copy — A/B/C variant randomized client-side */}
             <div>
               <HeroCopy />
-              <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
-                <Link
+              <div className="mt-10 flex flex-col sm:flex-row gap-4">
+                <a
                   href="/sign-up"
-                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
+                  aria-label="Create a free 8Fold account"
+                  className="inline-flex items-center justify-center px-8 py-4 bg-8fold-green hover:bg-8fold-green-dark text-white font-bold text-lg rounded-xl transition-colors shadow-lg shadow-8fold-green/25"
                 >
-                  Join as a Contractor
-                </Link>
-                <Link
-                  href="/workers/router"
-                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
+                  Create Free Account
+                </a>
+                <a
+                  href="#how-it-works"
+                  aria-label="Learn how 8Fold works"
+                  className="inline-flex items-center justify-center px-8 py-4 border-2 border-white text-white font-bold text-lg rounded-xl hover:bg-white hover:text-8fold-navy transition-colors duration-200"
                 >
-                  Become a Router
-                </Link>
-                <Link
-                  href="/sign-up"
-                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
-                >
-                  Post a Job
-                </Link>
+                  Learn How It Works
+                </a>
               </div>
               {/* Trust micro-signal */}
               <p className="mt-5 text-center text-sm text-gray-400/80 max-w-2xl">
@@ -200,7 +197,7 @@ export default async function HomePage() {
       </section>
 
       {/* ──────────────── 3. HOW IT WORKS ────────────────────────────── */}
-      <section className="bg-gray-50 py-20">
+      <section id="how-it-works" className="bg-gray-50 py-20">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
@@ -258,25 +255,34 @@ export default async function HomePage() {
             </div>
           </div>
 
-          {/* Section CTA */}
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              href="/sign-up"
-              className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
-            >
-              Join as Contractor →
-            </Link>
-            <Link
-              href="/how-to-earn"
-              className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl border-2 border-gray-300 text-gray-700 font-bold text-base hover:border-8fold-green hover:text-8fold-green transition-colors"
-            >
-              Learn How It Works →
-            </Link>
-          </div>
         </div>
       </section>
 
-      {/* ──────────────── 4. BENEFITS STRIP ──────────────────────────── */}
+      {/* ───────────────── 4. MARKETPLACE PREVIEW ────────────────────── */}
+      <section className="bg-gray-50 border-b border-gray-100 py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900">Live Jobs on 8Fold</h2>
+            <p className="mt-2 text-gray-500">See the newest jobs currently available across the marketplace.</p>
+            <p className="mt-1 text-sm text-gray-400">Real jobs currently being routed through the 8Fold marketplace.</p>
+          </div>
+          <LocationSelector
+            title="Find Jobs in Your Area"
+            subtitle="Select your province or state, then choose a city/town. City lists only include locations with jobs."
+          />
+        </div>
+        <HomeJobFeedClient
+          mode={isRouter ? "router_routable" : "guest_recent"}
+          isAuthenticated={isRouter}
+        />
+        <div className="mt-6 text-center">
+          <a href="/jobs" className="text-8fold-green font-semibold hover:underline">
+            Browse All Jobs →
+          </a>
+        </div>
+      </section>
+
+      {/* ──────────────── 5. BENEFITS STRIP ──────────────────────────── */}
       <section className="relative overflow-hidden bg-8fold-navy py-20">
         {/* Background accents */}
         <div className="absolute inset-0 opacity-[0.07]">
@@ -431,153 +437,10 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ───────────────────── 4. LOCATION SELECTOR ──────────────────── */}
-      <section className="bg-gray-50 border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-          <LocationSelector
-            title="Find Jobs in Your Area"
-            subtitle="Select your province or state, then choose a city/town. City lists only include locations with jobs."
-          />
-        </div>
-      </section>
-
-      {/* ───────────────────── 5. MARKETPLACE PREVIEW ────────────────── */}
-      <section className="py-16">
-        <HomeJobFeedClient
-          mode={isRouter ? "router_routable" : "guest_recent"}
-          isAuthenticated={isRouter}
-        />
-      </section>
-
-      {/* ──────────────────── 6. PERKS / BENEFITS ────────────────────── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#0f1e2e] via-[#13263a] to-[#0f1e2e] py-20">
-        {/* Subtle center glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.08),transparent_60%)] pointer-events-none" />
-
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-              Why 8Fold Works Better
-            </h2>
-            <p className="mt-3 text-gray-300 max-w-2xl mx-auto">
-              A platform designed for balance, accountability, and local-first
-              job routing.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Card 1 — Fair Split */}
-            <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 shadow-lg shadow-black/20 p-8 hover:border-emerald-500/40 transition-all duration-300">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-6">
-                <svg className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white">Fair Split Model</h3>
-              <p className="mt-2 text-emerald-400 font-bold text-sm tracking-wide">
-                75% Contractor &middot; 15% Router &middot; 10% Platform
-              </p>
-              <p className="mt-3 text-gray-300 leading-relaxed">
-                Built for balance — not greed. Every participant earns a
-                transparent, predictable share of every job.
-              </p>
-            </div>
-
-            {/* Card 2 — Accountability */}
-            <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 shadow-lg shadow-black/20 p-8 hover:border-emerald-500/40 transition-all duration-300">
-              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-6">
-                <svg className="w-7 h-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white">
-                Accountability Built In
-              </h3>
-              <p className="mt-3 text-gray-300 leading-relaxed">
-                Triple confirmation system ensures work is completed before
-                payout is released. No shortcuts, no disputes left unresolved.
-              </p>
-            </div>
-
-            {/* Card 3 — Local Routing */}
-            <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 shadow-lg shadow-black/20 p-8 hover:border-emerald-500/40 transition-all duration-300">
-              <div className="w-14 h-14 rounded-2xl bg-teal-500/10 flex items-center justify-center mb-6">
-                <svg className="w-7 h-7 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white">
-                Local First Routing
-              </h3>
-              <p className="mt-3 text-gray-300 leading-relaxed">
-                Jobs are routed within your area — no random bidding wars, no
-                race to the bottom. Real work, routed to real people nearby.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <HomepageFAQSection />
 
       {/* ──────────────────── 7. TESTIMONIALS ────────────────────────── */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
-              What Our Members Say
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                quote:
-                  "Finally a platform that actually protects contractors and clients.",
-                name: "Jason M.",
-                role: "Contractor",
-              },
-              {
-                quote:
-                  "The routing system makes it easy to earn without chasing leads.",
-                name: "Amanda T.",
-                role: "Router",
-              },
-              {
-                quote: "Transparent pricing and real follow-through.",
-                name: "Mark R.",
-                role: "Job Poster",
-              },
-            ].map((t) => (
-              <div
-                key={t.name}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 flex flex-col"
-              >
-                <svg className="w-8 h-8 text-8fold-green/30 mb-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
-                </svg>
-                <p className="text-gray-700 leading-relaxed text-lg flex-grow">
-                  &ldquo;{t.quote}&rdquo;
-                </p>
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-8fold-navy flex items-center justify-center text-white font-bold text-sm">
-                    {t.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="font-bold text-gray-900 text-sm">
-                      {t.name}
-                    </div>
-                    <span className="inline-block mt-0.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-8fold-green/10 text-8fold-green">
-                      {t.role}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <HomeTestimonials />
 
       {/* ────────────────── 8. TRUST & GUARANTEE ─────────────────────── */}
       <section className="bg-gray-50 border-y border-gray-100">
