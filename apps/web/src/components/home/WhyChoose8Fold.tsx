@@ -14,7 +14,7 @@ const FEATURES = [
     ),
   },
   {
-    title: "75–80% Contractor Payout",
+    title: "80–85% Contractor Payout",
     description: "Higher earnings. No ad spend required. Contractors keep 100% of their tips.",
     icon: (
       <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

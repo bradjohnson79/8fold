@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useMemo, useState } from 'react'
-import { formatMoney, REVENUE_SPLIT } from '@8fold/shared'
+import { formatMoney, getRevenueSplit } from '@8fold/shared'
 import { FlagJobModal } from './jobs/FlagJobModal'
 
 interface JobCardProps {
@@ -23,6 +23,7 @@ interface JobCardProps {
     laborTotalCents?: number
     materialsTotalCents?: number
     transactionFeeCents?: number
+    regionalFeeCents?: number
     status: string
     image?: string
     imageUrl?: string
@@ -38,17 +39,20 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
   const tradeBadge = job.tradeCategory ? job.tradeCategory.replace(/_/g, ' ') : null
   const currency = (job.currency ?? (job.country === 'CA' ? 'CAD' : 'USD')) as 'USD' | 'CAD'
 
+  const split = getRevenueSplit(Boolean(job.regionalFeeCents))
+
   const computed = useMemo(() => {
     const materials = Number.isFinite(job.materialsTotalCents as any) ? (job.materialsTotalCents ?? 0) : 0
+    const rev = getRevenueSplit(Boolean(job.regionalFeeCents))
 
     const amountCents = Number.isFinite(job.amountCents) && (job.amountCents ?? 0) > 0
       ? (job.amountCents ?? 0)
       : null
 
     if (amountCents !== null) {
-      const routerCents = Math.round(amountCents * REVENUE_SPLIT.router)
-      const contractorCents = Math.round(amountCents * REVENUE_SPLIT.contractor)
-      const platformCents = Math.round(amountCents * REVENUE_SPLIT.platform)
+      const contractorCents = Math.floor(amountCents * rev.contractor)
+      const routerCents     = Math.floor(amountCents * rev.router)
+      const platformCents   = amountCents - contractorCents - routerCents
       return {
         totalCents: amountCents,
         routerCents,
@@ -67,9 +71,9 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
     const totalCents =
       labor !== null ? labor : (fallbackTotal > 0 ? fallbackTotal : null)
 
-    const routerCents = labor !== null ? Math.round(labor * REVENUE_SPLIT.router) : (job.routerEarningsCents ?? 0)
-    const contractorCents = labor !== null ? Math.round(labor * REVENUE_SPLIT.contractor) : (job.contractorPayoutCents ?? 0)
-    const platformCents =
+    const contractorCents = labor !== null ? Math.floor(labor * rev.contractor) : (job.contractorPayoutCents ?? 0)
+    const routerCents     = labor !== null ? Math.floor(labor * rev.router)     : (job.routerEarningsCents ?? 0)
+    const platformCents   =
       labor !== null ? (labor - contractorCents - routerCents) : (job.brokerFeeCents ?? 0)
 
     return {
@@ -290,7 +294,7 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
 
           <div className="flex justify-between items-center bg-8fold-green bg-opacity-10 px-3 py-2 rounded-lg">
             <span className="text-8fold-green font-medium">
-              Router Earns ({(REVENUE_SPLIT.router * 100).toFixed(1)}% of labor):
+              Router Earns ({(split.router * 100).toFixed(0)}% of labor):
             </span>
             <span className="text-8fold-green font-bold text-lg">
               {formatMoney(computed.routerCents, currency)}
@@ -299,7 +303,7 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
 
           <div className="flex justify-between text-sm text-gray-700 px-1">
             <span className="font-medium">
-              Contractor Receives ({(REVENUE_SPLIT.contractor * 100).toFixed(1)}% of labor):
+              Contractor Receives ({(split.contractor * 100).toFixed(0)}% of labor):
             </span>
             <span className="font-semibold">
               {formatMoney(computed.contractorCents, currency)}
@@ -307,7 +311,7 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
           </div>
 
           <div className="flex justify-between text-xs text-gray-500 px-1">
-            <span>Platform Fee ({(REVENUE_SPLIT.platform * 100).toFixed(1)}% of labor):</span>
+            <span>Platform Fee ({(split.platform * 100).toFixed(0)}% of labor):</span>
             <span>
               {formatMoney(computed.platformCents, currency)}
             </span>

@@ -90,11 +90,16 @@ export function computeEscrowSplitAllocations(input: {
   const regionalFeeCents = toPositiveCents(input.regionalFeeCents);
   const taxBucketCents = toPositiveCents(input.taxAmountCents);
 
+  // splitBaseCents = full amount charged to poster (used for invariant and totalCents).
+  // Percentages apply to appraisalSubtotalCents ONLY — the $20 regional fee goes flat to platform.
   const splitBaseCents = appraisalSubtotalCents + regionalFeeCents;
-  const contractorCents = Math.round(splitBaseCents * 0.75);
-  const routerCents = Math.round(splitBaseCents * 0.15);
-  const platformCents = splitBaseCents - contractorCents - routerCents;
-  const totalCents = splitBaseCents + taxBucketCents;
+  const isRegional = regionalFeeCents > 0;
+
+  // Rounding order: contractor first → router second → platform absorbs remainder (including $20 flat).
+  const contractorCents = Math.floor(appraisalSubtotalCents * (isRegional ? 0.85 : 0.80));
+  const routerCents     = Math.floor(appraisalSubtotalCents * 0.10);
+  const platformCents   = splitBaseCents - contractorCents - routerCents;
+  const totalCents      = splitBaseCents + taxBucketCents;
 
   if (contractorCents + routerCents + platformCents + taxBucketCents !== totalCents) {
     throw Object.assign(new Error("Escrow split invariant failed"), { status: 500 });

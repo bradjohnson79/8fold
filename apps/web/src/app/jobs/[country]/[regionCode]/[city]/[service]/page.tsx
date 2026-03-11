@@ -82,6 +82,24 @@ async function fetchSeoSettings() {
   }
 }
 
+async function fetchLocationMetadata(country: string, region: string, city: string, service: string | null) {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_ORIGIN;
+  if (!apiUrl) return null;
+
+  try {
+    const params = new URLSearchParams({ country, region, city });
+    if (service) params.set("service", service);
+    const res = await fetch(`${apiUrl}/api/public/seo/metadata/location?${params.toString()}`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateMetadata({ params, searchParams }: Props) {
   const p = await params;
   const sp = await searchParams;
@@ -118,12 +136,23 @@ export async function generateMetadata({ params, searchParams }: Props) {
     alternates.next = `${canonical}?page=${page + 1}`;
   }
 
+  // Use metadataService when available (admin-configured templates)
+  const metadata = await fetchLocationMetadata(
+    country.toLowerCase(),
+    regionCode.toLowerCase(),
+    city,
+    serviceSlug,
+  );
+
   return {
-    title: `${serviceTitle} Jobs in ${city}, ${regionCode} | 8Fold`,
-    description: `Browse ${serviceTitle.toLowerCase()} jobs posted by homeowners in ${city}, ${regionName}. Find repair, installation, and maintenance jobs near you.`,
+    title: metadata?.title ?? `${serviceTitle} Jobs in ${city}, ${regionCode} | 8Fold`,
+    description:
+      metadata?.description ??
+      `Browse ${serviceTitle.toLowerCase()} jobs posted by homeowners in ${city}, ${regionName}. Find repair, installation, and maintenance jobs near you.`,
     metadataBase: new URL(base),
     alternates,
     robots,
+    openGraph: metadata?.ogImage ? { images: [metadata.ogImage] } : undefined,
   };
 }
 

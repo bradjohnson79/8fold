@@ -36,10 +36,10 @@ export default function OfficialLaunchFeb2026Page() {
           <p className="mt-4 text-slate-900 font-semibold">The 8Fold Model:</p>
           <ul className="mt-3 list-disc space-y-2 pl-6 text-slate-700">
             <li>
-              <strong>75%</strong> to the Contractor
+              <strong>80%</strong> to the Contractor (85% for regional jobs)
             </li>
             <li>
-              <strong>15%</strong> to the Router (local coordinator)
+              <strong>10%</strong> to the Router (local coordinator)
             </li>
             <li>
               <strong>10%</strong> to the Platform

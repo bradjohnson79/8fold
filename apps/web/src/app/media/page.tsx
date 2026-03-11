@@ -51,7 +51,7 @@ export default function MediaPage() {
             protect Job Posters, Contractors, and Routers through each phase of job completion.
           </p>
           <p className="mt-3 text-slate-700">
-            The launch highlights a fixed structure that routes 75% to Contractors, 15% to Routers, and 10% to the
+            The launch highlights a fixed structure that routes 80% to Contractors (85% for regional jobs), 10% to Routers, and 10% to the
             platform, with expansion plans across British Columbia and into other Canadian provinces.
           </p>
 

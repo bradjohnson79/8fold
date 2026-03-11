@@ -60,11 +60,10 @@ function normalizeCurrency(raw: string | null | undefined): string {
 }
 
 function computeBaseSplitCents(job: JobSnapshot): number {
+  // Percentage splits apply to appraisalSubtotalCents only — the $20 regional fee goes flat to platform.
   const appraisal = Number(job.appraisalSubtotalCents ?? 0);
-  const regional = Number(job.regionalFeeCents ?? 0);
-  const candidate = appraisal + regional;
-  if (Number.isFinite(candidate) && candidate > 0) {
-    return Math.trunc(candidate);
+  if (Number.isFinite(appraisal) && appraisal > 0) {
+    return Math.trunc(appraisal);
   }
   return Math.trunc(Number(job.amountCents ?? 0));
 }
@@ -177,10 +176,16 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
     };
   }
 
-  const baseSplitCents = computeBaseSplitCents(job);
-  const contractorPayoutCents = Math.floor(baseSplitCents * 0.75);
-  const routerPayoutCents = Math.floor(baseSplitCents * 0.15);
-  const platformRevenueCents = baseSplitCents - contractorPayoutCents - routerPayoutCents;
+  const baseSplitCents   = computeBaseSplitCents(job);
+  const regionalFeeCents = Math.trunc(Number(job.regionalFeeCents ?? 0));
+  const isRegional       = regionalFeeCents > 0;
+  const splitType        = isRegional ? "regional" : "urban";
+  const contractorShareLabel = isRegional ? "85%" : "80%";
+
+  // Rounding order: contractor first → router second → platform absorbs remainder + $20 flat.
+  const contractorPayoutCents = Math.floor(baseSplitCents * (isRegional ? 0.85 : 0.80));
+  const routerPayoutCents     = Math.floor(baseSplitCents * 0.10);
+  const platformRevenueCents  = baseSplitCents - contractorPayoutCents - routerPayoutCents + regionalFeeCents;
   const currency = normalizeCurrency(job.currency);
 
   await appendLedgerEntry({
@@ -193,6 +198,8 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       actorRole: input.actorRole,
       actorId,
       source: "v4_release_funds_service",
+      splitType,
+      contractorShare: contractorShareLabel,
     },
   });
 
@@ -224,6 +231,8 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       meta: {
         actorRole: input.actorRole,
         actorId,
+        description: isRegional ? "Contractor payout (85% regional)" : "Contractor payout (80% urban)",
+        splitType,
       },
     });
   }
@@ -239,6 +248,8 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       meta: {
         actorRole: input.actorRole,
         actorId,
+        description: "Router payout (10%)",
+        splitType,
       },
     });
   }
@@ -253,8 +264,11 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       baseSplitCents,
       contractorPayoutCents,
       routerPayoutCents,
+      regionalFeeCents,
       actorRole: input.actorRole,
       actorId,
+      description: isRegional ? "Platform revenue (5% + regional routing fee)" : "Platform revenue (10% urban)",
+      splitType,
     },
   });
 

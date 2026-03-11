@@ -104,6 +104,7 @@ export * from "./v4ContractorCertifications";
 export * from "./v4NotificationTemplate";
 export * from "./v4NotificationDeliveryLog";
 export * from "./seoSettings";
+export * from "./seoTemplates";
 export * from "./seoIndexQueue";
 export * from "./seoIndexingLog";
 export * from "./seoSitemapCache";

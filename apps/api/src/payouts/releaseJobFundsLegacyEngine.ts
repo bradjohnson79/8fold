@@ -48,12 +48,14 @@ function toStripeCurrency(currency: "USD" | "CAD"): "usd" | "cad" {
 
 const SYSTEM_ESCROW_USER_ID = "system:escrow";
 
-function splitCents(total: number): { contractor: number; router: number; platform: number } {
+function splitCents(total: number, isRegional: boolean): { contractor: number; router: number; platform: number } {
   const t = Number(total ?? 0);
   if (!Number.isInteger(t) || t <= 0) throw Object.assign(new Error("Invalid total cents"), { status: 400, code: "BAD_TOTAL" });
-  const contractor = Math.floor(t * 0.75);
-  const router = Math.floor(t * 0.15);
-  const platform = t - contractor - router;
+  // Rounding order: contractor first → router second → platform absorbs remainder.
+  const contractorRate = isRegional ? 0.85 : 0.80;
+  const contractor = Math.floor(t * contractorRate);
+  const router     = Math.floor(t * 0.10);
+  const platform   = t - contractor - router;
   if (contractor < 0 || router < 0 || platform < 0) throw Object.assign(new Error("Invalid split"), { status: 500, code: "SPLIT_INVALID" });
   if (contractor + router + platform !== t) throw Object.assign(new Error("Split mismatch"), { status: 500, code: "SPLIT_MISMATCH" });
   return { contractor, router, platform };
@@ -239,6 +241,7 @@ export async function releaseJobFundsLegacyEngine(input: {
         paymentStatus: jobs.payment_status,
         payoutStatus: jobs.payout_status,
         amountCents: jobs.amount_cents,
+        regionalFeeCents: jobs.regional_fee_cents,
         country: jobs.country,
         currency: jobs.currency,
         stripePaymentIntentId: jobs.stripe_payment_intent_id,
@@ -287,7 +290,8 @@ export async function releaseJobFundsLegacyEngine(input: {
 
     const currency = toCurrencyCode(job as any);
     const totalCents = Number(job.amountCents ?? 0);
-    const split = splitCents(totalCents);
+    const isRegional = Number(job.regionalFeeCents ?? 0) > 0;
+    const split = splitCents(totalCents, isRegional);
 
     const platformUserId = await getOrCreatePlatformUserId(tx as any);
 
@@ -422,6 +426,9 @@ export async function releaseJobFundsLegacyEngine(input: {
 
   const currency = snapshot.currency;
   const stripeCurrency = toStripeCurrency(currency);
+  const isRegionalJob = Number((snapshot as any).job?.regionalFeeCents ?? 0) > 0;
+  const splitType = isRegionalJob ? "regional" : "urban";
+  const contractorShareLabel = isRegionalJob ? "85%" : "80%";
 
   const roles: Array<{ role: RoleLeg; userId: string; amountCents: number; kind: "router" | "contractor" | "platform" }> = [
     { role: "CONTRACTOR", userId: snapshot.contractorUserId, amountCents: snapshot.split.contractor, kind: "contractor" },
@@ -494,6 +501,8 @@ export async function releaseJobFundsLegacyEngine(input: {
             userId: leg.userId,
             triggeredByUserId,
             model: "separate_charges_transfers",
+            splitType,
+            contractorShare: contractorShareLabel,
           },
         },
         { idempotencyKey },

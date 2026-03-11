@@ -26,6 +26,10 @@ const UpdateSchema = z.object({
     .preprocess(emptyToNull, z.string().refine((v) => !v || v.includes("x.com") || v.includes("twitter.com"), "X/Twitter URL must contain x.com or twitter.com").optional().nullable()),
   linkedinUrl: z
     .preprocess(emptyToNull, z.string().refine((v) => !v || v.includes("linkedin.com"), "LinkedIn URL must contain linkedin.com").optional().nullable()),
+  // Indexing engine controls
+  enableGoogleIndexing: z.boolean().optional(),
+  enableIndexNow: z.boolean().optional(),
+  autoIndexNewJobs: z.boolean().optional(),
 });
 
 export async function GET(req: Request) {
