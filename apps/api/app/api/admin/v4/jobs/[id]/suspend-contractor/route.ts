@@ -160,25 +160,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }
       }
 
-      // Audit log
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: null,
-        actorAdminUserId: authed.adminId as any,
-        action: "CONTRACTOR_SUSPENDED",
-        entityType: "Job",
-        entityId: jobId,
-        metadata: {
+      // Audit log — non-blocking
+      try {
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: null,
+          actorAdminUserId: authed.adminId as any,
+          action: "CONTRACTOR_SUSPENDED",
+          entityType: "Job",
+          entityId: jobId,
+          metadata: {
+            jobId,
+            cancelRequestId: cancelRequest.id,
+            contractorUserId: job.contractorUserId,
+            suspendedUntil: suspendedUntil.toISOString(),
+            reason: suspensionReason,
+            adminId: authed.adminId,
+            adminEmail: authed.email,
+            suspendedAt: now.toISOString(),
+          } as any,
+        });
+      } catch (auditErr) {
+        console.error("[CANCEL_CONTRACTOR_SUSPEND] Audit log insert failed (non-fatal)", {
           jobId,
-          cancelRequestId: cancelRequest.id,
-          contractorUserId: job.contractorUserId,
-          suspendedUntil: suspendedUntil.toISOString(),
-          reason: suspensionReason,
-          adminId: authed.adminId,
-          adminEmail: authed.email,
-          suspendedAt: now.toISOString(),
-        } as any,
-      });
+          message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     });
 
     // Append idempotent system message when suspension completes the resolution

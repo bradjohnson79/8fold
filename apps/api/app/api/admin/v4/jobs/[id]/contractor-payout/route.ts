@@ -253,25 +253,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }
       }
 
-      // Audit log
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: null,
-        actorAdminUserId: authed.adminId as any,
-        action: "JOB_CANCELLATION_PAYOUT_ISSUED",
-        entityType: "Job",
-        entityId: jobId,
-        metadata: {
+      // Audit log — non-blocking
+      try {
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: null,
+          actorAdminUserId: authed.adminId as any,
+          action: "JOB_CANCELLATION_PAYOUT_ISSUED",
+          entityType: "Job",
+          entityId: jobId,
+          metadata: {
+            jobId,
+            cancelRequestId: cancelRequest.id,
+            stripeTransferId,
+            payoutCents,
+            contractorUserId: job.contractorUserId,
+            adminId: authed.adminId,
+            adminEmail: authed.email,
+            payoutAt: now.toISOString(),
+          } as any,
+        });
+      } catch (auditErr) {
+        console.error("[CANCEL_CONTRACTOR_PAYOUT] Audit log insert failed (non-fatal)", {
           jobId,
-          cancelRequestId: cancelRequest.id,
-          stripeTransferId,
-          payoutCents,
-          contractorUserId: job.contractorUserId,
-          adminId: authed.adminId,
-          adminEmail: authed.email,
-          payoutAt: now.toISOString(),
-        } as any,
-      });
+          message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     });
 
     // Append idempotent system message when payout completes the resolution
