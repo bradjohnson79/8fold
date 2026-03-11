@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim() || "https://api.8fold.app";
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@8fold/shared'],
