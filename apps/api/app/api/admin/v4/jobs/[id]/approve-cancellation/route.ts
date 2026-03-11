@@ -53,6 +53,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return err(409, "ADMIN_V4_NO_PENDING_CANCEL_REQUEST", "No pending cancel request found for this job");
   }
 
+  console.log("[CANCEL_APPROVED] Starting approve-cancellation", { jobId, cancelRequestId: cancelRequest.id, adminId: authed.adminId });
+
   try {
     await db.transaction(async (tx) => {
       // Update job: mark as CANCELLED
@@ -97,24 +99,34 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           );
       }
 
-      // Audit log
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: null,
-        actorAdminUserId: authed.adminId as any,
-        action: "JOB_CANCELLATION_RESOLVED",
-        entityType: "Job",
-        entityId: jobId,
-        metadata: {
-          action: "APPROVE",
+      // Audit log — non-blocking: a stale FK or schema mismatch must never
+      // roll back a legitimate cancellation approval.
+      try {
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: null,
+          actorAdminUserId: authed.adminId as any,
+          action: "JOB_CANCELLATION_RESOLVED",
+          entityType: "Job",
+          entityId: jobId,
+          metadata: {
+            action: "APPROVE",
+            jobId,
+            cancelRequestId: cancelRequest.id,
+            adminId: authed.adminId,
+            adminEmail: authed.email,
+            approvedAt: now.toISOString(),
+          } as any,
+        });
+      } catch (auditErr) {
+        console.error("[CANCEL_APPROVED] Audit log insert failed (non-fatal)", {
           jobId,
-          cancelRequestId: cancelRequest.id,
-          adminId: authed.adminId,
-          adminEmail: authed.email,
-          approvedAt: now.toISOString(),
-        } as any,
-      });
+          message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     });
+
+    console.log("[CANCEL_APPROVED] Transaction complete", { jobId });
 
     // Emit event for notifications (best_effort: outside transaction)
     await emitDomainEvent(

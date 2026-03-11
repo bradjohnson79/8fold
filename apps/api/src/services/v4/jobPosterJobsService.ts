@@ -533,59 +533,69 @@ export async function createCancelRequest(
 
   const cancelRequestId = String(inserted?.id ?? "");
 
-  // Create a support ticket so admins see this in the support dashboard
+  // Create a support ticket — best-effort: a ticket failure must NOT roll back
+  // the cancel request itself. The request is the source of truth; admins can
+  // still see and act on it even if the ticket is missing.
   const now = new Date();
-  const ticketId = randomUUID();
-  const ticketBody = [
-    `Job Poster has requested to cancel job ${jobId}.`,
-    `Reason: ${reason}`,
-    `Requested at: ${now.toISOString()}`,
-    `Cancel request ID: ${cancelRequestId}`,
-  ].join("\n");
+  try {
+    const ticketId = randomUUID();
+    const ticketBody = [
+      `Job Poster has requested to cancel job ${jobId}.`,
+      `Reason: ${reason}`,
+      `Requested at: ${now.toISOString()}`,
+      `Cancel request ID: ${cancelRequestId}`,
+    ].join("\n");
 
-  await db.insert(v4SupportTickets).values({
-    id: ticketId,
-    userId,
-    role: "JOB_POSTER",
-    subject: "Job Cancellation Request",
-    category: "PAYMENT_ISSUE",
-    ticketType: "JOB_CANCELLATION",
-    priority: "HIGH",
-    jobId,
-    body: ticketBody,
-    status: "OPEN",
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await db.insert(v4SupportMessages).values({
-    id: randomUUID(),
-    ticketId,
-    senderUserId: userId,
-    senderRole: "JOB_POSTER",
-    message: ticketBody,
-    createdAt: now,
-  });
-
-  // Link the support ticket back to the cancel request
-  await db
-    .update(jobCancelRequests)
-    .set({ supportTicketId: ticketId })
-    .where(eq(jobCancelRequests.id, cancelRequestId));
-
-  // Notify admins via outbox (reuses existing NEW_SUPPORT_TICKET processing)
-  await db.insert(v4EventOutbox).values({
-    id: randomUUID(),
-    eventType: "NEW_SUPPORT_TICKET",
-    payload: {
-      ticketId,
+    await db.insert(v4SupportTickets).values({
+      id: ticketId,
       userId,
       role: "JOB_POSTER",
       subject: "Job Cancellation Request",
-      dedupeKey: `support_ticket_created_${ticketId}`,
-    },
-    createdAt: now,
-  });
+      category: "PAYMENT_ISSUE",
+      ticketType: "JOB_CANCELLATION",
+      priority: "HIGH",
+      jobId,
+      body: ticketBody,
+      status: "OPEN",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(v4SupportMessages).values({
+      id: randomUUID(),
+      ticketId,
+      senderUserId: userId,
+      senderRole: "JOB_POSTER",
+      message: ticketBody,
+      createdAt: now,
+    });
+
+    // Link the support ticket back to the cancel request
+    await db
+      .update(jobCancelRequests)
+      .set({ supportTicketId: ticketId })
+      .where(eq(jobCancelRequests.id, cancelRequestId));
+
+    // Notify admins via outbox
+    await db.insert(v4EventOutbox).values({
+      id: randomUUID(),
+      eventType: "NEW_SUPPORT_TICKET",
+      payload: {
+        ticketId,
+        userId,
+        role: "JOB_POSTER",
+        subject: "Job Cancellation Request",
+        dedupeKey: `support_ticket_created_${ticketId}`,
+      },
+      createdAt: now,
+    });
+  } catch (ticketErr) {
+    console.error("[V4_CANCEL_REQUEST] Support ticket creation failed (non-fatal, cancel request still active)", {
+      jobId,
+      cancelRequestId,
+      message: ticketErr instanceof Error ? ticketErr.message : String(ticketErr),
+    });
+  }
 
   // Emit dedicated cancellation requested event for targeted notifications
   await emitDomainEvent(

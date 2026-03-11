@@ -171,25 +171,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           );
       }
 
-      // Audit log
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: null,
-        actorAdminUserId: authed.adminId as any,
-        action: "JOB_CANCELLATION_RESOLVED",
-        entityType: "Job",
-        entityId: jobId,
-        metadata: {
-          action: "REFUND",
+      // Audit log — non-blocking
+      try {
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: null,
+          actorAdminUserId: authed.adminId as any,
+          action: "JOB_CANCELLATION_RESOLVED",
+          entityType: "Job",
+          entityId: jobId,
+          metadata: {
+            action: "REFUND",
+            jobId,
+            cancelRequestId: cancelRequest.id,
+            stripeRefundId,
+            adminId: authed.adminId,
+            adminEmail: authed.email,
+            amountCents: Number(job.amountCents ?? 0),
+            refundedAt: now.toISOString(),
+          } as any,
+        });
+      } catch (auditErr) {
+        console.error("[CANCEL_REFUND_EXECUTED] Audit log insert failed (non-fatal)", {
           jobId,
-          cancelRequestId: cancelRequest.id,
-          stripeRefundId,
-          adminId: authed.adminId,
-          adminEmail: authed.email,
-          amountCents: Number(job.amountCents ?? 0),
-          refundedAt: now.toISOString(),
-        } as any,
-      });
+          message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     });
 
     // Emit REFUND_ISSUED event — existing mapper sends JOB_REFUNDED to job poster + all admins

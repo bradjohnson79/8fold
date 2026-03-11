@@ -344,57 +344,77 @@ export default async function JobDetailPage({
 
   async function doCancelAssigned() {
     "use server";
+    let errMsg = "";
     try {
       await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/cancel-assigned`, { method: "POST" });
-    } catch {
-      // Error handled via revalidate
+    } catch (e: any) {
+      errMsg = String(e?.message ?? "Cancel failed");
     }
     revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    if (errMsg) {
+      const qs = new URLSearchParams({ statusUpdate: "error", statusMessage: errMsg });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
   async function doPartialRefund(formData: FormData) {
     "use server";
     const confirmText = String(formData.get("confirmText") ?? "").trim();
+    let errMsg = "";
     try {
       await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/partial-refund`, {
         method: "POST",
         body: JSON.stringify({ confirmText }),
       });
-    } catch {
-      // Error handled via revalidate
+    } catch (e: any) {
+      errMsg = String(e?.message ?? "Refund failed");
     }
     revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    if (errMsg) {
+      const qs = new URLSearchParams({ statusUpdate: "error", statusMessage: errMsg });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
   async function doContractorPayout(formData: FormData) {
     "use server";
     const confirmText = String(formData.get("confirmText") ?? "").trim();
+    let errMsg = "";
     try {
       await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/contractor-payout`, {
         method: "POST",
         body: JSON.stringify({ confirmText }),
       });
-    } catch {
-      // Error handled via revalidate
+    } catch (e: any) {
+      errMsg = String(e?.message ?? "Payout failed");
     }
     revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    if (errMsg) {
+      const qs = new URLSearchParams({ statusUpdate: "error", statusMessage: errMsg });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
   async function doSuspendContractorForCancel(formData: FormData) {
     "use server";
     const confirmText = String(formData.get("confirmText") ?? "").trim();
+    let errMsg = "";
     try {
       await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/suspend-contractor`, {
         method: "POST",
         body: JSON.stringify({ confirmText }),
       });
-    } catch {
-      // Error handled via revalidate
+    } catch (e: any) {
+      errMsg = String(e?.message ?? "Suspension failed");
     }
     revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    if (errMsg) {
+      const qs = new URLSearchParams({ statusUpdate: "error", statusMessage: errMsg });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
@@ -412,27 +432,37 @@ export default async function JobDetailPage({
 
   async function doApproveCancellation() {
     "use server";
+    let errMsg = "";
     try {
       await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/approve-cancellation`, {
         method: "POST",
       });
-    } catch {
-      // Error shown via redirect flash
+    } catch (e: any) {
+      errMsg = String(e?.message ?? "Approval failed");
     }
     revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    if (errMsg) {
+      const qs = new URLSearchParams({ statusUpdate: "error", statusMessage: errMsg });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
   async function doRefund() {
     "use server";
+    let errMsg = "";
     try {
       await adminApiFetch(`/api/admin/v4/jobs/${encodeURIComponent(id)}/refund`, {
         method: "POST",
       });
-    } catch {
-      // Error shown via redirect flash
+    } catch (e: any) {
+      errMsg = String(e?.message ?? "Refund failed");
     }
     revalidatePath(`/jobs/${encodeURIComponent(id)}`);
+    if (errMsg) {
+      const qs = new URLSearchParams({ statusUpdate: "error", statusMessage: errMsg });
+      redirect(`/jobs/${encodeURIComponent(id)}?${qs.toString()}`);
+    }
     redirect(`/jobs/${encodeURIComponent(id)}`);
   }
 
@@ -489,6 +519,21 @@ export default async function JobDetailPage({
           ID: <code>{job.id}</code>
         </div>
       </div>
+
+      {flash?.tone === "error" && (
+        <div style={{
+          marginTop: 12,
+          padding: "12px 16px",
+          background: "rgba(248,113,113,0.12)",
+          border: "1px solid rgba(248,113,113,0.35)",
+          borderRadius: 12,
+          color: "rgba(254,202,202,0.95)",
+          fontSize: 13,
+          fontWeight: 700,
+        }}>
+          ⚠ Action failed: {flash.message}
+        </div>
+      )}
 
       <div style={{ marginTop: 12, maxWidth: 560 }}>
         <JobStatusEditor

@@ -231,27 +231,34 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }
       }
 
-      // Audit log
-      await tx.insert(auditLogs).values({
-        id: randomUUID(),
-        actorUserId: null,
-        actorAdminUserId: authed.adminId as any,
-        action: "JOB_CANCELLATION_REFUND_ISSUED",
-        entityType: "Job",
-        entityId: jobId,
-        metadata: {
-          action: posterInWindow ? "PARTIAL_REFUND_75" : "FULL_REFUND",
+      // Audit log — non-blocking
+      try {
+        await tx.insert(auditLogs).values({
+          id: randomUUID(),
+          actorUserId: null,
+          actorAdminUserId: authed.adminId as any,
+          action: "JOB_CANCELLATION_REFUND_ISSUED",
+          entityType: "Job",
+          entityId: jobId,
+          metadata: {
+            action: posterInWindow ? "PARTIAL_REFUND_75" : "FULL_REFUND",
+            jobId,
+            cancelRequestId: cancelRequest.id,
+            stripeRefundId,
+            refundCents,
+            totalAmountCents,
+            posterInWindow,
+            adminId: authed.adminId,
+            adminEmail: authed.email,
+            refundedAt: now.toISOString(),
+          } as any,
+        });
+      } catch (auditErr) {
+        console.error("[CANCEL_REFUND_EXECUTED] Audit log insert failed (non-fatal)", {
           jobId,
-          cancelRequestId: cancelRequest.id,
-          stripeRefundId,
-          refundCents,
-          totalAmountCents,
-          posterInWindow,
-          adminId: authed.adminId,
-          adminEmail: authed.email,
-          refundedAt: now.toISOString(),
-        } as any,
-      });
+          message: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     });
 
     // Append idempotent system message to the job thread
