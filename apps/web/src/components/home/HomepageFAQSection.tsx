@@ -9,6 +9,13 @@ type FAQItem = {
 
 const FAQ_ITEMS: FAQItem[] = [
   {
+    question: "Why is job posting not open yet?",
+    answer: [
+      "We are building our contractor network across California first.",
+      "This ensures every job posted receives qualified responses when the platform opens to job posters. Launching contractor-first creates a better experience for everyone.",
+    ],
+  },
+  {
     question: "Do contractors on 8Fold charge by the hour?",
     answer: [
       "No. On 8Fold, you pay for the entire job - not hourly time.",

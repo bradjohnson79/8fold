@@ -13,6 +13,13 @@ const AVATAR_COLORS = [
 
 const TESTIMONIALS = [
   {
+    name: "Mike T.",
+    role: "Contractor",
+    city: "Los Angeles, CA",
+    quote:
+      "I signed up during the California launch phase. If the routing works the way they describe, this will change how contractors find work.",
+  },
+  {
     name: "Sarah M.",
     role: "Job Poster",
     city: "Austin, TX",

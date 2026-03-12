@@ -11,7 +11,7 @@ type TickerMessage = {
 
 const FALLBACK_MESSAGE: TickerMessage = {
   id: "fallback",
-  message: "8Fold is currently in Beta. Please report issues through our contact page.",
+  message: "California Launch Beta — Building the Founding Contractor Network",
   displayOrder: 1,
   intervalSeconds: 6,
 };
