@@ -16,9 +16,14 @@ export default async function HomePage() {
   const session = null;
   const isRouter = false;
 
-  // Phase flag — change this string to advance launch phases.
+  // Phase flag — set NEXT_PUBLIC_LAUNCH_PHASE env var to advance phases without a code change.
   // Supported values: "contractor_beta" | "router_beta" | "live_marketplace" | "multi_state_expansion"
-  const LAUNCH_PHASE = "contractor_beta";
+  // Default (Phase 1): "contractor_beta"
+  const LAUNCH_PHASE = (process.env.NEXT_PUBLIC_LAUNCH_PHASE ?? "contractor_beta") as
+    | "contractor_beta"
+    | "router_beta"
+    | "live_marketplace"
+    | "multi_state_expansion";
   const SHOW_MARKETPLACE = LAUNCH_PHASE === "live_marketplace";
   const SHOW_JOB_POSTER_CTA = LAUNCH_PHASE === "live_marketplace";
 
