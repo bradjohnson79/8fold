@@ -15,6 +15,18 @@ import { HomeTestimonials } from "@/components/home/HomeTestimonials";
 export default async function HomePage() {
   const session = null;
   const isRouter = false;
+
+  // Phase flag — set NEXT_PUBLIC_LAUNCH_PHASE env var to advance phases without a code change.
+  // Supported values: "contractor_beta" | "router_beta" | "live_marketplace" | "multi_state_expansion"
+  // Default (Phase 1): "contractor_beta"
+  const LAUNCH_PHASE = (process.env.NEXT_PUBLIC_LAUNCH_PHASE ?? "contractor_beta") as
+    | "contractor_beta"
+    | "router_beta"
+    | "live_marketplace"
+    | "multi_state_expansion";
+  const SHOW_MARKETPLACE = LAUNCH_PHASE === "live_marketplace";
+  const SHOW_JOB_POSTER_CTA = LAUNCH_PHASE === "live_marketplace";
+
   const heroVideoPath = String(process.env.NEXT_PUBLIC_HERO_VIDEO_PATH ?? "/hero-video.mp4").trim() || "/hero-video.mp4";
   const heroVideoEnabledByEnv = String(process.env.NEXT_PUBLIC_ENABLE_HERO_VIDEO ?? "").trim() === "1";
   const heroVideoIsExternal = /^https?:\/\//i.test(heroVideoPath);
@@ -50,24 +62,23 @@ export default async function HomePage() {
               <HeroCopy />
               <div className="mt-10 flex flex-col sm:flex-row gap-4">
                 <a
-                  href="/sign-up"
-                  aria-label="Create a free 8Fold account"
+                  href="/workers/contractors"
+                  aria-label="Join the 8Fold California contractor early access network"
                   className="inline-flex items-center justify-center px-8 py-4 bg-8fold-green hover:bg-8fold-green-dark text-white font-bold text-lg rounded-xl transition-colors shadow-lg shadow-8fold-green/25"
                 >
-                  Create Free Account
+                  Join Early Access
                 </a>
                 <a
-                  href="#how-it-works"
-                  aria-label="Learn how 8Fold works"
+                  href="/how-to-earn"
+                  aria-label="Learn how 8Fold works for contractors"
                   className="inline-flex items-center justify-center px-8 py-4 border-2 border-white text-white font-bold text-lg rounded-xl hover:bg-white hover:text-8fold-navy transition-colors duration-200"
                 >
-                  Learn How It Works
+                  Learn How 8Fold Works
                 </a>
               </div>
               {/* Trust micro-signal */}
               <p className="mt-5 text-center text-sm text-gray-400/80 max-w-2xl">
-                ⚡ Early access now open for contractors across Canada and the
-                United States
+                California Founding Contractor Network — Limited Early Access
               </p>
             </div>
 
@@ -101,40 +112,49 @@ export default async function HomePage() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
-              A Fair Marketplace Where Everyone Wins
+              California Contractor Network Launch
             </h2>
             <p className="mt-3 text-gray-500 max-w-2xl mx-auto">
-              8Fold connects Job Posters, Routers, and Contractors through
-              transparent local routing and fair payouts — creating a better
-              way to get work done.
+              Build your place in the 8Fold California network before job
+              posting opens statewide.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Job Posters */}
-            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
+            {/* Contractors — primary card for Phase 1 */}
+            <div className="group rounded-xl border-2 border-8fold-green/30 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
               <div className="flex-grow">
-                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-5">
-                  Job Poster
+                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-purple-100 text-purple-700 mb-5">
+                  Contractor
                 </span>
                 <h3 className="text-xl font-bold text-gray-900">
-                  Post a Job With Confidence
+                  Join the Contractor Network
                 </h3>
                 <p className="mt-3 text-gray-600 leading-relaxed">
-                  Set fair AI-assisted pricing and get matched with trusted
-                  local contractors in your area.
+                  Early contractors will be first to receive routed work when
+                  job posting opens across California.
                 </p>
-                <p className="mt-5 text-sm font-bold text-8fold-green">
-                  100% Money-Back Guarantee if no contractor responds within 5
-                  business days.
-                </p>
+                <ul className="mt-5 space-y-2">
+                  {[
+                    "Keep 80–85% of job value",
+                    "No lead fees",
+                    "No bidding wars",
+                  ].map((benefit) => (
+                    <li key={benefit} className="flex items-center gap-2 text-sm font-semibold text-8fold-green">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {benefit}
+                    </li>
+                  ))}
+                </ul>
               </div>
               <div className="mt-8">
                 <Link
-                  href="/sign-up"
+                  href="/workers/contractors"
                   className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl bg-8fold-green text-white font-bold text-sm hover:bg-8fold-green-dark transition-colors shadow-sm shadow-8fold-green/20"
                 >
-                  Post a Job →
+                  Join Early Access →
                 </Link>
               </div>
             </div>
@@ -146,14 +166,11 @@ export default async function HomePage() {
                   Router
                 </span>
                 <h3 className="text-xl font-bold text-gray-900">
-                  Earn by Routing Local Work
+                  Local Routing Partners
                 </h3>
                 <p className="mt-3 text-gray-600 leading-relaxed">
-                  Claim jobs in your area and route them to qualified
-                  contractors. Help coordinate local work and get rewarded.
-                </p>
-                <p className="mt-5 text-sm font-bold text-8fold-green">
-                  Earn 10% commission on completed jobs + referral bonuses.
+                  Routers coordinate jobs in their communities and earn 10%
+                  commission per completed job.
                 </p>
               </div>
               <div className="mt-8">
@@ -166,30 +183,37 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Contractors */}
-            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
+            {/* Job Posters — coming soon in Phase 1; active in Phase 2 (SHOW_JOB_POSTER_CTA) */}
+            <div className={`group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col${SHOW_JOB_POSTER_CTA ? "" : " opacity-80"}`}>
               <div className="flex-grow">
-                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-purple-100 text-purple-700 mb-5">
-                  Contractor
+                <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-5">
+                  Job Poster
                 </span>
                 <h3 className="text-xl font-bold text-gray-900">
-                  Keep Up to 80% of the Job Value
+                  {SHOW_JOB_POSTER_CTA ? "Post a Job With Confidence" : "Job Posting Coming Soon"}
                 </h3>
                 <p className="mt-3 text-gray-600 leading-relaxed">
-                  Receive routed local jobs without bidding wars or expensive
-                  lead platforms.
-                </p>
-                <p className="mt-5 text-sm font-bold text-8fold-green">
-                  Focus on doing the work — not chasing leads.
+                  {SHOW_JOB_POSTER_CTA
+                    ? "Set fair AI-assisted pricing and get matched with trusted local contractors in your area."
+                    : "We are preparing our contractor network before opening job posting across California. Homeowners and businesses will soon be able to post work and get matched with local contractors."}
                 </p>
               </div>
               <div className="mt-8">
-                <Link
-                  href="/sign-up"
-                  className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-8fold-green text-8fold-green font-bold text-sm hover:bg-8fold-green hover:text-white transition-colors"
-                >
-                  Join as Contractor →
-                </Link>
+                {SHOW_JOB_POSTER_CTA ? (
+                  <Link
+                    href="/post-job"
+                    className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl bg-8fold-green text-white font-bold text-sm hover:bg-8fold-green-dark transition-colors shadow-sm shadow-8fold-green/20"
+                  >
+                    Post a Job →
+                  </Link>
+                ) : (
+                  <Link
+                    href="/contact"
+                    className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-gray-300 text-gray-600 font-bold text-sm hover:border-8fold-green hover:text-8fold-green transition-colors"
+                  >
+                    Notify Me When Jobs Open →
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -204,8 +228,8 @@ export default async function HomePage() {
               How 8Fold Works
             </h2>
             <p className="mt-3 text-gray-500 max-w-2xl mx-auto">
-              A simple system that connects Job Posters, Routers, and
-              Contractors to get local work done quickly and fairly.
+              Phase 1: Building the California contractor network before
+              opening statewide job posting.
             </p>
           </div>
 
@@ -216,26 +240,25 @@ export default async function HomePage() {
                 1
               </div>
               <h3 className="text-xl font-bold text-gray-900">
-                Job Poster Submits Work
+                Contractors Join the California Network
               </h3>
               <p className="mt-3 text-gray-600 leading-relaxed">
-                A job poster creates a job with AI-assisted pricing. The
-                platform prepares the job for local routing.
+                Contractors sign up for early access to secure their place
+                before job posting opens statewide.
               </p>
             </div>
 
-            {/* Connector arrow — visible on md+ between steps */}
             {/* Step 2 */}
             <div className="relative bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
               <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-8fold-green text-white font-extrabold text-lg mb-5">
                 2
               </div>
               <h3 className="text-xl font-bold text-gray-900">
-                Router Assigns the Job
+                Local Routers Organize Work by Region
               </h3>
               <p className="mt-3 text-gray-600 leading-relaxed">
-                Local routers claim jobs and assign them to qualified
-                contractors in their area.
+                Local routers coordinate jobs in their communities and connect
+                the right contractors to the right work.
               </p>
             </div>
 
@@ -245,12 +268,11 @@ export default async function HomePage() {
                 3
               </div>
               <h3 className="text-xl font-bold text-gray-900">
-                Contractor Completes the Job
+                Job Posting Launches Statewide
               </h3>
               <p className="mt-3 text-gray-600 leading-relaxed">
-                  The contractor completes the work and receives 80% for local
-                  jobs or 85% for regional jobs, while routers and the platform
-                  receive their share.
+                Once contractor coverage is established across California, job
+                posting opens and routed work flows to the network.
               </p>
             </div>
           </div>
@@ -259,28 +281,31 @@ export default async function HomePage() {
       </section>
 
       {/* ───────────────── 4. MARKETPLACE PREVIEW ────────────────────── */}
-      <section className="bg-gray-50 border-b border-gray-100 py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Live Jobs on 8Fold</h2>
-            <p className="mt-2 text-gray-500">See the newest jobs currently available across the marketplace.</p>
-            <p className="mt-1 text-sm text-gray-400">Real jobs currently being routed through the 8Fold marketplace.</p>
+      {/* Phase 2 restore: set LAUNCH_PHASE = "live_marketplace" at the top of this component */}
+      {SHOW_MARKETPLACE && (
+        <section className="bg-gray-50 border-b border-gray-100 py-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-gray-900">Live Jobs on 8Fold</h2>
+              <p className="mt-2 text-gray-500">See the newest jobs currently available across the marketplace.</p>
+              <p className="mt-1 text-sm text-gray-400">Real jobs currently being routed through the 8Fold marketplace.</p>
+            </div>
+            <LocationSelector
+              title="Find Jobs in Your Area"
+              subtitle="Select your province or state, then choose a city/town. City lists only include locations with jobs."
+            />
           </div>
-          <LocationSelector
-            title="Find Jobs in Your Area"
-            subtitle="Select your province or state, then choose a city/town. City lists only include locations with jobs."
+          <HomeJobFeedClient
+            mode={isRouter ? "router_routable" : "guest_recent"}
+            isAuthenticated={isRouter}
           />
-        </div>
-        <HomeJobFeedClient
-          mode={isRouter ? "router_routable" : "guest_recent"}
-          isAuthenticated={isRouter}
-        />
-        <div className="mt-6 text-center">
-          <a href="/jobs" className="text-8fold-green font-semibold hover:underline">
-            Browse All Jobs →
-          </a>
-        </div>
-      </section>
+          <div className="mt-6 text-center">
+            <a href="/jobs" className="text-8fold-green font-semibold hover:underline">
+              Browse All Jobs →
+            </a>
+          </div>
+        </section>
+      )}
 
       {/* ──────────────── 5. BENEFITS STRIP ──────────────────────────── */}
       <section className="relative overflow-hidden bg-8fold-navy py-20">
@@ -296,8 +321,7 @@ export default async function HomePage() {
               Why Contractors Are Choosing 8Fold
             </h2>
             <p className="mt-3 text-gray-400 max-w-xl mx-auto">
-              Transparent earnings. Real accountability. A fair marketplace
-              designed for contractors, routers, and job posters.
+              Why contractors are joining the 8Fold California launch phase.
             </p>
           </div>
 
@@ -421,16 +445,16 @@ export default async function HomePage() {
           {/* Section CTA */}
           <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/sign-up"
+              href="/workers/contractors"
               className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
             >
-              Join as Contractor →
+              Join Contractor Network →
             </Link>
             <Link
-              href="/sign-up"
+              href="/how-to-earn"
               className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
             >
-              Create an Account →
+              Learn How It Works →
             </Link>
           </div>
         </div>
@@ -514,30 +538,24 @@ export default async function HomePage() {
       <section className="bg-8fold-navy">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Ready to Get Started?
+            Join the California Contractor Launch
           </h2>
           <p className="mt-4 text-gray-300 text-lg max-w-2xl mx-auto">
-            Join the routing platform built for fairness, accountability, and
-            local growth.
+            Become part of the 8Fold contractor network before job posting
+            opens statewide.
           </p>
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto">
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto">
             <Link
-              href="/post-job"
+              href="/workers/contractors"
               className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-8fold-green text-white font-bold text-base hover:bg-8fold-green-dark transition-colors shadow-lg shadow-8fold-green/25"
             >
-              Post a Job
+              Join Contractor Network
             </Link>
             <Link
               href="/workers/router"
               className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
             >
-              Be a Router
-            </Link>
-            <Link
-              href="/workers/contractor"
-              className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
-            >
-              Be a Contractor
+              Become a Router
             </Link>
           </div>
         </div>
