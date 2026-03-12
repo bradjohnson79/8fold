@@ -82,7 +82,8 @@ export default async function RootLayout({
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', 'G-WFMKDLCTE8');`,
+gtag('config', 'G-WFMKDLCTE8');
+gtag('config', 'AW-18009419135');`,
           }}
         />
         {/* Organization JSON-LD — helps search engines associate brand with official social profiles */}
