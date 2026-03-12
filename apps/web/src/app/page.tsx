@@ -160,7 +160,7 @@ export default async function HomePage() {
             </div>
 
             {/* Routers */}
-            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col">
+            <div className="group rounded-xl border border-gray-200 shadow-sm p-8 bg-white hover:-translate-y-1 hover:shadow-lg transition-all duration-200 flex flex-col opacity-80">
               <div className="flex-grow">
                 <span className="inline-block text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-blue-100 text-blue-700 mb-5">
                   Router
@@ -169,17 +169,21 @@ export default async function HomePage() {
                   Local Routing Partners
                 </h3>
                 <p className="mt-3 text-gray-600 leading-relaxed">
-                  Routers coordinate jobs in their communities and earn 10%
+                  Routers coordinate jobs in their communities and earn 8%
                   commission per completed job.
+                </p>
+                <p className="mt-2 text-sm text-gray-400">
+                  Router applications open during Phase 2 once job posting launches across California.
                 </p>
               </div>
               <div className="mt-8">
                 <Link
-                  href="/workers/router"
-                  className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-8fold-green text-8fold-green font-bold text-sm hover:bg-8fold-green hover:text-white transition-colors"
+                  href="/join-router-waitlist"
+                  className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-gray-300 text-gray-600 font-bold text-sm hover:border-8fold-green hover:text-8fold-green transition-colors"
                 >
-                  Become a Router →
+                  Notify Me When Routers Open →
                 </Link>
+                <p className="mt-2 text-center text-xs text-gray-400">No account required. Just launch updates.</p>
               </div>
             </div>
 
@@ -195,7 +199,7 @@ export default async function HomePage() {
                 <p className="mt-3 text-gray-600 leading-relaxed">
                   {SHOW_JOB_POSTER_CTA
                     ? "Set fair AI-assisted pricing and get matched with trusted local contractors in your area."
-                    : "We are preparing our contractor network before opening job posting across California. Homeowners and businesses will soon be able to post work and get matched with local contractors."}
+                    : "We are building the California contractor network first. Once coverage is established statewide, job posting will open for homeowners and businesses."}
                 </p>
               </div>
               <div className="mt-8">
@@ -207,12 +211,15 @@ export default async function HomePage() {
                     Post a Job →
                   </Link>
                 ) : (
-                  <Link
-                    href="/join-waitlist"
-                    className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-gray-300 text-gray-600 font-bold text-sm hover:border-8fold-green hover:text-8fold-green transition-colors"
-                  >
-                    Notify Me When Jobs Open →
-                  </Link>
+                  <>
+                    <Link
+                      href="/join-jobposter-waitlist"
+                      className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-gray-300 text-gray-600 font-bold text-sm hover:border-8fold-green hover:text-8fold-green transition-colors"
+                    >
+                      Notify Me When Job Posting Opens →
+                    </Link>
+                    <p className="mt-2 text-center text-xs text-gray-400">No account required. Just launch updates.</p>
+                  </>
                 )}
               </div>
             </div>
@@ -463,7 +470,8 @@ export default async function HomePage() {
       <HomepageFAQSection />
 
       {/* ──────────────────── 7. TESTIMONIALS ────────────────────────── */}
-      <HomeTestimonials />
+      {/* Phase 2 restore: set SHOW_TESTIMONIALS = true when real testimonials are collected */}
+      {(false as boolean) && <HomeTestimonials />}
 
       {/* ────────────────── 8. TRUST & GUARANTEE ─────────────────────── */}
       <section className="bg-gray-50 border-y border-gray-100">
@@ -552,10 +560,10 @@ export default async function HomePage() {
               Join Contractor Network
             </Link>
             <Link
-              href="/workers/router"
+              href="/join-router-waitlist"
               className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl border-2 border-white/30 text-white font-bold text-base hover:bg-white/10 transition-colors"
             >
-              Become a Router
+              Router Waitlist →
             </Link>
           </div>
         </div>
