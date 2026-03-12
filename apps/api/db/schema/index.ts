@@ -111,3 +111,5 @@ export * from "./seoSitemapCache";
 export * from "./seoPageGenerationQueue";
 export * from "./waitlistSubscriber";
 export * from "./adminAnnouncement";
+export * from "./routerWaitlist";
+export * from "./jobposterWaitlist";
