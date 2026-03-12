@@ -8,6 +8,7 @@ import { authErrorResponse, getOrCreateRequestId, withRequestIdHeader } from "@/
 import { requireAuth } from "@/src/auth/requireAuth";
 import { getClerkIdentity } from "@/src/auth/getClerkIdentity";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { sendContractorWelcomeEmail } from "@/src/mailer/sendContractorWelcomeEmail";
 
 const BodySchema = z.object({
   role: z.enum(["JOB_POSTER", "CONTRACTOR", "ROUTER"]),
@@ -148,6 +149,16 @@ export async function POST(req: Request) {
         },
         { mode: "best_effort" },
       );
+
+      if (body.data.role === "CONTRACTOR" && email) {
+        const firstName = name.split(" ")[0] || "there";
+        void sendContractorWelcomeEmail({ email, firstName }).catch((mailErr) => {
+          console.error("[CONTRACTOR_WELCOME_EMAIL_ERROR]", {
+            clerkUserId: authed.clerkUserId,
+            message: mailErr instanceof Error ? mailErr.message : String(mailErr),
+          });
+        });
+      }
     } catch (err) {
       console.error("[ONBOARDING_SIGNUP_EVENT_ERROR]", {
         clerkUserId: authed.clerkUserId,

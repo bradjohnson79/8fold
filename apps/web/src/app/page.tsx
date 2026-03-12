@@ -208,7 +208,7 @@ export default async function HomePage() {
                   </Link>
                 ) : (
                   <Link
-                    href="/contact"
+                    href="/join-waitlist"
                     className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl border-2 border-gray-300 text-gray-600 font-bold text-sm hover:border-8fold-green hover:text-8fold-green transition-colors"
                   >
                     Notify Me When Jobs Open →
@@ -363,14 +363,14 @@ export default async function HomePage() {
               </div>
               <div className="flex-grow min-w-0">
                 <h3 className="font-bold text-white text-lg">
-                  Routers Earn 10% Per Completed Job
+                  Routers Earn 8% Per Completed Job
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-400">
                   Earn consistent income by routing verified local jobs to qualified contractors.
                 </p>
               </div>
               <div className="hidden sm:block flex-shrink-0 text-right">
-                <span className="text-2xl font-extrabold text-blue-400">10%</span>
+                <span className="text-2xl font-extrabold text-blue-400">8%</span>
               </div>
             </div>
 

@@ -109,3 +109,5 @@ export * from "./seoIndexQueue";
 export * from "./seoIndexingLog";
 export * from "./seoSitemapCache";
 export * from "./seoPageGenerationQueue";
+export * from "./waitlistSubscriber";
+export * from "./adminAnnouncement";

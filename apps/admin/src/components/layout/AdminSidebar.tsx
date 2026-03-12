@@ -69,6 +69,12 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
     ],
   },
   {
+    title: "Communications",
+    items: [
+      { label: "Announcements", href: "/communications/announcements", match: "prefix" },
+    ],
+  },
+  {
     title: "SEO & Marketing",
     items: [
       { label: "SEO Engine", href: "/seo/engine", match: "prefix" },
