@@ -1,34 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-
-const US_STATES = [
-  "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
-  "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
-  "Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan",
-  "Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire",
-  "New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio",
-  "Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota",
-  "Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia",
-  "Wisconsin","Wyoming",
-];
 
 type FormState = {
   firstName: string;
-  lastName: string;
   email: string;
   city: string;
-  state: string;
 };
 
-const INITIAL: FormState = { firstName: "", lastName: "", email: "", city: "", state: "" };
+const INITIAL: FormState = { firstName: "", email: "", city: "" };
 
 export default function JoinContractorWaitlistPage() {
-  const router = useRouter();
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const apiOrigin =
@@ -38,7 +24,7 @@ export default function JoinContractorWaitlistPage() {
       : "https://api.8fold.app";
 
   const set = (field: keyof FormState) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
     setError(null);
@@ -49,17 +35,17 @@ export default function JoinContractorWaitlistPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const resp = await fetch(`${apiOrigin}/api/public/contractor-launch-list`, {
+      const resp = await fetch(`${apiOrigin}/api/public/launch-opt-in`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ firstName: form.firstName, email: form.email, city: form.city || undefined }),
       });
       const json = await resp.json().catch(() => null);
       if (!resp.ok || !json?.ok) {
         setError(json?.error ?? "Something went wrong. Please try again.");
         return;
       }
-      router.push("/launch-waitlist-thank-you");
+      setSuccess(true);
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {
@@ -88,54 +74,50 @@ export default function JoinContractorWaitlistPage() {
       </div>
 
       <div className="max-w-xl mx-auto px-4 pb-24">
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-5"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {success ? (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
+            <p className="text-lg font-semibold text-8fold-green-light">
+              You're on the list!
+            </p>
+            <p className="mt-2 text-gray-300">
+              We'll notify you when contractor routing begins in California.
+            </p>
+          </div>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-5"
+          >
             <div>
               <label htmlFor="firstName" className={labelClass}>First Name</label>
               <input id="firstName" type="text" required placeholder="Jane" value={form.firstName} onChange={set("firstName")} className={inputClass} />
             </div>
+
             <div>
-              <label htmlFor="lastName" className={labelClass}>Last Name</label>
-              <input id="lastName" type="text" required placeholder="Smith" value={form.lastName} onChange={set("lastName")} className={inputClass} />
+              <label htmlFor="email" className={labelClass}>Email Address</label>
+              <input id="email" type="email" required placeholder="jane@example.com" value={form.email} onChange={set("email")} className={inputClass} />
             </div>
-          </div>
 
-          <div>
-            <label htmlFor="email" className={labelClass}>Email Address</label>
-            <input id="email" type="email" required placeholder="jane@example.com" value={form.email} onChange={set("email")} className={inputClass} />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="city" className={labelClass}>City</label>
-              <input id="city" type="text" required placeholder="Los Angeles" value={form.city} onChange={set("city")} className={inputClass} />
+              <label htmlFor="city" className={labelClass}>City (optional)</label>
+              <input id="city" type="text" placeholder="Los Angeles" value={form.city} onChange={set("city")} className={inputClass} />
             </div>
-            <div>
-              <label htmlFor="state" className={labelClass}>State</label>
-              <select id="state" required value={form.state} onChange={set("state")} className={`${inputClass} appearance-none`}>
-                <option value="" disabled className="bg-gray-900">Select state</option>
-                {US_STATES.map((s) => <option key={s} value={s} className="bg-gray-900">{s}</option>)}
-              </select>
-            </div>
-          </div>
 
-          {error && <p className="text-sm text-red-400 font-medium">{error}</p>}
+            {error && <p className="text-sm text-red-400 font-medium">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-4 rounded-xl bg-8fold-green hover:bg-8fold-green-dark text-white font-bold text-base transition-colors shadow-lg shadow-8fold-green/25 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {submitting ? "Submitting…" : "Join the Launch List"}
-          </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-4 rounded-xl bg-8fold-green hover:bg-8fold-green-dark text-white font-bold text-base transition-colors shadow-lg shadow-8fold-green/25 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {submitting ? "Submitting…" : "Join the Launch List"}
+            </button>
 
-          <p className="text-center text-xs text-gray-500">
-            No account required. Just launch updates.
-          </p>
-        </form>
+            <p className="text-center text-xs text-gray-500">
+              No account required. Just launch updates.
+            </p>
+          </form>
+        )}
 
         <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
           <p className="text-sm text-gray-300 font-semibold mb-3">

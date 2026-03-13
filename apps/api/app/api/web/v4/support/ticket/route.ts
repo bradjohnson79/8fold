@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { createSupportTicket } from "@/src/services/v4/v4SupportService";
 import { badRequest, internal, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
+import { sendTransactionalEmail } from "@/src/mailer/sendTransactionalEmail";
 
 const ALLOWED_ROLES = ["JOB_POSTER", "ROUTER", "CONTRACTOR"] as const;
 
@@ -42,6 +43,41 @@ export async function POST(req: Request) {
       ticketType,
       priority,
     });
+
+    if (routedTo === "SUPPORT_TICKET") {
+      const adminEmails = String(process.env.ADMIN_SUPER_EMAILS ?? "")
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean);
+      if (adminEmails.length > 0) {
+        const roleLabel =
+          role === "CONTRACTOR" ? "Contractor" : role === "ROUTER" ? "Router" : "Job Poster";
+        const subjectLine = `[8Fold Support] ${roleLabel} Ticket – ${subject}`;
+        const adminOrigin =
+          String(process.env.ADMIN_ORIGIN ?? "").trim() || "https://admin.8fold.app";
+        const adminLink = `${adminOrigin.replace(/\/+$/, "")}/support/v4/${id}`;
+        const truncatedBody = body.length > 500 ? body.slice(0, 500) + "…" : body;
+        const html = `
+          <p><strong>Ticket ID:</strong> ${id}</p>
+          <p><strong>Role:</strong> ${roleLabel}</p>
+          <p><strong>Subject:</strong> ${subject}</p>
+          <p><strong>Message:</strong></p>
+          <pre style="white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:8px;">${truncatedBody.replace(/</g, "&lt;")}</pre>
+          <p><strong>Submitted:</strong> ${new Date().toISOString()}</p>
+          <p><a href="${adminLink}" style="color:#10b981;font-weight:700;">View in Admin →</a></p>
+        `;
+        const text = `Ticket ID: ${id}\nRole: ${roleLabel}\nSubject: ${subject}\n\nMessage:\n${truncatedBody}\n\nSubmitted: ${new Date().toISOString()}\nView: ${adminLink}`;
+        for (const adminEmail of adminEmails) {
+          void sendTransactionalEmail({
+            to: adminEmail,
+            subject: subjectLine,
+            html: `<!DOCTYPE html><html><body>${html}</body></html>`,
+            text,
+          }).catch((e) => console.error("[SUPPORT_TICKET_ADMIN_EMAIL_ERROR]", e));
+        }
+      }
+    }
+
     return NextResponse.json({ id, routedTo });
   } catch (err) {
     const wrapped = err instanceof Error && "status" in err ? (err as V4Error) : internal("V4_SUPPORT_TICKET_FAILED");

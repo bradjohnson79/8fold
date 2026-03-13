@@ -9,7 +9,7 @@ type NavItem = {
   label: string;
   href: string;
   match?: "exact" | "prefix";
-  countKey?: "notifications" | "support" | "disputes" | "reviews";
+  countKey?: "notifications" | "support" | "disputes" | "reviews" | "launchOptIns";
 };
 
 type MessageCounts = {
@@ -17,6 +17,7 @@ type MessageCounts = {
   support: number;
   disputes: number;
   reviews: number;
+  launchOptIns: number;
 };
 
 const NAV: Array<{ title: string; items: NavItem[] }> = [
@@ -72,6 +73,7 @@ const NAV: Array<{ title: string; items: NavItem[] }> = [
     title: "Communications",
     items: [
       { label: "Announcements", href: "/communications/announcements", match: "prefix" },
+      { label: "Launch Opt-ins", href: "/communications/launch-opt-ins", match: "prefix", countKey: "launchOptIns" },
     ],
   },
   {
@@ -107,6 +109,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
     support: 0,
     disputes: 0,
     reviews: 0,
+    launchOptIns: 0,
   });
 
   useEffect(() => {
@@ -125,6 +128,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
               support: Number(data.support ?? 0) || 0,
               disputes: Number(data.disputes ?? 0) || 0,
               reviews: Number(data.reviews ?? 0) || 0,
+              launchOptIns: Number(data.launchOptIns ?? 0) || 0,
             });
           }
         }
