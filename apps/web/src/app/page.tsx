@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { HomepageFAQSection } from "@/components/home/HomepageFAQSection";
 import { HomeTestimonials } from "@/components/home/HomeTestimonials";
+import ContractorLaunchCapture from "@/components/home/ContractorLaunchCapture";
 
 /**
  * Homepage is public. No auth or API calls in SSR.
@@ -106,6 +107,9 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ─────── 1b. CONTRACTOR LAUNCH CAPTURE ──────────────────────── */}
+      <ContractorLaunchCapture />
 
       {/* ──────────────── 2. ACCOUNT TYPE CARDS ─────────────────────── */}
       <section className="bg-white py-20">
