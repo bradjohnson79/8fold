@@ -114,3 +114,4 @@ export * from "./adminAnnouncement";
 export * from "./routerWaitlist";
 export * from "./jobposterWaitlist";
 export * from "./contractorLaunchList";
+export * from "./launchOptIn";

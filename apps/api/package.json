@@ -30,6 +30,7 @@
     "ci:smoke": "tsx scripts/ci-smoke.ts",
     "backfill:roles": "tsx scripts/backfill-role-taxonomy.ts",
     "migrate:router-rewards": "tsx scripts/migrate-router-rewards.ts",
+    "migrate:launch-opt-ins": "tsx scripts/migrate-launch-opt-ins.ts",
     "check:prod": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionDbCheck.ts",
     "seed:prod": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/seedProductionTestJob.ts",
     "audit:prod-auth-db": "DOTENV_CONFIG_PATH=.env.local tsx -r dotenv/config scripts/productionAuthDbAudit.ts",
@@ -43,7 +44,8 @@
     "smoke:admin-tier-lockdown": "tsx scripts/smoke-admin-tier-lockdown.ts",
     "admin:v4:backfill": "tsx scripts/backfill-admin-v4-domain.ts",
     "admin:v4:sync": "tsx scripts/sync-admin-v4-domain.ts",
-    "seed:initial-admin": "tsx scripts/seed-initial-admin.ts"
+    "seed:initial-admin": "tsx scripts/seed-initial-admin.ts",
+    "dise:outreach:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/dise-outreach-worker.ts"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
@@ -53,14 +55,18 @@
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.45.1",
+    "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.3",
     "next": "^15.1.6",
+    "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
     "openai": "^6.18.0",
+    "papaparse": "^5.5.3",
     "pg": "^8.18.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "stripe": "^17.4.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -69,6 +75,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.13.1",
     "@types/nodemailer": "^7.0.9",
+    "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.16.0",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",

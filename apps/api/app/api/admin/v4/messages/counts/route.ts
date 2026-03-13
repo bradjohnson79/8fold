@@ -4,6 +4,8 @@ import { v4Notifications } from "@/db/schema/v4Notification";
 import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
 import { v4AdminDisputes } from "@/db/schema/v4AdminDispute";
 import { disputes } from "@/db/schema/dispute";
+import { launchOptIns } from "@/db/schema/launchOptIn";
+import { NextResponse } from "next/server";
 import { requireAdminV4 } from "@/src/auth/requireAdminV4";
 import { ok } from "@/src/lib/api/adminV4Response";
 
@@ -16,7 +18,13 @@ export async function GET(req: Request) {
   if (authed instanceof Response) return authed;
 
   try {
-    const [notificationsRows, supportRows, adminDisputesRows, messengerDisputesRows] = await Promise.all([
+    const [
+      notificationsRows,
+      supportRows,
+      adminDisputesRows,
+      messengerDisputesRows,
+      launchOptInsRows,
+    ] = await Promise.all([
       db
         .select({ count: sql<number>`count(*)::int` })
         .from(v4Notifications)
@@ -33,6 +41,7 @@ export async function GET(req: Request) {
         .select({ count: sql<number>`count(*)::int` })
         .from(disputes)
         .where(inArray(disputes.status, [...ACTIVE_DISPUTE_STATUSES])),
+      db.select({ count: sql<number>`count(*)::int` }).from(launchOptIns),
     ]);
 
     const notifications = Number(notificationsRows[0]?.count ?? 0);
@@ -40,13 +49,16 @@ export async function GET(req: Request) {
     const disputesCount =
       Number(adminDisputesRows[0]?.count ?? 0) + Number(messengerDisputesRows[0]?.count ?? 0);
     const reviews = 0; // v4_reviews has no moderation_status yet
+    const launchOptInsCount = Number(launchOptInsRows[0]?.count ?? 0);
 
-    return ok({
-      notifications,
-      support,
-      disputes: disputesCount,
-      reviews,
-    });
+    return NextResponse.json(
+      { ok: true, data: { notifications, support, disputes: disputesCount, reviews, launchOptIns: launchOptInsCount } },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=30",
+        },
+      },
+    );
   } catch (error) {
     console.error("[ADMIN_V4_MESSAGES_COUNTS]", {
       message: error instanceof Error ? error.message : String(error),
@@ -56,6 +68,7 @@ export async function GET(req: Request) {
       support: 0,
       disputes: 0,
       reviews: 0,
+      launchOptIns: 0,
     });
   }
 }
