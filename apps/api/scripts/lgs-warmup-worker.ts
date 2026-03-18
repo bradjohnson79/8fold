@@ -33,6 +33,7 @@ import {
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
 const WORKER_NAME = "warmup";
+const WORKER_INTERVAL_MS = 5 * 60 * 1000;
 
 const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
   { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
@@ -84,8 +85,17 @@ async function logActivity(entry: {
 
 // ─── Worker Heartbeat ─────────────────────────────────────────────────
 
+async function ensureWorkerHealthRow(): Promise<void> {
+  await db.insert(lgsWorkerHealth).values({
+    workerName: WORKER_NAME,
+  }).onConflictDoNothing({
+    target: lgsWorkerHealth.workerName,
+  });
+}
+
 async function heartbeatStart(): Promise<void> {
   const now = new Date();
+  await ensureWorkerHealthRow();
   await db
     .update(lgsWorkerHealth)
     .set({
@@ -98,6 +108,7 @@ async function heartbeatStart(): Promise<void> {
 
 async function heartbeatFinish(status: string, error?: string): Promise<void> {
   const now = new Date();
+  await ensureWorkerHealthRow();
   await db
     .update(lgsWorkerHealth)
     .set({
@@ -189,6 +200,7 @@ async function sendWarmupEmails(): Promise<void> {
       console.log(`[LGS Warmup] ${email}: skipped (in cooldown until ${sender.cooldownUntil.toISOString()})`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -199,6 +211,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (remaining <= 0) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -212,6 +225,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (warmupSentSoFar >= warmupBudget) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -220,6 +234,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (!hasGmailTokenForSender(email)) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -250,6 +265,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (!eligibility.allowed) {
       await db.update(senderPool).set({
         lastWarmupResult: "wait",
+        updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
     }
@@ -265,6 +281,7 @@ async function sendWarmupEmails(): Promise<void> {
       console.warn(`[LGS Warmup] ${email}: no valid target — ${(targetResult as { reason: string }).reason}`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -328,6 +345,7 @@ async function sendWarmupEmails(): Promise<void> {
         await db.update(senderPool).set({
           lastWarmupResult: "error",
           lastWarmupRecipient: targetEmail,
+          nextWarmupSendAt: new Date(now.getTime() + WORKER_INTERVAL_MS),
           updatedAt: now,
         }).where(eq(senderPool.id, sender.id));
 
@@ -348,6 +366,7 @@ async function sendWarmupEmails(): Promise<void> {
       await db.update(senderPool).set({
         lastWarmupResult: "error",
         lastWarmupRecipient: targetEmail,
+        nextWarmupSendAt: new Date(now.getTime() + WORKER_INTERVAL_MS),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
 

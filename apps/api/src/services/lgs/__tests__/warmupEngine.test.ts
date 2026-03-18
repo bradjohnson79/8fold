@@ -184,20 +184,20 @@ describe("getDailyLimit", () => {
 // ─── isReadyForOutreach ───────────────────────────────────────────────────────
 
 describe("isReadyForOutreach", () => {
-  it("returns true when status is ready", () => {
-    expect(isReadyForOutreach(5, "ready")).toBe(true);
+  it("returns true when the sender reached day 5 and 50/day", () => {
+    expect(isReadyForOutreach(5, 50)).toBe(true);
   });
 
-  it("returns true when warming at day 5 (limit >= 50)", () => {
-    expect(isReadyForOutreach(5, "warming")).toBe(true);
+  it("returns true when limits exceed the outreach threshold", () => {
+    expect(isReadyForOutreach(6, 75)).toBe(true);
   });
 
-  it("returns false when warming at day 4 (limit < 50)", () => {
-    expect(isReadyForOutreach(4, "warming")).toBe(false);
+  it("returns false before day 5", () => {
+    expect(isReadyForOutreach(4, 50)).toBe(false);
   });
 
-  it("returns false when not started", () => {
-    expect(isReadyForOutreach(0, "not_started")).toBe(false);
+  it("returns false when the sender is below 50/day", () => {
+    expect(isReadyForOutreach(5, 35)).toBe(false);
   });
 });
 
