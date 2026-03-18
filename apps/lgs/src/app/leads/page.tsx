@@ -790,7 +790,7 @@ export default function LeadsPage() {
           <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{selectedIds.length} selected</span>
           {selectedWithNoMsg.length > 0 && (
             <button
-              onClick={bulkGenerate}
+              onClick={() => { void bulkGenerate(); }}
               disabled={bulkGenerating}
               style={{ padding: "0.4rem 0.875rem", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", fontSize: "0.875rem", cursor: bulkGenerating ? "not-allowed" : "pointer" }}
             >

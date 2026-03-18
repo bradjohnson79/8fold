@@ -15,7 +15,5 @@ export async function POST(req: Request) {
 }
 
 export async function OPTIONS() {
-  const res = await proxyToApi("/api/lgs/leads/finder/campaigns", { method: "OPTIONS", body: {} });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return NextResponse.json({}, { status: 204 });
 }
