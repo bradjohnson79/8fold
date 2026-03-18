@@ -25,16 +25,18 @@ function getOAuth2Client(refreshToken: string) {
   return oauth2;
 }
 
-const SENDER_ENV_PAIRS = [
-  { sender: process.env.GMAIL_SENDER_1 ?? "info@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN },
-  { sender: process.env.GMAIL_SENDER_2 ?? "support@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_2 },
-  { sender: process.env.GMAIL_SENDER_3 ?? "hello@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_3 },
-  { sender: process.env.GMAIL_SENDER_4 ?? "partners@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_4 },
-] as const;
+function getSenderEnvPairs() {
+  return [
+    { sender: process.env.GMAIL_SENDER_1 ?? "info@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN },
+    { sender: process.env.GMAIL_SENDER_2 ?? "support@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_2 },
+    { sender: process.env.GMAIL_SENDER_3 ?? "hello@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_3 },
+    { sender: process.env.GMAIL_SENDER_4 ?? "partners@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_4 },
+  ] as const;
+}
 
 function getRefreshTokenForSender(senderAccount: string): string | null {
   const normalized = senderAccount.trim().toLowerCase();
-  for (const { sender, token } of SENDER_ENV_PAIRS) {
+  for (const { sender, token } of getSenderEnvPairs()) {
     if (sender?.trim().toLowerCase() === normalized && token) return token;
   }
   return null;
@@ -73,7 +75,7 @@ function base64UrlEncode(str: string): string {
 }
 
 export type SendResult =
-  | { ok: true }
+  | { ok: true; messageId: string | null }
   | { ok: false; bounce: true; message: string }
   | { ok: false; bounce: false; message: string };
 
@@ -98,11 +100,11 @@ export async function sendOutreachEmail(msg: GmailMessagePayload): Promise<SendR
   const raw = base64UrlEncode(mime);
 
   try {
-    await gmail.users.messages.send({
+    const response = await gmail.users.messages.send({
       userId: "me",
       requestBody: { raw },
     });
-    return { ok: true };
+    return { ok: true, messageId: response.data.id ?? null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const lower = message.toLowerCase();

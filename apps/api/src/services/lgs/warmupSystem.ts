@@ -80,6 +80,7 @@ export type WarmupValidationResult = {
   summary: {
     warming_senders: number;
     senders_with_countdowns: number;
+    senders_with_future_countdowns: number;
     overdue_senders: number;
     recent_activity_found: boolean;
     worker_status: WarmupWorkerStatus;
@@ -422,6 +423,9 @@ export function validateWarmupSystemSnapshot(input: {
   const reasons: string[] = [];
   const warnings: string[] = [];
   const warmingSenders = input.senders.filter((sender) => sender.warmupStatus === "warming");
+  const sendersWithFutureCountdowns = warmingSenders.filter(
+    (sender) => !!sender.nextWarmupSendAt && new Date(sender.nextWarmupSendAt) > now
+  ).length;
 
   for (const sender of warmingSenders) {
     if (!sender.currentDayStartedAt) {
@@ -446,6 +450,10 @@ export function validateWarmupSystemSnapshot(input: {
     ) {
       reasons.push(`${sender.senderEmail}: scheduled send window passed without logged activity`);
     }
+  }
+
+  if (warmingSenders.length > 0 && sendersWithFutureCountdowns === 0) {
+    reasons.push("No warming sender has a future next_warmup_send_at.");
   }
 
   const workerStatus = getWarmupWorkerStatus(input.workerRow?.lastHeartbeatAt);
@@ -480,6 +488,7 @@ export function validateWarmupSystemSnapshot(input: {
     summary: {
       warming_senders: warmingSenders.length,
       senders_with_countdowns: warmingSenders.filter((sender) => !!sender.nextWarmupSendAt).length,
+      senders_with_future_countdowns: sendersWithFutureCountdowns,
       overdue_senders: warmingSenders.filter((sender) =>
         hasMissedScheduledSend({
           nextWarmupSendAt: sender.nextWarmupSendAt,
