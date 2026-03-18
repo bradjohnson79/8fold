@@ -1,21 +1,15 @@
 import { NextResponse } from "next/server";
-import { eq, or, desc } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { senderPool, lgsWorkerHealth, lgsWarmupActivity } from "@/db/schema/directoryEngine";
 import { hasGmailTokenForSender } from "@/src/services/lgs/outreachGmailSenderService";
 import { INTERNAL_SENDERS, EXTERNAL_TARGETS } from "@/src/services/lgs/warmupEngine";
-
-function getHeartbeatStatus(lastHeartbeatAt: Date | null | undefined): "healthy" | "warning" | "stale" {
-  if (!lastHeartbeatAt) return "stale";
-
-  const heartbeatAgeMs = Date.now() - new Date(lastHeartbeatAt).getTime();
-  if (heartbeatAgeMs < 10 * 60_000) return "healthy";
-  if (heartbeatAgeMs < 20 * 60_000) return "warning";
-  return "stale";
-}
+import { enforceWarmupSystemState, getWarmupWorkerStatus, validateWarmupSystem } from "@/src/services/lgs/warmupSystem";
 
 export async function GET() {
   try {
+    await enforceWarmupSystemState();
+
     // Worker health
     const [workerRow] = await db
       .select()
@@ -23,10 +17,12 @@ export async function GET() {
       .where(eq(lgsWorkerHealth.workerName, "warmup"))
       .limit(1);
 
-    const heartbeatStatus = getHeartbeatStatus(workerRow?.lastHeartbeatAt);
+    const heartbeatStatus = getWarmupWorkerStatus(workerRow?.lastHeartbeatAt);
     const heartbeatAgeMs = workerRow?.lastHeartbeatAt
       ? Date.now() - new Date(workerRow.lastHeartbeatAt).getTime()
       : Infinity;
+
+    const validation = await validateWarmupSystem();
 
     // Active senders
     const senders = await db
@@ -69,11 +65,12 @@ export async function GET() {
     const checks = [
       { name: "active_senders", pass: activeSendersExist },
       { name: "gmail_tokens", pass: allTokensValid, detail: gmailTokens },
-      { name: "worker_heartbeat", pass: heartbeatStatus !== "stale" },
+      { name: "worker_heartbeat", pass: heartbeatStatus === "healthy" },
       { name: "next_send_computed", pass: nextSendComputed },
       { name: "recent_activity", pass: recentActivityExists },
       { name: "internal_target_pool", pass: internalPoolConfigured },
       { name: "external_target_pool", pass: externalPoolConfigured },
+      { name: "validation_gate", pass: validation.pass, detail: validation.reasons },
     ];
 
     const passCount = checks.filter((c) => c.pass).length;
@@ -101,6 +98,7 @@ export async function GET() {
         checks,
         pass_count: passCount,
         fail_count: failCount,
+        validation,
       },
     });
   } catch (err) {

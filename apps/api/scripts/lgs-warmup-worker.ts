@@ -29,6 +29,13 @@ import {
   pickWarmupTarget,
   computeHealthScore,
 } from "../src/services/lgs/warmupEngine";
+import {
+  computeNextWarmupSendAt,
+  computeWarmupRetryAt,
+  enforceWarmupSystemState,
+  ensureWarmupWorkerHealthRow,
+  recordWarmupActivity,
+} from "../src/services/lgs/warmupSystem";
 
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
@@ -58,44 +65,11 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-// ─── Activity Logging ─────────────────────────────────────────────────
-
-async function logActivity(entry: {
-  senderEmail: string;
-  recipientEmail: string;
-  subject: string;
-  messageType: string;
-  status: string;
-  errorMessage?: string;
-}): Promise<void> {
-  try {
-    await db.insert(lgsWarmupActivity).values({
-      senderEmail: entry.senderEmail,
-      recipientEmail: entry.recipientEmail,
-      subject: entry.subject,
-      messageType: entry.messageType,
-      status: entry.status,
-      errorMessage: entry.errorMessage ?? null,
-      sentAt: new Date(),
-    });
-  } catch (err) {
-    console.error("[LGS Warmup] activity log error:", err);
-  }
-}
-
 // ─── Worker Heartbeat ─────────────────────────────────────────────────
-
-async function ensureWorkerHealthRow(): Promise<void> {
-  await db.insert(lgsWorkerHealth).values({
-    workerName: WORKER_NAME,
-  }).onConflictDoNothing({
-    target: lgsWorkerHealth.workerName,
-  });
-}
 
 async function heartbeatStart(): Promise<void> {
   const now = new Date();
-  await ensureWorkerHealthRow();
+  await ensureWarmupWorkerHealthRow();
   await db
     .update(lgsWorkerHealth)
     .set({
@@ -108,7 +82,7 @@ async function heartbeatStart(): Promise<void> {
 
 async function heartbeatFinish(status: string, error?: string): Promise<void> {
   const now = new Date();
-  await ensureWorkerHealthRow();
+  await ensureWarmupWorkerHealthRow();
   await db
     .update(lgsWorkerHealth)
     .set({
@@ -200,7 +174,19 @@ async function sendWarmupEmails(): Promise<void> {
       console.log(`[LGS Warmup] ${email}: skipped (in cooldown until ${sender.cooldownUntil.toISOString()})`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
-        nextWarmupSendAt: null,
+        nextWarmupSendAt: computeNextWarmupSendAt({
+          warmupStatus: sender.warmupStatus,
+          warmupDay: sender.warmupDay,
+          dailyLimit: sender.dailyLimit,
+          warmupSentToday: sender.warmupSentToday,
+          outreachSentToday: sender.outreachSentToday,
+          currentDayStartedAt: sender.currentDayStartedAt,
+          warmupStartedAt: sender.warmupStartedAt,
+          outreachEnabled: sender.outreachEnabled,
+          cooldownUntil: sender.cooldownUntil,
+          hasValidToken: true,
+          now,
+        }),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -211,7 +197,18 @@ async function sendWarmupEmails(): Promise<void> {
     if (remaining <= 0) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
-        nextWarmupSendAt: null,
+        nextWarmupSendAt: computeNextWarmupSendAt({
+          warmupStatus: sender.warmupStatus,
+          warmupDay: sender.warmupDay,
+          dailyLimit: sender.dailyLimit,
+          warmupSentToday: sender.warmupSentToday,
+          outreachSentToday: sender.outreachSentToday,
+          currentDayStartedAt: sender.currentDayStartedAt,
+          warmupStartedAt: sender.warmupStartedAt,
+          outreachEnabled: sender.outreachEnabled,
+          hasValidToken: true,
+          now,
+        }),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -225,7 +222,18 @@ async function sendWarmupEmails(): Promise<void> {
     if (warmupSentSoFar >= warmupBudget) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
-        nextWarmupSendAt: null,
+        nextWarmupSendAt: computeNextWarmupSendAt({
+          warmupStatus: sender.warmupStatus,
+          warmupDay: sender.warmupDay,
+          dailyLimit: sender.dailyLimit,
+          warmupSentToday: sender.warmupSentToday,
+          outreachSentToday: sender.outreachSentToday,
+          currentDayStartedAt: sender.currentDayStartedAt,
+          warmupStartedAt: sender.warmupStartedAt,
+          outreachEnabled: sender.outreachEnabled,
+          hasValidToken: true,
+          now,
+        }),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -234,7 +242,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (!hasGmailTokenForSender(email)) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
-        nextWarmupSendAt: null,
+        nextWarmupSendAt: computeWarmupRetryAt(now),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -281,7 +289,7 @@ async function sendWarmupEmails(): Promise<void> {
       console.warn(`[LGS Warmup] ${email}: no valid target — ${(targetResult as { reason: string }).reason}`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
-        nextWarmupSendAt: null,
+        nextWarmupSendAt: computeWarmupRetryAt(now),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -328,7 +336,7 @@ async function sendWarmupEmails(): Promise<void> {
           })
           .where(eq(senderPool.id, sender.id));
 
-        await logActivity({
+        await recordWarmupActivity({
           senderEmail: email,
           recipientEmail: targetEmail,
           subject: msg.subject,
@@ -345,11 +353,11 @@ async function sendWarmupEmails(): Promise<void> {
         await db.update(senderPool).set({
           lastWarmupResult: "error",
           lastWarmupRecipient: targetEmail,
-          nextWarmupSendAt: new Date(now.getTime() + WORKER_INTERVAL_MS),
+          nextWarmupSendAt: computeWarmupRetryAt(now),
           updatedAt: now,
         }).where(eq(senderPool.id, sender.id));
 
-        await logActivity({
+        await recordWarmupActivity({
           senderEmail: email,
           recipientEmail: targetEmail,
           subject: msg.subject,
@@ -366,11 +374,11 @@ async function sendWarmupEmails(): Promise<void> {
       await db.update(senderPool).set({
         lastWarmupResult: "error",
         lastWarmupRecipient: targetEmail,
-        nextWarmupSendAt: new Date(now.getTime() + WORKER_INTERVAL_MS),
+        nextWarmupSendAt: computeWarmupRetryAt(now),
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
 
-      await logActivity({
+      await recordWarmupActivity({
         senderEmail: email,
         recipientEmail: targetEmail,
         subject: msg.subject,
@@ -451,6 +459,13 @@ async function runWarmupCycle(): Promise<void> {
   }
 
   let cycleError: string | undefined;
+
+  try {
+    await enforceWarmupSystemState();
+  } catch (err) {
+    console.error("[LGS Warmup] invariant enforcement error:", err);
+    cycleError = err instanceof Error ? err.message : String(err);
+  }
 
   try {
     await advanceDays();

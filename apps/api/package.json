@@ -48,7 +48,8 @@
     "lgs:verification:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-email-verification-worker.ts",
     "lgs:outreach:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-outreach-worker.ts",
     "lgs:reset-counters": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-reset-daily-counters.ts",
-    "lgs:warmup:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-warmup-worker.ts"
+    "lgs:warmup:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-warmup-worker.ts",
+    "lgs:warmup:validate": "DOTENV_CONFIG_PATH=.env.local tsx scripts/validate-lgs-warmup-system.ts"
   },
   "dependencies": {
     "@8fold/shared": "workspace:*",
