@@ -102,20 +102,20 @@ if (adminBad.length) {
   );
 }
 
-// ---- Rule E: DISE routes must remain operationally isolated ----
-// DISE isolation contract:
+// ---- Rule E: LGS routes must remain operationally isolated ----
+// LGS isolation contract:
 // - Must not couple to job lifecycle, ledger, or Stripe/payments.
-// - Must not import non-DISE schemas in DISE routes (DB writes/read must be via directoryEngine tables only).
+// - Must not import non-LGS schemas in LGS routes (DB writes/read must be via directoryEngine tables only).
 //
 // We scan import strings (not full AST) intentionally to keep this check dependency-free.
-const diseRouteDirs = [
-  path.join(ROOT, "apps/api/app/api/dise"),
-  path.join(ROOT, "apps/dise/src/app/api/dise"),
+const lgsRouteDirs = [
+  path.join(ROOT, "apps/api/app/api/lgs"),
+  path.join(ROOT, "apps/lgs/src/app/api/lgs"),
 ];
-const diseFiles = diseRouteDirs.flatMap((d) => walk(d, [".ts", ".tsx", ".js", ".jsx"]));
+const lgsFiles = lgsRouteDirs.flatMap((d) => walk(d, [".ts", ".tsx", ".js", ".jsx"]));
 
-const diseForbiddenImports: RegExp[] = [
-  // Schema boundary: only allow directoryEngine in DISE routes
+const lgsForbiddenImports: RegExp[] = [
+  // Schema boundary: only allow directoryEngine in LGS routes
   /from\s+["']@\/db\/schema\/(?!directoryEngine\b)[^"']+["']/,
 
   // No job lifecycle coupling
@@ -132,11 +132,11 @@ const diseForbiddenImports: RegExp[] = [
   /from\s+["']@\/.*\bwebhooks?\b[^"']*["']/,
 ];
 
-const diseBad = diseFiles.filter((f) => fileContains(f, diseForbiddenImports));
-if (diseBad.length) {
+const lgsBad = lgsFiles.filter((f) => fileContains(f, lgsForbiddenImports));
+if (lgsBad.length) {
   fail(
-    "DISE routes must not import jobs/ledger/stripe/payments, and must only import DB schema from @/db/schema/directoryEngine",
-    diseBad.map(rel)
+    "LGS routes must not import jobs/ledger/stripe/payments, and must only import DB schema from @/db/schema/directoryEngine",
+    lgsBad.map(rel)
   );
 }
 
