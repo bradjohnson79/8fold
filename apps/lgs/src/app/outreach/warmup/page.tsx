@@ -154,10 +154,15 @@ function StatCard({ label, value, sub, color = "#f8fafc" }: { label: string; val
 
 /**
  * Estimate the next warmup send time from slot math when next_warmup_send_at
- * hasn't been persisted yet (i.e. worker hasn't run since senders were added).
+ * hasn't been persisted yet (worker hasn't run since senders were added).
+ *
+ * Scans each unfilled slot forward from sentToday. If all of today's slot
+ * mid-points have already passed, falls forward to the first slot of the
+ * next day (using next_rollover_at as the day boundary).
  */
 function computeEstimatedNextSend(senders: WarmupSender[]): string | null {
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
   let earliest: number | null = null;
   for (const s of senders) {
     if (s.warmup_status !== "warming") continue;
@@ -168,9 +173,18 @@ function computeEstimatedNextSend(senders: WarmupSender[]): string | null {
     if (sentToday >= limit) continue;
     const slotMs = DAY_MS / limit;
     const dayStart = new Date(s.current_day_started_at).getTime();
-    // Place estimate at mid-point of the next unfilled slot
-    const estimated = dayStart + (sentToday + 0.5) * slotMs;
-    if (earliest === null || estimated < earliest) earliest = estimated;
+    // Walk forward through unfilled slots until we find one whose mid-point is in the future
+    let estimated: number | null = null;
+    for (let i = sentToday; i < limit; i++) {
+      const mid = dayStart + (i + 0.5) * slotMs;
+      if (mid > now) { estimated = mid; break; }
+    }
+    // All of today's slots have elapsed — fall forward to slot 0 of the next day
+    if (estimated === null && s.next_rollover_at) {
+      const nextDayStart = new Date(s.next_rollover_at).getTime();
+      estimated = nextDayStart + 0.5 * slotMs;
+    }
+    if (estimated !== null && (earliest === null || estimated < earliest)) earliest = estimated;
   }
   return earliest !== null ? new Date(earliest).toISOString() : null;
 }
