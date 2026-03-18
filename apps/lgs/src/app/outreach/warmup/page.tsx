@@ -17,7 +17,6 @@ type WarmupSender = {
   remaining_capacity: number;
   current_day_started_at: string | null;
   next_warmup_send_at: string | null;
-  next_send_state: string;
   last_warmup_sent_at: string | null;
   last_warmup_result: string | null;
   last_warmup_recipient: string | null;
@@ -83,6 +82,12 @@ type HealthData = {
   checks: Array<{ name: string; pass: boolean }>;
   pass_count: number;
   fail_count: number;
+  validation?: {
+    pass: boolean;
+    reasons: string[];
+    warnings: string[];
+    explanation: string | null;
+  };
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -113,20 +118,6 @@ const RESULT_COLORS: Record<string, string> = {
   error: "#ef4444",
   skipped: "#facc15",
   wait: "#f59e0b",
-};
-
-const HEALTH_COLORS: Record<string, string> = {
-  good: "#22c55e",
-  warning: "#f59e0b",
-  risk: "#ef4444",
-  unknown: "#94a3b8",
-};
-
-const HEALTH_LABELS: Record<string, string> = {
-  good: "Healthy",
-  warning: "Watch",
-  risk: "Risk",
-  unknown: "Insufficient activity",
 };
 
 function formatClockTime(iso: string | null): string {
@@ -178,49 +169,6 @@ function useCountdown(target: string | null, fallback: string): string {
   }, [fallback, target]);
 
   return display;
-}
-
-function HealthBadge({ score }: { score: string | null }) {
-  if (!score) return null;
-  const color = HEALTH_COLORS[score] ?? "#94a3b8";
-  const label = HEALTH_LABELS[score] ?? score;
-
-  return (
-    <span
-      style={{
-        padding: "0.15rem 0.55rem",
-        borderRadius: 999,
-        fontSize: "0.72rem",
-        fontWeight: 700,
-        background: `${color}22`,
-        border: `1px solid ${color}55`,
-        color,
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status] ?? "#94a3b8";
-  const label = STATUS_LABELS[status] ?? status;
-
-  return (
-    <span
-      style={{
-        padding: "0.2rem 0.65rem",
-        borderRadius: 999,
-        fontSize: "0.74rem",
-        fontWeight: 700,
-        background: `${color}22`,
-        border: `1px solid ${color}55`,
-        color,
-      }}
-    >
-      {label}
-    </span>
-  );
 }
 
 function TypeBadge({ value }: { value: string | null }) {
@@ -277,257 +225,81 @@ function SenderMetric({ label, value, accent = "#f8fafc" }: { label: string; val
   );
 }
 
-function getSenderCountdownFallback(sender: WarmupSender): string {
-  switch (sender.next_send_state) {
-    case "complete_for_day":
-      return "Complete for day";
-    case "blocked":
-      return "Blocked by cooldown";
-    case "paused":
-      return "Warmup paused";
-    case "missing_schedule":
-      return "Schedule missing";
-    default:
-      return "No active warmup";
-  }
-}
-
-function getSenderScheduleDetail(sender: WarmupSender): string {
-  switch (sender.next_send_state) {
-    case "scheduled":
-      return `Scheduled: ${formatClockTime(sender.next_warmup_send_at)}`;
-    case "complete_for_day":
-      return "Warmup budget is fully used for the current day.";
-    case "blocked":
-      return sender.cooldown_until
-        ? `Cooldown until ${formatDateTime(sender.cooldown_until)}`
-        : "Sending is blocked until cooldown clears.";
-    case "paused":
-      return "Resume warmup to persist a new send time.";
-    case "missing_schedule":
-      return "Worker has not persisted the next send time yet.";
-    default:
-      return "Start warmup to persist the first send time.";
-  }
-}
-
 function getSystemCountdownFallback(senders: WarmupSender[]): string {
   if (senders.length === 0) return "No senders configured";
 
-  const activeSenders = senders.filter((sender) =>
-    sender.warmup_status === "warming" ||
-    sender.warmup_status === "ready" ||
-    sender.warmup_status === "paused"
-  );
+  const activeSenders = senders.filter((sender) => sender.warmup_status === "warming" || sender.warmup_status === "ready");
 
   if (activeSenders.length === 0) return "No active warmup";
-  if (activeSenders.every((sender) => sender.next_send_state === "paused")) return "Warmup paused";
-  if (activeSenders.some((sender) => sender.next_send_state === "missing_schedule")) return "Schedule missing";
-  if (activeSenders.some((sender) => sender.next_send_state === "blocked")) return "Blocked by cooldown";
-  if (activeSenders.every((sender) => sender.next_send_state === "complete_for_day")) return "Complete for day";
-  return "No persisted schedule";
+  return "Validation error";
 }
 
 function WarmupProgressCard({
   sender,
-  onAction,
 }: {
   sender: WarmupSender;
-  onAction: (id: string, action: string) => Promise<void>;
 }) {
-  const [acting, setActing] = useState(false);
-  const countdownFallback = getSenderCountdownFallback(sender);
+  const countdownFallback =
+    sender.warmup_status === "warming" || sender.warmup_status === "ready"
+      ? "Validation error"
+      : sender.warmup_status === "paused"
+        ? "Paused"
+        : "Not scheduled";
   const nextWarmupCountdown = useCountdown(sender.next_warmup_send_at, countdownFallback);
-  const dayProgress = Math.max(0, Math.min(sender.warmup_day, 5));
-  const dayProgressPct = (dayProgress / 5) * 100;
   const borderColor = STATUS_COLORS[sender.dashboard_status] ?? "#334155";
+  const statusLabel = STATUS_LABELS[sender.dashboard_status] ?? sender.dashboard_status;
   const lastActivityLabel = sender.last_activity_status
-    ? `${sender.last_activity_status.charAt(0).toUpperCase()}${sender.last_activity_status.slice(1)} • ${formatRelativeTime(sender.last_activity_at, "No activity timestamp")}`
+    ? `${sender.last_activity_status} • ${formatRelativeTime(sender.last_activity_at, "No activity timestamp")}`
     : "No warmup activity detected";
-  const lastVerifiedSendLabel = sender.last_warmup_sent_at
-    ? `Verified send • ${formatRelativeTime(sender.last_warmup_sent_at, "No send timestamp")}`
-    : "No verified send recorded";
-  const readinessTitle = sender.is_ready_for_outreach || sender.outreach_enabled
-    ? "Outreach enabled"
-    : "Outreach disabled - warmup incomplete";
-  const readinessSub = sender.is_ready_for_outreach || sender.outreach_enabled
-    ? "Sender meets Day 5 and 50 emails/day readiness."
-    : "Minimum: Day 5 (50 emails/day)";
-
-  async function act(action: string) {
-    setActing(true);
-    try {
-      await onAction(sender.id, action);
-    } finally {
-      setActing(false);
-    }
-  }
+  const countdownSub = sender.next_warmup_send_at
+    ? `Scheduled: ${formatClockTime(sender.next_warmup_send_at)}`
+    : sender.warmup_status === "warming" || sender.warmup_status === "ready"
+      ? "System validation error"
+      : "No active schedule";
 
   return (
     <div
       style={{
         background: "#1e293b",
         borderRadius: 14,
-        padding: "1.25rem",
+        padding: "1rem 1.1rem",
         border: `1px solid ${borderColor}55`,
         boxShadow: "0 10px 30px rgba(2, 6, 23, 0.18)",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.9rem" }}>
         <div>
           <div style={{ fontFamily: "monospace", fontSize: "0.95rem", color: "#f8fafc", fontWeight: 700 }}>{sender.email}</div>
-          <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.25rem" }}>Sender status: {sender.sender_status}</div>
-        </div>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <StatusBadge status={sender.dashboard_status} />
-          <HealthBadge score={sender.health_score} />
+          <div style={{ fontSize: "0.82rem", color: "#94a3b8", marginTop: "0.25rem" }}>
+            {statusLabel} • Day {sender.warmup_day} / 5
+          </div>
         </div>
       </div>
 
-      {(sender.last_activity_status === "failed" || sender.consecutive_failures > 0) && (
-        <div style={{ marginBottom: "0.9rem", padding: "0.75rem 0.9rem", borderRadius: 10, background: "#3b1a1a", border: "1px solid #7f1d1d", color: "#fecaca" }}>
-          <div style={{ fontWeight: 700, marginBottom: "0.2rem" }}>
-            Failure state detected
+      <div style={{ display: "grid", gap: "0.7rem" }}>
+        <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.8rem 0.9rem", border: "1px solid #1e293b" }}>
+          <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>Countdown</div>
+          <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#f8fafc", fontVariantNumeric: "tabular-nums" }}>{nextWarmupCountdown}</div>
+          <div style={{ marginTop: "0.2rem", fontSize: "0.82rem", color: "#94a3b8" }}>{countdownSub}</div>
+        </div>
+        <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.8rem 0.9rem", border: "1px solid #1e293b" }}>
+          <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>Sent Today / Limit</div>
+          <div style={{ fontSize: "0.98rem", fontWeight: 700, color: "#f8fafc", fontVariantNumeric: "tabular-nums" }}>
+            {sender.sent_today} / {sender.daily_limit}
           </div>
-          <div style={{ fontSize: "0.82rem" }}>
-            {sender.consecutive_failures} consecutive failed or skipped warmup attempts.
-            {sender.last_activity_error ? ` ${sender.last_activity_error}` : ""}
-          </div>
         </div>
-      )}
-
-      {sender.is_cooling_down && (
-        <div style={{ marginBottom: "0.9rem", padding: "0.75rem 0.9rem", borderRadius: 10, background: "#312e15", border: "1px solid #854d0e", color: "#fde68a" }}>
-          Cooldown active. Sending resumes only after the persisted cooldown timestamp clears.
-        </div>
-      )}
-
-      <div style={{ marginBottom: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
-          <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Day: {sender.warmup_day} / 5</span>
-          <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Progress</span>
-        </div>
-        <div style={{ background: "#0f172a", borderRadius: 999, height: 10, overflow: "hidden" }}>
-          <div
-            style={{
-              width: `${dayProgressPct}%`,
-              height: "100%",
-              background: sender.is_ready_for_outreach ? "#22c55e" : "#f59e0b",
-              transition: "width 0.2s linear",
-            }}
-          />
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
-        <SenderMetric label="Daily Limit" value={`${sender.daily_limit}`} />
-        <SenderMetric label="Sent Today" value={`${sender.sent_today} / ${sender.daily_limit}`} />
-        <SenderMetric label="Warmup Sends" value={`${sender.warmup_sent_today}`} accent="#f59e0b" />
-        <SenderMetric label="Outreach Sends" value={`${sender.outreach_sent_today}`} accent="#38bdf8" />
-      </div>
-
-      <div style={{ display: "grid", gap: "0.75rem", marginBottom: "1rem" }}>
-        <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.85rem 0.9rem", border: "1px solid #1e293b" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.3rem" }}>
-            <span style={{ fontSize: "0.76rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Next Send</span>
-            <span style={{ fontSize: "1rem", fontWeight: 800, color: sender.next_warmup_send_at ? "#f59e0b" : "#f8fafc", fontVariantNumeric: "tabular-nums" }}>
-              {nextWarmupCountdown}
-            </span>
-          </div>
-          <div style={{ fontSize: "0.82rem", color: "#94a3b8" }}>{getSenderScheduleDetail(sender)}</div>
-        </div>
-
-        <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.85rem 0.9rem", border: "1px solid #1e293b" }}>
-          <div style={{ fontSize: "0.76rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.35rem" }}>
-            Last Activity
-          </div>
+        <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.8rem 0.9rem", border: "1px solid #1e293b" }}>
+          <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>Last Activity</div>
           <div style={{ fontSize: "0.92rem", color: "#f8fafc", fontWeight: 700 }}>{lastActivityLabel}</div>
-          <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap", marginTop: "0.35rem", color: "#94a3b8", fontSize: "0.82rem" }}>
+          <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap", marginTop: "0.25rem", color: "#94a3b8", fontSize: "0.82rem" }}>
             {sender.last_activity_type && <TypeBadge value={sender.last_activity_type} />}
             <span>
               {sender.last_activity_recipient
-                ? `${sender.last_activity_type ?? "target"} -> ${sender.last_activity_recipient}`
+                ? `${sender.last_activity_recipient}${sender.last_activity_error ? ` • ${sender.last_activity_error}` : ""}`
                 : "Check worker or sender configuration"}
             </span>
           </div>
         </div>
-
-        <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.85rem 0.9rem", border: "1px solid #1e293b" }}>
-          <div style={{ fontSize: "0.76rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.35rem" }}>
-            Last Verified Send
-          </div>
-          <div style={{ fontSize: "0.92rem", color: "#f8fafc", fontWeight: 700 }}>{lastVerifiedSendLabel}</div>
-          <div style={{ marginTop: "0.35rem", fontSize: "0.82rem", color: "#94a3b8" }}>
-            {sender.last_warmup_recipient
-              ? `${sender.last_warmup_result ?? "sent"} -> ${sender.last_warmup_recipient}`
-              : "No recipient persisted yet"}
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          marginBottom: "1rem",
-          padding: "0.85rem 0.9rem",
-          borderRadius: 10,
-          background: sender.is_ready_for_outreach || sender.outreach_enabled ? "#173327" : "#3b1a1a",
-          border: sender.is_ready_for_outreach || sender.outreach_enabled ? "1px solid #166534" : "1px solid #7f1d1d",
-        }}
-      >
-        <div style={{ fontSize: "0.92rem", color: sender.is_ready_for_outreach || sender.outreach_enabled ? "#86efac" : "#fecaca", fontWeight: 800 }}>
-          {readinessTitle}
-        </div>
-        <div style={{ marginTop: "0.2rem", color: sender.is_ready_for_outreach || sender.outreach_enabled ? "#bbf7d0" : "#fca5a5", fontSize: "0.82rem" }}>
-          {readinessSub}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
-        {sender.warmup_status === "not_started" && (
-          <button
-            onClick={() => void act("start")}
-            disabled={acting}
-            style={{ padding: "0.45rem 0.95rem", background: "#f59e0b", border: "none", borderRadius: 8, color: "#0f172a", fontWeight: 700, cursor: acting ? "not-allowed" : "pointer" }}
-          >
-            {acting ? "Starting..." : "Start Warmup"}
-          </button>
-        )}
-        {sender.warmup_status === "warming" && (
-          <>
-            <button
-              onClick={() => void act("pause")}
-              disabled={acting}
-              style={{ padding: "0.45rem 0.95rem", background: "#334155", border: "1px solid #475569", borderRadius: 8, color: "#e2e8f0", cursor: acting ? "not-allowed" : "pointer" }}
-            >
-              Pause
-            </button>
-            <button
-              onClick={() => void act("advance")}
-              disabled={acting}
-              style={{ padding: "0.45rem 0.95rem", background: "#0f172a", border: "1px solid #475569", borderRadius: 8, color: "#cbd5e1", cursor: acting ? "not-allowed" : "pointer" }}
-            >
-              Advance Day
-            </button>
-          </>
-        )}
-        {sender.warmup_status === "paused" && (
-          <button
-            onClick={() => void act("start")}
-            disabled={acting}
-            style={{ padding: "0.45rem 0.95rem", background: "#f59e0b", border: "none", borderRadius: 8, color: "#0f172a", fontWeight: 700, cursor: acting ? "not-allowed" : "pointer" }}
-          >
-            {acting ? "Resuming..." : "Resume"}
-          </button>
-        )}
-        {(sender.warmup_status === "warming" || sender.warmup_status === "paused" || sender.warmup_status === "ready") && (
-          <button
-            onClick={() => void act("reset")}
-            disabled={acting}
-            style={{ padding: "0.45rem 0.95rem", background: "transparent", border: "1px solid #475569", borderRadius: 8, color: "#cbd5e1", cursor: acting ? "not-allowed" : "pointer" }}
-          >
-            Reset
-          </button>
-        )}
       </div>
     </div>
   );
@@ -579,15 +351,6 @@ export default function WarmupPage() {
     const id = setInterval(() => void load(), 30_000);
     return () => clearInterval(id);
   }, [load]);
-
-  async function handleAction(id: string, action: string) {
-    await fetch(`/api/lgs/outreach/warmup/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    await load();
-  }
 
   const systemCountdownFallback = useMemo(() => getSystemCountdownFallback(senders), [senders]);
   const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null, systemCountdownFallback);
@@ -669,25 +432,26 @@ export default function WarmupPage() {
             <SummaryCard label="Queue Pending" value={summary.pending_queue_count} color="#38bdf8" />
           </div>
 
-          <div
-            style={{
-              marginBottom: "1.5rem",
-              padding: "1rem 1.1rem",
-              borderRadius: 12,
-              background: summary.ready_senders > 0 ? "#173327" : "#3b1a1a",
-              border: summary.ready_senders > 0 ? "1px solid #166534" : "1px solid #7f1d1d",
-            }}
-          >
-            <div style={{ fontWeight: 800, color: summary.ready_senders > 0 ? "#86efac" : "#fecaca", marginBottom: "0.2rem" }}>
-              {summary.ready_senders > 0 ? "Outreach enabled" : "Outreach disabled - warmup incomplete"}
-            </div>
-            <div style={{ fontSize: "0.85rem", color: summary.ready_senders > 0 ? "#bbf7d0" : "#fca5a5" }}>
-              {summary.ready_senders > 0
-                ? `${summary.ready_senders} sender${summary.ready_senders === 1 ? "" : "s"} currently meet Day 5 and 50 emails/day readiness.`
-                : "Minimum: Day 5 (50 emails/day)"}
-            </div>
-          </div>
         </>
+      )}
+
+      {summary && summary.ready_senders === 0 && (
+        <div
+          style={{
+            marginBottom: "1.5rem",
+            padding: "1rem 1.1rem",
+            borderRadius: 12,
+            background: "#3b1a1a",
+            border: "1px solid #7f1d1d",
+          }}
+        >
+          <div style={{ fontWeight: 800, color: "#fecaca", marginBottom: "0.2rem" }}>
+            Outreach disabled — warmup incomplete
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "#fca5a5" }}>
+            Minimum: Day 5 (50 emails/day)
+          </div>
+        </div>
       )}
 
       {loading ? (
@@ -702,7 +466,7 @@ export default function WarmupPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "1.25rem", marginBottom: "2rem" }}>
           {senders.map((sender) => (
-            <WarmupProgressCard key={sender.id} sender={sender} onAction={handleAction} />
+            <WarmupProgressCard key={sender.id} sender={sender} />
           ))}
         </div>
       )}
@@ -785,6 +549,14 @@ export default function WarmupPage() {
               </div>
             ))}
           </div>
+
+          {health.validation && !health.validation.pass && (
+            <div style={{ marginTop: "1rem", padding: "0.8rem 0.9rem", borderRadius: 10, background: "#3b1a1a", border: "1px solid #7f1d1d", color: "#fecaca" }}>
+              {health.validation.reasons.map((reason) => (
+                <div key={reason}>{reason}</div>
+              ))}
+            </div>
+          )}
 
           {health.worker?.last_error && (
             <div style={{ marginTop: "1rem", padding: "0.8rem 0.9rem", borderRadius: 10, background: "#3b1a1a", border: "1px solid #7f1d1d", color: "#fecaca" }}>
