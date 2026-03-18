@@ -1,4 +1,4 @@
-import { desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
 import {
   lgsWarmupActivity,
   lgsWorkerHealth,
@@ -21,6 +21,7 @@ export const WARMUP_CONFIDENCE_FAILURE_FREE_RUNS = 5;
 
 export type WarmupWorkerStatus = "healthy" | "warning" | "stale";
 export type WarmupConfidenceLevel = "high" | "medium" | "low";
+export type WarmupNextSendState = "scheduled" | "retry_pending" | "due_now" | "rescheduling" | "paused" | "not_scheduled";
 export type WarmupSenderRecord = typeof senderPool.$inferSelect;
 export type WarmupActivityRecord = typeof lgsWarmupActivity.$inferSelect;
 export type WarmupWorkerRecord = typeof lgsWorkerHealth.$inferSelect;
@@ -39,6 +40,7 @@ export type WarmupSenderDashboardRow = {
   remaining_capacity: number;
   current_day_started_at: string | null;
   next_warmup_send_at: string | null;
+  next_send_state: WarmupNextSendState;
   last_warmup_sent_at: string | null;
   last_warmup_result: string | null;
   last_warmup_recipient: string | null;
@@ -103,6 +105,7 @@ export type WarmupValidationResult = {
 type WarmupSenderRepairPlan = {
   updates: Partial<typeof senderPool.$inferInsert>;
   shouldLogMissedSchedule: boolean;
+  missedScheduleAt: Date | null;
 };
 
 function toIso(value: Date | null | undefined): string | null {
@@ -257,6 +260,54 @@ export function hasMissedScheduledSend(input: {
   return !input.latestActivityAt || new Date(input.latestActivityAt) < new Date(input.nextWarmupSendAt);
 }
 
+function hasValidActivityForScheduledWindow(
+  activityRows: WarmupActivityRecord[],
+  scheduledAt: Date | null | undefined
+): boolean {
+  if (!scheduledAt) return false;
+  const scheduledTime = new Date(scheduledAt).getTime();
+  return activityRows.some((row) => row.status !== "missed_schedule" && new Date(row.sentAt).getTime() >= scheduledTime);
+}
+
+function hasMissedScheduleActivityForScheduledWindow(
+  activityRows: WarmupActivityRecord[],
+  scheduledAt: Date | null | undefined
+): boolean {
+  if (!scheduledAt) return false;
+  const scheduledTime = new Date(scheduledAt).getTime();
+  return activityRows.some((row) => row.status === "missed_schedule" && new Date(row.sentAt).getTime() >= scheduledTime);
+}
+
+function buildMissedScheduleErrorMessage(scheduledAt: Date): string {
+  return `Scheduled send window passed without logged activity. scheduled_at=${scheduledAt.toISOString()}`;
+}
+
+export function getWarmupNextSendState(input: {
+  sender: WarmupSenderRecord;
+  latestActivity: WarmupActivityRecord | null;
+  now?: Date;
+}): WarmupNextSendState {
+  const now = input.now ?? new Date();
+  const sender = input.sender;
+  const latestActivity = input.latestActivity;
+
+  if (!isWarmupManagedStatus(sender.warmupStatus)) return "not_scheduled";
+  if (sender.warmupStatus === "paused") return "paused";
+  if (!sender.nextWarmupSendAt) return "rescheduling";
+
+  const isRetryState =
+    sender.lastWarmupResult === "error" ||
+    sender.lastWarmupResult === "missed_schedule" ||
+    latestActivity?.status === "failed" ||
+    latestActivity?.status === "missed_schedule";
+
+  if (new Date(sender.nextWarmupSendAt).getTime() <= now.getTime()) {
+    return isRetryState ? "retry_pending" : "due_now";
+  }
+
+  return isRetryState ? "retry_pending" : "scheduled";
+}
+
 export function buildWarmupConfidence(input: {
   recentActivityRows: WarmupActivityRecord[];
   workerRow: WarmupWorkerRecord | null;
@@ -316,6 +367,7 @@ export function buildWarmupConfidence(input: {
 export function buildWarmupSenderRepairPlan(input: {
   sender: WarmupSenderRecord;
   latestActivity: WarmupActivityRecord | null;
+  activityRows: WarmupActivityRecord[];
   now?: Date;
   hasValidToken?: boolean;
 }): WarmupSenderRepairPlan {
@@ -324,7 +376,7 @@ export function buildWarmupSenderRepairPlan(input: {
   const updates: Partial<typeof senderPool.$inferInsert> = {};
 
   if (!isWarmupManagedStatus(sender.warmupStatus)) {
-    return { updates, shouldLogMissedSchedule: false };
+    return { updates, shouldLogMissedSchedule: false, missedScheduleAt: null };
   }
 
   const warmupDay = Math.max(1, sender.warmupDay ?? 1);
@@ -341,11 +393,13 @@ export function buildWarmupSenderRepairPlan(input: {
     updates.currentDayStartedAt = currentDayStartedAt;
   }
 
-  const missedSchedule = hasMissedScheduledSend({
-    nextWarmupSendAt: sender.nextWarmupSendAt,
-    latestActivityAt: input.latestActivity?.sentAt ?? null,
-    now,
-  });
+  const validActivityLoggedForWindow = hasValidActivityForScheduledWindow(input.activityRows, sender.nextWarmupSendAt);
+  const missedScheduleAlreadyLogged = hasMissedScheduleActivityForScheduledWindow(input.activityRows, sender.nextWarmupSendAt);
+  const scheduledTime = sender.nextWarmupSendAt ? new Date(sender.nextWarmupSendAt).getTime() : null;
+  const retryWindowMissed =
+    scheduledTime !== null &&
+    now.getTime() > scheduledTime + WARMUP_MISSED_SCHEDULE_TOLERANCE_MS &&
+    !validActivityLoggedForWindow;
 
   const nextWarmupSendAt = computeNextWarmupSendAt({
     warmupStatus: sender.warmupStatus,
@@ -358,7 +412,7 @@ export function buildWarmupSenderRepairPlan(input: {
     outreachEnabled: sender.outreachEnabled,
     cooldownUntil: sender.cooldownUntil,
     hasValidToken: input.hasValidToken,
-    retryFromNow: missedSchedule,
+    retryFromNow: retryWindowMissed,
     now,
   });
 
@@ -366,16 +420,15 @@ export function buildWarmupSenderRepairPlan(input: {
     updates.nextWarmupSendAt = nextWarmupSendAt;
   }
 
-  if (missedSchedule) {
+  if (retryWindowMissed) {
     updates.lastWarmupResult = "missed_schedule";
   }
 
   return {
     updates,
     shouldLogMissedSchedule:
-      missedSchedule &&
-      sender.lastWarmupResult !== "missed_schedule" &&
-      input.latestActivity?.status !== "missed_schedule",
+      retryWindowMissed && !missedScheduleAlreadyLogged,
+    missedScheduleAt: retryWindowMissed ? new Date(sender.nextWarmupSendAt ?? now) : null,
   };
 }
 
@@ -401,6 +454,11 @@ export function buildWarmupSenderDashboardRow(input: {
     now,
   });
   const readyForOutreach = isReadyForOutreach(warmupDay, dailyLimit);
+  const nextSendState = getWarmupNextSendState({
+    sender,
+    latestActivity,
+    now,
+  });
 
   let consecutiveFailures = 0;
   for (const activity of input.activityRows) {
@@ -429,6 +487,7 @@ export function buildWarmupSenderDashboardRow(input: {
     remaining_capacity: remainingCapacity,
     current_day_started_at: toIso(sender.currentDayStartedAt),
     next_warmup_send_at: toIso(sender.nextWarmupSendAt),
+    next_send_state: nextSendState,
     last_warmup_sent_at: toIso(sender.lastWarmupSentAt),
     last_warmup_result: sender.lastWarmupResult ?? null,
     last_warmup_recipient: sender.lastWarmupRecipient ?? null,
@@ -659,6 +718,45 @@ export async function recordWarmupActivity(entry: {
   }
 }
 
+export async function recordMissedScheduleActivityIfNeeded(entry: {
+  senderEmail: string;
+  recipientEmail: string;
+  scheduledAt: Date;
+  sentAt?: Date;
+}): Promise<boolean> {
+  try {
+    const { db } = await import("../../../db/drizzle");
+    const existing = await db
+      .select({ id: lgsWarmupActivity.id })
+      .from(lgsWarmupActivity)
+      .where(
+        and(
+          eq(lgsWarmupActivity.senderEmail, entry.senderEmail),
+          eq(lgsWarmupActivity.status, "missed_schedule"),
+          gte(lgsWarmupActivity.sentAt, entry.scheduledAt)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+    if (existing) return false;
+
+    await recordWarmupActivity({
+      senderEmail: entry.senderEmail,
+      recipientEmail: entry.recipientEmail,
+      subject: `Warmup schedule missed @ ${entry.scheduledAt.toISOString()}`,
+      messageType: "system",
+      status: "missed_schedule",
+      errorMessage: buildMissedScheduleErrorMessage(entry.scheduledAt),
+      sentAt: entry.sentAt,
+    });
+    return true;
+  } catch (err) {
+    console.error("[LGS Warmup] missed schedule log error:", err);
+    return false;
+  }
+}
+
 export async function maybeAlertOnStaleWarmupWorker(input?: {
   workerRow?: WarmupWorkerRecord | null;
   now?: Date;
@@ -758,7 +856,16 @@ function buildActivityMaps(rows: WarmupActivityRecord[]): {
 }
 
 export async function enforceWarmupSystemState(now: Date = new Date()): Promise<void> {
+  return enforceWarmupSystemStateWithOptions({ now });
+}
+
+export async function enforceWarmupSystemStateWithOptions(input?: {
+  now?: Date;
+  logMissedSchedules?: boolean;
+}): Promise<void> {
   const { db } = await import("../../../db/drizzle");
+  const now = input?.now ?? new Date();
+  const logMissedSchedules = input?.logMissedSchedules ?? false;
   await ensureWarmupWorkerHealthRow();
 
   const managedSenders = await db
@@ -780,14 +887,16 @@ export async function enforceWarmupSystemState(now: Date = new Date()): Promise<
     .where(inArray(lgsWarmupActivity.senderEmail, senderEmails))
     .orderBy(desc(lgsWarmupActivity.sentAt));
 
-  const { latestActivityBySender } = buildActivityMaps(activityRows);
+  const { latestActivityBySender, activityRowsBySender } = buildActivityMaps(activityRows);
 
   for (const sender of managedSenders) {
     const latestActivity = latestActivityBySender.get(sender.senderEmail) ?? null;
+    const senderActivityRows = activityRowsBySender.get(sender.senderEmail) ?? [];
     const hasValidToken = await hasGmailTokenForSender(sender.senderEmail);
     const plan = buildWarmupSenderRepairPlan({
       sender,
       latestActivity,
+      activityRows: senderActivityRows,
       now,
       hasValidToken,
     });
@@ -799,14 +908,11 @@ export async function enforceWarmupSystemState(now: Date = new Date()): Promise<
         .where(eq(senderPool.id, sender.id));
     }
 
-    if (plan.shouldLogMissedSchedule) {
-      await recordWarmupActivity({
+    if (logMissedSchedules && plan.shouldLogMissedSchedule && plan.missedScheduleAt) {
+      await recordMissedScheduleActivityIfNeeded({
         senderEmail: sender.senderEmail,
         recipientEmail: sender.lastWarmupRecipient ?? sender.senderEmail,
-        subject: "Warmup schedule missed",
-        messageType: "system",
-        status: "missed_schedule",
-        errorMessage: "Scheduled send window passed without logged activity.",
+        scheduledAt: plan.missedScheduleAt,
         sentAt: now,
       });
     }
