@@ -37,7 +37,7 @@ const procs = [
   { name: "web", cmd: "pnpm", args: ["dev:web"] },
   { name: "admin", cmd: "pnpm", args: ["dev:admin"] },
   { name: "api", cmd: "pnpm", args: ["dev:api"] },
-  { name: "dise", cmd: "pnpm", args: ["dev:dise"] },
+  { name: "lgs", cmd: "pnpm", args: ["dev:lgs"] },
 ];
 
 function shutdown(code = 0) {

@@ -71,12 +71,20 @@ export function getAdminJwtSecret(): string {
   return secret;
 }
 
+export function sessionCookieFor(cookieName: string, token: string): string {
+  return `${cookieName}=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`;
+}
+
+export function clearSessionCookieFor(cookieName: string): string {
+  return `${cookieName}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
+}
+
 export function sessionCookie(token: string): string {
-  return `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`;
+  return sessionCookieFor(ADMIN_SESSION_COOKIE_NAME, token);
 }
 
 export function clearSessionCookie(): string {
-  return `${ADMIN_SESSION_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
+  return clearSessionCookieFor(ADMIN_SESSION_COOKIE_NAME);
 }
 
 export function tokenFromRequest(req: Request): string | null {
@@ -86,8 +94,12 @@ export function tokenFromRequest(req: Request): string | null {
     if (token) return token;
   }
 
-  const cookieToken = readCookie(req.headers.get("cookie"), ADMIN_SESSION_COOKIE_NAME).trim();
-  return cookieToken || null;
+  const cookieHeader = req.headers.get("cookie");
+  const adminToken = readCookie(cookieHeader, ADMIN_SESSION_COOKIE_NAME).trim();
+  if (adminToken) return adminToken;
+
+  const lgsToken = readCookie(cookieHeader, "lgs_session").trim();
+  return lgsToken || null;
 }
 
 export function verifyAdminToken(token: string): AdminJwtPayload {
