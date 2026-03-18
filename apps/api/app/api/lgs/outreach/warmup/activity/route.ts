@@ -9,7 +9,7 @@ export async function GET() {
       .select()
       .from(lgsWarmupActivity)
       .orderBy(desc(lgsWarmupActivity.sentAt))
-      .limit(50);
+      .limit(25);
 
     const data = rows.map((r) => ({
       id: r.id,

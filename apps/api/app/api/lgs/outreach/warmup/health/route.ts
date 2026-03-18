@@ -5,6 +5,15 @@ import { senderPool, lgsWorkerHealth, lgsWarmupActivity } from "@/db/schema/dire
 import { hasGmailTokenForSender } from "@/src/services/lgs/outreachGmailSenderService";
 import { INTERNAL_SENDERS, EXTERNAL_TARGETS } from "@/src/services/lgs/warmupEngine";
 
+function getHeartbeatStatus(lastHeartbeatAt: Date | null | undefined): "healthy" | "warning" | "stale" {
+  if (!lastHeartbeatAt) return "stale";
+
+  const heartbeatAgeMs = Date.now() - new Date(lastHeartbeatAt).getTime();
+  if (heartbeatAgeMs < 10 * 60_000) return "healthy";
+  if (heartbeatAgeMs < 20 * 60_000) return "warning";
+  return "stale";
+}
+
 export async function GET() {
   try {
     // Worker health
@@ -14,14 +23,10 @@ export async function GET() {
       .where(eq(lgsWorkerHealth.workerName, "warmup"))
       .limit(1);
 
-    let heartbeatStatus = "unknown";
-    let heartbeatAgeMs = Infinity;
-    if (workerRow?.lastHeartbeatAt) {
-      heartbeatAgeMs = Date.now() - new Date(workerRow.lastHeartbeatAt).getTime();
-      if (heartbeatAgeMs < 10 * 60_000) heartbeatStatus = "healthy";
-      else if (heartbeatAgeMs < 20 * 60_000) heartbeatStatus = "warning";
-      else heartbeatStatus = "stale";
-    }
+    const heartbeatStatus = getHeartbeatStatus(workerRow?.lastHeartbeatAt);
+    const heartbeatAgeMs = workerRow?.lastHeartbeatAt
+      ? Date.now() - new Date(workerRow.lastHeartbeatAt).getTime()
+      : Infinity;
 
     // Active senders
     const senders = await db
@@ -64,7 +69,7 @@ export async function GET() {
     const checks = [
       { name: "active_senders", pass: activeSendersExist },
       { name: "gmail_tokens", pass: allTokensValid, detail: gmailTokens },
-      { name: "worker_heartbeat", pass: heartbeatStatus !== "stale" && heartbeatStatus !== "unknown" },
+      { name: "worker_heartbeat", pass: heartbeatStatus !== "stale" },
       { name: "next_send_computed", pass: nextSendComputed },
       { name: "recent_activity", pass: recentActivityExists },
       { name: "internal_target_pool", pass: internalPoolConfigured },

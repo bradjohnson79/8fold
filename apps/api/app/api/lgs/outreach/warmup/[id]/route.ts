@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { senderPool } from "@/db/schema/directoryEngine";
 import { getDailyLimit } from "@/src/services/lgs/warmupSchedule";
+import { checkSendEligibility } from "@/src/services/lgs/warmupEngine";
 
 export async function POST(
   req: Request,
@@ -30,38 +31,59 @@ export async function POST(
       }
       const resuming = sender.warmupStatus === "paused";
       const day = resuming ? (sender.warmupDay ?? 1) : 1;
+      const currentDayStartedAt = new Date();
+      const dailyLimit = getDailyLimit(day);
+      const initialEligibility = checkSendEligibility({
+        currentDayStartedAt,
+        warmupSentToday: 0,
+        warmupBudget: dailyLimit,
+      });
       updates = {
         ...updates,
         warmupStatus: "warming",
         warmupStartedAt: sender.warmupStartedAt ?? new Date(),
         warmupDay: day,
-        currentDayStartedAt: new Date(),
-        dailyLimit: getDailyLimit(day),
+        currentDayStartedAt,
+        dailyLimit,
         warmupSentToday: 0,
         outreachSentToday: 0,
         sentToday: 0,
         warmupEmailsSentToday: 0,
         outreachEnabled: false,
         warmupInboxPlacement: "good",
+        nextWarmupSendAt: initialEligibility.nextSendAt,
       };
     } else if (action === "pause") {
       if (sender.warmupStatus !== "warming") {
         return NextResponse.json({ ok: false, error: "warmup_not_running" }, { status: 400 });
       }
-      updates = { ...updates, warmupStatus: "paused" };
+      updates = {
+        ...updates,
+        warmupStatus: "paused",
+        nextWarmupSendAt: null as unknown as undefined,
+      };
     } else if (action === "advance") {
       const nextDay = Math.min((sender.warmupDay ?? 0) + 1, 5);
+      const currentDayStartedAt = new Date();
+      const dailyLimit = getDailyLimit(nextDay);
+      const initialWarmupBudget = nextDay >= 5 ? Math.min(3, dailyLimit) : dailyLimit;
+      const initialEligibility = checkSendEligibility({
+        currentDayStartedAt,
+        warmupSentToday: 0,
+        warmupBudget: initialWarmupBudget,
+      });
       updates = {
         ...updates,
         warmupDay: nextDay,
-        dailyLimit: getDailyLimit(nextDay),
-        currentDayStartedAt: new Date(),
+        dailyLimit,
+        currentDayStartedAt,
         warmupSentToday: 0,
         outreachSentToday: 0,
         sentToday: 0,
         warmupEmailsSentToday: 0,
         outreachEnabled: nextDay >= 5,
         warmupStatus: nextDay >= 5 ? "ready" : "warming",
+        nextWarmupSendAt: initialEligibility.nextSendAt,
       };
     } else if (action === "reset") {
       updates = {
@@ -79,6 +101,10 @@ export async function POST(
         warmupTotalReplies: 0,
         warmupInboxPlacement: "unknown",
         outreachEnabled: false,
+        nextWarmupSendAt: null as unknown as undefined,
+        lastWarmupSentAt: null as unknown as undefined,
+        lastWarmupResult: null as unknown as undefined,
+        lastWarmupRecipient: null as unknown as undefined,
       };
     } else {
       return NextResponse.json({ ok: false, error: "invalid_action" }, { status: 400 });
