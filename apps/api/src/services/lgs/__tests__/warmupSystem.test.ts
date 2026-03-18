@@ -6,6 +6,7 @@ import {
   buildWarmupSummaryRow,
   computeNextWarmupSendAt,
   explainNoRecentWarmupActivity,
+  getWarmupNextSendState,
   getWarmupWorkerStatus,
   hasMissedScheduledSend,
   validateWarmupSystemSnapshot,
@@ -96,6 +97,7 @@ describe("warmup invariant enforcement", () => {
     const plan = buildWarmupSenderRepairPlan({
       sender,
       latestActivity: null,
+      activityRows: [],
       now,
       hasValidToken: true,
     });
@@ -132,12 +134,41 @@ describe("warmup invariant enforcement", () => {
     const plan = buildWarmupSenderRepairPlan({
       sender,
       latestActivity: createActivity({ sentAt: new Date("2026-03-18T12:00:00.000Z") }),
+      activityRows: [],
       now,
       hasValidToken: true,
     });
 
     expect(plan.shouldLogMissedSchedule).toBe(true);
+    expect(plan.missedScheduleAt?.toISOString()).toBe("2026-03-18T13:00:00.000Z");
     expect(plan.updates.lastWarmupResult).toBe("missed_schedule");
+    expect(plan.updates.nextWarmupSendAt).toBeInstanceOf(Date);
+    expect((plan.updates.nextWarmupSendAt as Date).getTime()).toBe(now.getTime() + WARMUP_RETRY_DELAY_MS);
+  });
+
+  it("does not request a duplicate missed schedule log for the same send window", () => {
+    const scheduledAt = new Date("2026-03-18T13:00:00.000Z");
+    const now = new Date("2026-03-18T15:00:00.000Z");
+    const sender = createSender({
+      nextWarmupSendAt: scheduledAt,
+      lastWarmupResult: "missed_schedule",
+    });
+    const priorMissed = createActivity({
+      status: "missed_schedule",
+      sentAt: new Date("2026-03-18T13:10:00.000Z"),
+      subject: `Warmup schedule missed @ ${scheduledAt.toISOString()}`,
+      errorMessage: `Scheduled send window passed without logged activity. scheduled_at=${scheduledAt.toISOString()}`,
+    });
+
+    const plan = buildWarmupSenderRepairPlan({
+      sender,
+      latestActivity: priorMissed,
+      activityRows: [priorMissed],
+      now,
+      hasValidToken: true,
+    });
+
+    expect(plan.shouldLogMissedSchedule).toBe(false);
     expect(plan.updates.nextWarmupSendAt).toBeInstanceOf(Date);
     expect((plan.updates.nextWarmupSendAt as Date).getTime()).toBe(now.getTime() + WARMUP_RETRY_DELAY_MS);
   });
@@ -155,10 +186,12 @@ describe("warmup activity and dashboard contract", () => {
   it("maps sender dashboard rows with required fields", () => {
     const sender = createSender();
     const activity = createActivity();
+    const now = new Date("2026-03-18T12:05:00.000Z");
     const row = buildWarmupSenderDashboardRow({
       sender,
       latestActivity: activity,
       activityRows: [activity],
+      now,
     });
 
     expect(row.email).toBe("info@8fold.app");
@@ -168,6 +201,7 @@ describe("warmup activity and dashboard contract", () => {
     expect(row.last_activity_status).toBe("sent");
     expect(row.last_activity_recipient).toBe("brad@aetherx.co");
     expect(row.is_delayed).toBe(false);
+    expect(row.next_send_state).toBe("scheduled");
   });
 
   it("marks sender rows as delayed after schedule tolerance passes without activity", () => {
@@ -183,6 +217,7 @@ describe("warmup activity and dashboard contract", () => {
 
     expect(row.is_delayed).toBe(true);
     expect(row.dashboard_status).toBe("error");
+    expect(row.next_send_state).toBe("due_now");
   });
 
   it("builds summary rows with next send and worker state", () => {
@@ -237,6 +272,7 @@ describe("warmup validation gate", () => {
       latestActivityBySender: new Map([[sender.senderEmail, activity]]),
       recentActivity: activity,
       workerRow: createWorker(),
+      now: new Date("2026-03-18T12:05:00.000Z"),
     });
 
     expect(validation.pass).toBe(true);
@@ -327,5 +363,36 @@ describe("no recent activity explanation", () => {
       senders: [sender],
       now: new Date("2026-03-18T12:03:00.000Z"),
     })).toBe("All warming senders are scheduled or within execution tolerance.");
+  });
+});
+
+describe("next send state", () => {
+  it("marks retry state when sender is waiting on a retry schedule", () => {
+    const sender = createSender({
+      nextWarmupSendAt: new Date("2026-03-18T12:10:00.000Z"),
+      lastWarmupResult: "error",
+    });
+
+    expect(
+      getWarmupNextSendState({
+        sender,
+        latestActivity: createActivity({ status: "failed", sentAt: new Date("2026-03-18T12:05:00.000Z") }),
+        now: new Date("2026-03-18T12:06:00.000Z"),
+      })
+    ).toBe("retry_pending");
+  });
+
+  it("marks rescheduling when a managed sender has no persisted next send", () => {
+    const sender = createSender({
+      nextWarmupSendAt: null,
+    });
+
+    expect(
+      getWarmupNextSendState({
+        sender,
+        latestActivity: null,
+        now: new Date("2026-03-18T12:06:00.000Z"),
+      })
+    ).toBe("rescheduling");
   });
 });

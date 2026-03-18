@@ -17,6 +17,7 @@ type WarmupSender = {
   remaining_capacity: number;
   current_day_started_at: string | null;
   next_warmup_send_at: string | null;
+  next_send_state: "scheduled" | "retry_pending" | "due_now" | "rescheduling" | "paused" | "not_scheduled";
   last_warmup_sent_at: string | null;
   last_warmup_result: string | null;
   last_warmup_recipient: string | null;
@@ -160,7 +161,10 @@ function formatRelativeTime(iso: string | null, fallback: string): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function formatCountdown(target: string | null, fallback: string): string {
+function getCountdownDisplay(target: string | null, state: WarmupSender["next_send_state"], fallback: string): string {
+  if (state === "retry_pending") return "Retry pending";
+  if (state === "due_now") return "Due now";
+  if (state === "rescheduling") return "Rescheduling";
   if (!target) return fallback;
 
   const diff = Math.max(0, new Date(target).getTime() - Date.now());
@@ -174,16 +178,16 @@ function formatCountdown(target: string | null, fallback: string): string {
   ].join(":");
 }
 
-function useCountdown(target: string | null, fallback: string): string {
-  const [display, setDisplay] = useState(() => formatCountdown(target, fallback));
+function useCountdown(target: string | null, state: WarmupSender["next_send_state"], fallback: string): string {
+  const [display, setDisplay] = useState(() => getCountdownDisplay(target, state, fallback));
 
   useEffect(() => {
-    setDisplay(formatCountdown(target, fallback));
+    setDisplay(getCountdownDisplay(target, state, fallback));
     const id = setInterval(() => {
-      setDisplay(formatCountdown(target, fallback));
+      setDisplay(getCountdownDisplay(target, state, fallback));
     }, 1000);
     return () => clearInterval(id);
-  }, [fallback, target]);
+  }, [fallback, state, target]);
 
   return display;
 }
@@ -281,16 +285,24 @@ function WarmupProgressCard({
       : sender.warmup_status === "paused"
         ? "Paused"
         : "Not scheduled";
-  const nextWarmupCountdown = useCountdown(sender.next_warmup_send_at, countdownFallback);
+  const nextWarmupCountdown = useCountdown(sender.next_warmup_send_at, sender.next_send_state, countdownFallback);
   const borderColor = STATUS_COLORS[sender.dashboard_status] ?? "#334155";
   const statusLabel = STATUS_LABELS[sender.dashboard_status] ?? sender.dashboard_status;
   const lastActivityLabel = sender.last_activity_status
     ? `${sender.last_activity_status} • ${formatRelativeTime(sender.last_activity_at, "No activity timestamp")}`
     : "No warmup activity detected";
   const countdownSub = sender.next_warmup_send_at
-    ? `Scheduled: ${formatClockTime(sender.next_warmup_send_at)}${sender.is_delayed ? " • execution delayed" : ""}`
+    ? `${
+        sender.next_send_state === "retry_pending"
+          ? "Retry at"
+          : sender.next_send_state === "due_now"
+            ? "Due since"
+            : "Scheduled"
+      }: ${formatClockTime(sender.next_warmup_send_at)}${sender.is_delayed ? " • execution delayed" : ""}`
     : sender.warmup_status === "warming" || sender.warmup_status === "ready"
-      ? "System validation error"
+      ? sender.next_send_state === "rescheduling"
+        ? "Worker is rescheduling the next attempt"
+        : "System validation error"
       : "No active schedule";
 
   return (

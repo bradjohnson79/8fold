@@ -31,7 +31,7 @@ import {
 import {
   computeNextWarmupSendAt,
   computeWarmupRetryAt,
-  enforceWarmupSystemState,
+  enforceWarmupSystemStateWithOptions,
   ensureWarmupWorkerHealthRow,
   maybeAlertOnStaleWarmupWorker,
   recordWarmupActivity,
@@ -711,13 +711,6 @@ async function runWarmupCycle(): Promise<void> {
   let cycleError: string | undefined;
 
   try {
-    await enforceWarmupSystemState();
-  } catch (err) {
-    console.error("[LGS Warmup] invariant enforcement error:", err);
-    cycleError = err instanceof Error ? err.message : String(err);
-  }
-
-  try {
     await advanceDays();
   } catch (err) {
     console.error("[LGS Warmup] day advancement error:", err);
@@ -725,9 +718,23 @@ async function runWarmupCycle(): Promise<void> {
   }
 
   try {
+    await enforceWarmupSystemStateWithOptions({ logMissedSchedules: false });
+  } catch (err) {
+    console.error("[LGS Warmup] invariant enforcement error:", err);
+    cycleError = err instanceof Error ? err.message : String(err);
+  }
+
+  try {
     await sendWarmupEmails();
   } catch (err) {
     console.error("[LGS Warmup] warmup send error:", err);
+    cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    await enforceWarmupSystemStateWithOptions({ logMissedSchedules: true });
+  } catch (err) {
+    console.error("[LGS Warmup] post-send missed schedule enforcement error:", err);
     cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
   }
 
