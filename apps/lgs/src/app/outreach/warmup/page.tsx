@@ -402,7 +402,7 @@ export default function WarmupPage() {
   }, [load]);
 
   const systemCountdownFallback = useMemo(() => getSystemCountdownFallback(senders), [senders]);
-  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null, systemCountdownFallback);
+  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null, "scheduled", systemCountdownFallback);
   const workerStatusColor = WORKER_STATUS_COLORS[summary?.worker_status ?? "stale"] ?? "#ef4444";
   const lastActivityValue = summary?.last_warmup_activity_at
     ? formatRelativeTime(summary.last_warmup_activity_at, "No activity timestamp")
