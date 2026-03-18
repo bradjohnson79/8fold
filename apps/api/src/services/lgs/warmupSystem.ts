@@ -7,14 +7,20 @@ import {
 import { hasGmailTokenForSender } from "./outreachGmailSenderService";
 import { DAY_MS, checkSendEligibility } from "./warmupEngine";
 import { getDailyLimit, isReadyForOutreach } from "./warmupSchedule";
+import { sendTransactionalEmail } from "../../mailer/sendTransactionalEmail";
 
 export const WARMUP_WORKER_NAME = "warmup";
 export const WARMUP_RETRY_DELAY_MS = 5 * 60 * 1000;
 export const WARMUP_HEARTBEAT_HEALTHY_MS = 10 * 60 * 1000;
 export const WARMUP_HEARTBEAT_STALE_MS = 20 * 60 * 1000;
 export const WARMUP_ACTIVITY_RECENT_MS = 60 * 60 * 1000;
+export const WARMUP_MISSED_SCHEDULE_TOLERANCE_MS = 5 * 60 * 1000;
+export const WARMUP_STALE_ALERT_THRESHOLD_MS = 15 * 60 * 1000;
+export const WARMUP_CONFIDENCE_WINDOW = 10;
+export const WARMUP_CONFIDENCE_FAILURE_FREE_RUNS = 5;
 
 export type WarmupWorkerStatus = "healthy" | "warning" | "stale";
+export type WarmupConfidenceLevel = "high" | "medium" | "low";
 export type WarmupSenderRecord = typeof senderPool.$inferSelect;
 export type WarmupActivityRecord = typeof lgsWarmupActivity.$inferSelect;
 export type WarmupWorkerRecord = typeof lgsWorkerHealth.$inferSelect;
@@ -44,6 +50,7 @@ export type WarmupSenderDashboardRow = {
   is_ready_for_outreach: boolean;
   outreach_enabled: boolean;
   consecutive_failures: number;
+  is_delayed: boolean;
   health_score: string | null;
   cooldown_until: string | null;
   is_cooling_down: boolean;
@@ -70,6 +77,12 @@ export type WarmupSummaryRow = {
   worker_last_run_finished_at: string | null;
   worker_last_run_status: string | null;
   worker_status: WarmupWorkerStatus;
+  warmup_confidence: WarmupConfidenceLevel;
+  warmup_confidence_reason: string;
+  recent_success_count: number;
+  recent_failure_count: number;
+  failure_free_recent_runs: boolean;
+  stale_worker_alert_at: string | null;
 };
 
 export type WarmupValidationResult = {
@@ -94,6 +107,23 @@ type WarmupSenderRepairPlan = {
 
 function toIso(value: Date | null | undefined): string | null {
   return value?.toISOString() ?? null;
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getWarmupWorkerConfig(workerRow: WarmupWorkerRecord | null | undefined): Record<string, unknown> {
+  return asObject(workerRow?.configCheckResult);
+}
+
+function describeHeartbeatStatus(status: WarmupWorkerStatus): string {
+  if (status === "healthy") return "heartbeat fresh";
+  if (status === "warning") return "heartbeat warning";
+  return "heartbeat stale";
 }
 
 export function getWarmupWorkerStatus(lastHeartbeatAt: Date | null | undefined): WarmupWorkerStatus {
@@ -215,13 +245,72 @@ export function hasMissedScheduledSend(input: {
   nextWarmupSendAt: Date | null | undefined;
   latestActivityAt: Date | null | undefined;
   now?: Date;
+  toleranceMs?: number;
 }): boolean {
   if (!input.nextWarmupSendAt) return false;
 
   const now = input.now ?? new Date();
-  if (now <= new Date(input.nextWarmupSendAt)) return false;
+  const toleranceMs = input.toleranceMs ?? WARMUP_MISSED_SCHEDULE_TOLERANCE_MS;
+  const delayedThreshold = new Date(input.nextWarmupSendAt).getTime() + toleranceMs;
+  if (now.getTime() <= delayedThreshold) return false;
 
   return !input.latestActivityAt || new Date(input.latestActivityAt) < new Date(input.nextWarmupSendAt);
+}
+
+export function buildWarmupConfidence(input: {
+  recentActivityRows: WarmupActivityRecord[];
+  workerRow: WarmupWorkerRecord | null;
+}): {
+  level: WarmupConfidenceLevel;
+  reason: string;
+  recentSuccessCount: number;
+  recentFailureCount: number;
+  failureFreeRecentRuns: boolean;
+} {
+  const recentWindow = input.recentActivityRows.slice(0, WARMUP_CONFIDENCE_WINDOW);
+  const recentSuccessCount = recentWindow.filter((row) => row.status === "sent").length;
+  const recentFailureCount = recentWindow.filter((row) => row.status === "failed" || row.status === "missed_schedule").length;
+  const recentFailureWindow = recentWindow.slice(0, WARMUP_CONFIDENCE_FAILURE_FREE_RUNS);
+  const failureFreeRecentRuns = recentFailureWindow.length > 0 && recentFailureWindow.every((row) => row.status === "sent");
+  const workerStatus = getWarmupWorkerStatus(input.workerRow?.lastHeartbeatAt);
+
+  if (recentWindow.length === 0) {
+    return {
+      level: workerStatus === "healthy" ? "medium" : "low",
+      reason: `No recent warmup activity yet • ${describeHeartbeatStatus(workerStatus)}`,
+      recentSuccessCount,
+      recentFailureCount,
+      failureFreeRecentRuns,
+    };
+  }
+
+  if (workerStatus === "healthy" && recentSuccessCount >= 8 && recentFailureCount === 0 && failureFreeRecentRuns) {
+    return {
+      level: "high",
+      reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded • no failures in last ${recentFailureWindow.length} runs • heartbeat fresh`,
+      recentSuccessCount,
+      recentFailureCount,
+      failureFreeRecentRuns,
+    };
+  }
+
+  if (workerStatus !== "stale" && recentSuccessCount >= Math.max(1, Math.ceil(recentWindow.length * 0.6)) && recentFailureCount <= 1) {
+    return {
+      level: "medium",
+      reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded • ${describeHeartbeatStatus(workerStatus)}`,
+      recentSuccessCount,
+      recentFailureCount,
+      failureFreeRecentRuns,
+    };
+  }
+
+  return {
+    level: "low",
+    reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded • ${recentFailureCount} recent failures • ${describeHeartbeatStatus(workerStatus)}`,
+    recentSuccessCount,
+    recentFailureCount,
+    failureFreeRecentRuns,
+  };
 }
 
 export function buildWarmupSenderRepairPlan(input: {
@@ -306,6 +395,11 @@ export function buildWarmupSenderDashboardRow(input: {
   const sentToday = warmupSentToday + outreachSentToday;
   const remainingCapacity = Math.max(0, dailyLimit - sentToday);
   const isCoolingDown = !!sender.cooldownUntil && new Date(sender.cooldownUntil) > now;
+  const isDelayed = hasMissedScheduledSend({
+    nextWarmupSendAt: sender.nextWarmupSendAt,
+    latestActivityAt: latestActivity?.sentAt ?? null,
+    now,
+  });
   const readyForOutreach = isReadyForOutreach(warmupDay, dailyLimit);
 
   let consecutiveFailures = 0;
@@ -315,7 +409,7 @@ export function buildWarmupSenderDashboardRow(input: {
   }
 
   let dashboardStatus = sender.warmupStatus ?? "not_started";
-  if (sender.lastWarmupResult === "missed_schedule" || sender.lastWarmupResult === "error" || consecutiveFailures > 0) {
+  if (isDelayed || sender.lastWarmupResult === "missed_schedule" || sender.lastWarmupResult === "error" || consecutiveFailures > 0) {
     dashboardStatus = "error";
   } else if (readyForOutreach) {
     dashboardStatus = "ready";
@@ -346,6 +440,7 @@ export function buildWarmupSenderDashboardRow(input: {
     is_ready_for_outreach: readyForOutreach,
     outreach_enabled: sender.outreachEnabled ?? false,
     consecutive_failures: consecutiveFailures,
+    is_delayed: isDelayed,
     health_score: sender.healthScore ?? null,
     cooldown_until: toIso(sender.cooldownUntil),
     is_cooling_down: isCoolingDown,
@@ -356,6 +451,7 @@ export function buildWarmupSummaryRow(input: {
   senders: WarmupSenderDashboardRow[];
   workerRow: WarmupWorkerRecord | null;
   recentActivity: WarmupActivityRecord | null;
+  recentActivityRows: WarmupActivityRecord[];
   pendingQueueCount: number;
 }): WarmupSummaryRow {
   const activeSenders = input.senders.filter((sender) => isWarmupManagedStatus(sender.warmup_status));
@@ -363,6 +459,11 @@ export function buildWarmupSummaryRow(input: {
     .map((sender) => sender.next_warmup_send_at)
     .filter((value): value is string => value !== null)
     .sort()[0] ?? null;
+  const confidence = buildWarmupConfidence({
+    recentActivityRows: input.recentActivityRows,
+    workerRow: input.workerRow,
+  });
+  const workerConfig = getWarmupWorkerConfig(input.workerRow);
 
   return {
     total_senders: input.senders.length,
@@ -387,6 +488,12 @@ export function buildWarmupSummaryRow(input: {
     worker_last_run_finished_at: toIso(input.workerRow?.lastRunFinishedAt),
     worker_last_run_status: input.workerRow?.lastRunStatus ?? null,
     worker_status: getWarmupWorkerStatus(input.workerRow?.lastHeartbeatAt),
+    warmup_confidence: confidence.level,
+    warmup_confidence_reason: confidence.reason,
+    recent_success_count: confidence.recentSuccessCount,
+    recent_failure_count: confidence.recentFailureCount,
+    failure_free_recent_runs: confidence.failureFreeRecentRuns,
+    stale_worker_alert_at: typeof workerConfig.lastStaleAlertAt === "string" ? workerConfig.lastStaleAlertAt : null,
   };
 }
 
@@ -517,6 +624,9 @@ export async function recordWarmupActivity(entry: {
   subject: string;
   messageType: string;
   status: string;
+  provider?: string;
+  providerMessageId?: string | null;
+  latencyMs?: number | null;
   errorMessage?: string;
   sentAt?: Date;
 }): Promise<void> {
@@ -527,6 +637,9 @@ export async function recordWarmupActivity(entry: {
       recipientEmail: entry.recipientEmail,
       subject: entry.subject,
       messageType: entry.messageType,
+      provider: entry.provider ?? null,
+      providerMessageId: entry.providerMessageId ?? null,
+      latencyMs: entry.latencyMs ?? null,
       status: entry.status,
       errorMessage: entry.errorMessage ?? null,
       sentAt: entry.sentAt ?? new Date(),
@@ -534,6 +647,85 @@ export async function recordWarmupActivity(entry: {
   } catch (err) {
     console.error("[LGS Warmup] activity log error:", err);
   }
+}
+
+export async function maybeAlertOnStaleWarmupWorker(input?: {
+  workerRow?: WarmupWorkerRecord | null;
+  now?: Date;
+}): Promise<boolean> {
+  const { db } = await import("../../../db/drizzle");
+  const now = input?.now ?? new Date();
+  await ensureWarmupWorkerHealthRow();
+
+  const workerRow = input?.workerRow ?? await db
+    .select()
+    .from(lgsWorkerHealth)
+    .where(eq(lgsWorkerHealth.workerName, WARMUP_WORKER_NAME))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  const lastHeartbeatAt = workerRow?.lastHeartbeatAt ?? null;
+  const heartbeatAgeMs = lastHeartbeatAt ? now.getTime() - new Date(lastHeartbeatAt).getTime() : Infinity;
+  if (heartbeatAgeMs < WARMUP_STALE_ALERT_THRESHOLD_MS) {
+    return false;
+  }
+
+  const workerConfig = getWarmupWorkerConfig(workerRow);
+  const lastAlertAt = typeof workerConfig.lastStaleAlertAt === "string" ? new Date(workerConfig.lastStaleAlertAt) : null;
+  if (lastAlertAt && now.getTime() - lastAlertAt.getTime() < WARMUP_STALE_ALERT_THRESHOLD_MS) {
+    return false;
+  }
+
+  const reason = lastHeartbeatAt
+    ? `Warmup worker heartbeat stale (${Math.round(heartbeatAgeMs / 60_000)}m since last heartbeat).`
+    : "Warmup worker heartbeat missing.";
+
+  console.error("[LGS Warmup] stale worker alert:", reason);
+
+  const webhookUrl = process.env.LGS_WARMUP_ALERT_WEBHOOK_URL?.trim();
+  if (webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: reason,
+          worker: WARMUP_WORKER_NAME,
+          lastHeartbeatAt: toIso(lastHeartbeatAt),
+          alertAt: now.toISOString(),
+        }),
+      });
+    } catch (err) {
+      console.error("[LGS Warmup] stale worker webhook alert failed:", err);
+    }
+  }
+
+  const alertEmailTo = process.env.LGS_WARMUP_ALERT_EMAIL_TO?.trim();
+  if (alertEmailTo) {
+    try {
+      await sendTransactionalEmail({
+        to: alertEmailTo,
+        subject: "LGS Warmup Worker Alert",
+        text: reason,
+        html: `<p>${reason}</p><p>Worker: ${WARMUP_WORKER_NAME}</p><p>Last heartbeat: ${toIso(lastHeartbeatAt) ?? "missing"}</p>`,
+      });
+    } catch (err) {
+      console.error("[LGS Warmup] stale worker email alert failed:", err);
+    }
+  }
+
+  await db
+    .update(lgsWorkerHealth)
+    .set({
+      configCheckResult: {
+        ...workerConfig,
+        lastStaleAlertAt: now.toISOString(),
+        lastStaleAlertReason: reason,
+      },
+    })
+    .where(eq(lgsWorkerHealth.workerName, WARMUP_WORKER_NAME));
+
+  return true;
 }
 
 function buildActivityMaps(rows: WarmupActivityRecord[]): {
@@ -640,6 +832,7 @@ export async function validateWarmupSystem(): Promise<WarmupValidationResult> {
         .orderBy(desc(lgsWarmupActivity.sentAt));
 
   const { latestActivityBySender } = buildActivityMaps(activityRows);
+  await maybeAlertOnStaleWarmupWorker({ workerRow });
 
   return validateWarmupSystemSnapshot({
     senders,
@@ -673,6 +866,11 @@ export async function getWarmupDashboardData(input: {
       .limit(1)
       .then((result) => result[0] ?? null),
   ]);
+  const recentActivityRows = await db
+    .select()
+    .from(lgsWarmupActivity)
+    .orderBy(desc(lgsWarmupActivity.sentAt))
+    .limit(WARMUP_CONFIDENCE_WINDOW);
 
   const senderEmails = rows.map((sender) => sender.senderEmail);
   const activityRows = senderEmails.length === 0
@@ -697,6 +895,7 @@ export async function getWarmupDashboardData(input: {
     senders: data,
     workerRow,
     recentActivity,
+    recentActivityRows,
     pendingQueueCount: input.pendingQueueCount,
   });
 

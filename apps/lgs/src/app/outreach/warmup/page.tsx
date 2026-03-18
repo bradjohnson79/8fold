@@ -28,6 +28,7 @@ type WarmupSender = {
   is_ready_for_outreach: boolean;
   outreach_enabled: boolean;
   consecutive_failures: number;
+  is_delayed: boolean;
   health_score: string | null;
   cooldown_until: string | null;
   is_cooling_down: boolean;
@@ -54,6 +55,12 @@ type WarmupSummary = {
   worker_last_run_finished_at: string | null;
   worker_last_run_status: string | null;
   worker_status: string;
+  warmup_confidence: "high" | "medium" | "low";
+  warmup_confidence_reason: string;
+  recent_success_count: number;
+  recent_failure_count: number;
+  failure_free_recent_runs: boolean;
+  stale_worker_alert_at: string | null;
   schedule: Record<string, number>;
 };
 
@@ -63,6 +70,9 @@ type ActivityEntry = {
   recipient_email: string;
   subject: string | null;
   message_type: string | null;
+  provider: string | null;
+  provider_message_id: string | null;
+  latency_ms: number | null;
   sent_at: string | null;
   status: string;
   error_message: string | null;
@@ -118,6 +128,13 @@ const RESULT_COLORS: Record<string, string> = {
   error: "#ef4444",
   skipped: "#facc15",
   wait: "#f59e0b",
+  missed_schedule: "#ef4444",
+};
+
+const CONFIDENCE_COLORS: Record<string, string> = {
+  high: "#22c55e",
+  medium: "#f59e0b",
+  low: "#ef4444",
 };
 
 function formatClockTime(iso: string | null): string {
@@ -192,6 +209,24 @@ function TypeBadge({ value }: { value: string | null }) {
   );
 }
 
+function DelayBadge() {
+  return (
+    <span
+      style={{
+        padding: "0.18rem 0.6rem",
+        borderRadius: 999,
+        fontSize: "0.72rem",
+        fontWeight: 800,
+        background: "#3b1a1a",
+        border: "1px solid #7f1d1d",
+        color: "#fecaca",
+      }}
+    >
+      Delayed / Missed
+    </span>
+  );
+}
+
 function SummaryCard({
   label,
   value,
@@ -231,6 +266,7 @@ function getSystemCountdownFallback(senders: WarmupSender[]): string {
   const activeSenders = senders.filter((sender) => sender.warmup_status === "warming" || sender.warmup_status === "ready");
 
   if (activeSenders.length === 0) return "No active warmup";
+  if (activeSenders.some((sender) => sender.is_delayed)) return "Delayed sender detected";
   return "Validation error";
 }
 
@@ -252,7 +288,7 @@ function WarmupProgressCard({
     ? `${sender.last_activity_status} • ${formatRelativeTime(sender.last_activity_at, "No activity timestamp")}`
     : "No warmup activity detected";
   const countdownSub = sender.next_warmup_send_at
-    ? `Scheduled: ${formatClockTime(sender.next_warmup_send_at)}`
+    ? `Scheduled: ${formatClockTime(sender.next_warmup_send_at)}${sender.is_delayed ? " • execution delayed" : ""}`
     : sender.warmup_status === "warming" || sender.warmup_status === "ready"
       ? "System validation error"
       : "No active schedule";
@@ -274,12 +310,13 @@ function WarmupProgressCard({
             {statusLabel} • Day {sender.warmup_day} / 5
           </div>
         </div>
+        {sender.is_delayed && <DelayBadge />}
       </div>
 
       <div style={{ display: "grid", gap: "0.7rem" }}>
         <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.8rem 0.9rem", border: "1px solid #1e293b" }}>
           <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>Countdown</div>
-          <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#f8fafc", fontVariantNumeric: "tabular-nums" }}>{nextWarmupCountdown}</div>
+          <div style={{ fontSize: "1.05rem", fontWeight: 800, color: sender.is_delayed ? "#fca5a5" : "#f8fafc", fontVariantNumeric: "tabular-nums" }}>{nextWarmupCountdown}</div>
           <div style={{ marginTop: "0.2rem", fontSize: "0.82rem", color: "#94a3b8" }}>{countdownSub}</div>
         </div>
         <div style={{ background: "#0f172a", borderRadius: 10, padding: "0.8rem 0.9rem", border: "1px solid #1e293b" }}>
@@ -422,6 +459,12 @@ export default function WarmupPage() {
               sub={summary.worker_last_heartbeat_at ? formatDateTime(summary.worker_last_heartbeat_at) : "Worker heartbeat missing"}
               color={summary.worker_last_heartbeat_at ? "#f8fafc" : "#fca5a5"}
             />
+            <SummaryCard
+              label="Warmup Confidence"
+              value={summary.warmup_confidence.toUpperCase()}
+              sub={summary.warmup_confidence_reason}
+              color={CONFIDENCE_COLORS[summary.warmup_confidence] ?? "#f8fafc"}
+            />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0.8rem", marginBottom: "1rem" }}>
@@ -489,6 +532,8 @@ export default function WarmupPage() {
                   <th style={{ padding: "0.65rem 0.5rem" }}>Sender</th>
                   <th style={{ padding: "0.65rem 0.5rem" }}>Recipient</th>
                   <th style={{ padding: "0.65rem 0.5rem" }}>Type</th>
+                  <th style={{ padding: "0.65rem 0.5rem" }}>Provider</th>
+                  <th style={{ padding: "0.65rem 0.5rem" }}>Latency</th>
                   <th style={{ padding: "0.65rem 0.5rem" }}>Status</th>
                 </tr>
               </thead>
@@ -503,10 +548,21 @@ export default function WarmupPage() {
                     <td style={{ padding: "0.65rem 0.5rem" }}>
                       <TypeBadge value={entry.message_type} />
                     </td>
+                    <td style={{ padding: "0.65rem 0.5rem", color: "#cbd5e1" }}>
+                      {entry.provider ?? "system"}
+                    </td>
+                    <td style={{ padding: "0.65rem 0.5rem", color: "#cbd5e1", fontVariantNumeric: "tabular-nums" }}>
+                      {entry.latency_ms !== null ? `${entry.latency_ms}ms` : "n/a"}
+                    </td>
                     <td style={{ padding: "0.65rem 0.5rem" }}>
                       <span style={{ color: RESULT_COLORS[entry.status] ?? "#f8fafc", fontWeight: 800 }}>
                         {entry.status}
                       </span>
+                      {entry.provider_message_id && (
+                        <div style={{ color: "#94a3b8", fontSize: "0.74rem", marginTop: "0.2rem", fontFamily: "monospace" }}>
+                          {entry.provider_message_id}
+                        </div>
+                      )}
                       {entry.error_message && (
                         <div style={{ color: "#fca5a5", fontSize: "0.74rem", marginTop: "0.2rem" }}>{entry.error_message}</div>
                       )}
@@ -540,6 +596,12 @@ export default function WarmupPage() {
             <SenderMetric label="Last Run Finished" value={health.worker?.last_run_finished_at ? formatDateTime(health.worker.last_run_finished_at) : "No run finish recorded"} />
             <SenderMetric label="Run Status" value={health.worker?.last_run_status ?? "No run status recorded"} />
           </div>
+
+          {summary?.stale_worker_alert_at && (
+            <div style={{ marginBottom: "1rem", padding: "0.8rem 0.9rem", borderRadius: 10, background: "#312e15", border: "1px solid #854d0e", color: "#fde68a" }}>
+              Last stale-worker alert: {formatDateTime(summary.stale_worker_alert_at)}
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "0.55rem" }}>
             {health.checks.map((check) => (
