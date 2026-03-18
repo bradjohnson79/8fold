@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildWarmupConfidence,
   buildWarmupSenderDashboardRow,
   buildWarmupSenderRepairPlan,
   buildWarmupSummaryRow,
@@ -52,6 +53,9 @@ function createActivity(overrides: Partial<WarmupActivityRecord> = {}): WarmupAc
     recipientEmail: "brad@aetherx.co",
     subject: "Warmup test",
     messageType: "external",
+    provider: "gmail",
+    providerMessageId: "msg-1",
+    latencyMs: 850,
     sentAt: new Date("2026-03-18T12:30:00.000Z"),
     status: "sent",
     errorMessage: null,
@@ -158,6 +162,22 @@ describe("warmup activity and dashboard contract", () => {
     expect(row.next_warmup_send_at).not.toBeNull();
     expect(row.last_activity_status).toBe("sent");
     expect(row.last_activity_recipient).toBe("brad@aetherx.co");
+    expect(row.is_delayed).toBe(false);
+  });
+
+  it("marks sender rows as delayed after schedule tolerance passes without activity", () => {
+    const sender = createSender({
+      nextWarmupSendAt: new Date("2026-03-18T12:00:00.000Z"),
+    });
+    const row = buildWarmupSenderDashboardRow({
+      sender,
+      latestActivity: createActivity({ sentAt: new Date("2026-03-18T11:30:00.000Z") }),
+      activityRows: [],
+      now: new Date("2026-03-18T12:06:00.000Z"),
+    });
+
+    expect(row.is_delayed).toBe(true);
+    expect(row.dashboard_status).toBe("error");
   });
 
   it("builds summary rows with next send and worker state", () => {
@@ -173,12 +193,33 @@ describe("warmup activity and dashboard contract", () => {
       senders: [row],
       workerRow: createWorker(),
       recentActivity: activity,
+      recentActivityRows: [activity],
       pendingQueueCount: 3,
     });
 
     expect(summary.next_system_warmup_send_at).not.toBeNull();
     expect(summary.worker_status).toBe("healthy");
     expect(summary.pending_queue_count).toBe(3);
+    expect(summary.warmup_confidence).toBe("medium");
+  });
+});
+
+describe("warmup confidence", () => {
+  it("scores confidence high when recent sends succeed and heartbeat is healthy", () => {
+    const confidence = buildWarmupConfidence({
+      recentActivityRows: Array.from({ length: 10 }, (_, index) =>
+        createActivity({
+          id: index + 1,
+          providerMessageId: `msg-${index + 1}`,
+          sentAt: new Date(`2026-03-18T12:${String(index).padStart(2, "0")}:00.000Z`),
+        })
+      ),
+      workerRow: createWorker(),
+    });
+
+    expect(confidence.level).toBe("high");
+    expect(confidence.recentFailureCount).toBe(0);
+    expect(confidence.failureFreeRecentRuns).toBe(true);
   });
 });
 
@@ -233,7 +274,7 @@ describe("missed schedule detection", () => {
     expect(hasMissedScheduledSend({
       nextWarmupSendAt: new Date("2026-03-18T12:00:00.000Z"),
       latestActivityAt: new Date("2026-03-18T11:45:00.000Z"),
-      now: new Date("2026-03-18T12:10:00.000Z"),
+      now: new Date("2026-03-18T12:06:00.000Z"),
     })).toBe(true);
   });
 
@@ -242,6 +283,14 @@ describe("missed schedule detection", () => {
       nextWarmupSendAt: new Date("2026-03-18T12:00:00.000Z"),
       latestActivityAt: new Date("2026-03-18T12:02:00.000Z"),
       now: new Date("2026-03-18T12:10:00.000Z"),
+    })).toBe(false);
+  });
+
+  it("waits until tolerance has passed before flagging delay", () => {
+    expect(hasMissedScheduledSend({
+      nextWarmupSendAt: new Date("2026-03-18T12:00:00.000Z"),
+      latestActivityAt: null,
+      now: new Date("2026-03-18T12:04:00.000Z"),
     })).toBe(false);
   });
 });

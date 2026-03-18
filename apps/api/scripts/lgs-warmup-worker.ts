@@ -14,8 +14,8 @@
 import path from "node:path";
 import cron from "node-cron";
 import dotenv from "dotenv";
-import { eq, or, sql } from "drizzle-orm";
-import { senderPool, lgsWorkerHealth } from "../db/schema/directoryEngine";
+import { and, eq, gte, or, sql } from "drizzle-orm";
+import { lgsWarmupActivity, senderPool, lgsWorkerHealth } from "../db/schema/directoryEngine";
 import { sendOutreachEmail, hasGmailTokenForSender } from "../src/services/lgs/outreachGmailSenderService";
 
 dotenv.config({
@@ -33,12 +33,16 @@ import {
   computeWarmupRetryAt,
   enforceWarmupSystemState,
   ensureWarmupWorkerHealthRow,
+  maybeAlertOnStaleWarmupWorker,
   recordWarmupActivity,
 } from "../src/services/lgs/warmupSystem";
 
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
 const WORKER_NAME = "warmup";
+const WARMUP_DOMAIN_DAILY_CAP = Number.isFinite(Number(process.env.LGS_WARMUP_DOMAIN_DAILY_CAP))
+  ? Number(process.env.LGS_WARMUP_DOMAIN_DAILY_CAP)
+  : 25;
 
 const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
   { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
@@ -73,6 +77,11 @@ function formatClockTime(value: Date): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function getRecipientDomain(email: string): string {
+  const [, domain = "unknown"] = email.trim().toLowerCase().split("@");
+  return domain || "unknown";
 }
 
 // ─── Worker Heartbeat ─────────────────────────────────────────────────
@@ -178,6 +187,22 @@ async function sendWarmupEmails(): Promise<void> {
     );
 
   const now = new Date();
+  const recentSentRows = await db
+    .select({
+      recipientEmail: lgsWarmupActivity.recipientEmail,
+    })
+    .from(lgsWarmupActivity)
+    .where(
+      and(
+        eq(lgsWarmupActivity.status, "sent"),
+        gte(lgsWarmupActivity.sentAt, new Date(now.getTime() - 24 * 60 * 60 * 1000))
+      )
+    );
+  const domainSendCounts = new Map<string, number>();
+  for (const row of recentSentRows) {
+    const domain = getRecipientDomain(row.recipientEmail);
+    domainSendCounts.set(domain, (domainSendCounts.get(domain) ?? 0) + 1);
+  }
 
   for (const sender of senders) {
     const email = sender.senderEmail ?? "";
@@ -322,16 +347,48 @@ async function sendWarmupEmails(): Promise<void> {
     const { target: targetEmail, isExternal } = targetResult;
     const msg = pickRandom(WARMUP_MESSAGES);
     const routeType = isExternal ? "external" : "internal";
+    const targetDomain = getRecipientDomain(targetEmail);
+    const domainSentToday = domainSendCounts.get(targetDomain) ?? 0;
+    const senderRemaining = Math.max(0, remaining);
+    const dailyLimitForDay = Math.max(0, warmupBudget - warmupSentSoFar);
+    const domainRemaining = Math.max(0, WARMUP_DOMAIN_DAILY_CAP - domainSentToday);
+    const actualSend = Math.min(domainRemaining, senderRemaining, dailyLimitForDay);
+
+    if (actualSend <= 0) {
+      const retryAt = computeWarmupRetryAt(now);
+      const domainGuardReason = `Domain guardrail reached for ${targetDomain} (${domainSentToday}/${WARMUP_DOMAIN_DAILY_CAP} in last 24h).`;
+      console.warn(`[LGS Warmup] ${email}: ${domainGuardReason}`);
+      await db.update(senderPool).set({
+        lastWarmupResult: "skipped",
+        lastWarmupRecipient: targetEmail,
+        nextWarmupSendAt: retryAt,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+      await recordWarmupActivity({
+        senderEmail: email,
+        recipientEmail: targetEmail,
+        subject: msg.subject,
+        messageType: routeType,
+        status: "skipped",
+        provider: "gmail",
+        errorMessage: domainGuardReason,
+        sentAt: now,
+      });
+      console.log(`[LGS Warmup] Next send scheduled -> ${formatClockTime(retryAt)}`);
+      continue;
+    }
 
     console.log(`[LGS Warmup] Sending ${email} -> ${targetEmail} (${routeType})`);
 
     try {
+      const sendStartedAt = Date.now();
       const result = await sendOutreachEmail({
         subject: msg.subject,
         body: msg.body,
         contactEmail: targetEmail,
         senderAccount: email,
       });
+      const latencyMs = Date.now() - sendStartedAt;
 
       if (result.ok) {
         const newWarmupSent = warmupSentSoFar + 1;
@@ -372,7 +429,11 @@ async function sendWarmupEmails(): Promise<void> {
           subject: msg.subject,
           messageType: routeType,
           status: "sent",
+          provider: "gmail",
+          providerMessageId: result.messageId,
+          latencyMs,
         });
+        domainSendCounts.set(targetDomain, domainSentToday + 1);
 
         console.log(`[LGS Warmup] Success ${email}${result.messageId ? ` (${result.messageId})` : ""}`);
         console.log(`[LGS Warmup] Next send scheduled -> ${formatClockTime(nextScheduledAfterSend)}`);
@@ -393,6 +454,8 @@ async function sendWarmupEmails(): Promise<void> {
           subject: msg.subject,
           messageType: routeType,
           status: "failed",
+          provider: "gmail",
+          latencyMs,
           errorMessage: errMsg,
         });
 
@@ -416,6 +479,7 @@ async function sendWarmupEmails(): Promise<void> {
         subject: msg.subject,
         messageType: routeType,
         status: "failed",
+        provider: "gmail",
         errorMessage: errMsg,
       });
 
@@ -487,6 +551,12 @@ async function updateHealthScores(): Promise<void> {
 // ─── Main Cycle ────────────────────────────────────────────────────────
 
 async function runWarmupCycle(): Promise<void> {
+  try {
+    await maybeAlertOnStaleWarmupWorker();
+  } catch (err) {
+    console.error("[LGS Warmup] stale worker alert check error:", err);
+  }
+
   try {
     await heartbeatStart();
   } catch (err) {
