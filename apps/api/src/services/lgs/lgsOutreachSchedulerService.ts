@@ -321,7 +321,7 @@ async function selectAvailableSender(
     if (remaining <= 0) continue;
 
     if (minutesSince(s.lastSentAt ?? null) < intervalMin) continue;
-    if (!hasGmailTokenForSender(s.senderEmail ?? "")) continue;
+    if (!(await hasGmailTokenForSender(s.senderEmail ?? ""))) continue;
 
     // Minimum sender health gate
     const senderHealthIdx = SENDER_HEALTH_ORDER.indexOf((s.healthScore ?? "risk") as SenderHealthLevel);

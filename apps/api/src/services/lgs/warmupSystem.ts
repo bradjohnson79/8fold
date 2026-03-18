@@ -512,8 +512,14 @@ export function explainNoRecentWarmupActivity(input: {
     return "All warming senders are in cooldown.";
   }
 
-  if (activeSenders.every((sender) => sender.nextWarmupSendAt && new Date(sender.nextWarmupSendAt) > now)) {
-    return "All warming senders are scheduled for future sends.";
+  const withinExecutionTolerance = activeSenders.every((sender) => {
+    if (!sender.nextWarmupSendAt) return false;
+    const scheduledAt = new Date(sender.nextWarmupSendAt).getTime();
+    return now.getTime() <= scheduledAt + WARMUP_MISSED_SCHEDULE_TOLERANCE_MS;
+  });
+
+  if (withinExecutionTolerance) {
+    return "All warming senders are scheduled or within execution tolerance.";
   }
 
   return "No recent warmup activity and at least one sender should have executed.";
@@ -533,6 +539,10 @@ export function validateWarmupSystemSnapshot(input: {
   const sendersWithFutureCountdowns = warmingSenders.filter(
     (sender) => !!sender.nextWarmupSendAt && new Date(sender.nextWarmupSendAt) > now
   ).length;
+  const sendersWithUpcomingOrToleratedCountdowns = warmingSenders.filter((sender) => {
+    if (!sender.nextWarmupSendAt) return false;
+    return now.getTime() <= new Date(sender.nextWarmupSendAt).getTime() + WARMUP_MISSED_SCHEDULE_TOLERANCE_MS;
+  }).length;
 
   for (const sender of warmingSenders) {
     if (!sender.currentDayStartedAt) {
@@ -559,7 +569,7 @@ export function validateWarmupSystemSnapshot(input: {
     }
   }
 
-  if (warmingSenders.length > 0 && sendersWithFutureCountdowns === 0) {
+  if (warmingSenders.length > 0 && sendersWithUpcomingOrToleratedCountdowns === 0) {
     reasons.push("No warming sender has a future next_warmup_send_at.");
   }
 
@@ -774,11 +784,12 @@ export async function enforceWarmupSystemState(now: Date = new Date()): Promise<
 
   for (const sender of managedSenders) {
     const latestActivity = latestActivityBySender.get(sender.senderEmail) ?? null;
+    const hasValidToken = await hasGmailTokenForSender(sender.senderEmail);
     const plan = buildWarmupSenderRepairPlan({
       sender,
       latestActivity,
       now,
-      hasValidToken: hasGmailTokenForSender(sender.senderEmail),
+      hasValidToken,
     });
 
     if (Object.keys(plan.updates).length > 0) {

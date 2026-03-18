@@ -5,6 +5,7 @@ import {
   buildWarmupSenderRepairPlan,
   buildWarmupSummaryRow,
   computeNextWarmupSendAt,
+  explainNoRecentWarmupActivity,
   getWarmupWorkerStatus,
   hasMissedScheduledSend,
   validateWarmupSystemSnapshot,
@@ -19,6 +20,10 @@ function createSender(overrides: Partial<WarmupSenderRecord> = {}): WarmupSender
   return {
     id: "sender-1",
     senderEmail: "info@8fold.app",
+    gmailRefreshToken: null,
+    gmailAccessToken: null,
+    gmailTokenExpiresAt: null,
+    gmailConnected: false,
     dailyLimit: 5,
     sentToday: 0,
     lastSentAt: null,
@@ -267,6 +272,23 @@ describe("warmup validation gate", () => {
     expect(validation.pass).toBe(false);
     expect(validation.reasons.some((reason) => reason.includes("scheduled send window passed"))).toBe(true);
   });
+
+  it("does not fail when senders are within execution tolerance but no recent activity exists", () => {
+    const sender = createSender({
+      nextWarmupSendAt: new Date("2026-03-18T12:00:00.000Z"),
+    });
+    const validation = validateWarmupSystemSnapshot({
+      senders: [sender],
+      latestActivityBySender: new Map([[sender.senderEmail, createActivity({ sentAt: new Date("2026-03-18T09:00:00.000Z") })]]),
+      recentActivity: createActivity({ sentAt: new Date("2026-03-18T09:00:00.000Z") }),
+      workerRow: createWorker(),
+      now: new Date("2026-03-18T12:03:00.000Z"),
+    });
+
+    expect(validation.pass).toBe(true);
+    expect(validation.reasons).toHaveLength(0);
+    expect(validation.warnings).toContain("All warming senders are scheduled or within execution tolerance.");
+  });
 });
 
 describe("missed schedule detection", () => {
@@ -292,5 +314,18 @@ describe("missed schedule detection", () => {
       latestActivityAt: null,
       now: new Date("2026-03-18T12:04:00.000Z"),
     })).toBe(false);
+  });
+});
+
+describe("no recent activity explanation", () => {
+  it("treats sends inside execution tolerance as scheduled", () => {
+    const sender = createSender({
+      nextWarmupSendAt: new Date("2026-03-18T12:00:00.000Z"),
+    });
+
+    expect(explainNoRecentWarmupActivity({
+      senders: [sender],
+      now: new Date("2026-03-18T12:03:00.000Z"),
+    })).toBe("All warming senders are scheduled or within execution tolerance.");
   });
 });

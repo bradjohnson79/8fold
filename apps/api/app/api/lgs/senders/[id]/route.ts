@@ -53,6 +53,8 @@ export async function PATCH(
       data: {
         id: updated.id,
         sender_email: updated.senderEmail,
+        gmail_connected: updated.gmailConnected,
+        gmail_token_expires_at: updated.gmailTokenExpiresAt?.toISOString() ?? null,
         sent_today: updated.sentToday,
         daily_limit: updated.dailyLimit,
         last_sent_at: updated.lastSentAt?.toISOString() ?? null,

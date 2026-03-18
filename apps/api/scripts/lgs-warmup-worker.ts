@@ -35,6 +35,7 @@ import {
   ensureWarmupWorkerHealthRow,
   maybeAlertOnStaleWarmupWorker,
   recordWarmupActivity,
+  validateWarmupSystem,
 } from "../src/services/lgs/warmupSystem";
 
 const MAX_WARMUP_DAY = 5;
@@ -43,6 +44,7 @@ const WORKER_NAME = "warmup";
 const WARMUP_DOMAIN_DAILY_CAP = Number.isFinite(Number(process.env.LGS_WARMUP_DOMAIN_DAILY_CAP))
   ? Number(process.env.LGS_WARMUP_DOMAIN_DAILY_CAP)
   : 25;
+const RUN_ONCE = process.env.LGS_WARMUP_RUN_ONCE === "1";
 
 const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
   { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
@@ -82,6 +84,10 @@ function formatClockTime(value: Date): string {
 function getRecipientDomain(email: string): string {
   const [, domain = "unknown"] = email.trim().toLowerCase().split("@");
   return domain || "unknown";
+}
+
+function logWarmupTrace(stage: string, payload: Record<string, unknown>) {
+  console.log(`[LGS Warmup][${stage}] ${JSON.stringify(payload)}`);
 }
 
 // ─── Worker Heartbeat ─────────────────────────────────────────────────
@@ -207,6 +213,8 @@ async function sendWarmupEmails(): Promise<void> {
   for (const sender of senders) {
     const email = sender.senderEmail ?? "";
     const warmupDay = sender.warmupDay ?? 1;
+    const persistedNextWarmupSendAt = sender.nextWarmupSendAt ?? null;
+    const persistedDue = !!persistedNextWarmupSendAt && persistedNextWarmupSendAt.getTime() <= now.getTime();
 
     // Skip senders in cooldown
     if (sender.cooldownUntil && new Date(sender.cooldownUntil) > now) {
@@ -222,6 +230,13 @@ async function sendWarmupEmails(): Promise<void> {
         cooldownUntil: sender.cooldownUntil,
         hasValidToken: true,
         now,
+      });
+      logWarmupTrace("sender_evaluated", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: persistedNextWarmupSendAt?.toISOString() ?? null,
+        due: persistedDue,
+        reason: "cooldown",
       });
       console.log(`[LGS Warmup] Scheduling ${email} -> ${formatClockTime(nextScheduledAt)} (cooldown)`);
       await db.update(senderPool).set({
@@ -246,6 +261,13 @@ async function sendWarmupEmails(): Promise<void> {
         outreachEnabled: sender.outreachEnabled,
         hasValidToken: true,
         now,
+      });
+      logWarmupTrace("sender_evaluated", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: persistedNextWarmupSendAt?.toISOString() ?? null,
+        due: persistedDue,
+        reason: "capacity_exhausted",
       });
       console.log(`[LGS Warmup] Scheduling ${email} -> ${formatClockTime(nextScheduledAt)} (capacity exhausted)`);
       await db.update(senderPool).set({
@@ -274,6 +296,13 @@ async function sendWarmupEmails(): Promise<void> {
         hasValidToken: true,
         now,
       });
+      logWarmupTrace("sender_evaluated", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: persistedNextWarmupSendAt?.toISOString() ?? null,
+        due: persistedDue,
+        reason: "warmup_quota_reached",
+      });
       console.log(`[LGS Warmup] Scheduling ${email} -> ${formatClockTime(nextScheduledAt)} (warmup quota reached)`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
@@ -283,14 +312,42 @@ async function sendWarmupEmails(): Promise<void> {
       continue;
     }
 
-    if (!hasGmailTokenForSender(email)) {
+    const hasValidToken = await hasGmailTokenForSender(email);
+    if (!hasValidToken) {
       const retryAt = computeWarmupRetryAt(now);
-      console.warn(`[LGS Warmup] ${email}: Gmail token unavailable, retry at ${formatClockTime(retryAt)}`);
+      logWarmupTrace("sender_evaluated", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: persistedNextWarmupSendAt?.toISOString() ?? null,
+        due: persistedDue,
+        reason: "missing_token",
+      });
+      console.warn(`[LGS Warmup] ${email}: missing_token, retry at ${formatClockTime(retryAt)}`);
       await db.update(senderPool).set({
-        lastWarmupResult: "skipped",
+        lastWarmupResult: "error",
         nextWarmupSendAt: retryAt,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
+      await recordWarmupActivity({
+        senderEmail: email,
+        recipientEmail: sender.lastWarmupRecipient ?? email,
+        subject: "Warmup token validation failed",
+        messageType: "system",
+        status: "failed",
+        provider: "gmail",
+        errorMessage: "missing_token",
+        sentAt: now,
+      });
+      logWarmupTrace("activity_inserted", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: persistedNextWarmupSendAt?.toISOString() ?? null,
+        due: persistedDue,
+        selected_recipient: sender.lastWarmupRecipient ?? email,
+        send_result: "missing_token",
+        activity_status: "failed",
+        next_send_persisted: retryAt.toISOString(),
+      });
       continue;
     }
 
@@ -301,24 +358,38 @@ async function sendWarmupEmails(): Promise<void> {
       warmupBudget,
     });
 
-    // Always persist next send timing
-    const nextScheduledAt = eligibility.nextSendAt ?? computeWarmupRetryAt(now);
-    console.log(`[LGS Warmup] Scheduling ${email} -> ${formatClockTime(nextScheduledAt)}`);
-    await db.update(senderPool).set({
-      nextWarmupSendAt: nextScheduledAt,
-      updatedAt: now,
-    }).where(eq(senderPool.id, sender.id));
+    const computedNextScheduledAt = eligibility.nextSendAt ?? computeWarmupRetryAt(now);
+    const effectiveNextWarmupSendAt = persistedNextWarmupSendAt ?? computedNextScheduledAt;
+    const due = effectiveNextWarmupSendAt.getTime() <= now.getTime();
+    if (!persistedNextWarmupSendAt) {
+      console.log(`[LGS Warmup] Scheduling ${email} -> ${formatClockTime(computedNextScheduledAt)}`);
+      await db.update(senderPool).set({
+        nextWarmupSendAt: computedNextScheduledAt,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+    }
 
     const nextEligibleMin = Math.round(eligibility.nextEligibleMs / 60_000);
+
+    logWarmupTrace("sender_evaluated", {
+      sender_email: email,
+      now: now.toISOString(),
+      next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+      due,
+      eligibility_allowed: eligibility.allowed,
+      eligibility_next_send_at: computedNextScheduledAt.toISOString(),
+      warmup_sent_today: warmupSentSoFar,
+      warmup_budget: warmupBudget,
+    });
 
     console.log(
       `[LGS Warmup] ${email}: dayProgress=${(eligibility.dayProgress * 100).toFixed(1)}%` +
       ` expectedProgress=${(eligibility.expectedProgress * 100).toFixed(1)}%` +
       ` sent=${warmupSentSoFar}/${warmupBudget}` +
-      ` decision=${eligibility.allowed ? "SEND" : `WAIT (~${nextEligibleMin}m)`}`
+      ` decision=${due ? "SEND" : `WAIT (~${nextEligibleMin}m)`}`
     );
 
-    if (!eligibility.allowed) {
+    if (!due) {
       await db.update(senderPool).set({
         lastWarmupResult: "wait",
         updatedAt: now,
@@ -335,6 +406,14 @@ async function sendWarmupEmails(): Promise<void> {
 
     if (!targetResult.target) {
       const retryAt = computeWarmupRetryAt(now);
+      logWarmupTrace("target_selected", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+        due,
+        selected_recipient: null,
+        send_result: "no_valid_target",
+      });
       console.warn(`[LGS Warmup] ${email}: no valid target — ${(targetResult as { reason: string }).reason}`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
@@ -353,6 +432,18 @@ async function sendWarmupEmails(): Promise<void> {
     const dailyLimitForDay = Math.max(0, warmupBudget - warmupSentSoFar);
     const domainRemaining = Math.max(0, WARMUP_DOMAIN_DAILY_CAP - domainSentToday);
     const actualSend = Math.min(domainRemaining, senderRemaining, dailyLimitForDay);
+    logWarmupTrace("target_selected", {
+      sender_email: email,
+      now: now.toISOString(),
+      next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+      due,
+      selected_recipient: targetEmail,
+      route_type: routeType,
+      domain_remaining: domainRemaining,
+      sender_remaining: senderRemaining,
+      daily_limit_remaining: dailyLimitForDay,
+      actual_send: actualSend,
+    });
 
     if (actualSend <= 0) {
       const retryAt = computeWarmupRetryAt(now);
@@ -374,10 +465,28 @@ async function sendWarmupEmails(): Promise<void> {
         errorMessage: domainGuardReason,
         sentAt: now,
       });
+      logWarmupTrace("activity_inserted", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+        due,
+        selected_recipient: targetEmail,
+        send_result: "guardrail_blocked",
+        activity_status: "skipped",
+        next_send_persisted: retryAt.toISOString(),
+      });
       console.log(`[LGS Warmup] Next send scheduled -> ${formatClockTime(retryAt)}`);
       continue;
     }
 
+    logWarmupTrace("send_attempt_entered", {
+      sender_email: email,
+      now: now.toISOString(),
+      next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+      due,
+      selected_recipient: targetEmail,
+      route_type: routeType,
+    });
     console.log(`[LGS Warmup] Sending ${email} -> ${targetEmail} (${routeType})`);
 
     try {
@@ -434,6 +543,18 @@ async function sendWarmupEmails(): Promise<void> {
           latencyMs,
         });
         domainSendCounts.set(targetDomain, domainSentToday + 1);
+        logWarmupTrace("activity_inserted", {
+          sender_email: email,
+          now: now.toISOString(),
+          next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+          due,
+          selected_recipient: targetEmail,
+          send_attempt_entered: true,
+          send_result: "sent",
+          activity_status: "sent",
+          provider_message_id: result.messageId,
+          next_send_persisted: nextScheduledAfterSend.toISOString(),
+        });
 
         console.log(`[LGS Warmup] Success ${email}${result.messageId ? ` (${result.messageId})` : ""}`);
         console.log(`[LGS Warmup] Next send scheduled -> ${formatClockTime(nextScheduledAfterSend)}`);
@@ -458,6 +579,18 @@ async function sendWarmupEmails(): Promise<void> {
           latencyMs,
           errorMessage: errMsg,
         });
+        logWarmupTrace("activity_inserted", {
+          sender_email: email,
+          now: now.toISOString(),
+          next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+          due,
+          selected_recipient: targetEmail,
+          send_attempt_entered: true,
+          send_result: "failed",
+          activity_status: "failed",
+          error_message: errMsg,
+          next_send_persisted: retryAt.toISOString(),
+        });
 
         console.warn(`[LGS Warmup] ${email} → ${targetEmail} send failed: ${errMsg}`);
         console.log(`[LGS Warmup] Next send scheduled -> ${formatClockTime(retryAt)}`);
@@ -481,6 +614,18 @@ async function sendWarmupEmails(): Promise<void> {
         status: "failed",
         provider: "gmail",
         errorMessage: errMsg,
+      });
+      logWarmupTrace("activity_inserted", {
+        sender_email: email,
+        now: now.toISOString(),
+        next_warmup_send_at: effectiveNextWarmupSendAt.toISOString(),
+        due,
+        selected_recipient: targetEmail,
+        send_attempt_entered: true,
+        send_result: "exception",
+        activity_status: "failed",
+        error_message: errMsg,
+        next_send_persisted: retryAt.toISOString(),
       });
 
       console.error(`[LGS Warmup] ${email} warmup send error:`, err);
@@ -605,7 +750,7 @@ async function runWarmupCycle(): Promise<void> {
   }
 
   try {
-    const validation = await (await import("../src/services/lgs/warmupSystem")).validateWarmupSystem();
+    const validation = await validateWarmupSystem();
     if (!validation.pass) {
       const message = validation.reasons.join(" | ");
       console.error(`[LGS Warmup] post-run validation failed: ${message}`);
@@ -618,12 +763,21 @@ async function runWarmupCycle(): Promise<void> {
   }
 }
 
-cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
-  timezone: "America/Los_Angeles",
-});
-void runWarmupCycle();
-
-console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+if (RUN_ONCE) {
+  void runWarmupCycle().then(() => {
+    console.log("[LGS Warmup] Single run complete.");
+    process.exit(0);
+  }).catch((error) => {
+    console.error("[LGS Warmup] Single run failed:", error);
+    process.exit(1);
+  });
+} else {
+  cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
+    timezone: "America/Los_Angeles",
+  });
+  void runWarmupCycle();
+  console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+}
 
 process.on("SIGINT", () => {
   console.log("[LGS Warmup] Shutting down...");
