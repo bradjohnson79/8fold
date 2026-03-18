@@ -152,6 +152,29 @@ function StatCard({ label, value, sub, color = "#f8fafc" }: { label: string; val
   );
 }
 
+/**
+ * Estimate the next warmup send time from slot math when next_warmup_send_at
+ * hasn't been persisted yet (i.e. worker hasn't run since senders were added).
+ */
+function computeEstimatedNextSend(senders: WarmupSender[]): string | null {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  let earliest: number | null = null;
+  for (const s of senders) {
+    if (s.warmup_status !== "warming") continue;
+    if (!s.current_day_started_at) continue;
+    const limit = s.daily_warmup_limit;
+    if (!limit || limit <= 0) continue;
+    const sentToday = s.warmup_sent_today ?? 0;
+    if (sentToday >= limit) continue;
+    const slotMs = DAY_MS / limit;
+    const dayStart = new Date(s.current_day_started_at).getTime();
+    // Place estimate at mid-point of the next unfilled slot
+    const estimated = dayStart + (sentToday + 0.5) * slotMs;
+    if (earliest === null || estimated < earliest) earliest = estimated;
+  }
+  return earliest !== null ? new Date(earliest).toISOString() : null;
+}
+
 function useCountdown(isoTarget: string | null): string {
   const [display, setDisplay] = useState("—");
   const targetRef = useRef(isoTarget);
@@ -431,7 +454,12 @@ export default function WarmupPage() {
     await load();
   }
 
-  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null);
+  // Use the server-persisted timestamp when available; fall back to slot-math estimate
+  // so the countdown is populated even before the first worker cycle runs.
+  const estimatedNextSend = computeEstimatedNextSend(senders);
+  const resolvedNextSend = summary?.next_system_warmup_send_at ?? estimatedNextSend;
+  const systemCountdown = useCountdown(resolvedNextSend);
+  const nextSendIsEstimated = !summary?.next_system_warmup_send_at && !!estimatedNextSend;
 
   return (
     <div style={{ maxWidth: 960 }}>
@@ -455,7 +483,12 @@ export default function WarmupPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
             <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Next System Warmup Send</div>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#f59e0b", fontVariantNumeric: "tabular-nums" }}>{systemCountdown}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem" }}>
+              <span style={{ fontSize: "1.25rem", fontWeight: 700, color: "#f59e0b", fontVariantNumeric: "tabular-nums" }}>{systemCountdown}</span>
+              {nextSendIsEstimated && systemCountdown !== "—" && (
+                <span style={{ fontSize: "0.65rem", color: "#64748b", letterSpacing: "0.04em" }}>est.</span>
+              )}
+            </div>
           </div>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
             <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Last Warmup Activity</div>
