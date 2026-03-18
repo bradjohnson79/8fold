@@ -48,6 +48,7 @@
     "lgs:verification:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-email-verification-worker.ts",
     "lgs:outreach:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-outreach-worker.ts",
     "lgs:reset-counters": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-reset-daily-counters.ts",
+    "lgs:gmail:migrate-tokens": "DOTENV_CONFIG_PATH=.env.local tsx scripts/migrate-lgs-gmail-tokens-to-db.ts",
     "lgs:warmup:migrate-activity-metadata": "DOTENV_CONFIG_PATH=.env.local tsx scripts/migrate-lgs-warmup-activity-metadata.ts",
     "lgs:warmup:worker": "DOTENV_CONFIG_PATH=.env.local tsx scripts/lgs-warmup-worker.ts",
     "lgs:warmup:validate": "DOTENV_CONFIG_PATH=.env.local tsx scripts/validate-lgs-warmup-system.ts"

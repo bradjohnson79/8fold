@@ -136,6 +136,10 @@ export const emailQueue = directoryEngineSchema.table("email_queue", {
 export const senderPool = directoryEngineSchema.table("sender_pool", {
   id: uuid("id").primaryKey().defaultRandom(),
   senderEmail: text("sender_email").notNull().unique(),
+  gmailRefreshToken: text("gmail_refresh_token"),
+  gmailAccessToken: text("gmail_access_token"),
+  gmailTokenExpiresAt: timestamp("gmail_token_expires_at", { mode: "date" }),
+  gmailConnected: boolean("gmail_connected").notNull().default(false),
   dailyLimit: integer("daily_limit").notNull().default(50),
   sentToday: integer("sent_today").notNull().default(0),
   lastSentAt: timestamp("last_sent_at", { mode: "date" }),

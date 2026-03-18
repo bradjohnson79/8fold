@@ -36,10 +36,12 @@ export async function GET() {
       );
 
     const activeSendersExist = senders.length > 0;
-    const gmailTokens = senders.map((s) => ({
-      email: s.senderEmail,
-      hasToken: hasGmailTokenForSender(s.senderEmail ?? ""),
-    }));
+    const gmailTokens = await Promise.all(
+      senders.map(async (s) => ({
+        email: s.senderEmail,
+        hasToken: await hasGmailTokenForSender(s.senderEmail ?? ""),
+      }))
+    );
     const allTokensValid = gmailTokens.every((t) => t.hasToken);
 
     // Next send timing
