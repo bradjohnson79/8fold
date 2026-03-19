@@ -129,7 +129,6 @@ const RESULT_COLORS: Record<string, string> = {
   error: "#ef4444",
   skipped: "#facc15",
   wait: "#f59e0b",
-  missed_schedule: "#ef4444",
 };
 
 const CONFIDENCE_COLORS: Record<string, string> = {
@@ -139,7 +138,7 @@ const CONFIDENCE_COLORS: Record<string, string> = {
 };
 
 function formatClockTime(iso: string | null): string {
-  if (!iso) return "No persisted schedule";
+  if (!iso) return "No next send scheduled";
   return new Date(iso).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
@@ -226,7 +225,7 @@ function DelayBadge() {
         color: "#fecaca",
       }}
     >
-      Delayed / Missed
+      Delayed
     </span>
   );
 }
@@ -402,7 +401,7 @@ export default function WarmupPage() {
   }, [load]);
 
   const systemCountdownFallback = useMemo(() => getSystemCountdownFallback(senders), [senders]);
-  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null, systemCountdownFallback);
+  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null, "scheduled", systemCountdownFallback);
   const workerStatusColor = WORKER_STATUS_COLORS[summary?.worker_status ?? "stale"] ?? "#ef4444";
   const lastActivityValue = summary?.last_warmup_activity_at
     ? formatRelativeTime(summary.last_warmup_activity_at, "No activity timestamp")

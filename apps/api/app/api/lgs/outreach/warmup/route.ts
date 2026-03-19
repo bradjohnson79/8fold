@@ -4,9 +4,12 @@ import { db } from "@/db/drizzle";
 import { lgsOutreachQueue } from "@/db/schema/directoryEngine";
 import { WARMUP_SCHEDULE } from "@/src/services/lgs/warmupSchedule";
 import { getWarmupDashboardData } from "@/src/services/lgs/warmupSystem";
+import { ensureWarmupWorkerFresh } from "@/src/warmup/warmupWorker";
 
 export async function GET() {
   try {
+    await ensureWarmupWorkerFresh();
+
     const pendingRow = await db
       .select({ cnt: sql<number>`count(*)::int` })
       .from(lgsOutreachQueue)
