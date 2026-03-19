@@ -5,10 +5,6 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const SLOT_TOLERANCE = 0.05;
-export const JITTER_FRACTION = 0.025;
-export const DAY_MS = 24 * 60 * 60 * 1000;
-
 export const INTERNAL_SENDERS = [
   "info@8fold.app",
   "hello@8fold.app",
@@ -26,51 +22,6 @@ export const EXTERNAL_TARGETS = [
   "testimonials@aetherx.co",
   "info@magiapp.dev",
 ];
-
-// ─── Send Eligibility ─────────────────────────────────────────────────────────
-
-export type EligibilityInput = {
-  currentDayStartedAt: Date | null;
-  warmupSentToday: number;
-  warmupBudget: number;
-};
-
-export type EligibilityResult = {
-  allowed: boolean;
-  dayProgress: number;
-  expectedProgress: number;
-  nextEligibleMs: number;
-  nextSendAt: Date | null;
-};
-
-export function checkSendEligibility(input: EligibilityInput): EligibilityResult {
-  const { currentDayStartedAt, warmupSentToday, warmupBudget } = input;
-
-  if (!currentDayStartedAt || warmupBudget <= 0) {
-    return { allowed: false, dayProgress: 0, expectedProgress: 0, nextEligibleMs: 0, nextSendAt: null };
-  }
-
-  const dayStartMs = new Date(currentDayStartedAt).getTime();
-  const elapsed = Date.now() - dayStartMs;
-  const dayProgress = Math.min(1, elapsed / DAY_MS);
-
-  const nextSlotIndex = warmupSentToday;
-  const slotCenter = (nextSlotIndex + 0.5) / warmupBudget;
-
-  // Deterministic per-slot jitter stable across worker cycles
-  const jitterSeed = (nextSlotIndex * 2654435761) % 1000;
-  const jitter = ((jitterSeed / 1000) - 0.5) * 2 * JITTER_FRACTION;
-  const expectedProgress = Math.max(0, Math.min(1, slotCenter + jitter));
-
-  const allowed = dayProgress >= expectedProgress - SLOT_TOLERANCE;
-
-  const openAtFraction = Math.max(0, expectedProgress - SLOT_TOLERANCE);
-  const openAtMs = dayStartMs + openAtFraction * DAY_MS;
-  const nextEligibleMs = Math.max(0, openAtMs - Date.now());
-  const nextSendAt = new Date(openAtMs);
-
-  return { allowed, dayProgress, expectedProgress, nextEligibleMs, nextSendAt };
-}
 
 // ─── External Routing ─────────────────────────────────────────────────────────
 

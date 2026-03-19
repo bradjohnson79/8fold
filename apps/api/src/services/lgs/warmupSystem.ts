@@ -1,30 +1,49 @@
-import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import {
   lgsWarmupActivity,
   lgsWorkerHealth,
   senderPool,
+  warmupSystemState,
 } from "../../../db/schema/directoryEngine";
-import { hasGmailTokenForSender } from "./outreachGmailSenderService";
-import { DAY_MS, checkSendEligibility } from "./warmupEngine";
-import { getDailyLimit, isReadyForOutreach } from "./warmupSchedule";
 import { sendTransactionalEmail } from "../../mailer/sendTransactionalEmail";
+import { getDailyLimit, isReadyForOutreach } from "./warmupSchedule";
 
 export const WARMUP_WORKER_NAME = "warmup";
-export const WARMUP_RETRY_DELAY_MS = 5 * 60 * 1000;
-export const WARMUP_HEARTBEAT_HEALTHY_MS = 10 * 60 * 1000;
-export const WARMUP_HEARTBEAT_STALE_MS = 20 * 60 * 1000;
-export const WARMUP_ACTIVITY_RECENT_MS = 60 * 60 * 1000;
-export const WARMUP_MISSED_SCHEDULE_TOLERANCE_MS = 5 * 60 * 1000;
-export const WARMUP_STALE_ALERT_THRESHOLD_MS = 15 * 60 * 1000;
+export const WARMUP_SYSTEM_STATE_NAME = "default";
+export const WARMUP_DEFAULT_INTERVAL_MS = 4 * 60 * 60 * 1000;
+export const WARMUP_INTERVAL_JITTER_MS = 20 * 60 * 1000;
+export const WARMUP_WORKER_INTERVAL_MS = 60 * 1000;
+export const WARMUP_RETRY_DELAY_MS = 15 * 60 * 1000;
+export const WARMUP_MAX_RETRIES = 3;
+export const WARMUP_EMERGENCY_TRIGGER_MS = 2 * 60 * 1000;
+export const WARMUP_HEARTBEAT_STALE_MS = 5 * 60 * 1000;
+export const WARMUP_ACTIVITY_RECENT_MS = 5 * 60 * 60 * 1000;
+export const WARMUP_STALE_ALERT_THRESHOLD_MS = 10 * 60 * 1000;
+export const WARMUP_SEND_LOCK_STALE_MS = 15 * 60 * 1000;
 export const WARMUP_CONFIDENCE_WINDOW = 10;
-export const WARMUP_CONFIDENCE_FAILURE_FREE_RUNS = 5;
+export const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type WarmupWorkerStatus = "healthy" | "warning" | "stale";
+export type WarmupWorkerStatus = "healthy" | "stale";
 export type WarmupConfidenceLevel = "high" | "medium" | "low";
-export type WarmupNextSendState = "scheduled" | "retry_pending" | "due_now" | "rescheduling" | "paused" | "not_scheduled";
+export type WarmupNextSendState =
+  | "scheduled"
+  | "retry_pending"
+  | "due_now"
+  | "rescheduling"
+  | "paused"
+  | "not_scheduled";
+export type WarmupStatusReason =
+  | "sent"
+  | "skipped_rate_limit"
+  | "skipped_interval_not_met"
+  | "failed_provider_error"
+  | "failed_worker_error"
+  | "recovered_missed_send";
+
 export type WarmupSenderRecord = typeof senderPool.$inferSelect;
 export type WarmupActivityRecord = typeof lgsWarmupActivity.$inferSelect;
 export type WarmupWorkerRecord = typeof lgsWorkerHealth.$inferSelect;
+export type WarmupSystemStateRecord = typeof warmupSystemState.$inferSelect;
 
 export type WarmupSenderDashboardRow = {
   id: string;
@@ -102,6 +121,29 @@ export type WarmupValidationResult = {
   };
 };
 
+export type WarmupScheduleState = {
+  cycleIndex: number;
+  intervalSeconds: number;
+  intervalAnchorAt: Date;
+  regularDueAt: Date;
+  retryDueAt: Date | null;
+  rateLimitBackoffAt: Date | null;
+  nextActionAt: Date;
+  currentDayEndsAt: Date | null;
+  senderRateLimited: boolean;
+  warmupBudget: number;
+  totalSentToday: number;
+  remainingCapacity: number;
+  consecutiveFailures: number;
+  cooldownActive: boolean;
+  isRecoveredMissedSend: boolean;
+};
+
+export type WarmupSendEvaluation = WarmupScheduleState & {
+  shouldSend: boolean;
+  reason: string;
+};
+
 type WarmupSenderRepairPlan = {
   updates: Partial<typeof senderPool.$inferInsert>;
   shouldLogMissedSchedule: boolean;
@@ -123,19 +165,48 @@ function getWarmupWorkerConfig(workerRow: WarmupWorkerRecord | null | undefined)
   return asObject(workerRow?.configCheckResult);
 }
 
-function describeHeartbeatStatus(status: WarmupWorkerStatus): string {
-  if (status === "healthy") return "heartbeat fresh";
-  if (status === "warning") return "heartbeat warning";
-  return "heartbeat stale";
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function getWarmupBaselineAt(sender: WarmupSenderRecord, now: Date): Date {
+  return (
+    sender.warmupIntervalAnchorAt ??
+    sender.lastWarmupSentAt ??
+    sender.warmupStartedAt ??
+    sender.currentDayStartedAt ??
+    sender.createdAt ??
+    now
+  );
+}
+
+function getConsecutiveWarmupFailures(activityRows: WarmupActivityRecord[]): {
+  consecutiveFailures: number;
+  latestFailureAt: Date | null;
+} {
+  let consecutiveFailures = 0;
+  let latestFailureAt: Date | null = null;
+
+  for (const row of activityRows) {
+    if (row.status === "sent") break;
+    if (row.status === "failed") {
+      consecutiveFailures += 1;
+      latestFailureAt = latestFailureAt ?? row.sentAt;
+    }
+  }
+
+  return { consecutiveFailures, latestFailureAt };
 }
 
 export function getWarmupWorkerStatus(lastHeartbeatAt: Date | null | undefined): WarmupWorkerStatus {
   if (!lastHeartbeatAt) return "stale";
-
-  const ageMs = Date.now() - new Date(lastHeartbeatAt).getTime();
-  if (ageMs < WARMUP_HEARTBEAT_HEALTHY_MS) return "healthy";
-  if (ageMs < WARMUP_HEARTBEAT_STALE_MS) return "warning";
-  return "stale";
+  return Date.now() - new Date(lastHeartbeatAt).getTime() <= WARMUP_HEARTBEAT_STALE_MS
+    ? "healthy"
+    : "stale";
 }
 
 export function isWarmupManagedStatus(status: string | null | undefined): boolean {
@@ -167,14 +238,173 @@ export function computeWarmupRetryAt(now: Date = new Date()): Date {
   return new Date(now.getTime() + WARMUP_RETRY_DELAY_MS);
 }
 
+export function computeWarmupIntervalSeconds(input: {
+  senderId: string;
+  cycleIndex: number;
+}): number {
+  const seed = hashString(`${input.senderId}:${input.cycleIndex}`);
+  const normalized = (seed % 10_000) / 10_000;
+  const jitterMs = Math.round(((normalized * 2) - 1) * WARMUP_INTERVAL_JITTER_MS);
+  return Math.round((WARMUP_DEFAULT_INTERVAL_MS + jitterMs) / 1000);
+}
+
+export function computeWarmupRateLimitBackoffAt(input: {
+  senderId: string;
+  now?: Date;
+  minMinutes?: number;
+  maxMinutes?: number;
+}): Date {
+  const now = input.now ?? new Date();
+  const minMinutes = input.minMinutes ?? 10;
+  const maxMinutes = input.maxMinutes ?? 30;
+  const spreadMinutes = Math.max(0, maxMinutes - minMinutes);
+  const offsetMinutes = spreadMinutes === 0
+    ? minMinutes
+    : minMinutes + (hashString(`${input.senderId}:${now.toISOString().slice(0, 13)}`) % (spreadMinutes + 1));
+  return new Date(now.getTime() + (offsetMinutes * 60 * 1000));
+}
+
+export function computeWarmupScheduleState(input: {
+  sender: WarmupSenderRecord;
+  activityRows?: WarmupActivityRecord[];
+  now?: Date;
+}): WarmupScheduleState {
+  const now = input.now ?? new Date();
+  const sender = input.sender;
+  const activityRows = input.activityRows ?? [];
+  const cycleIndex = Math.max(0, sender.warmupTotalSent ?? 0);
+  const intervalAnchorAt = getWarmupBaselineAt(sender, now);
+  const intervalSeconds = computeWarmupIntervalSeconds({
+    senderId: sender.id,
+    cycleIndex,
+  });
+  const regularDueAt = new Date(intervalAnchorAt.getTime() + (intervalSeconds * 1000));
+  const { consecutiveFailures, latestFailureAt } = getConsecutiveWarmupFailures(activityRows);
+  const retryDueAt =
+    latestFailureAt && consecutiveFailures > 0 && consecutiveFailures < WARMUP_MAX_RETRIES
+      ? computeWarmupRetryAt(latestFailureAt)
+      : null;
+  const rateLimitBackoffAt =
+    sender.lastWarmupResult === "skipped" && sender.nextWarmupSendAt
+      ? new Date(sender.nextWarmupSendAt)
+      : null;
+
+  const totalSentToday = Math.max(0, (sender.warmupSentToday ?? 0) + (sender.outreachSentToday ?? 0));
+  const remainingCapacity = Math.max(0, (sender.dailyLimit ?? 0) - totalSentToday);
+  const warmupBudget = getWarmupBudget({
+    warmupStatus: sender.warmupStatus,
+    dailyLimit: sender.dailyLimit,
+    warmupSentToday: sender.warmupSentToday,
+    outreachSentToday: sender.outreachSentToday,
+    outreachEnabled: sender.outreachEnabled,
+  });
+  const senderRateLimited =
+    remainingCapacity <= 0 || Math.max(0, sender.warmupSentToday ?? 0) >= warmupBudget;
+  const currentDayEndsAt = sender.currentDayStartedAt
+    ? new Date(new Date(sender.currentDayStartedAt).getTime() + DAY_MS)
+    : null;
+  const cooldownActive = !!sender.cooldownUntil && new Date(sender.cooldownUntil) > now;
+  const isRecoveredMissedSend = now.getTime() - regularDueAt.getTime() > WARMUP_WORKER_INTERVAL_MS;
+
+  let nextActionAt = retryDueAt ?? rateLimitBackoffAt ?? regularDueAt;
+
+  if (cooldownActive && sender.cooldownUntil && sender.cooldownUntil > nextActionAt) {
+    nextActionAt = new Date(sender.cooldownUntil);
+  }
+
+  if (senderRateLimited && currentDayEndsAt && currentDayEndsAt > nextActionAt) {
+    nextActionAt = currentDayEndsAt;
+  }
+
+  return {
+    cycleIndex,
+    intervalSeconds,
+    intervalAnchorAt,
+    regularDueAt,
+    retryDueAt,
+    rateLimitBackoffAt,
+    nextActionAt,
+    currentDayEndsAt,
+    senderRateLimited,
+    warmupBudget,
+    totalSentToday,
+    remainingCapacity,
+    consecutiveFailures,
+    cooldownActive,
+    isRecoveredMissedSend,
+  };
+}
+
+export function evaluateWarmupSend(input: {
+  sender: WarmupSenderRecord;
+  activityRows?: WarmupActivityRecord[];
+  now?: Date;
+}): WarmupSendEvaluation {
+  const now = input.now ?? new Date();
+  const sender = input.sender;
+  const schedule = computeWarmupScheduleState({
+    sender,
+    activityRows: input.activityRows,
+    now,
+  });
+
+  if (!isWarmupManagedStatus(sender.warmupStatus)) {
+    return { ...schedule, shouldSend: false, reason: "not_scheduled" };
+  }
+
+  if (sender.warmupStatus === "paused") {
+    return { ...schedule, shouldSend: false, reason: "paused" };
+  }
+
+  if (!sender.gmailConnected) {
+    return { ...schedule, shouldSend: false, reason: "sender_disconnected" };
+  }
+
+  if (
+    sender.warmupSendingAt &&
+    now.getTime() - new Date(sender.warmupSendingAt).getTime() < WARMUP_SEND_LOCK_STALE_MS
+  ) {
+    return { ...schedule, shouldSend: false, reason: "currently_sending" };
+  }
+
+  if (schedule.cooldownActive) {
+    return { ...schedule, shouldSend: false, reason: "cooldown_active" };
+  }
+
+  if (schedule.rateLimitBackoffAt && now.getTime() < schedule.rateLimitBackoffAt.getTime()) {
+    return { ...schedule, shouldSend: false, reason: "rate_limit_backoff" };
+  }
+
+  if (schedule.senderRateLimited) {
+    return { ...schedule, shouldSend: false, reason: "daily_rate_limit" };
+  }
+
+  if (schedule.retryDueAt && now.getTime() >= schedule.retryDueAt.getTime()) {
+    return { ...schedule, shouldSend: true, reason: "retry_due" };
+  }
+
+  if (now.getTime() >= schedule.regularDueAt.getTime()) {
+    return {
+      ...schedule,
+      shouldSend: true,
+      reason: schedule.isRecoveredMissedSend ? "recovered_missed_send" : "interval_elapsed",
+    };
+  }
+
+  return { ...schedule, shouldSend: false, reason: "interval_not_met" };
+}
+
 export function computeNextWarmupSendAt(input: {
+  senderId?: string;
   warmupStatus: string | null | undefined;
   warmupDay: number | null | undefined;
   dailyLimit: number | null | undefined;
+  warmupTotalSent?: number | null | undefined;
   warmupSentToday: number | null | undefined;
   outreachSentToday: number | null | undefined;
   currentDayStartedAt: Date | null | undefined;
   warmupStartedAt?: Date | null | undefined;
+  lastWarmupSentAt?: Date | null | undefined;
   outreachEnabled: boolean | null | undefined;
   cooldownUntil?: Date | null | undefined;
   hasValidToken?: boolean;
@@ -182,66 +412,42 @@ export function computeNextWarmupSendAt(input: {
   now?: Date;
 }): Date {
   const now = input.now ?? new Date();
-
-  if (!isWarmupManagedStatus(input.warmupStatus)) {
-    return now;
-  }
-
-  if (input.retryFromNow) {
+  if (!isWarmupManagedStatus(input.warmupStatus)) return now;
+  if (input.retryFromNow || input.hasValidToken === false) {
     return computeWarmupRetryAt(now);
   }
 
-  const warmupDay = Math.max(1, Number(input.warmupDay ?? 1));
-  const currentDayStartedAt = input.currentDayStartedAt ?? input.warmupStartedAt ?? now;
-  const dailyLimit = Math.max(
-    1,
-    Number(input.dailyLimit && input.dailyLimit > 0 ? input.dailyLimit : getDailyLimit(warmupDay))
-  );
-  const warmupSentToday = Math.max(0, Number(input.warmupSentToday ?? 0));
-  const outreachSentToday = Math.max(0, Number(input.outreachSentToday ?? 0));
+  const baselineAt =
+    input.lastWarmupSentAt ??
+    input.currentDayStartedAt ??
+    input.warmupStartedAt ??
+    now;
+  const cycleIndex = Math.max(0, Number(input.warmupTotalSent ?? 0));
+  const intervalSeconds = computeWarmupIntervalSeconds({
+    senderId: input.senderId ?? "warmup-default",
+    cycleIndex,
+  });
+  const regularDueAt = new Date(baselineAt.getTime() + (intervalSeconds * 1000));
+  const warmupBudget = getWarmupBudget({
+    warmupStatus: input.warmupStatus,
+    dailyLimit: input.dailyLimit,
+    warmupSentToday: input.warmupSentToday,
+    outreachSentToday: input.outreachSentToday,
+    outreachEnabled: input.outreachEnabled,
+  });
+  const senderRateLimited =
+    Math.max(0, Number(input.warmupSentToday ?? 0)) >= warmupBudget ||
+    Math.max(0, Number(input.dailyLimit ?? 0) - (Number(input.warmupSentToday ?? 0) + Number(input.outreachSentToday ?? 0))) <= 0;
 
-  if (input.cooldownUntil && new Date(input.cooldownUntil) > now) {
+  if (senderRateLimited && input.currentDayStartedAt) {
+    return new Date(new Date(input.currentDayStartedAt).getTime() + DAY_MS);
+  }
+
+  if (input.cooldownUntil && new Date(input.cooldownUntil) > regularDueAt) {
     return new Date(input.cooldownUntil);
   }
 
-  if (input.hasValidToken === false) {
-    return computeWarmupRetryAt(now);
-  }
-
-  const warmupBudget = getWarmupBudget({
-    warmupStatus: input.warmupStatus,
-    dailyLimit,
-    warmupSentToday,
-    outreachSentToday,
-    outreachEnabled: input.outreachEnabled,
-  });
-
-  if (warmupBudget <= 0 || warmupSentToday >= warmupBudget) {
-    const nextDayStart = new Date(new Date(currentDayStartedAt).getTime() + DAY_MS);
-    const nextWarmupDay = Math.min(warmupDay + 1, 5);
-    const nextDailyLimit = getDailyLimit(nextWarmupDay);
-    const nextOutreachEnabled = isReadyForOutreach(nextWarmupDay, nextDailyLimit);
-    const nextBudget = getWarmupBudget({
-      warmupStatus: "warming",
-      dailyLimit: nextDailyLimit,
-      warmupSentToday: 0,
-      outreachSentToday: 0,
-      outreachEnabled: nextOutreachEnabled,
-    });
-    const nextEligibility = checkSendEligibility({
-      currentDayStartedAt: nextDayStart,
-      warmupSentToday: 0,
-      warmupBudget: nextBudget,
-    });
-    return nextEligibility.nextSendAt ?? nextDayStart;
-  }
-
-  const eligibility = checkSendEligibility({
-    currentDayStartedAt,
-    warmupSentToday,
-    warmupBudget,
-  });
-  return eligibility.nextSendAt ?? computeWarmupRetryAt(now);
+  return regularDueAt;
 }
 
 export function hasMissedScheduledSend(input: {
@@ -253,59 +459,34 @@ export function hasMissedScheduledSend(input: {
   if (!input.nextWarmupSendAt) return false;
 
   const now = input.now ?? new Date();
-  const toleranceMs = input.toleranceMs ?? WARMUP_MISSED_SCHEDULE_TOLERANCE_MS;
-  const delayedThreshold = new Date(input.nextWarmupSendAt).getTime() + toleranceMs;
-  if (now.getTime() <= delayedThreshold) return false;
+  const toleranceMs = input.toleranceMs ?? WARMUP_WORKER_INTERVAL_MS;
+  if (now.getTime() <= new Date(input.nextWarmupSendAt).getTime() + toleranceMs) return false;
 
   return !input.latestActivityAt || new Date(input.latestActivityAt) < new Date(input.nextWarmupSendAt);
-}
-
-function hasValidActivityForScheduledWindow(
-  activityRows: WarmupActivityRecord[],
-  scheduledAt: Date | null | undefined
-): boolean {
-  if (!scheduledAt) return false;
-  const scheduledTime = new Date(scheduledAt).getTime();
-  return activityRows.some((row) => row.status !== "missed_schedule" && new Date(row.sentAt).getTime() >= scheduledTime);
-}
-
-function hasMissedScheduleActivityForScheduledWindow(
-  activityRows: WarmupActivityRecord[],
-  scheduledAt: Date | null | undefined
-): boolean {
-  if (!scheduledAt) return false;
-  const scheduledTime = new Date(scheduledAt).getTime();
-  return activityRows.some((row) => row.status === "missed_schedule" && new Date(row.sentAt).getTime() >= scheduledTime);
-}
-
-function buildMissedScheduleErrorMessage(scheduledAt: Date): string {
-  return `Scheduled send window passed without logged activity. scheduled_at=${scheduledAt.toISOString()}`;
 }
 
 export function getWarmupNextSendState(input: {
   sender: WarmupSenderRecord;
   latestActivity: WarmupActivityRecord | null;
+  activityRows?: WarmupActivityRecord[];
   now?: Date;
 }): WarmupNextSendState {
   const now = input.now ?? new Date();
   const sender = input.sender;
-  const latestActivity = input.latestActivity;
+  const schedule = computeWarmupScheduleState({
+    sender,
+    activityRows: input.activityRows ?? (input.latestActivity ? [input.latestActivity] : []),
+    now,
+  });
 
   if (!isWarmupManagedStatus(sender.warmupStatus)) return "not_scheduled";
   if (sender.warmupStatus === "paused") return "paused";
   if (!sender.nextWarmupSendAt) return "rescheduling";
-
-  const isRetryState =
-    sender.lastWarmupResult === "error" ||
-    sender.lastWarmupResult === "missed_schedule" ||
-    latestActivity?.status === "failed" ||
-    latestActivity?.status === "missed_schedule";
-
-  if (new Date(sender.nextWarmupSendAt).getTime() <= now.getTime()) {
-    return isRetryState ? "retry_pending" : "due_now";
+  if (schedule.retryDueAt && schedule.retryDueAt <= schedule.regularDueAt && schedule.retryDueAt > now) {
+    return "retry_pending";
   }
-
-  return isRetryState ? "retry_pending" : "scheduled";
+  if (schedule.nextActionAt <= now) return "due_now";
+  return "scheduled";
 }
 
 export function buildWarmupConfidence(input: {
@@ -320,35 +501,35 @@ export function buildWarmupConfidence(input: {
 } {
   const recentWindow = input.recentActivityRows.slice(0, WARMUP_CONFIDENCE_WINDOW);
   const recentSuccessCount = recentWindow.filter((row) => row.status === "sent").length;
-  const recentFailureCount = recentWindow.filter((row) => row.status === "failed" || row.status === "missed_schedule").length;
-  const recentFailureWindow = recentWindow.slice(0, WARMUP_CONFIDENCE_FAILURE_FREE_RUNS);
-  const failureFreeRecentRuns = recentFailureWindow.length > 0 && recentFailureWindow.every((row) => row.status === "sent");
+  const recentFailureCount = recentWindow.filter((row) => row.status === "failed").length;
+  const failureFreeRecentRuns =
+    recentWindow.length > 0 && recentWindow.slice(0, 5).every((row) => row.status === "sent");
   const workerStatus = getWarmupWorkerStatus(input.workerRow?.lastHeartbeatAt);
 
   if (recentWindow.length === 0) {
     return {
       level: workerStatus === "healthy" ? "medium" : "low",
-      reason: `No recent warmup activity yet • ${describeHeartbeatStatus(workerStatus)}`,
+      reason: workerStatus === "healthy" ? "No recent warmup activity yet, but worker heartbeat is healthy." : "Worker heartbeat is stale and no recent warmup activity was found.",
       recentSuccessCount,
       recentFailureCount,
       failureFreeRecentRuns,
     };
   }
 
-  if (workerStatus === "healthy" && recentSuccessCount >= 8 && recentFailureCount === 0 && failureFreeRecentRuns) {
+  if (workerStatus === "healthy" && recentFailureCount === 0 && recentSuccessCount >= 8) {
     return {
       level: "high",
-      reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded • no failures in last ${recentFailureWindow.length} runs • heartbeat fresh`,
+      reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded and worker heartbeat is healthy.`,
       recentSuccessCount,
       recentFailureCount,
       failureFreeRecentRuns,
     };
   }
 
-  if (workerStatus !== "stale" && recentSuccessCount >= Math.max(1, Math.ceil(recentWindow.length * 0.6)) && recentFailureCount <= 1) {
+  if (workerStatus === "healthy" && recentSuccessCount >= Math.max(1, Math.ceil(recentWindow.length * 0.6))) {
     return {
       level: "medium",
-      reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded • ${describeHeartbeatStatus(workerStatus)}`,
+      reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded with a healthy worker heartbeat.`,
       recentSuccessCount,
       recentFailureCount,
       failureFreeRecentRuns,
@@ -357,7 +538,7 @@ export function buildWarmupConfidence(input: {
 
   return {
     level: "low",
-    reason: `${recentSuccessCount}/${recentWindow.length} recent sends succeeded • ${recentFailureCount} recent failures • ${describeHeartbeatStatus(workerStatus)}`,
+    reason: `${recentFailureCount} recent warmup failures detected or worker heartbeat is stale.`,
     recentSuccessCount,
     recentFailureCount,
     failureFreeRecentRuns,
@@ -374,61 +555,42 @@ export function buildWarmupSenderRepairPlan(input: {
   const now = input.now ?? new Date();
   const sender = input.sender;
   const updates: Partial<typeof senderPool.$inferInsert> = {};
-
-  if (!isWarmupManagedStatus(sender.warmupStatus)) {
-    return { updates, shouldLogMissedSchedule: false, missedScheduleAt: null };
-  }
-
   const warmupDay = Math.max(1, sender.warmupDay ?? 1);
   const dailyLimit = sender.dailyLimit && sender.dailyLimit > 0 ? sender.dailyLimit : getDailyLimit(warmupDay);
   const currentDayStartedAt = sender.currentDayStartedAt ?? sender.warmupStartedAt ?? now;
-
-  if ((sender.warmupDay ?? 0) <= 0) {
-    updates.warmupDay = warmupDay;
-  }
-  if ((sender.dailyLimit ?? 0) <= 0) {
-    updates.dailyLimit = dailyLimit;
-  }
-  if (!sender.currentDayStartedAt) {
-    updates.currentDayStartedAt = currentDayStartedAt;
-  }
-
-  const validActivityLoggedForWindow = hasValidActivityForScheduledWindow(input.activityRows, sender.nextWarmupSendAt);
-  const missedScheduleAlreadyLogged = hasMissedScheduleActivityForScheduledWindow(input.activityRows, sender.nextWarmupSendAt);
-  const scheduledTime = sender.nextWarmupSendAt ? new Date(sender.nextWarmupSendAt).getTime() : null;
-  const retryWindowMissed =
-    scheduledTime !== null &&
-    now.getTime() > scheduledTime + WARMUP_MISSED_SCHEDULE_TOLERANCE_MS &&
-    !validActivityLoggedForWindow;
-
-  const nextWarmupSendAt = computeNextWarmupSendAt({
-    warmupStatus: sender.warmupStatus,
-    warmupDay,
-    dailyLimit,
-    warmupSentToday: sender.warmupSentToday,
-    outreachSentToday: sender.outreachSentToday,
-    currentDayStartedAt,
-    warmupStartedAt: sender.warmupStartedAt,
-    outreachEnabled: sender.outreachEnabled,
-    cooldownUntil: sender.cooldownUntil,
-    hasValidToken: input.hasValidToken,
-    retryFromNow: retryWindowMissed,
+  const nextWarmupSendAt = computeWarmupScheduleState({
+    sender: {
+      ...sender,
+      warmupDay,
+      dailyLimit,
+      currentDayStartedAt,
+      warmupIntervalAnchorAt: sender.warmupIntervalAnchorAt ?? sender.lastWarmupSentAt ?? sender.warmupStartedAt ?? currentDayStartedAt,
+      lastWarmupResult: sender.lastWarmupResult === "missed_schedule" ? "error" : sender.lastWarmupResult,
+    },
+    activityRows: input.activityRows,
     now,
-  });
+  }).nextActionAt;
 
-  if (!sender.nextWarmupSendAt || new Date(sender.nextWarmupSendAt).getTime() !== nextWarmupSendAt.getTime()) {
+  if ((sender.warmupDay ?? 0) <= 0) updates.warmupDay = warmupDay;
+  if ((sender.dailyLimit ?? 0) <= 0) updates.dailyLimit = dailyLimit;
+  if (!sender.currentDayStartedAt) updates.currentDayStartedAt = currentDayStartedAt;
+  if (!sender.warmupIntervalAnchorAt) {
+    updates.warmupIntervalAnchorAt = sender.lastWarmupSentAt ?? sender.warmupStartedAt ?? currentDayStartedAt;
+  }
+  if (!sender.nextWarmupSendAt || sender.nextWarmupSendAt.getTime() !== nextWarmupSendAt.getTime()) {
     updates.nextWarmupSendAt = nextWarmupSendAt;
   }
-
-  if (retryWindowMissed) {
-    updates.lastWarmupResult = "missed_schedule";
+  if (sender.lastWarmupResult === "missed_schedule") {
+    updates.lastWarmupResult = "error";
+  }
+  if (sender.warmupSendingAt && now.getTime() - new Date(sender.warmupSendingAt).getTime() >= WARMUP_SEND_LOCK_STALE_MS) {
+    updates.warmupSendingAt = null as unknown as undefined;
   }
 
   return {
     updates,
-    shouldLogMissedSchedule:
-      retryWindowMissed && !missedScheduleAlreadyLogged,
-    missedScheduleAt: retryWindowMissed ? new Date(sender.nextWarmupSendAt ?? now) : null,
+    shouldLogMissedSchedule: false,
+    missedScheduleAt: null,
   };
 }
 
@@ -445,29 +607,29 @@ export function buildWarmupSenderDashboardRow(input: {
   const dailyLimit = Math.max(0, sender.dailyLimit ?? 0);
   const warmupSentToday = Math.max(0, sender.warmupSentToday ?? 0);
   const outreachSentToday = Math.max(0, sender.outreachSentToday ?? 0);
-  const sentToday = warmupSentToday + outreachSentToday;
-  const remainingCapacity = Math.max(0, dailyLimit - sentToday);
-  const isCoolingDown = !!sender.cooldownUntil && new Date(sender.cooldownUntil) > now;
-  const isDelayed = hasMissedScheduledSend({
-    nextWarmupSendAt: sender.nextWarmupSendAt,
-    latestActivityAt: latestActivity?.sentAt ?? null,
+  const schedule = computeWarmupScheduleState({
+    sender,
+    activityRows: input.activityRows,
     now,
   });
   const readyForOutreach = isReadyForOutreach(warmupDay, dailyLimit);
+  const isCoolingDown = !!sender.cooldownUntil && new Date(sender.cooldownUntil) > now;
+  const isDelayed =
+    now.getTime() - schedule.regularDueAt.getTime() > WARMUP_WORKER_INTERVAL_MS &&
+    !schedule.senderRateLimited &&
+    !schedule.cooldownActive;
   const nextSendState = getWarmupNextSendState({
-    sender,
+    sender: {
+      ...sender,
+      nextWarmupSendAt: schedule.nextActionAt,
+    },
     latestActivity,
+    activityRows: input.activityRows,
     now,
   });
 
-  let consecutiveFailures = 0;
-  for (const activity of input.activityRows) {
-    if (activity.status === "sent") break;
-    consecutiveFailures += 1;
-  }
-
   let dashboardStatus = sender.warmupStatus ?? "not_started";
-  if (isDelayed || sender.lastWarmupResult === "missed_schedule" || sender.lastWarmupResult === "error" || consecutiveFailures > 0) {
+  if (schedule.consecutiveFailures > 0 || isDelayed) {
     dashboardStatus = "error";
   } else if (readyForOutreach) {
     dashboardStatus = "ready";
@@ -481,12 +643,12 @@ export function buildWarmupSenderDashboardRow(input: {
     dashboard_status: dashboardStatus,
     warmup_day: warmupDay,
     daily_limit: dailyLimit,
-    sent_today: sentToday,
+    sent_today: schedule.totalSentToday,
     warmup_sent_today: warmupSentToday,
     outreach_sent_today: outreachSentToday,
-    remaining_capacity: remainingCapacity,
+    remaining_capacity: schedule.remainingCapacity,
     current_day_started_at: toIso(sender.currentDayStartedAt),
-    next_warmup_send_at: toIso(sender.nextWarmupSendAt),
+    next_warmup_send_at: toIso(schedule.nextActionAt),
     next_send_state: nextSendState,
     last_warmup_sent_at: toIso(sender.lastWarmupSentAt),
     last_warmup_result: sender.lastWarmupResult ?? null,
@@ -498,7 +660,7 @@ export function buildWarmupSenderDashboardRow(input: {
     last_activity_error: latestActivity?.errorMessage ?? null,
     is_ready_for_outreach: readyForOutreach,
     outreach_enabled: sender.outreachEnabled ?? false,
-    consecutive_failures: consecutiveFailures,
+    consecutive_failures: schedule.consecutiveFailures,
     is_delayed: isDelayed,
     health_score: sender.healthScore ?? null,
     cooldown_until: toIso(sender.cooldownUntil),
@@ -514,10 +676,11 @@ export function buildWarmupSummaryRow(input: {
   pendingQueueCount: number;
 }): WarmupSummaryRow {
   const activeSenders = input.senders.filter((sender) => isWarmupManagedStatus(sender.warmup_status));
-  const nextSystemWarmupSendAt = activeSenders
-    .map((sender) => sender.next_warmup_send_at)
-    .filter((value): value is string => value !== null)
-    .sort()[0] ?? null;
+  const nextSystemWarmupSendAt =
+    activeSenders
+      .map((sender) => sender.next_warmup_send_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()[0] ?? null;
   const confidence = buildWarmupConfidence({
     recentActivityRows: input.recentActivityRows,
     workerRow: input.workerRow,
@@ -567,21 +730,16 @@ export function explainNoRecentWarmupActivity(input: {
     return "No warming senders are active.";
   }
 
-  if (activeSenders.every((sender) => sender.cooldownUntil && new Date(sender.cooldownUntil) > now)) {
-    return "All warming senders are in cooldown.";
-  }
-
-  const withinExecutionTolerance = activeSenders.every((sender) => {
-    if (!sender.nextWarmupSendAt) return false;
-    const scheduledAt = new Date(sender.nextWarmupSendAt).getTime();
-    return now.getTime() <= scheduledAt + WARMUP_MISSED_SCHEDULE_TOLERANCE_MS;
+  const hasOverdueSender = activeSenders.some((sender) => {
+    const schedule = computeWarmupScheduleState({ sender, now });
+    return schedule.regularDueAt <= now && !schedule.senderRateLimited && !schedule.cooldownActive;
   });
 
-  if (withinExecutionTolerance) {
-    return "All warming senders are scheduled or within execution tolerance.";
+  if (hasOverdueSender) {
+    return "No recent warmup activity and at least one sender is overdue.";
   }
 
-  return "No recent warmup activity and at least one sender should have executed.";
+  return "All warming senders are waiting for their interval, retry, or daily reset.";
 }
 
 export function validateWarmupSystemSnapshot(input: {
@@ -594,55 +752,51 @@ export function validateWarmupSystemSnapshot(input: {
   const now = input.now ?? new Date();
   const reasons: string[] = [];
   const warnings: string[] = [];
-  const warmingSenders = input.senders.filter((sender) => sender.warmupStatus === "warming");
-  const sendersWithFutureCountdowns = warmingSenders.filter(
-    (sender) => !!sender.nextWarmupSendAt && new Date(sender.nextWarmupSendAt) > now
-  ).length;
-  const sendersWithUpcomingOrToleratedCountdowns = warmingSenders.filter((sender) => {
-    if (!sender.nextWarmupSendAt) return false;
-    return now.getTime() <= new Date(sender.nextWarmupSendAt).getTime() + WARMUP_MISSED_SCHEDULE_TOLERANCE_MS;
-  }).length;
+  const warmingSenders = input.senders.filter((sender) => sender.warmupStatus === "warming" || sender.warmupStatus === "ready");
+  let overdueSenders = 0;
+  let sendersWithFutureCountdowns = 0;
 
   for (const sender of warmingSenders) {
+    const schedule = computeWarmupScheduleState({ sender, now });
+    const latestActivity = input.latestActivityBySender.get(sender.senderEmail) ?? null;
+
     if (!sender.currentDayStartedAt) {
       reasons.push(`${sender.senderEmail}: warming sender is missing current_day_started_at`);
     }
-    if (!sender.dailyLimit || sender.dailyLimit <= 0) {
-      reasons.push(`${sender.senderEmail}: warming sender is missing daily_limit`);
-    }
+
     if (!sender.nextWarmupSendAt) {
       reasons.push(`${sender.senderEmail}: warming sender is missing next_warmup_send_at`);
+    } else if (sender.nextWarmupSendAt > now) {
+      sendersWithFutureCountdowns += 1;
     }
-    if (sender.lastWarmupResult === "missed_schedule") {
-      reasons.push(`${sender.senderEmail}: sender is flagged missed_schedule`);
-    }
-    if (
-      sender.nextWarmupSendAt &&
-      hasMissedScheduledSend({
-        nextWarmupSendAt: sender.nextWarmupSendAt,
-        latestActivityAt: input.latestActivityBySender.get(sender.senderEmail)?.sentAt ?? null,
-        now,
-      })
-    ) {
-      reasons.push(`${sender.senderEmail}: scheduled send window passed without logged activity`);
-    }
-  }
 
-  if (warmingSenders.length > 0 && sendersWithUpcomingOrToleratedCountdowns === 0) {
-    reasons.push("No warming sender has a future next_warmup_send_at.");
+    const overdueMs = now.getTime() - schedule.regularDueAt.getTime();
+    const shouldBeSending = overdueMs > 0 && !schedule.senderRateLimited && !schedule.cooldownActive;
+    if (shouldBeSending) overdueSenders += 1;
+
+    if (overdueMs > 60 * 60 * 1000 && !schedule.senderRateLimited && !schedule.cooldownActive) {
+      reasons.push(`${sender.senderEmail}: warmup send overdue by more than 60 minutes`);
+    }
+
+    if (sender.lastWarmupResult === "missed_schedule") {
+      warnings.push(`${sender.senderEmail}: legacy missed_schedule marker found`);
+    }
+
+    if (
+      latestActivity &&
+      latestActivity.status === "failed" &&
+      schedule.consecutiveFailures >= WARMUP_MAX_RETRIES &&
+      schedule.regularDueAt > now
+    ) {
+      warnings.push(`${sender.senderEmail}: retries exhausted; waiting for next interval send`);
+    }
   }
 
   const workerStatus = getWarmupWorkerStatus(input.workerRow?.lastHeartbeatAt);
   if (!input.workerRow) {
     reasons.push("Worker health row is missing.");
-  } else {
-    if (!input.workerRow.lastHeartbeatAt) reasons.push("Worker heartbeat is missing.");
-    if (!input.workerRow.lastRunStartedAt) reasons.push("Worker last_run_started_at is missing.");
-    if (!input.workerRow.lastRunFinishedAt) reasons.push("Worker last_run_finished_at is missing.");
-    if (!input.workerRow.lastRunStatus) reasons.push("Worker last_run_status is missing.");
-    if (workerStatus !== "healthy") {
-      reasons.push(`Worker heartbeat is not recent enough (${workerStatus}).`);
-    }
+  } else if (workerStatus !== "healthy") {
+    reasons.push("Worker heartbeat is stale.");
   }
 
   const recentActivityExists =
@@ -650,7 +804,7 @@ export function validateWarmupSystemSnapshot(input: {
     !!input.recentActivity.sentAt &&
     now.getTime() - new Date(input.recentActivity.sentAt).getTime() <= WARMUP_ACTIVITY_RECENT_MS;
   const explanation = recentActivityExists ? null : explainNoRecentWarmupActivity({ senders: input.senders, now });
-  if (!recentActivityExists && explanation === "No recent warmup activity and at least one sender should have executed.") {
+  if (!recentActivityExists && explanation?.includes("overdue")) {
     reasons.push(explanation);
   } else if (!recentActivityExists && explanation) {
     warnings.push(explanation);
@@ -665,13 +819,7 @@ export function validateWarmupSystemSnapshot(input: {
       warming_senders: warmingSenders.length,
       senders_with_countdowns: warmingSenders.filter((sender) => !!sender.nextWarmupSendAt).length,
       senders_with_future_countdowns: sendersWithFutureCountdowns,
-      overdue_senders: warmingSenders.filter((sender) =>
-        hasMissedScheduledSend({
-          nextWarmupSendAt: sender.nextWarmupSendAt,
-          latestActivityAt: input.latestActivityBySender.get(sender.senderEmail)?.sentAt ?? null,
-          now,
-        })
-      ).length,
+      overdue_senders: overdueSenders,
       recent_activity_found: recentActivityExists,
       worker_status: workerStatus,
     },
@@ -680,11 +828,21 @@ export function validateWarmupSystemSnapshot(input: {
 
 export async function ensureWarmupWorkerHealthRow(): Promise<void> {
   const { db } = await import("../../../db/drizzle");
-  await db.insert(lgsWorkerHealth).values({
-    workerName: WARMUP_WORKER_NAME,
-  }).onConflictDoNothing({
-    target: lgsWorkerHealth.workerName,
-  });
+  await db
+    .insert(lgsWorkerHealth)
+    .values({ workerName: WARMUP_WORKER_NAME })
+    .onConflictDoNothing({ target: lgsWorkerHealth.workerName });
+}
+
+export async function ensureWarmupSystemStateRow(): Promise<void> {
+  const { db } = await import("../../../db/drizzle");
+  await db
+    .insert(warmupSystemState)
+    .values({
+      systemName: WARMUP_SYSTEM_STATE_NAME,
+      workerStatus: "stale",
+    })
+    .onConflictDoNothing({ target: warmupSystemState.systemName });
 }
 
 export async function recordWarmupActivity(entry: {
@@ -693,10 +851,13 @@ export async function recordWarmupActivity(entry: {
   subject: string;
   messageType: string;
   status: string;
+  statusReason?: WarmupStatusReason;
   provider?: string;
   providerMessageId?: string | null;
   latencyMs?: number | null;
+  attemptNumber?: number | null;
   errorMessage?: string;
+  metadata?: Record<string, unknown> | null;
   sentAt?: Date;
 }): Promise<void> {
   try {
@@ -709,71 +870,76 @@ export async function recordWarmupActivity(entry: {
       provider: entry.provider ?? null,
       providerMessageId: entry.providerMessageId ?? null,
       latencyMs: entry.latencyMs ?? null,
-      status: entry.status,
-      errorMessage: entry.errorMessage ?? null,
       sentAt: entry.sentAt ?? new Date(),
+      status: entry.status,
+      statusReason: entry.statusReason ?? null,
+      attemptNumber: entry.attemptNumber ?? null,
+      errorMessage: entry.errorMessage ?? null,
+      metadata: entry.metadata ?? null,
     });
   } catch (err) {
     console.error("[LGS Warmup] activity log error:", err);
   }
 }
 
-export async function recordMissedScheduleActivityIfNeeded(entry: {
-  senderEmail: string;
-  recipientEmail: string;
-  scheduledAt: Date;
-  sentAt?: Date;
-}): Promise<boolean> {
-  try {
-    const { db } = await import("../../../db/drizzle");
-    const existing = await db
-      .select({ id: lgsWarmupActivity.id })
-      .from(lgsWarmupActivity)
-      .where(
-        and(
-          eq(lgsWarmupActivity.senderEmail, entry.senderEmail),
-          eq(lgsWarmupActivity.status, "missed_schedule"),
-          gte(lgsWarmupActivity.sentAt, entry.scheduledAt)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    if (existing) return false;
-
-    await recordWarmupActivity({
-      senderEmail: entry.senderEmail,
-      recipientEmail: entry.recipientEmail,
-      subject: `Warmup schedule missed @ ${entry.scheduledAt.toISOString()}`,
-      messageType: "system",
-      status: "missed_schedule",
-      errorMessage: buildMissedScheduleErrorMessage(entry.scheduledAt),
-      sentAt: entry.sentAt,
-    });
-    return true;
-  } catch (err) {
-    console.error("[LGS Warmup] missed schedule log error:", err);
-    return false;
-  }
+export async function recordWarmupSystemState(input: {
+  lastWorkerRunAt?: Date | null;
+  lastSuccessfulSendAt?: Date | null;
+  workerStatus?: WarmupWorkerStatus;
+  lastError?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  const { db } = await import("../../../db/drizzle");
+  await ensureWarmupSystemStateRow();
+  await db
+    .update(warmupSystemState)
+    .set({
+      lastWorkerRunAt: input.lastWorkerRunAt ?? undefined,
+      lastSuccessfulSendAt: input.lastSuccessfulSendAt ?? undefined,
+      workerStatus: input.workerStatus ?? undefined,
+      lastError: input.lastError ?? undefined,
+      metadata: input.metadata ?? undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(warmupSystemState.systemName, WARMUP_SYSTEM_STATE_NAME));
 }
 
 export async function maybeAlertOnStaleWarmupWorker(input?: {
   workerRow?: WarmupWorkerRecord | null;
+  systemStateRow?: WarmupSystemStateRecord | null;
   now?: Date;
 }): Promise<boolean> {
   const { db } = await import("../../../db/drizzle");
   const now = input?.now ?? new Date();
-  await ensureWarmupWorkerHealthRow();
+  await Promise.all([ensureWarmupWorkerHealthRow(), ensureWarmupSystemStateRow()]);
 
-  const workerRow = input?.workerRow ?? await db
-    .select()
-    .from(lgsWorkerHealth)
-    .where(eq(lgsWorkerHealth.workerName, WARMUP_WORKER_NAME))
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
+  const workerRow =
+    input?.workerRow ??
+    (await db
+      .select()
+      .from(lgsWorkerHealth)
+      .where(eq(lgsWorkerHealth.workerName, WARMUP_WORKER_NAME))
+      .limit(1)
+      .then((rows) => rows[0] ?? null));
+  const systemStateRow =
+    input?.systemStateRow ??
+    (await db
+      .select()
+      .from(warmupSystemState)
+      .where(eq(warmupSystemState.systemName, WARMUP_SYSTEM_STATE_NAME))
+      .limit(1)
+      .then((rows) => rows[0] ?? null));
 
-  const lastHeartbeatAt = workerRow?.lastHeartbeatAt ?? null;
+  const lastHeartbeatAt = workerRow?.lastHeartbeatAt ?? systemStateRow?.lastWorkerRunAt ?? null;
   const heartbeatAgeMs = lastHeartbeatAt ? now.getTime() - new Date(lastHeartbeatAt).getTime() : Infinity;
+  const workerStatus: WarmupWorkerStatus = heartbeatAgeMs <= WARMUP_HEARTBEAT_STALE_MS ? "healthy" : "stale";
+
+  await recordWarmupSystemState({
+    lastWorkerRunAt: systemStateRow?.lastWorkerRunAt ?? workerRow?.lastRunFinishedAt ?? null,
+    lastSuccessfulSendAt: systemStateRow?.lastSuccessfulSendAt ?? null,
+    workerStatus,
+  });
+
   if (heartbeatAgeMs < WARMUP_STALE_ALERT_THRESHOLD_MS) {
     return false;
   }
@@ -865,18 +1031,12 @@ export async function enforceWarmupSystemStateWithOptions(input?: {
 }): Promise<void> {
   const { db } = await import("../../../db/drizzle");
   const now = input?.now ?? new Date();
-  const logMissedSchedules = input?.logMissedSchedules ?? false;
-  await ensureWarmupWorkerHealthRow();
+  await Promise.all([ensureWarmupWorkerHealthRow(), ensureWarmupSystemStateRow()]);
 
   const managedSenders = await db
     .select()
     .from(senderPool)
-    .where(
-      or(
-        eq(senderPool.warmupStatus, "warming"),
-        eq(senderPool.warmupStatus, "ready")
-      )
-    );
+    .where(or(eq(senderPool.warmupStatus, "warming"), eq(senderPool.warmupStatus, "ready")));
 
   if (managedSenders.length === 0) return;
 
@@ -892,13 +1052,12 @@ export async function enforceWarmupSystemStateWithOptions(input?: {
   for (const sender of managedSenders) {
     const latestActivity = latestActivityBySender.get(sender.senderEmail) ?? null;
     const senderActivityRows = activityRowsBySender.get(sender.senderEmail) ?? [];
-    const hasValidToken = await hasGmailTokenForSender(sender.senderEmail);
     const plan = buildWarmupSenderRepairPlan({
       sender,
       latestActivity,
       activityRows: senderActivityRows,
       now,
-      hasValidToken,
+      hasValidToken: sender.gmailConnected,
     });
 
     if (Object.keys(plan.updates).length > 0) {
@@ -906,15 +1065,6 @@ export async function enforceWarmupSystemStateWithOptions(input?: {
         .update(senderPool)
         .set({ ...plan.updates, updatedAt: now })
         .where(eq(senderPool.id, sender.id));
-    }
-
-    if (logMissedSchedules && plan.shouldLogMissedSchedule && plan.missedScheduleAt) {
-      await recordMissedScheduleActivityIfNeeded({
-        senderEmail: sender.senderEmail,
-        recipientEmail: sender.lastWarmupRecipient ?? sender.senderEmail,
-        scheduledAt: plan.missedScheduleAt,
-        sentAt: now,
-      });
     }
   }
 }
@@ -940,13 +1090,14 @@ export async function validateWarmupSystem(): Promise<WarmupValidationResult> {
   ]);
 
   const senderEmails = senders.map((sender) => sender.senderEmail);
-  const activityRows = senderEmails.length === 0
-    ? []
-    : await db
-        .select()
-        .from(lgsWarmupActivity)
-        .where(inArray(lgsWarmupActivity.senderEmail, senderEmails))
-        .orderBy(desc(lgsWarmupActivity.sentAt));
+  const activityRows =
+    senderEmails.length === 0
+      ? []
+      : await db
+          .select()
+          .from(lgsWarmupActivity)
+          .where(inArray(lgsWarmupActivity.senderEmail, senderEmails))
+          .orderBy(desc(lgsWarmupActivity.sentAt));
 
   const { latestActivityBySender } = buildActivityMaps(activityRows);
   await maybeAlertOnStaleWarmupWorker({ workerRow });
@@ -990,13 +1141,14 @@ export async function getWarmupDashboardData(input: {
     .limit(WARMUP_CONFIDENCE_WINDOW);
 
   const senderEmails = rows.map((sender) => sender.senderEmail);
-  const activityRows = senderEmails.length === 0
-    ? []
-    : await db
-        .select()
-        .from(lgsWarmupActivity)
-        .where(inArray(lgsWarmupActivity.senderEmail, senderEmails))
-        .orderBy(desc(lgsWarmupActivity.sentAt));
+  const activityRows =
+    senderEmails.length === 0
+      ? []
+      : await db
+          .select()
+          .from(lgsWarmupActivity)
+          .where(inArray(lgsWarmupActivity.senderEmail, senderEmails))
+          .orderBy(desc(lgsWarmupActivity.sentAt));
 
   const { latestActivityBySender, activityRowsBySender } = buildActivityMaps(activityRows);
 

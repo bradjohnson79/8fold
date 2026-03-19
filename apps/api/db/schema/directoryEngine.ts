@@ -163,10 +163,12 @@ export const senderPool = directoryEngineSchema.table("sender_pool", {
   // Warmup health score: GOOD / WARNING / RISK (computed by worker)
   healthScore: text("health_score").default("unknown"),
   // Warmup reliability: exact timing & last action
+  warmupIntervalAnchorAt: timestamp("warmup_interval_anchor_at", { mode: "date" }),
   nextWarmupSendAt: timestamp("next_warmup_send_at", { mode: "date" }),
   lastWarmupSentAt: timestamp("last_warmup_sent_at", { mode: "date" }),
   lastWarmupResult: text("last_warmup_result"),
   lastWarmupRecipient: text("last_warmup_recipient"),
+  warmupSendingAt: timestamp("warmup_sending_at", { mode: "date" }),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
@@ -396,8 +398,23 @@ export const lgsWarmupActivity = directoryEngineSchema.table("lgs_warmup_activit
   latencyMs: integer("latency_ms"),
   sentAt: timestamp("sent_at", { mode: "date" }).notNull().defaultNow(),
   status: text("status").notNull(),
+  statusReason: text("status_reason"),
+  attemptNumber: integer("attempt_number"),
   errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const warmupSystemState = directoryEngineSchema.table("warmup_system_state", {
+  id: serial("id").primaryKey(),
+  systemName: text("system_name").notNull().unique().default("default"),
+  lastWorkerRunAt: timestamp("last_worker_run_at", { mode: "date" }),
+  lastSuccessfulSendAt: timestamp("last_successful_send_at", { mode: "date" }),
+  workerStatus: text("worker_status").notNull().default("stale"),
+  lastError: text("last_error"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
 // Worker health tracking — single-row per worker for heartbeat + config checks

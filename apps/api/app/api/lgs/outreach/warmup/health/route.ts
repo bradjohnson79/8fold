@@ -5,9 +5,11 @@ import { senderPool, lgsWorkerHealth, lgsWarmupActivity } from "@/db/schema/dire
 import { hasGmailTokenForSender } from "@/src/services/lgs/outreachGmailSenderService";
 import { INTERNAL_SENDERS, EXTERNAL_TARGETS } from "@/src/services/lgs/warmupEngine";
 import { enforceWarmupSystemState, getWarmupWorkerStatus, validateWarmupSystem } from "@/src/services/lgs/warmupSystem";
+import { ensureWarmupWorkerFresh } from "@/src/warmup/warmupWorker";
 
 export async function GET() {
   try {
+    await ensureWarmupWorkerFresh();
     await enforceWarmupSystemState();
 
     // Worker health
