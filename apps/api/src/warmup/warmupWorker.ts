@@ -272,10 +272,17 @@ async function processSender(input: {
   latestActivity: typeof lgsWarmupActivity.$inferSelect | null;
   domainSendCounts: Map<string, number>;
   now: Date;
-}): Promise<void> {
+}): Promise<boolean> {
   const { sender, activityRows, latestActivity, domainSendCounts, now } = input;
   const evaluation = evaluateWarmupSend({ sender, activityRows, now });
 
+  console.log("[LGS Warmup] Evaluating sender:", sender.id, sender.senderEmail);
+  console.log("[LGS Warmup] Next send due at:", evaluation.nextActionAt.toISOString(), {
+    regularDueAt: evaluation.regularDueAt.toISOString(),
+    retryDueAt: evaluation.retryDueAt?.toISOString() ?? null,
+    reason: evaluation.reason,
+    shouldSend: evaluation.shouldSend,
+  });
   if (!sender.nextWarmupSendAt || sender.nextWarmupSendAt.getTime() !== evaluation.nextActionAt.getTime()) {
     await db
       .update(senderPool)
@@ -319,12 +326,23 @@ async function processSender(input: {
         sentAt: now,
       });
     }
-    return;
+
+    console.log("[LGS Warmup] Sender not sent this cycle", {
+      senderId: sender.id,
+      senderEmail: sender.senderEmail,
+      reason: evaluation.reason,
+      dueNow,
+    });
+    return false;
   }
 
   const lockAcquiredAt = await claimSenderLock(sender.id, now);
   if (!lockAcquiredAt) {
-    return;
+    console.log("[LGS Warmup] Sender lock unavailable", {
+      senderId: sender.id,
+      senderEmail: sender.senderEmail,
+    });
+    return false;
   }
 
   try {
@@ -343,7 +361,7 @@ async function processSender(input: {
         lockAcquiredAt,
         now,
       });
-      return;
+      return false;
     }
 
     const targetResult = pickWarmupTarget(
@@ -366,7 +384,7 @@ async function processSender(input: {
         lockAcquiredAt,
         now,
       });
-      return;
+      return false;
     }
 
     const targetEmail = targetResult.target;
@@ -392,9 +410,10 @@ async function processSender(input: {
         lockAcquiredAt,
         now,
       });
-      return;
+      return false;
     }
 
+    console.log("[LGS Warmup] Attempting warmup send for sender:", sender.id, sender.senderEmail);
     const sendStartedAt = Date.now();
     const result = await sendOutreachEmail({
       subject: message.subject,
@@ -435,7 +454,7 @@ async function processSender(input: {
         attemptNumber: evaluation.consecutiveFailures + 1,
         sentAt: now,
       });
-      return;
+      return false;
     }
 
     const nextWarmupSendAt = computeNextWarmupSendAt({
@@ -497,6 +516,7 @@ async function processSender(input: {
       lastSuccessfulSendAt: now,
       workerStatus: "healthy",
     });
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await logBlockedAttempt({
@@ -512,6 +532,7 @@ async function processSender(input: {
       lockAcquiredAt,
       now,
     });
+    return false;
   } finally {
     await releaseSenderLock(sender.id, lockAcquiredAt, now);
   }
@@ -522,9 +543,11 @@ export async function runWarmupWorkerCycle(): Promise<{
   sent: number;
 }> {
   const now = new Date();
+  console.log("[LGS Warmup] Worker cycle started");
   await maybeAlertOnStaleWarmupWorker({ now });
   const claimedAt = await claimWorkerRun(now);
   if (!claimedAt) {
+    console.log("[LGS Warmup] Worker cycle skipped because another run is active");
     return { processedSenders: 0, sent: 0 };
   }
 
@@ -564,14 +587,7 @@ export async function runWarmupWorkerCycle(): Promise<{
     const domainSendCounts = await buildDomainSendCounts(now);
 
     for (const sender of senders) {
-      const before = await db
-        .select({ warmupTotalSent: senderPool.warmupTotalSent })
-        .from(senderPool)
-        .where(eq(senderPool.id, sender.id))
-        .limit(1)
-        .then((rows) => rows[0]?.warmupTotalSent ?? 0);
-
-      await processSender({
+      const sentThisCycle = await processSender({
         sender,
         activityRows: activityRowsBySender.get(sender.senderEmail) ?? [],
         latestActivity: latestActivityBySender.get(sender.senderEmail) ?? null,
@@ -579,14 +595,7 @@ export async function runWarmupWorkerCycle(): Promise<{
         now,
       });
 
-      const after = await db
-        .select({ warmupTotalSent: senderPool.warmupTotalSent })
-        .from(senderPool)
-        .where(eq(senderPool.id, sender.id))
-        .limit(1)
-        .then((rows) => rows[0]?.warmupTotalSent ?? before);
-
-      if (after > before) {
+      if (sentThisCycle) {
         sentCount += 1;
       }
     }
@@ -609,6 +618,7 @@ export async function runWarmupWorkerCycle(): Promise<{
     .where(or(eq(senderPool.warmupStatus, "warming"), eq(senderPool.warmupStatus, "ready")))
     .then((rows) => Number(rows[0]?.count ?? 0));
 
+  console.log("[LGS Warmup] Worker cycle completed", { processedSenders, sent: sentCount });
   return { processedSenders, sent: sentCount };
 }
 
