@@ -283,7 +283,6 @@ async function processSender(input: {
     reason: evaluation.reason,
     shouldSend: evaluation.shouldSend,
   });
-
   if (!sender.nextWarmupSendAt || sender.nextWarmupSendAt.getTime() !== evaluation.nextActionAt.getTime()) {
     await db
       .update(senderPool)
@@ -620,7 +619,6 @@ export async function runWarmupWorkerCycle(): Promise<{
     .then((rows) => Number(rows[0]?.count ?? 0));
 
   console.log("[LGS Warmup] Worker cycle completed", { processedSenders, sent: sentCount });
-
   return { processedSenders, sent: sentCount };
 }
 

@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic";
 async function handleWarmupRequest(req: Request) {
   console.log("[LGS Warmup] Warmup route entered", { method: req.method });
   console.log("[LGS Warmup] Warmup cron triggered at", new Date().toISOString());
-
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = req.headers.get("authorization");
