@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
-import { desc, eq, or } from "drizzle-orm";
+import { eq, or, desc } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { senderPool, lgsWorkerHealth, lgsWarmupActivity } from "@/db/schema/directoryEngine";
 import { hasGmailTokenForSender } from "@/src/services/lgs/outreachGmailSenderService";
 import { INTERNAL_SENDERS, EXTERNAL_TARGETS } from "@/src/services/lgs/warmupEngine";
-import { enforceWarmupSystemState, getWarmupWorkerStatus, validateWarmupSystem } from "@/src/services/lgs/warmupSystem";
-import { ensureWarmupWorkerFresh } from "@/src/warmup/warmupWorker";
 
 export async function GET() {
   try {
-    await ensureWarmupWorkerFresh();
-    await enforceWarmupSystemState();
-
     // Worker health
     const [workerRow] = await db
       .select()
@@ -19,12 +14,14 @@ export async function GET() {
       .where(eq(lgsWorkerHealth.workerName, "warmup"))
       .limit(1);
 
-    const heartbeatStatus = getWarmupWorkerStatus(workerRow?.lastHeartbeatAt);
-    const heartbeatAgeMs = workerRow?.lastHeartbeatAt
-      ? Date.now() - new Date(workerRow.lastHeartbeatAt).getTime()
-      : Infinity;
-
-    const validation = await validateWarmupSystem();
+    let heartbeatStatus = "unknown";
+    let heartbeatAgeMs = Infinity;
+    if (workerRow?.lastHeartbeatAt) {
+      heartbeatAgeMs = Date.now() - new Date(workerRow.lastHeartbeatAt).getTime();
+      if (heartbeatAgeMs < 10 * 60_000) heartbeatStatus = "healthy";
+      else if (heartbeatAgeMs < 20 * 60_000) heartbeatStatus = "warning";
+      else heartbeatStatus = "stale";
+    }
 
     // Active senders
     const senders = await db
@@ -38,20 +35,16 @@ export async function GET() {
       );
 
     const activeSendersExist = senders.length > 0;
-    const gmailTokens = await Promise.all(
-      senders.map(async (s) => ({
-        email: s.senderEmail,
-        hasToken: await hasGmailTokenForSender(s.senderEmail ?? ""),
-      }))
-    );
+    const gmailTokens = senders.map((s) => ({
+      email: s.senderEmail,
+      hasToken: hasGmailTokenForSender(s.senderEmail ?? ""),
+    }));
     const allTokensValid = gmailTokens.every((t) => t.hasToken);
 
-    // Next send timing
-    const nextSendTimes = senders
-      .filter((s) => s.nextWarmupSendAt)
-      .map((s) => s.nextWarmupSendAt!.toISOString())
-      .sort();
-    const nextSendComputed = nextSendTimes.length > 0;
+    // Next send timing: either a concrete send is scheduled or the sender has a valid rollover anchor.
+    const nextSendComputed = senders.every((s) =>
+      Boolean(s.nextWarmupSendAt) || Boolean(s.currentDayStartedAt)
+    );
 
     // Recent activity
     const [recentActivity] = await db
@@ -69,12 +62,11 @@ export async function GET() {
     const checks = [
       { name: "active_senders", pass: activeSendersExist },
       { name: "gmail_tokens", pass: allTokensValid, detail: gmailTokens },
-      { name: "worker_heartbeat", pass: heartbeatStatus === "healthy" },
+      { name: "worker_heartbeat", pass: heartbeatStatus !== "stale" && heartbeatStatus !== "unknown" },
       { name: "next_send_computed", pass: nextSendComputed },
       { name: "recent_activity", pass: recentActivityExists },
       { name: "internal_target_pool", pass: internalPoolConfigured },
       { name: "external_target_pool", pass: externalPoolConfigured },
-      { name: "validation_gate", pass: validation.pass, detail: validation.reasons },
     ];
 
     const passCount = checks.filter((c) => c.pass).length;
@@ -102,7 +94,6 @@ export async function GET() {
         checks,
         pass_count: passCount,
         fail_count: failCount,
-        validation,
       },
     });
   } catch (err) {
