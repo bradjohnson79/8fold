@@ -9,7 +9,10 @@ import {
   leadFinderCampaigns,
   leadFinderDomains,
 } from "@/db/schema/directoryEngine";
-import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
+import {
+  runBulkDomainDiscoveryAsync,
+  type DomainImportRow,
+} from "@/src/services/lgs/domainDiscoveryService";
 
 const BATCH_SIZE = 200;
 
@@ -63,13 +66,16 @@ export async function POST(
     const runIds: string[] = [];
 
     for (const batch of batches) {
-      const domainRows = batch.map((d) => ({
-        domain: d.domain,
-        campaignType: (campaign.campaignType ?? "contractor") as "contractor" | "jobs",
-        category: d.category ?? undefined,
-        city: d.city ?? undefined,
-        state: d.state ?? campaign.state ?? undefined,
-      }));
+      const domainRows: DomainImportRow[] = batch.flatMap((d) => {
+        if (!d.domain) return [];
+        return [{
+          domain: d.domain,
+          campaignType: (campaign.campaignType ?? "contractor") as "contractor" | "jobs",
+          category: d.category ?? undefined,
+          city: d.city ?? undefined,
+          state: d.state ?? campaign.state ?? undefined,
+        }];
+      });
 
       const runId = await runBulkDomainDiscoveryAsync(domainRows, {
         autoImportSource: `lead_finder_${campaign.campaignType ?? "contractor"}`,
