@@ -9,6 +9,11 @@ import {
   leadFinderJobs,
   leadFinderDomains,
 } from "@/db/schema/directoryEngine";
+import {
+  serializeLeadFinderCampaign,
+  serializeLeadFinderDomain,
+  serializeLeadFinderJob,
+} from "@/src/services/lgs/leadFinderApiSerializers";
 
 export async function GET(
   req: Request,
@@ -47,9 +52,9 @@ export async function GET(
     return NextResponse.json({
       ok: true,
       data: {
-        campaign,
-        jobs,
-        domains,
+        campaign: serializeLeadFinderCampaign(campaign),
+        jobs: jobs.map((job) => serializeLeadFinderJob(job)),
+        domains: domains.map((domain) => serializeLeadFinderDomain(domain)),
         page,
         page_size: pageSize,
       },

@@ -9,9 +9,11 @@ import { LeadFinderMap, type LatLng } from "@/components/LeadFinderMap";
 type Campaign = {
   id: string;
   name: string;
+  campaignType: "contractor" | "jobs";
   state: string;
   cities: string[];
   trades: string[];
+  categories: string[];
   sources: string[];
   max_results_per_combo: number;
   jobs_total: number;
@@ -36,7 +38,8 @@ type Campaign = {
 type Job = {
   id: string;
   city: string;
-  trade: string;
+  trade: string | null;
+  category: string | null;
   source: string;
   status: string;
   domains_found: number;
@@ -44,17 +47,25 @@ type Job = {
 
 type Domain = {
   id: string;
-  domain: string;
+  domain: string | null;
   business_name: string | null;
   trade: string | null;
+  category: string | null;
   city: string | null;
+  state?: string | null;
   source: string | null;
   sent_to_discovery: boolean;
+  website_url?: string | null;
+  formatted_address?: string | null;
+  phone?: string | null;
+  place_id?: string | null;
 };
 
 type StaticData = {
   cities: Array<{ city: string; state: string; county: string; population: number; lat?: number; lng?: number }>;
+  campaign_types: Array<{ id: "contractor" | "jobs"; label: string }>;
   trades: string[];
+  categories: string[];
   sources: Array<{ id: string; label: string }>;
 };
 
@@ -214,8 +225,10 @@ export default function LeadFinderPage() {
 
   // Form state
   const [formName, setFormName] = useState("");
+  const [formCampaignType, setFormCampaignType] = useState<"contractor" | "jobs">("contractor");
   const [formCities, setFormCities] = useState<string[]>([]);
   const [formTrades, setFormTrades] = useState<string[]>([]);
+  const [formCategories, setFormCategories] = useState<string[]>([]);
   const [formSources, setFormSources] = useState<string[]>(["google_maps"]);
   const [formMaxResults, setFormMaxResults] = useState(100);
   // Geo state
@@ -278,8 +291,9 @@ export default function LeadFinderPage() {
 
   async function handleCreateCampaign(e: React.FormEvent) {
     e.preventDefault();
-    if (!formName.trim() || formCities.length === 0 || formTrades.length === 0 || formSources.length === 0) {
-      setErr("Fill in name, at least one city, trade, and source.");
+    const selectedUnits = formCampaignType === "jobs" ? formCategories : formTrades;
+    if (!formName.trim() || formCities.length === 0 || selectedUnits.length === 0 || formSources.length === 0) {
+      setErr(`Fill in name, at least one city, ${formCampaignType === "jobs" ? "category" : "trade"}, and source.`);
       return;
     }
     setLoading(true);
@@ -290,9 +304,11 @@ export default function LeadFinderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formName,
+          campaign_type: formCampaignType,
           state: "CA",
           cities: formCities,
           trades: formTrades,
+          categories: formCategories,
           sources: formSources,
           max_results_per_combo: formMaxResults,
           center_lat: formCenter.lat,
@@ -304,7 +320,7 @@ export default function LeadFinderPage() {
       const json = await res.json().catch(() => ({})) as { ok?: boolean; data?: Campaign; error?: string };
       if (json.ok && json.data) {
         setShowForm(false);
-        setFormName(""); setFormCities([]); setFormTrades([]); setFormSources(["google_maps"]);
+        setFormName(""); setFormCampaignType("contractor"); setFormCities([]); setFormTrades([]); setFormCategories([]); setFormSources(["google_maps"]);
         setFormMaxResults(100); setFormRadiusKm(25); setFormMaxApiCalls(500); setShowMap(false);
         await loadCampaigns();
         setSelectedCampaign(json.data);
@@ -348,6 +364,9 @@ export default function LeadFinderPage() {
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
 
+  const getUnitValues = (campaign: Pick<Campaign, "campaignType" | "trades" | "categories">): string[] =>
+    campaign.campaignType === "jobs" ? (campaign.categories as string[]) : (campaign.trades as string[]);
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -377,7 +396,7 @@ export default function LeadFinderPage() {
         <div>
           <h1 style={{ margin: "0 0 0.35rem" }}>Lead Finder</h1>
           <p style={{ color: "#64748b", margin: 0, fontSize: "0.9rem" }}>
-            Discover contractor websites by city × trade, then send to Domain Discovery for email extraction.
+            Discover contractor or job-poster websites by city, then send them to Domain Discovery for contact extraction.
           </p>
         </div>
         <button
@@ -393,8 +412,8 @@ export default function LeadFinderPage() {
         <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.5rem", marginBottom: "2rem", border: "1px solid #334155" }}>
           <h2 style={{ margin: "0 0 1.25rem", fontSize: "1rem", fontWeight: 600 }}>New Discovery Campaign</h2>
           <form onSubmit={handleCreateCampaign}>
-            {/* Row 1: Name + Max Results */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+            {/* Row 1: Name + Pipeline + Max Results */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
               <div>
                 <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Campaign Name</div>
                 <input
@@ -403,6 +422,26 @@ export default function LeadFinderPage() {
                   placeholder="e.g. CA Roofing Regional — Jan 2026"
                   style={{ width: "100%", background: "#0f172a", border: "1px solid #334155", borderRadius: 7, color: "#f8fafc", padding: "0.5rem 0.75rem", fontSize: "0.875rem", boxSizing: "border-box" }}
                 />
+              </div>
+              <div>
+                <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Campaign Type</div>
+                <select
+                  value={formCampaignType}
+                  onChange={(e) => {
+                    const value = e.target.value as "contractor" | "jobs";
+                    setFormCampaignType(value);
+                    setFormTrades([]);
+                    setFormCategories([]);
+                  }}
+                  style={{ width: "100%", background: "#0f172a", border: "1px solid #334155", borderRadius: 7, color: "#f8fafc", padding: "0.5rem 0.75rem", fontSize: "0.875rem" }}
+                >
+                  {(staticData?.campaign_types ?? [
+                    { id: "contractor", label: "Contractors" },
+                    { id: "jobs", label: "Job Posters" },
+                  ]).map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Max Results / Combo</div>
@@ -416,7 +455,7 @@ export default function LeadFinderPage() {
               </div>
             </div>
 
-            {/* Row 2: Cities + Trades */}
+            {/* Row 2: Cities + Dynamic Unit */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
               <MultiSelect
                 label="Cities"
@@ -426,10 +465,10 @@ export default function LeadFinderPage() {
                 searchable
               />
               <MultiSelect
-                label="Trades"
-                options={staticData?.trades ?? []}
-                selected={formTrades}
-                onChange={setFormTrades}
+                label={formCampaignType === "jobs" ? "Categories" : "Trades"}
+                options={formCampaignType === "jobs" ? (staticData?.categories ?? []) : (staticData?.trades ?? [])}
+                selected={formCampaignType === "jobs" ? formCategories : formTrades}
+                onChange={formCampaignType === "jobs" ? setFormCategories : setFormTrades}
               />
             </div>
 
@@ -537,7 +576,7 @@ export default function LeadFinderPage() {
       {/* Campaign list */}
       {!selectedCampaign && campaigns.length === 0 && !showForm && (
         <div style={{ textAlign: "center", color: "#475569", padding: "4rem 0" }}>
-          No campaigns yet. Click <strong style={{ color: "#94a3b8" }}>+ New Campaign</strong> to start discovering contractor websites.
+          No campaigns yet. Click <strong style={{ color: "#94a3b8" }}>+ New Campaign</strong> to start discovering contractor or job-poster websites.
         </div>
       )}
 
@@ -552,7 +591,7 @@ export default function LeadFinderPage() {
               <div>
                 <div style={{ fontWeight: 600, color: "#f8fafc", marginBottom: "0.25rem" }}>{c.name}</div>
                 <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                  {(c.cities as unknown as string[]).length} cities · {(c.trades as unknown as string[]).length} trades · {(c.sources as unknown as string[]).map((s) => SOURCE_LABELS[s] ?? s).join(", ")}
+                  <span style={{ textTransform: "capitalize" }}>{c.campaignType}</span> · {(c.cities as unknown as string[]).length} cities · {getUnitValues(c).length} {c.campaignType === "jobs" ? "categories" : "trades"} · {(c.sources as unknown as string[]).map((s) => SOURCE_LABELS[s] ?? s).join(", ")}
                 </div>
               </div>
               <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexShrink: 0 }}>
@@ -583,7 +622,9 @@ export default function LeadFinderPage() {
               <div>
                 <h2 style={{ margin: "0 0 0.3rem", fontSize: "1.1rem" }}>{selectedCampaign.name}</h2>
                 <div style={{ fontSize: "0.82rem", color: "#64748b" }}>
+                  <span style={{ textTransform: "capitalize" }}>{selectedCampaign.campaignType}</span> ·{" "}
                   {(selectedCampaign.cities as unknown as string[]).join(", ")} ·{" "}
+                  {getUnitValues(selectedCampaign).join(", ")} ·{" "}
                   {(selectedCampaign.sources as unknown as string[]).map((s) => SOURCE_LABELS[s] ?? s).join(", ")}
                   {selectedCampaign.radius_km != null && (
                     <span style={{ marginLeft: "0.5rem", color: "#60a5fa" }}>
@@ -670,7 +711,7 @@ export default function LeadFinderPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
-                      {["City", "Trade", "Source", "Status", "Domains"].map((h) => (
+                      {["City", selectedCampaign.campaignType === "jobs" ? "Category" : "Trade", "Source", "Status", "Domains"].map((h) => (
                         <th key={h} style={{ padding: "0.4rem 0.75rem", textAlign: "left", fontWeight: 600 }}>{h}</th>
                       ))}
                     </tr>
@@ -679,7 +720,7 @@ export default function LeadFinderPage() {
                     {jobs.map((j) => (
                       <tr key={j.id} style={{ borderBottom: "1px solid #0f172a" }}>
                         <td style={{ padding: "0.4rem 0.75rem", color: "#f8fafc" }}>{j.city}</td>
-                        <td style={{ padding: "0.4rem 0.75rem", color: "#94a3b8" }}>{j.trade}</td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: "#94a3b8" }}>{j.category ?? j.trade ?? "—"}</td>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
                           <span style={{ background: "#0f172a", padding: "0.15rem 0.45rem", borderRadius: 4, color: "#38bdf8", fontFamily: "monospace", fontSize: "0.78rem" }}>
                             {SOURCE_LABELS[j.source] ?? j.source}
@@ -707,7 +748,7 @@ export default function LeadFinderPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
-                      {["Domain", "Business", "Trade", "City", "Source", "Sent"].map((h) => (
+                      {["Domain", "Business", selectedCampaign.campaignType === "jobs" ? "Category" : "Trade", "City", "Source", "Sent"].map((h) => (
                         <th key={h} style={{ padding: "0.4rem 0.75rem", textAlign: "left", fontWeight: 600 }}>{h}</th>
                       ))}
                     </tr>
@@ -716,14 +757,34 @@ export default function LeadFinderPage() {
                     {domains.map((d) => (
                       <tr key={d.id} style={{ borderBottom: "1px solid #0f172a" }}>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
-                          <a href={`https://${d.domain}`} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", fontFamily: "monospace", fontSize: "0.78rem" }}>
-                            {d.domain}
-                          </a>
+                          {d.domain ? (
+                            <a href={`https://${d.domain}`} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", fontFamily: "monospace", fontSize: "0.78rem" }}>
+                              {d.domain}
+                            </a>
+                          ) : d.website_url ? (
+                            <a href={d.website_url} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", fontFamily: "monospace", fontSize: "0.78rem" }}>
+                              {d.website_url}
+                            </a>
+                          ) : (
+                            <span style={{ color: "#64748b", fontSize: "0.78rem" }}>No website</span>
+                          )}
                         </td>
-                        <td style={{ padding: "0.4rem 0.75rem", color: "#94a3b8", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {d.business_name ?? "—"}
+                        <td style={{ padding: "0.4rem 0.75rem", color: "#94a3b8", maxWidth: 260 }}>
+                          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {d.business_name ?? "—"}
+                          </div>
+                          {d.formatted_address && (
+                            <div style={{ color: "#64748b", fontSize: "0.74rem", marginTop: "0.18rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {d.formatted_address}
+                            </div>
+                          )}
+                          {d.phone && (
+                            <div style={{ color: "#64748b", fontSize: "0.74rem", marginTop: "0.12rem" }}>
+                              {d.phone}
+                            </div>
+                          )}
                         </td>
-                        <td style={{ padding: "0.4rem 0.75rem", color: "#64748b" }}>{d.trade ?? "—"}</td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: "#64748b" }}>{d.category ?? d.trade ?? "—"}</td>
                         <td style={{ padding: "0.4rem 0.75rem", color: "#64748b" }}>{d.city ?? "—"}</td>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
                           <span style={{ background: "#0f172a", padding: "0.15rem 0.4rem", borderRadius: 4, color: "#64748b", fontSize: "0.75rem" }}>
