@@ -2,39 +2,16 @@
  * LGS: Trigger background email enrichment for pending leads.
  * POST /api/lgs/leads/enrich
  *
- * Runs a single batch of verification inline and returns results.
+ * Queues a single batch of pending verification jobs and returns queue counts.
  * For large-scale enrichment, use the CLI worker instead.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql, isNull, or } from "drizzle-orm";
-import pLimit from "p-limit";
+import { eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorLeads } from "@/db/schema/directoryEngine";
-import EmailValidator from "email-deep-validator";
+import { enqueueVerificationEmail } from "@/src/services/lgs/emailVerificationService";
 
-const validator = new EmailValidator({ timeout: 5000 });
-const VERIFY_CONCURRENCY = 5;
 const DEFAULT_BATCH = 25;
-const ARCHIVE_THRESHOLD = 85;
-
-async function verifyEmail(email: string): Promise<{ score: number; status: string }> {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized.includes("@")) return { score: 0, status: "rejected" };
-  try {
-    const result = await validator.verify(normalized);
-    let score = 0;
-    if (result.wellFormed) score += 20;
-    if (result.validDomain) score += 50;
-    if (result.validMailbox === true) score += 20;
-    else if (result.validMailbox === null) score += 10;
-    if (result.validDomain && result.validMailbox === true) score += 10;
-    if (score >= 80) return { score, status: "verified" };
-    if (score >= 70) return { score, status: "qualified" };
-    return { score, status: "low_quality" };
-  } catch {
-    return { score: 0, status: "verification_failed" };
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,10 +22,15 @@ export async function POST(req: NextRequest) {
       .select({ id: contractorLeads.id, email: contractorLeads.email })
       .from(contractorLeads)
       .where(
-        or(
-          eq(contractorLeads.verificationStatus, "pending"),
-          isNull(contractorLeads.verificationStatus)
+        sql`(
+          ${contractorLeads.email} is not null
+          and ${contractorLeads.email} != ''
+          and (
+            ${contractorLeads.emailVerificationStatus} = 'pending'
+            or ${contractorLeads.emailVerificationStatus} is null
+          )
         )
+        `
       )
       .limit(batchSize);
 
@@ -56,49 +38,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, data: { processed: 0, pending: 0, message: "No pending leads" } });
     }
 
-    const limit = pLimit(VERIFY_CONCURRENCY);
-    let verified = 0;
-    let archived = 0;
-    let failed = 0;
-
-    await Promise.allSettled(
-      leads.map((lead) =>
-        limit(async () => {
-          const { score, status } = await verifyEmail(lead.email);
-          const shouldArchive = score > 0 && score < ARCHIVE_THRESHOLD;
-
-          await db
-            .update(contractorLeads)
-            .set({
-              verificationScore: score,
-              verificationStatus: status,
-              verificationSource: "enrichment_api",
-              archived: shouldArchive ? true : undefined,
-              archivedAt: shouldArchive ? new Date() : undefined,
-            })
-            .where(eq(contractorLeads.id, lead.id));
-
-          verified++;
-          if (shouldArchive) archived++;
-        })
-      )
-    );
-
-    failed = leads.length - verified;
+    let queued = 0;
+    let cached = 0;
+    let skipped = 0;
+    for (const lead of leads) {
+      if (!lead.email) {
+        skipped++;
+        continue;
+      }
+      const result = await enqueueVerificationEmail(lead.email);
+      if (result.action === "queued") queued++;
+      else if (result.action === "cached") cached++;
+      else skipped++;
+    }
 
     const [{ count: remaining }] = await db
       .select({ count: sql<number>`count(*)` })
       .from(contractorLeads)
       .where(
-        or(
-          eq(contractorLeads.verificationStatus, "pending"),
-          isNull(contractorLeads.verificationStatus)
+        sql`(
+          ${contractorLeads.email} is not null
+          and ${contractorLeads.email} != ''
+          and (
+            ${contractorLeads.emailVerificationStatus} = 'pending'
+            or ${contractorLeads.emailVerificationStatus} is null
+          )
         )
+        `
       );
 
     return NextResponse.json({
       ok: true,
-      data: { processed: verified, archived, failed, pending: Number(remaining) },
+      data: { queued, cached, skipped, pending: Number(remaining) },
     });
   } catch (err) {
     console.error("LGS enrich error:", err);
@@ -113,8 +84,8 @@ export async function GET() {
       .from(contractorLeads)
       .where(
         or(
-          eq(contractorLeads.verificationStatus, "pending"),
-          isNull(contractorLeads.verificationStatus)
+          eq(contractorLeads.emailVerificationStatus, "pending"),
+          isNull(contractorLeads.emailVerificationStatus)
         )
       );
 

@@ -1,8 +1,12 @@
 {
   "crons": [
     {
+      "path": "/api/internal/lgs/process-verification",
+      "schedule": "*/1 * * * *"
+    },
+    {
       "path": "/api/internal/lgs/process-warmup",
-      "schedule": "* * * * *"
+      "schedule": "*/1 * * * *"
     },
     {
       "path": "/api/internal/seo/process-index-queue",

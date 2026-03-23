@@ -21,6 +21,10 @@ type Campaign = {
   domains_found: number;
   unique_domains: number;
   domains_sent: number;
+  sent_count?: number;
+  reply_count?: number;
+  reply_rate?: number;
+  bounce_count?: number;
   started_at: string | null;
   finished_at: string | null;
   elapsed_seconds: number | null;
@@ -33,6 +37,12 @@ type Campaign = {
   center_lng: number | null;
   radius_km: number | null;
   max_api_calls: number | null;
+  auto_assigned_leads_count?: number;
+  generated_count?: number;
+  approved_count?: number;
+  queued_count?: number;
+  sent_count_live?: number;
+  failed_count?: number;
 };
 
 type Job = {
@@ -59,6 +69,16 @@ type Domain = {
   formatted_address?: string | null;
   phone?: string | null;
   place_id?: string | null;
+  reply_rate?: number | null;
+};
+
+type TopPerformingLead = {
+  id: string;
+  name: string;
+  email: string | null;
+  reply_count: number;
+  priority_score: number;
+  last_replied_at: string | null;
 };
 
 type StaticData = {
@@ -215,6 +235,7 @@ export default function LeadFinderPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
+  const [topPerformingLeads, setTopPerformingLeads] = useState<TopPerformingLead[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -254,12 +275,13 @@ export default function LeadFinderPage() {
     const res = await fetch(`/api/lgs/leads/finder/campaigns/${id}`);
     const json = await res.json().catch(() => ({})) as {
       ok?: boolean;
-      data?: { campaign: Campaign; jobs: Job[]; domains: Domain[] };
+      data?: { campaign: Campaign; jobs: Job[]; domains: Domain[]; top_performing_leads?: TopPerformingLead[] };
     };
     if (json.ok && json.data) {
       setSelectedCampaign(json.data.campaign);
       setJobs(json.data.jobs);
       setDomains(json.data.domains);
+      setTopPerformingLeads(json.data.top_performing_leads ?? []);
     }
   }, []);
 
@@ -666,6 +688,13 @@ export default function LeadFinderPage() {
               <StatCard label="Domains Found" value={selectedCampaign.domains_found} color="#a78bfa" />
               <StatCard label="Unique Domains" value={selectedCampaign.unique_domains} color="#fbbf24" />
               <StatCard label="Sent to Discovery" value={selectedCampaign.domains_sent} color="#38bdf8" />
+              <StatCard label="Auto Assigned" value={selectedCampaign.auto_assigned_leads_count ?? 0} color="#22c55e" />
+              <StatCard label="Generated" value={selectedCampaign.generated_count ?? 0} color="#fbbf24" />
+              <StatCard label="Approved" value={selectedCampaign.approved_count ?? 0} color="#a78bfa" />
+              <StatCard label="Queued" value={selectedCampaign.queued_count ?? 0} color="#38bdf8" />
+              <StatCard label="Sent" value={selectedCampaign.sent_count_live ?? selectedCampaign.sent_count ?? 0} color="#22c55e" />
+              <StatCard label="Replies" value={selectedCampaign.reply_count ?? 0} color="#34d399" />
+              <StatCard label="Reply Rate" value={`${selectedCampaign.reply_rate ?? 0}%`} color="#34d399" />
               <StatCard label="Runtime" value={formatElapsed(selectedCampaign.elapsed_seconds)} color="#f8fafc" />
               {selectedCampaign.domains_per_second && parseFloat(selectedCampaign.domains_per_second) > 0 && (
                 <StatCard label="Domains/sec" value={selectedCampaign.domains_per_second} color="#34d399" />
@@ -748,7 +777,7 @@ export default function LeadFinderPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
-                      {["Domain", "Business", selectedCampaign.campaignType === "jobs" ? "Category" : "Trade", "City", "Source", "Sent"].map((h) => (
+                      {["Domain", "Business", selectedCampaign.campaignType === "jobs" ? "Category" : "Trade", "City", "Source", "Reply Rate", "Sent"].map((h) => (
                         <th key={h} style={{ padding: "0.4rem 0.75rem", textAlign: "left", fontWeight: 600 }}>{h}</th>
                       ))}
                     </tr>
@@ -791,6 +820,9 @@ export default function LeadFinderPage() {
                             {SOURCE_LABELS[d.source ?? ""] ?? d.source}
                           </span>
                         </td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: (Number(d.reply_rate ?? 0)) > 0.2 ? "#34d399" : "#94a3b8", fontWeight: (Number(d.reply_rate ?? 0)) > 0.2 ? 700 : 500 }}>
+                          {`${Math.round(Number(d.reply_rate ?? 0) * 100)}%`}
+                        </td>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
                           <span style={{ color: d.sent_to_discovery ? "#4ade80" : "#475569", fontSize: "0.78rem" }}>
                             {d.sent_to_discovery ? "✓ Sent" : "Pending"}
@@ -803,6 +835,37 @@ export default function LeadFinderPage() {
               </div>
             </div>
           )}
+          <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem", marginTop: "1.5rem" }}>
+            <h3 style={{ margin: "0 0 1rem", fontSize: "0.85rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Top Performing Leads
+            </h3>
+            {topPerformingLeads.length === 0 ? (
+              <div style={{ color: "#64748b", fontSize: "0.85rem" }}>No reply-driven lead feedback yet.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
+                      {["Lead", "Email", "Replies", "Priority", "Last Replied"].map((h) => (
+                        <th key={h} style={{ padding: "0.4rem 0.75rem", textAlign: "left", fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topPerformingLeads.map((lead) => (
+                      <tr key={lead.id} style={{ borderBottom: "1px solid #0f172a" }}>
+                        <td style={{ padding: "0.4rem 0.75rem", color: "#f8fafc" }}>{lead.name}</td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: "#94a3b8", fontFamily: "monospace" }}>{lead.email ?? "—"}</td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: lead.reply_count > 0 ? "#34d399" : "#94a3b8", fontWeight: 700 }}>{lead.reply_count}</td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: lead.priority_score >= 85 ? "#22c55e" : "#94a3b8", fontWeight: 700 }}>{lead.priority_score}</td>
+                        <td style={{ padding: "0.4rem 0.75rem", color: "#94a3b8" }}>{lead.last_replied_at ? new Date(lead.last_replied_at).toLocaleString() : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

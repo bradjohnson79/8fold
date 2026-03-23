@@ -1,34 +1,667 @@
+/**
+ * LGS Warmup Worker.
+ * Runs every 5 minutes. Responsibilities:
+ *   1. Anchor-based 24-hour day advancement for warming/ready senders.
+ *   2. Slot-based warmup email sending with external routing.
+ *   3. Activity logging to lgs_warmup_activity.
+ *   4. Stuck sender detection.
+ *   5. Health score computation (GOOD / WARNING / RISK).
+ *   6. Cooldown awareness (skip senders in cooldown).
+ *   7. Worker heartbeat to lgs_worker_health.
+ *
+ *   DOTENV_CONFIG_PATH=apps/api/.env.local pnpm -C apps/api run lgs:warmup:worker
+ */
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import cron from "node-cron";
 import dotenv from "dotenv";
-import { runWarmupWorkerCycle, startWarmupWorkerLoop } from "../src/warmup/warmupWorker";
+import { and, eq, gte, or, sql } from "drizzle-orm";
+import { db } from "../db/drizzle";
+import { senderPool, lgsWarmupActivity, lgsWorkerHealth } from "../db/schema/directoryEngine";
+import { sendOutreachEmail, hasGmailTokenForSender } from "../src/services/lgs/outreachGmailSenderService";
 
 dotenv.config({
   path: process.env.DOTENV_CONFIG_PATH || path.join(process.cwd(), "apps/api/.env.local"),
 });
 
-const RUN_ONCE = process.env.LGS_WARMUP_RUN_ONCE === "1";
+import { getDailyLimit } from "../src/services/lgs/warmupSchedule";
+import {
+  checkSendEligibility,
+  pickWarmupTarget,
+  computeHealthScore,
+} from "../src/services/lgs/warmupEngine";
 
-async function main() {
-  if (RUN_ONCE) {
-    const result = await runWarmupWorkerCycle();
-    console.log(`[LGS Warmup] Single run complete. processed=${result.processedSenders} sent=${result.sent}`);
-    return;
-  }
+const MAX_WARMUP_DAY = 5;
+const STUCK_SENDER_HOURS = 2;
+const WORKER_NAME = "warmup";
+const STABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const STABILITY_DELAY_TOLERANCE_MS = 5 * 60 * 1000;
 
-  const stop = startWarmupWorkerLoop();
-  console.log("[LGS Warmup] Worker loop started. Interval: 60 seconds");
+type WarmupSenderRow = typeof senderPool.$inferSelect;
 
-  const shutdown = () => {
-    console.log("[LGS Warmup] Shutting down...");
-    stop();
-    process.exit(0);
-  };
+const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
+  { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
+  { subject: "Morning check-in", body: "Good morning — just confirming the email flow is working properly on this end." },
+  { subject: "Hey there", body: "Hi! Touching base real quick. Hope everything is working well on your side." },
+  { subject: "Quick question", body: "Did the last message come through okay? Just checking deliverability. Thanks!" },
+  { subject: "Inbox test — did you get this?", body: "Quick check — did this email land in your inbox? Just making sure everything is connected." },
+  { subject: "Any issues?", body: "Have you noticed any delivery issues lately? Just want to make sure our setup is solid." },
+  { subject: "Confirming delivery", body: "Hey, confirming the connection is working. No action needed on your end." },
+  { subject: "All clear", body: "Running a delivery test. This should arrive in your primary inbox. Let me know if not." },
+  { subject: "Connection verified", body: "Just verified the connection — everything looks good from this side." },
+  { subject: "Re: Inbox test", body: "Yep, came through fine. Everything looks good." },
+  { subject: "Re: Quick check", body: "Got it — delivery confirmed on this end. Thanks for the check." },
+  { subject: "Re: Morning check-in", body: "All good here too. Inbox is working perfectly." },
+  { subject: "Checking in", body: "Just a quick ping to check deliverability. All good on your end?" },
+  { subject: "Testing connection", body: "Testing delivery on this end. Reply if you see this. Thanks!" },
+  { subject: "Friday check", body: "Quick end-of-week inbox verification. Hope all is well." },
+  { subject: "Just verifying", body: "Hi there, just verifying the mail route is clean. No action needed." },
+];
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-main().catch((error) => {
-  console.error("[LGS Warmup] Worker bootstrap failed:", error);
-  process.exit(1);
-});
+// ─── Activity Logging ─────────────────────────────────────────────────
+
+async function logActivity(entry: {
+  senderEmail: string;
+  recipientEmail: string;
+  subject: string;
+  messageType: string;
+  status: string;
+  errorMessage?: string;
+}): Promise<void> {
+  try {
+    await db.insert(lgsWarmupActivity).values({
+      senderEmail: entry.senderEmail,
+      recipientEmail: entry.recipientEmail,
+      subject: entry.subject,
+      messageType: entry.messageType,
+      status: entry.status,
+      errorMessage: entry.errorMessage ?? null,
+      sentAt: new Date(),
+    });
+  } catch (err) {
+    console.error("[LGS Warmup] activity log error:", err);
+  }
+}
+
+async function startWarmupStability(sender: WarmupSenderRow, now: Date): Promise<void> {
+  await db
+    .update(senderPool)
+    .set({
+      warmupStabilityStartedAt: now,
+      warmupStabilityVerified: false,
+      outreachEnabled: false,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.id, sender.id));
+
+  console.log(`[Warmup Stability] Started for ${sender.senderEmail} at ${now.toISOString()}`);
+}
+
+async function resetWarmupStability(
+  sender: WarmupSenderRow,
+  now: Date,
+  reason: string
+): Promise<void> {
+  await db
+    .update(senderPool)
+    .set({
+      warmupStabilityStartedAt: now,
+      warmupStabilityVerified: false,
+      outreachEnabled: false,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.id, sender.id));
+
+  console.warn(`[Warmup Stability] Reset due to failure for ${sender.senderEmail}: ${reason}`);
+}
+
+async function completeWarmupStability(sender: WarmupSenderRow, now: Date): Promise<void> {
+  await db
+    .update(senderPool)
+    .set({
+      warmupStabilityVerified: true,
+      outreachEnabled: true,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.id, sender.id));
+
+  console.log(`[Warmup Stability] Completed for ${sender.senderEmail}`);
+}
+
+async function loadStabilityWindowActivity(senderEmail: string, startedAt: Date) {
+  return db
+    .select({
+      status: lgsWarmupActivity.status,
+      errorMessage: lgsWarmupActivity.errorMessage,
+      sentAt: lgsWarmupActivity.sentAt,
+    })
+    .from(lgsWarmupActivity)
+    .where(
+      and(
+        eq(lgsWarmupActivity.senderEmail, senderEmail),
+        gte(lgsWarmupActivity.sentAt, startedAt)
+      )
+    );
+}
+
+async function evaluateWarmupStability(phase: "pre_send" | "post_send"): Promise<void> {
+  const senders = await db
+    .select()
+    .from(senderPool)
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
+
+  const now = new Date();
+
+  for (const sender of senders) {
+    const day = sender.warmupDay ?? 0;
+    if (day < MAX_WARMUP_DAY) {
+      if (sender.warmupStabilityStartedAt || sender.warmupStabilityVerified) {
+        await db
+          .update(senderPool)
+          .set({
+            warmupStabilityStartedAt: null,
+            warmupStabilityVerified: false,
+            outreachEnabled: false,
+            updatedAt: now,
+          })
+          .where(eq(senderPool.id, sender.id));
+      }
+      continue;
+    }
+
+    const startedAt = sender.warmupStabilityStartedAt;
+    if (!startedAt) {
+      if (phase === "post_send" && sender.lastWarmupResult === "sent") {
+        await startWarmupStability(sender, now);
+      }
+      continue;
+    }
+
+    if (
+      phase === "pre_send" &&
+      sender.nextWarmupSendAt &&
+      now.getTime() - new Date(sender.nextWarmupSendAt).getTime() > STABILITY_DELAY_TOLERANCE_MS
+    ) {
+      const lateByMinutes = Math.round(
+        (now.getTime() - new Date(sender.nextWarmupSendAt).getTime()) / 60_000
+      );
+      await resetWarmupStability(sender, now, `delayed_execution (${lateByMinutes}m late)`);
+      continue;
+    }
+
+    const activity = await loadStabilityWindowActivity(sender.senderEmail, new Date(startedAt));
+    const failedActivity = activity.find((row) => row.status !== "sent");
+    if (failedActivity) {
+      const errorMessage = failedActivity.errorMessage?.toLowerCase() ?? "";
+      const reason = errorMessage.includes("invalid_grant")
+        ? "invalid_grant"
+        : failedActivity.errorMessage ?? "send_failure";
+      await resetWarmupStability(sender, now, reason);
+      continue;
+    }
+
+    if (phase === "post_send" && sender.lastWarmupResult === "error") {
+      await resetWarmupStability(sender, now, "send_failure");
+      continue;
+    }
+
+    if (phase !== "post_send") continue;
+
+    const elapsedMs = now.getTime() - new Date(startedAt).getTime();
+    const elapsedHours = elapsedMs / 3_600_000;
+    console.log(
+      `[Warmup Stability] Progress: ${sender.senderEmail} ${elapsedHours.toFixed(1)}h / 24.0h`
+    );
+
+    if (!sender.warmupStabilityVerified && elapsedMs >= STABILITY_WINDOW_MS && activity.length > 0) {
+      await completeWarmupStability(sender, now);
+    }
+  }
+}
+
+// ─── Worker Heartbeat ─────────────────────────────────────────────────
+
+async function heartbeatStart(): Promise<void> {
+  const now = new Date();
+  await db
+    .update(lgsWorkerHealth)
+    .set({
+      lastHeartbeatAt: now,
+      lastRunStartedAt: now,
+      lastRunStatus: "running",
+    })
+    .where(eq(lgsWorkerHealth.workerName, WORKER_NAME));
+}
+
+async function heartbeatFinish(status: string, error?: string): Promise<void> {
+  const now = new Date();
+  await db
+    .update(lgsWorkerHealth)
+    .set({
+      lastHeartbeatAt: now,
+      lastRunFinishedAt: now,
+      lastRunStatus: status,
+      lastError: error ?? null,
+    })
+    .where(eq(lgsWorkerHealth.workerName, WORKER_NAME));
+}
+
+// ─── Day Advancement ──────────────────────────────────────────────────
+
+async function advanceDays(): Promise<void> {
+  const senders = await db
+    .select()
+    .from(senderPool)
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
+
+  const now = new Date();
+
+  for (const sender of senders) {
+    if (!sender.currentDayStartedAt) continue;
+
+    let anchor = new Date(sender.currentDayStartedAt);
+    let currentDay = sender.warmupDay ?? 0;
+    let advanced = false;
+
+    while (now.getTime() >= anchor.getTime() + 24 * 60 * 60 * 1000) {
+      anchor = new Date(anchor.getTime() + 24 * 60 * 60 * 1000);
+      currentDay = Math.min(currentDay + 1, MAX_WARMUP_DAY);
+      advanced = true;
+    }
+
+    if (!advanced) continue;
+
+    const newLimit = getDailyLimit(currentDay);
+    const transitionedToReady = (sender.warmupDay ?? 0) < MAX_WARMUP_DAY && currentDay >= MAX_WARMUP_DAY;
+    const outreachEnabled = currentDay >= MAX_WARMUP_DAY
+      ? (sender.warmupStabilityVerified ?? false)
+      : false;
+    const warmupStatus = currentDay >= MAX_WARMUP_DAY ? "ready" : "warming";
+
+    await db
+      .update(senderPool)
+      .set({
+        warmupDay: currentDay,
+        dailyLimit: newLimit,
+        currentDayStartedAt: anchor,
+        warmupSentToday: 0,
+        outreachSentToday: 0,
+        sentToday: 0,
+        warmupEmailsSentToday: 0,
+        outreachEnabled,
+        warmupStabilityVerified: currentDay >= MAX_WARMUP_DAY
+          ? (transitionedToReady ? false : (sender.warmupStabilityVerified ?? false))
+          : false,
+        warmupStabilityStartedAt: currentDay >= MAX_WARMUP_DAY
+          ? (transitionedToReady ? null : sender.warmupStabilityStartedAt)
+          : null,
+        warmupStatus,
+        updatedAt: now,
+      })
+      .where(eq(senderPool.id, sender.id));
+
+    console.log(
+      `[LGS Warmup] ${sender.senderEmail}: advanced to day ${currentDay}, limit=${newLimit}, outreach=${outreachEnabled ? "enabled" : "locked"}, status=${warmupStatus}`
+    );
+  }
+}
+
+// ─── Warmup Email Sending ──────────────────────────────────────────────
+
+async function sendWarmupEmails(): Promise<void> {
+  const senders = await db
+    .select()
+    .from(senderPool)
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
+
+  const now = new Date();
+
+  for (const sender of senders) {
+    const email = sender.senderEmail ?? "";
+    const warmupDay = sender.warmupDay ?? 1;
+
+    // Skip senders in cooldown
+    if (sender.cooldownUntil && new Date(sender.cooldownUntil) > now) {
+      console.log(`[LGS Warmup] ${email}: skipped (in cooldown until ${sender.cooldownUntil.toISOString()})`);
+      await db.update(senderPool).set({
+        lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+      continue;
+    }
+
+    const totalSent = (sender.warmupSentToday ?? 0) + (sender.outreachSentToday ?? 0);
+    const remaining = (sender.dailyLimit ?? 0) - totalSent;
+    if (remaining <= 0) {
+      await db.update(senderPool).set({
+        lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+      continue;
+    }
+
+    const warmupBudget = warmupDay >= MAX_WARMUP_DAY
+      ? Math.min(3, remaining)
+      : remaining;
+
+    const warmupSentSoFar = sender.warmupSentToday ?? 0;
+    if (warmupSentSoFar >= warmupBudget) {
+      await db.update(senderPool).set({
+        lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+      continue;
+    }
+
+    if (!hasGmailTokenForSender(email)) {
+      await db.update(senderPool).set({
+        lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+      continue;
+    }
+
+    // ── Slot-based time gate ───────────────────────────────────────────
+    const eligibility = checkSendEligibility({
+      currentDayStartedAt: sender.currentDayStartedAt,
+      warmupSentToday: warmupSentSoFar,
+      warmupBudget,
+    });
+
+    // Always persist next send timing
+    await db.update(senderPool).set({
+      nextWarmupSendAt: eligibility.nextSendAt,
+      updatedAt: now,
+    }).where(eq(senderPool.id, sender.id));
+
+    const nextEligibleMin = Math.round(eligibility.nextEligibleMs / 60_000);
+
+    console.log(
+      `[LGS Warmup] ${email}: dayProgress=${(eligibility.dayProgress * 100).toFixed(1)}%` +
+      ` expectedProgress=${(eligibility.expectedProgress * 100).toFixed(1)}%` +
+      ` sent=${warmupSentSoFar}/${warmupBudget}` +
+      ` decision=${eligibility.allowed ? "SEND" : `WAIT (~${nextEligibleMin}m)`}`
+    );
+
+    if (!eligibility.allowed) {
+      await db.update(senderPool).set({
+        lastWarmupResult: "wait",
+      }).where(eq(senderPool.id, sender.id));
+      continue;
+    }
+
+    // ── Pick target (internal/external routing) ────────────────────────
+    const targetResult = pickWarmupTarget(
+      email,
+      sender.lastWarmupRecipient ?? null,
+      warmupDay,
+    );
+
+    if (!targetResult.target) {
+      console.warn(`[LGS Warmup] ${email}: no valid target — ${(targetResult as { reason: string }).reason}`);
+      await db.update(senderPool).set({
+        lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+      continue;
+    }
+
+    const { target: targetEmail, isExternal } = targetResult;
+    const msg = pickRandom(WARMUP_MESSAGES);
+    const routeType = isExternal ? "external" : "internal";
+
+    console.log(`[LGS Warmup] ${email} → ${targetEmail} (${routeType}, day ${warmupDay})`);
+
+    try {
+      const result = await sendOutreachEmail({
+        subject: msg.subject,
+        body: msg.body,
+        contactEmail: targetEmail,
+        senderAccount: email,
+      });
+
+      if (result.ok) {
+        const newWarmupSent = warmupSentSoFar + 1;
+        const newTotal = newWarmupSent + (sender.outreachSentToday ?? 0);
+
+        // Compute next slot timing for the NEXT email after this one
+        const nextSlotEligibility = checkSendEligibility({
+          currentDayStartedAt: sender.currentDayStartedAt,
+          warmupSentToday: newWarmupSent,
+          warmupBudget,
+        });
+
+        await db
+          .update(senderPool)
+          .set({
+            warmupSentToday: newWarmupSent,
+            warmupEmailsSentToday: sql`${senderPool.warmupEmailsSentToday} + 1`,
+            warmupTotalSent: sql`${senderPool.warmupTotalSent} + 1`,
+            sentToday: newTotal,
+            lastSentAt: now,
+            lastWarmupSentAt: now,
+            lastWarmupResult: "sent",
+            lastWarmupRecipient: targetEmail,
+            nextWarmupSendAt: newWarmupSent >= warmupBudget ? null : nextSlotEligibility.nextSendAt,
+            updatedAt: now,
+          })
+          .where(eq(senderPool.id, sender.id));
+
+        await logActivity({
+          senderEmail: email,
+          recipientEmail: targetEmail,
+          subject: msg.subject,
+          messageType: routeType,
+          status: "sent",
+        });
+
+        console.log(
+          `[LGS Warmup] ${email} → ${targetEmail} sent (day ${warmupDay}, slot ${newWarmupSent}/${warmupBudget}, ${routeType})`
+        );
+      } else {
+        const errMsg = (result as { message?: string }).message ?? "unknown";
+
+        await db.update(senderPool).set({
+          lastWarmupResult: "error",
+          lastWarmupRecipient: targetEmail,
+          updatedAt: now,
+        }).where(eq(senderPool.id, sender.id));
+
+        await logActivity({
+          senderEmail: email,
+          recipientEmail: targetEmail,
+          subject: msg.subject,
+          messageType: routeType,
+          status: "failed",
+          errorMessage: errMsg,
+        });
+
+        console.warn(`[LGS Warmup] ${email} → ${targetEmail} send failed: ${errMsg}`);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      await db.update(senderPool).set({
+        lastWarmupResult: "error",
+        lastWarmupRecipient: targetEmail,
+        updatedAt: now,
+      }).where(eq(senderPool.id, sender.id));
+
+      await logActivity({
+        senderEmail: email,
+        recipientEmail: targetEmail,
+        subject: msg.subject,
+        messageType: routeType,
+        status: "failed",
+        errorMessage: errMsg,
+      });
+
+      console.error(`[LGS Warmup] ${email} warmup send error:`, err);
+    }
+  }
+}
+
+// ─── Stuck Sender Detection ────────────────────────────────────────────
+
+async function detectStuckSenders(): Promise<void> {
+  const senders = await db
+    .select()
+    .from(senderPool)
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
+
+  const now = new Date();
+  const stuckThresholdMs = STUCK_SENDER_HOURS * 60 * 60 * 1000;
+
+  for (const sender of senders) {
+    const totalSent = (sender.warmupSentToday ?? 0) + (sender.outreachSentToday ?? 0);
+    if (totalSent > 0) continue;
+
+    const lastActivity = sender.lastSentAt ?? sender.currentDayStartedAt;
+    if (!lastActivity) continue;
+
+    const sinceLastActivity = now.getTime() - new Date(lastActivity).getTime();
+    if (sinceLastActivity > stuckThresholdMs) {
+      console.warn(
+        `[LGS Stuck] ${sender.senderEmail}: warming day ${sender.warmupDay}, sent_today=0, no activity for ${Math.round(sinceLastActivity / 60000)}min — check Gmail token or network`
+      );
+    }
+  }
+}
+
+// ─── Health Score Computation ──────────────────────────────────────────
+
+async function updateHealthScores(): Promise<void> {
+  const senders = await db
+    .select()
+    .from(senderPool)
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
+
+  for (const sender of senders) {
+    const score = computeHealthScore({
+      warmupTotalSent: sender.warmupTotalSent ?? 0,
+      warmupTotalReplies: sender.warmupTotalReplies ?? 0,
+      warmupInboxPlacement: sender.warmupInboxPlacement ?? "unknown",
+      cooldownUntil: sender.cooldownUntil ?? null,
+    });
+
+    if (score !== (sender.healthScore ?? "unknown")) {
+      await db
+        .update(senderPool)
+        .set({ healthScore: score, updatedAt: new Date() })
+        .where(eq(senderPool.id, sender.id));
+    }
+  }
+}
+
+// ─── Main Cycle ────────────────────────────────────────────────────────
+
+export async function runWarmupCycle(): Promise<void> {
+  try {
+    await heartbeatStart();
+  } catch (err) {
+    console.error("[LGS Warmup] heartbeat start error:", err);
+  }
+
+  let cycleError: string | undefined;
+
+  try {
+    await advanceDays();
+  } catch (err) {
+    console.error("[LGS Warmup] day advancement error:", err);
+    cycleError = err instanceof Error ? err.message : String(err);
+  }
+
+  try {
+    await evaluateWarmupStability("pre_send");
+  } catch (err) {
+    console.error("[Warmup Stability] pre-send evaluation error:", err);
+    cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    await sendWarmupEmails();
+  } catch (err) {
+    console.error("[LGS Warmup] warmup send error:", err);
+    cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    await evaluateWarmupStability("post_send");
+  } catch (err) {
+    console.error("[Warmup Stability] post-send evaluation error:", err);
+    cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    await detectStuckSenders();
+  } catch (err) {
+    console.error("[LGS Warmup] stuck detection error:", err);
+  }
+
+  try {
+    await updateHealthScores();
+  } catch (err) {
+    console.error("[LGS Warmup] health score error:", err);
+  }
+
+  try {
+    await heartbeatFinish(cycleError ? "error" : "completed", cycleError);
+  } catch (err) {
+    console.error("[LGS Warmup] heartbeat finish error:", err);
+  }
+}
+
+const isEntrypoint =
+  process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
+    timezone: "America/Los_Angeles",
+  });
+  void runWarmupCycle();
+
+  console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+
+  process.on("SIGINT", () => {
+    console.log("[LGS Warmup] Shutting down...");
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    console.log("[LGS Warmup] Shutting down...");
+    process.exit(0);
+  });
+}

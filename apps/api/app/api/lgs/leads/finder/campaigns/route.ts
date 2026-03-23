@@ -5,6 +5,8 @@ import { NextResponse } from "next/server";
 import { desc } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { leadFinderCampaigns } from "@/db/schema/directoryEngine";
+import { getAutoAssignedLeadCounts } from "@/src/services/lgs/autoAssignmentService";
+import { getCampaignOutreachMetrics } from "@/src/services/lgs/outreachAutomationService";
 import { runLeadFinderCampaign } from "@/src/services/lgs/leadFinderService";
 import { serializeLeadFinderCampaign } from "@/src/services/lgs/leadFinderApiSerializers";
 import { CALIFORNIA_CITIES } from "@/src/data/californiaCities";
@@ -18,7 +20,22 @@ export async function GET() {
       .from(leadFinderCampaigns)
       .orderBy(desc(leadFinderCampaigns.createdAt));
 
-    return NextResponse.json({ ok: true, data: campaigns.map((campaign) => serializeLeadFinderCampaign(campaign)) });
+    const campaignIds = campaigns.map((campaign) => campaign.id);
+    const counts = await getAutoAssignedLeadCounts(campaignIds);
+    const outreach = await getCampaignOutreachMetrics(campaignIds);
+
+    return NextResponse.json({
+      ok: true,
+      data: campaigns.map((campaign) => ({
+        ...serializeLeadFinderCampaign(campaign),
+        auto_assigned_leads_count: counts[campaign.id] ?? 0,
+        generated_count: outreach[campaign.id]?.generated ?? 0,
+        approved_count: outreach[campaign.id]?.approved ?? 0,
+        queued_count: outreach[campaign.id]?.queued ?? 0,
+        sent_count_live: outreach[campaign.id]?.sent ?? 0,
+        failed_count: outreach[campaign.id]?.failed ?? 0,
+      })),
+    });
   } catch (err) {
     console.error("LeadFinder campaigns GET error:", err);
     return NextResponse.json({ ok: false, error: "fetch_failed" }, { status: 500 });

@@ -2,135 +2,93 @@
  * LGS: Conversion funnel aggregates.
  */
 import { NextResponse } from "next/server";
-import { desc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import {
   contractorLeads,
-  discoveryRuns,
-  outreachMessages,
-  senderPool,
+  jobPosterLeads,
 } from "@/db/schema/directoryEngine";
-import { users } from "@/db/schema/user";
-import { contractorAccounts } from "@/db/schema/contractorAccount";
-
-function getTodayMidnightPacific(): Date {
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Los_Angeles",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = formatter.formatToParts(now);
-  const y = parts.find((p) => p.type === "year")?.value ?? "2025";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
-  return new Date(`${y}-${m}-${d}T08:00:00.000Z`);
-}
 
 export async function GET() {
   try {
-    const midnight = getTodayMidnightPacific();
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
     const [
-      leadsRes,
-      emailsSentRes,
-      responsesRes,
+      contractorLeadRes,
+      jobPosterLeadRes,
+      sentContractorRes,
+      sentJobPosterRes,
+      bounceContractorRes,
+      bounceJobPosterRes,
+      replyContractorRes,
+      replyJobPosterRes,
       signupsRes,
-      activeRes,
-      emailsTodayRes,
-      emailsWeekRes,
-      bouncedRes,
-      verifiedRes,
-      discoveryRunRes,
-      messagesGeneratedRes,
-      messagesApprovedRes,
+      activeContractorRes,
+      activeJobPosterRes,
     ] = await Promise.all([
       db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads),
+      db.select({ c: sql<number>`count(*)::int` }).from(jobPosterLeads),
       db
         .select({ c: sql<number>`count(*)::int` })
         .from(contractorLeads)
         .where(sql`${contractorLeads.contactAttempts} > 0`),
       db
         .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(eq(contractorLeads.responseReceived, true)),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(eq(contractorLeads.signedUp, true)),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(users)
-        .innerJoin(contractorAccounts, eq(users.id, contractorAccounts.userId))
-        .where(sql`${users.role} = 'CONTRACTOR'`),
-      db.select({ total: sql<number>`coalesce(sum(${senderPool.sentToday}), 0)::int` }).from(senderPool),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(
-          sql`${contractorLeads.contactAttempts} > 0 and ${contractorLeads.emailDate} >= ${weekAgo}`
-        ),
+        .from(jobPosterLeads)
+        .where(sql`${jobPosterLeads.contactAttempts} > 0`),
       db
         .select({ c: sql<number>`count(*)::int` })
         .from(contractorLeads)
         .where(sql`coalesce(${contractorLeads.emailBounced}, false) = true`),
       db
         .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(eq(contractorLeads.verificationStatus, "verified")),
-      db
-        .select()
-        .from(discoveryRuns)
-        .orderBy(desc(discoveryRuns.createdAt))
-        .limit(1),
-      db.select({ c: sql<number>`count(*)::int` }).from(outreachMessages),
+        .from(jobPosterLeads)
+        .where(sql`coalesce(${jobPosterLeads.emailBounced}, false) = true`),
       db
         .select({ c: sql<number>`count(*)::int` })
-        .from(outreachMessages)
-        .where(eq(outreachMessages.status, "approved")),
+        .from(contractorLeads)
+        .where(eq(contractorLeads.responseReceived, true)),
+      db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(jobPosterLeads)
+        .where(eq(jobPosterLeads.responseReceived, true)),
+      db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(contractorLeads)
+        .where(eq(contractorLeads.signedUp, true)),
+      db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(contractorLeads)
+        .where(eq(contractorLeads.archived, false)),
+      db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(jobPosterLeads)
+        .where(eq(jobPosterLeads.archived, false)),
     ]);
 
-    const toNum = (r: { c?: unknown; total?: unknown }[]) =>
-      Number((r[0] as { c?: number; total?: number })?.c ?? (r[0] as { total?: number })?.total ?? 0);
-    const leads = toNum(leadsRes);
-    const emailsSent = toNum(emailsSentRes);
-    const responses = toNum(responsesRes);
+    const toNum = (r: { c?: unknown }[]) => Number((r[0] as { c?: number })?.c ?? 0);
+    const totalLeads = toNum(contractorLeadRes) + toNum(jobPosterLeadRes);
+    const emailsSent = toNum(sentContractorRes) + toNum(sentJobPosterRes);
+    const bounces = toNum(bounceContractorRes) + toNum(bounceJobPosterRes);
+    const replies = toNum(replyContractorRes) + toNum(replyJobPosterRes);
     const signups = toNum(signupsRes);
-    const activeContractors = toNum(activeRes);
-    const emailsSentToday = toNum(emailsTodayRes);
-    const emailsSentWeek = toNum(emailsWeekRes);
-    const bounced = toNum(bouncedRes);
-    const bounceRate = emailsSent > 0 ? (bounced / emailsSent) * 100 : 0;
-    const verifiedCount = toNum(verifiedRes);
-    const verificationRate = leads > 0 ? (verifiedCount / leads) * 100 : 0;
-    const outreachConversionRate = emailsSent > 0 ? (signups / emailsSent) * 100 : 0;
-    const latestRun = discoveryRunRes[0] as { domainsProcessed?: number; successfulDomains?: number } | undefined;
-    const discoverySuccessRate =
-      latestRun?.domainsProcessed && latestRun.domainsProcessed > 0
-        ? ((latestRun.successfulDomains ?? 0) / latestRun.domainsProcessed) * 100
-        : 0;
-    const messagesGenerated = toNum(messagesGeneratedRes);
-    const messagesApproved = toNum(messagesApprovedRes);
+    const activeContractors = toNum(activeContractorRes);
+    const activeJobPosters = toNum(activeJobPosterRes);
+    const bounceRate = emailsSent > 0 ? (bounces / emailsSent) * 100 : 0;
+    const replyRate = emailsSent > 0 ? (replies / emailsSent) * 100 : 0;
+    const conversionRate = emailsSent > 0 ? (signups / emailsSent) * 100 : 0;
 
     return NextResponse.json({
       ok: true,
       data: {
-        leads,
-        verified_leads: verifiedCount,
+        total_leads: totalLeads,
         emails_sent: emailsSent,
-        emails_sent_today: emailsSentToday,
-        emails_sent_week: emailsSentWeek,
-        responses,
+        bounces,
+        replies,
         signups,
         active_contractors: activeContractors,
-        messages_generated: messagesGenerated,
-        messages_approved: messagesApproved,
+        active_job_posters: activeJobPosters,
         bounce_rate: Math.round(bounceRate * 10) / 10,
-        verification_rate: Math.round(verificationRate * 10) / 10,
-        outreach_conversion_rate: Math.round(outreachConversionRate * 10) / 10,
-        discovery_success_rate: Math.round(discoverySuccessRate * 10) / 10,
+        reply_rate: Math.round(replyRate * 10) / 10,
+        conversion_rate: Math.round(conversionRate * 10) / 10,
       },
     });
   } catch (err) {
@@ -139,20 +97,16 @@ export async function GET() {
       return NextResponse.json({
         ok: true,
         data: {
-          leads: 0,
-          verified_leads: 0,
+          total_leads: 0,
           emails_sent: 0,
-          emails_sent_today: 0,
-          emails_sent_week: 0,
-          responses: 0,
+          bounces: 0,
+          replies: 0,
           signups: 0,
           active_contractors: 0,
-          messages_generated: 0,
-          messages_approved: 0,
+          active_job_posters: 0,
           bounce_rate: 0,
-          verification_rate: 0,
-          outreach_conversion_rate: 0,
-          discovery_success_rate: 0,
+          reply_rate: 0,
+          conversion_rate: 0,
         },
       });
     }

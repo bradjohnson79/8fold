@@ -38,7 +38,7 @@ export default function VerificationPage() {
         Email Verification <HelpTooltip text={helpText.verification} />
       </h1>
       <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>
-        Verification worker runs every 5 minutes. Only verified leads (score ≥ 85) are eligible for outreach.
+        Verification worker retries pending emails in the background. `Valid` can send, `Pending` retries later, and only `Invalid` is blocked.
       </p>
       <p style={{ marginBottom: "1.5rem" }}>
         <Link href="/leads" style={{ color: "#38bdf8" }}>

@@ -528,6 +528,7 @@ type InviteTxParams = {
   expiresAt: Date;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function insertContractorInviteTx(tx: any, { routeId, jobId, contractorId, now, expiresAt }: InviteTxParams) {
   await tx
     .insert(v4ContractorJobInvites)

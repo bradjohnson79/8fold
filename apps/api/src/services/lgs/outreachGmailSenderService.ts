@@ -2,9 +2,7 @@
  * LGS Outreach: Send emails via Gmail API (OAuth2).
  * Bounce protection: on 550/bounce, mark contact invalid_email.
  */
-import { eq } from "drizzle-orm";
 import { google } from "googleapis";
-import { senderPool } from "../../../db/schema/directoryEngine";
 import { appendSignature } from "./outreachSignatureService";
 
 export type GmailMessagePayload = {
@@ -14,108 +12,58 @@ export type GmailMessagePayload = {
   senderAccount: string;
 };
 
-export type SenderGmailAuthRecord = {
-  id: string;
-  senderEmail: string;
-  gmailRefreshToken: string | null;
-  gmailAccessToken: string | null;
-  gmailTokenExpiresAt: Date | null;
-  gmailConnected: boolean;
-};
+export const GMAIL_SEND_SCOPES = ["https://www.googleapis.com/auth/gmail.send"];
+export const GMAIL_READ_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.modify",
+];
+export const GMAIL_INBOUND_SCOPES = [...new Set([...GMAIL_SEND_SCOPES, ...GMAIL_READ_SCOPES])];
+export const GMAIL_OAUTH_REDIRECT_URI =
+  process.env.GMAIL_OAUTH_REDIRECT_URI ?? "http://127.0.0.1:8788/oauth2callback";
 
-function getOAuth2Client(refreshToken: string) {
-  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.GMAIL_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? process.env.GMAIL_CLIENT_SECRET;
+export function getOAuth2Client(refreshToken: string) {
+  const clientId = process.env.GMAIL_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new Error("GOOGLE_CLIENT_ID/SECRET or GMAIL_CLIENT_ID/SECRET required");
+    throw new Error("GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET required");
   }
-  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, "urn:ietf:wg:oauth:2.0:oob");
+  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, GMAIL_OAUTH_REDIRECT_URI);
   oauth2.setCredentials({ refresh_token: refreshToken });
   return oauth2;
 }
 
-function normalizeSenderEmail(senderAccount: string): string {
-  return senderAccount.trim().toLowerCase();
+export const SENDER_ENV_PAIRS = [
+  { sender: process.env.GMAIL_SENDER_1 ?? "info@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_1 ?? process.env.GMAIL_REFRESH_TOKEN },
+  { sender: process.env.GMAIL_SENDER_2 ?? "support@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_2 },
+  { sender: process.env.GMAIL_SENDER_3 ?? "hello@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_3 },
+  { sender: process.env.GMAIL_SENDER_4 ?? "partners@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_4 },
+] as const;
+
+export function getConfiguredGmailSenders(): string[] {
+  return SENDER_ENV_PAIRS.map(({ sender }) => sender?.trim().toLowerCase())
+    .filter((sender): sender is string => Boolean(sender));
 }
 
-async function loadSenderFromDb(senderAccount: string): Promise<SenderGmailAuthRecord | null> {
-  const normalized = normalizeSenderEmail(senderAccount);
-  if (!normalized) return null;
-
-  const { db } = await import("../../../db/drizzle");
-  const [row] = await db
-    .select({
-      id: senderPool.id,
-      senderEmail: senderPool.senderEmail,
-      gmailRefreshToken: senderPool.gmailRefreshToken,
-      gmailAccessToken: senderPool.gmailAccessToken,
-      gmailTokenExpiresAt: senderPool.gmailTokenExpiresAt,
-      gmailConnected: senderPool.gmailConnected,
-    })
-    .from(senderPool)
-    .where(eq(senderPool.senderEmail, normalized))
-    .limit(1);
-
-  return row ?? null;
-}
-
-export async function getSenderGmailAuthRecord(
-  senderAccount: string,
-  dependencies?: {
-    lookupSender?: (senderAccount: string) => Promise<SenderGmailAuthRecord | null>;
+export function getRefreshTokenForSender(senderAccount: string): string | null {
+  const normalized = senderAccount.trim().toLowerCase();
+  for (const { sender, token } of SENDER_ENV_PAIRS) {
+    if (sender?.trim().toLowerCase() === normalized && token) return token;
   }
-): Promise<SenderGmailAuthRecord | null> {
-  const normalized = normalizeSenderEmail(senderAccount);
-  if (!normalized) return null;
-  return (dependencies?.lookupSender ?? loadSenderFromDb)(normalized);
+  return null;
 }
 
-function hasConnectedRefreshToken(sender: SenderGmailAuthRecord | null): boolean {
-  return Boolean(sender?.gmailConnected && sender.gmailRefreshToken?.trim());
+/** Returns true if sender has a configured Gmail token. */
+export function hasGmailTokenForSender(senderAccount: string): boolean {
+  return getRefreshTokenForSender(senderAccount) !== null;
 }
 
-/** Returns true if sender has a connected Gmail token in sender_pool. */
-export async function hasGmailTokenForSender(
-  senderAccount: string,
-  dependencies?: {
-    lookupSender?: (senderAccount: string) => Promise<SenderGmailAuthRecord | null>;
+export function createGmailClientForSender(senderAccount: string) {
+  const refreshToken = getRefreshTokenForSender(senderAccount);
+  if (!refreshToken) {
+    throw new Error(`No Gmail refresh token configured for sender: ${senderAccount}`);
   }
-): Promise<boolean> {
-  const sender = await getSenderGmailAuthRecord(senderAccount, dependencies);
-  return hasConnectedRefreshToken(sender);
-}
-
-async function sendRawGmailMessage(params: {
-  refreshToken: string;
-  raw: string;
-}): Promise<{ messageId: string | null }> {
-  const auth = getOAuth2Client(params.refreshToken);
-  const gmail = google.gmail({ version: "v1", auth });
-
-  const response = await gmail.users.messages.send({
-    userId: "me",
-    requestBody: { raw: params.raw },
-  });
-
-  return {
-    messageId: response.data.id ?? null,
-  };
-}
-
-function isBounceMessage(message: string): boolean {
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("550") ||
-    lower.includes("bounce") ||
-    lower.includes("recipient") ||
-    lower.includes("invalid") ||
-    lower.includes("rejected") ||
-    lower.includes("permanent failure")
-  );
-}
-
-function getMissingTokenError(senderAccount: string): Error {
-  return new Error(`missing_token:${normalizeSenderEmail(senderAccount)}`);
+  const auth = getOAuth2Client(refreshToken);
+  return google.gmail({ version: "v1", auth });
 }
 
 function buildMimeMessage(params: {
@@ -146,27 +94,18 @@ function base64UrlEncode(str: string): string {
 }
 
 export type SendResult =
-  | { ok: true; messageId: string | null }
+  | { ok: true }
   | { ok: false; bounce: true; message: string }
   | { ok: false; bounce: false; message: string };
 
-export async function sendOutreachEmail(
-  msg: GmailMessagePayload,
-  dependencies?: {
-    lookupSender?: (senderAccount: string) => Promise<SenderGmailAuthRecord | null>;
-    sendMessage?: (params: { refreshToken: string; raw: string }) => Promise<{ messageId: string | null }>;
-  }
-): Promise<SendResult> {
-  const senderAccount = normalizeSenderEmail(msg.senderAccount);
-  if (!senderAccount) {
-    throw new Error("sender_account_required");
+export async function sendOutreachEmail(msg: GmailMessagePayload): Promise<SendResult> {
+  const senderAccount = msg.senderAccount ?? process.env.GMAIL_SENDER_1 ?? "info@8fold.app";
+  const refreshToken = getRefreshTokenForSender(senderAccount);
+  if (!refreshToken) {
+    throw new Error(`No Gmail refresh token configured for sender: ${senderAccount}`);
   }
 
-  const sender = await getSenderGmailAuthRecord(senderAccount, dependencies);
-  if (!sender?.gmailConnected || !sender.gmailRefreshToken?.trim()) {
-    throw getMissingTokenError(senderAccount);
-  }
-  const refreshToken = sender.gmailRefreshToken;
+  const gmail = createGmailClientForSender(senderAccount);
 
   const bodyWithSignature = appendSignature(msg.body);
   const mime = buildMimeMessage({
@@ -179,17 +118,25 @@ export async function sendOutreachEmail(
   const raw = base64UrlEncode(mime);
 
   try {
-    const response = await (dependencies?.sendMessage ?? sendRawGmailMessage)({
-      refreshToken,
-      raw,
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw },
     });
-    return { ok: true, messageId: response.messageId };
+    return { ok: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    const lower = message.toLowerCase();
+    const isBounce =
+      lower.includes("550") ||
+      lower.includes("bounce") ||
+      lower.includes("recipient") ||
+      lower.includes("invalid") ||
+      lower.includes("rejected") ||
+      lower.includes("permanent failure");
 
     return {
       ok: false,
-      bounce: isBounceMessage(message),
+      bounce: isBounce,
       message,
     };
   }

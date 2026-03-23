@@ -5,7 +5,12 @@ import { NextResponse } from "next/server";
 import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import {
+  contractorLeads,
   discoveryRuns,
+  emailVerificationQueue,
+  jobPosterLeads,
+  jobPosterEmailMessages,
+  jobPosterEmailQueue,
   lgsOutreachQueue,
   outreachMessages,
   senderPool,
@@ -27,7 +32,17 @@ export async function GET() {
       outreachPending,
       outreachSentToday,
       msgPendingCount,
+      jobPosterQueuePending,
+      jobPosterSentToday,
+      jobPosterPendingReview,
       activeSenders,
+      readyContractorAssignments,
+      readyJobAssignments,
+      pendingContractorOutreach,
+      pendingJobOutreach,
+      approvedContractorOutreach,
+      approvedJobOutreach,
+      pendingVerificationQueue,
     ] = await Promise.all([
       db
         .select({
@@ -60,8 +75,60 @@ export async function GET() {
 
       db
         .select({ count: sql<number>`count(*)::int` })
+        .from(jobPosterEmailQueue)
+        .where(eq(jobPosterEmailQueue.status, "pending")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobPosterEmailQueue)
+        .where(
+          sql`${jobPosterEmailQueue.sentAt} >= current_date and ${jobPosterEmailQueue.status} = 'sent'`
+        ),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobPosterEmailMessages)
+        .where(eq(jobPosterEmailMessages.status, "draft")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
         .from(senderPool)
         .where(eq(senderPool.status, "active")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(contractorLeads)
+        .where(eq(contractorLeads.assignmentStatus, "ready")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobPosterLeads)
+        .where(eq(jobPosterLeads.assignmentStatus, "ready")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(contractorLeads)
+        .where(eq(contractorLeads.outreachStatus, "pending")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobPosterLeads)
+        .where(eq(jobPosterLeads.outreachStatus, "pending")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(contractorLeads)
+        .where(eq(contractorLeads.outreachStatus, "approved")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobPosterLeads)
+        .where(eq(jobPosterLeads.outreachStatus, "approved")),
+
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emailVerificationQueue)
+        .where(eq(emailVerificationQueue.status, "pending")),
     ]);
 
     const discovery = lastDiscovery[0] ?? null;
@@ -70,7 +137,14 @@ export async function GET() {
     const queueDepth = outreachPending[0]?.count ?? 0;
     const sentToday = outreachSentToday[0]?.count ?? 0;
     const pendingMessages = msgPendingCount[0]?.count ?? 0;
+    const jobPosterQueueDepth = jobPosterQueuePending[0]?.count ?? 0;
+    const jobPosterSent = jobPosterSentToday[0]?.count ?? 0;
+    const jobPosterDrafts = jobPosterPendingReview[0]?.count ?? 0;
     const senderCount = activeSenders[0]?.count ?? 0;
+    const readyAssignments = (readyContractorAssignments[0]?.count ?? 0) + (readyJobAssignments[0]?.count ?? 0);
+    const pendingGeneration = (pendingContractorOutreach[0]?.count ?? 0) + (pendingJobOutreach[0]?.count ?? 0);
+    const approvedToQueue = (approvedContractorOutreach[0]?.count ?? 0) + (approvedJobOutreach[0]?.count ?? 0);
+    const verificationQueueDepth = pendingVerificationQueue[0]?.count ?? 0;
 
     const workers = [
       {
@@ -87,10 +161,28 @@ export async function GET() {
       {
         name: "Outreach Worker",
         description: "Sends approved messages via sender pool rotation",
-        status: queueDepth > 0 ? "running" : "idle",
+        status: queueDepth > 0 || jobPosterQueueDepth > 0 ? "running" : "idle",
         last_run: sentToday > 0 ? "Today" : "—",
-        jobs_processed: sentToday,
-        detail: `${queueDepth} queued · ${sentToday} sent today · ${senderCount} active senders`,
+        jobs_processed: sentToday + jobPosterSent,
+        detail: `${queueDepth} contractor queued · ${jobPosterQueueDepth} job poster queued · ${sentToday + jobPosterSent} sent today · ${senderCount} active senders`,
+        schedule: "Every 1 min",
+      },
+      {
+        name: "Auto Assignment Worker",
+        description: "Matches ready leads to the correct campaign and marks them assigned",
+        status: readyAssignments > 0 ? "running" : "idle",
+        last_run: readyAssignments > 0 ? "Pending work" : "—",
+        jobs_processed: readyAssignments,
+        detail: `${readyContractorAssignments[0]?.count ?? 0} contractor ready · ${readyJobAssignments[0]?.count ?? 0} job poster ready`,
+        schedule: "Every 1 min",
+      },
+      {
+        name: "Outreach Automation Worker",
+        description: "Generates first-touch drafts for assigned leads and auto-queues approved messages",
+        status: pendingGeneration > 0 || approvedToQueue > 0 ? "running" : "idle",
+        last_run: pendingGeneration > 0 || approvedToQueue > 0 ? "Pending work" : "—",
+        jobs_processed: pendingGeneration + approvedToQueue,
+        detail: `${pendingGeneration} pending generation · ${approvedToQueue} approved waiting for queue`,
         schedule: "Every 1 min",
       },
       {
@@ -98,18 +190,18 @@ export async function GET() {
         description: "GPT-5 Nano message generation for approved leads",
         status: pendingMessages > 0 ? "idle" : "idle",
         last_run: "On-demand",
-        jobs_processed: pendingMessages,
-        detail: `${pendingMessages} messages awaiting review`,
+        jobs_processed: pendingMessages + jobPosterDrafts,
+        detail: `${pendingMessages} contractor review · ${jobPosterDrafts} job poster draft review`,
         schedule: "On-demand",
       },
       {
         name: "Verification Worker",
-        description: "Verifies lead emails via syntax, DNS, MX, and SMTP checks",
-        status: "configured",
-        last_run: "—",
-        jobs_processed: 0,
-        detail: "Threshold: 85. Runs during discovery.",
-        schedule: "During discovery",
+        description: "Processes queued email checks and updates lead priority scores",
+        status: verificationQueueDepth > 0 ? "running" : "idle",
+        last_run: verificationQueueDepth > 0 ? "Pending work" : "—",
+        jobs_processed: verificationQueueDepth,
+        detail: `${verificationQueueDepth} email(s) waiting for verification`,
+        schedule: "Every 5 min",
       },
       {
         name: "Bounce Monitor",

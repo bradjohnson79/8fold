@@ -32,6 +32,7 @@ import {
   isCompanyDomainEmail,
   selectDiscoveryEmailsForDomain,
 } from "@/src/services/lgs/discoveryEmailHeuristics";
+import { enqueueVerificationEmail } from "@/src/services/lgs/emailVerificationService";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -333,7 +334,13 @@ export type DiscoveryRunLead = {
   skip_reason: string | null;
 };
 
-type DomainImportMetadata = Record<string, { city?: string; state?: string; country?: string }>;
+type DomainImportMetadata = Record<string, {
+  city?: string;
+  state?: string;
+  country?: string;
+  category?: string;
+  targetLeadId?: string;
+}>;
 
 type RunContext = {
   importMeta: DomainImportMetadata;
@@ -352,7 +359,187 @@ export type DomainImportRow = {
   city?: string;
   state?: string;
   country?: string;
+  targetLeadId?: string;
 };
+
+function assignDiscoveryValueIfBlank<T extends Record<string, unknown>>(
+  patch: T,
+  key: keyof T,
+  current: string | null | undefined,
+  incoming: string | null | undefined
+) {
+  if (!String(current ?? "").trim() && String(incoming ?? "").trim()) {
+    patch[key] = incoming as T[keyof T];
+  }
+}
+
+async function enrichExistingLeadForDomain(
+  domain: string,
+  primary: { email: string; score: number },
+  secondaries: Array<{ email: string; score: number }>,
+  companyName: string,
+  industry: string,
+  contactName: string | null,
+  ctx: RunContext,
+  targetLeadId: string,
+  locationMeta: DomainImportMetadata[string]
+): Promise<{ inserted: boolean; duplicate: boolean }> {
+  if (ctx.campaignType === "jobs") {
+    const [existing] = await db
+      .select({
+        id: jobPosterLeads.id,
+        companyName: jobPosterLeads.companyName,
+        contactName: jobPosterLeads.contactName,
+        firstName: jobPosterLeads.firstName,
+        lastName: jobPosterLeads.lastName,
+        title: jobPosterLeads.title,
+        email: jobPosterLeads.email,
+        emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
+        trade: jobPosterLeads.trade,
+        address: jobPosterLeads.address,
+        category: jobPosterLeads.category,
+        city: jobPosterLeads.city,
+        state: jobPosterLeads.state,
+        country: jobPosterLeads.country,
+      })
+      .from(jobPosterLeads)
+      .where(eq(jobPosterLeads.id, targetLeadId))
+      .limit(1);
+
+    if (!existing) {
+      console.log(`[LGS] Enrichment target missing (jobs): ${domain}`);
+      return { inserted: false, duplicate: true };
+    }
+
+    const patch: Partial<typeof jobPosterLeads.$inferInsert> = {
+      updatedAt: new Date(),
+      needsEnrichment: false,
+      assignmentStatus: "ready",
+    };
+    const canReplaceWeakEmail =
+      String(existing.email ?? "").trim() &&
+      !["valid", "verified"].includes(String(existing.emailVerificationStatus ?? "").trim().toLowerCase()) &&
+      primary.email &&
+      primary.email.toLowerCase() !== String(existing.email ?? "").trim().toLowerCase();
+
+    assignDiscoveryValueIfBlank(patch, "companyName", existing.companyName, companyName || null);
+    assignDiscoveryValueIfBlank(
+      patch,
+      "contactName",
+      existing.contactName,
+      contactName && isValidPersonName(contactName) ? contactName : null
+    );
+    assignDiscoveryValueIfBlank(patch, "email", existing.email, primary.email);
+    if (canReplaceWeakEmail) {
+      patch.email = primary.email;
+      patch.emailVerificationStatus = "pending";
+      patch.emailVerificationScore = null;
+      patch.emailVerificationCheckedAt = null;
+      patch.emailVerificationProvider = null;
+    }
+    assignDiscoveryValueIfBlank(patch, "trade", existing.trade, industry || null);
+    assignDiscoveryValueIfBlank(patch, "city", existing.city, locationMeta.city ?? null);
+    assignDiscoveryValueIfBlank(patch, "state", existing.state, locationMeta.state ?? null);
+    assignDiscoveryValueIfBlank(patch, "country", existing.country, locationMeta.country ?? null);
+    if (!String(existing.category ?? "").trim() && String(locationMeta.category ?? ctx.targetCategory ?? "").trim()) {
+      patch.category = locationMeta.category ?? ctx.targetCategory ?? "business";
+    }
+    if (!String(existing.email ?? "").trim()) {
+      patch.emailVerificationStatus = "pending";
+      patch.emailVerificationScore = null;
+      patch.emailVerificationCheckedAt = null;
+      patch.emailVerificationProvider = null;
+    }
+
+    await db.update(jobPosterLeads).set(patch).where(eq(jobPosterLeads.id, targetLeadId));
+    await enqueueVerificationEmail(primary.email);
+    console.log(`[LGS] Enrichment update success (jobs): ${domain} → ${primary.email}`);
+    return { inserted: true, duplicate: false };
+  }
+
+  const [existing] = await db
+    .select({
+      id: contractorLeads.id,
+      leadName: contractorLeads.leadName,
+      businessName: contractorLeads.businessName,
+      scrapedBusinessName: contractorLeads.scrapedBusinessName,
+      email: contractorLeads.email,
+      emailVerificationStatus: contractorLeads.emailVerificationStatus,
+      trade: contractorLeads.trade,
+      city: contractorLeads.city,
+      state: contractorLeads.state,
+      country: contractorLeads.country,
+    })
+    .from(contractorLeads)
+    .where(eq(contractorLeads.id, targetLeadId))
+    .limit(1);
+
+  if (!existing) {
+    console.log(`[LGS] Enrichment target missing (contractor): ${domain}`);
+    return { inserted: false, duplicate: true };
+  }
+
+  const patch: Partial<typeof contractorLeads.$inferInsert> = {
+    updatedAt: new Date(),
+    needsEnrichment: false,
+    assignmentStatus: "ready",
+  };
+  const canReplaceWeakEmail =
+    String(existing.email ?? "").trim() &&
+    !["valid", "verified"].includes(String(existing.emailVerificationStatus ?? "").trim().toLowerCase()) &&
+    primary.email &&
+    primary.email.toLowerCase() !== String(existing.email ?? "").trim().toLowerCase();
+
+  assignDiscoveryValueIfBlank(
+    patch,
+    "leadName",
+    existing.leadName,
+    contactName && isValidPersonName(contactName) ? contactName : null
+  );
+  assignDiscoveryValueIfBlank(patch, "businessName", existing.businessName, companyName || null);
+  assignDiscoveryValueIfBlank(patch, "scrapedBusinessName", existing.scrapedBusinessName, companyName || null);
+  assignDiscoveryValueIfBlank(patch, "email", existing.email, primary.email);
+  if (canReplaceWeakEmail) {
+    patch.email = primary.email;
+    patch.emailType = classifyEmailType(primary.email, domain);
+    patch.primaryEmailScore = primary.score;
+    patch.secondaryEmails = secondaries.length > 0
+      ? secondaries.map((entry) => ({ email: entry.email, score: entry.score }))
+      : null;
+    patch.discoveryMethod = "scraped_email";
+    patch.verificationScore = 0;
+    patch.verificationStatus = "pending";
+    patch.verificationSource = null;
+    patch.emailVerificationStatus = "pending";
+    patch.emailVerificationScore = null;
+    patch.emailVerificationCheckedAt = null;
+    patch.emailVerificationProvider = null;
+  }
+  assignDiscoveryValueIfBlank(patch, "trade", existing.trade, industry || null);
+  assignDiscoveryValueIfBlank(patch, "city", existing.city, locationMeta.city ?? null);
+  assignDiscoveryValueIfBlank(patch, "state", existing.state, locationMeta.state ?? null);
+  assignDiscoveryValueIfBlank(patch, "country", existing.country, locationMeta.country ?? null);
+  if (!String(existing.email ?? "").trim()) {
+    patch.emailType = classifyEmailType(primary.email, domain);
+    patch.primaryEmailScore = primary.score;
+    patch.secondaryEmails = secondaries.length > 0
+      ? secondaries.map((entry) => ({ email: entry.email, score: entry.score }))
+      : null;
+    patch.discoveryMethod = "scraped_email";
+    patch.verificationScore = 0;
+    patch.verificationStatus = "pending";
+    patch.verificationSource = null;
+    patch.emailVerificationStatus = "pending";
+    patch.emailVerificationScore = null;
+    patch.emailVerificationCheckedAt = null;
+    patch.emailVerificationProvider = null;
+  }
+
+  await db.update(contractorLeads).set(patch).where(eq(contractorLeads.id, targetLeadId));
+  await enqueueVerificationEmail(primary.email);
+  console.log(`[LGS] Enrichment update success (contractor): ${domain} → ${primary.email}`);
+  return { inserted: true, duplicate: false };
+}
 
 // ─── Lead Creation (FAST — no verification) ──────────────────────────────────
 
@@ -364,6 +551,27 @@ async function createLeadForDomain(
   contactName: string | null,
   ctx: RunContext
 ): Promise<{ inserted: boolean; duplicate: boolean }> {
+  const locationMeta = ctx.importMeta[domain] ?? {};
+  const ranked = rankEmailsForDomain(emails);
+  if (ranked.length === 0) return { inserted: false, duplicate: false };
+
+  const primary = ranked[0];
+  const secondaries = ranked.slice(1);
+
+  if (locationMeta.targetLeadId) {
+    return enrichExistingLeadForDomain(
+      domain,
+      primary,
+      secondaries,
+      companyName,
+      industry,
+      contactName,
+      ctx,
+      locationMeta.targetLeadId,
+      locationMeta
+    );
+  }
+
   if (ctx.existingDomains.has(domain)) {
     console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
     return { inserted: false, duplicate: true };
@@ -372,14 +580,7 @@ async function createLeadForDomain(
     console.log(`[LGS] Duplicate skipped (in-run): ${domain}`);
     return { inserted: false, duplicate: true };
   }
-
-  const ranked = rankEmailsForDomain(emails);
-  if (ranked.length === 0) return { inserted: false, duplicate: false };
-
-  const primary = ranked[0];
-  const secondaries = ranked.slice(1);
   const emailType = classifyEmailType(primary.email, domain);
-  const locationMeta = ctx.importMeta[domain] ?? {};
 
   if (ctx.campaignType === "jobs") {
     await db.insert(jobPosterLeads).values({
@@ -388,20 +589,28 @@ async function createLeadForDomain(
       companyName: companyName || null,
       contactName: contactName && isValidPersonName(contactName) ? contactName : null,
       email: primary.email,
-      category: ctx.targetCategory ?? "business",
+      category: locationMeta.category ?? ctx.targetCategory ?? "business",
+      trade: industry || null,
       city: locationMeta.city ?? null,
       state: locationMeta.state ?? null,
       country: locationMeta.country ?? "US",
       source: ctx.source,
+      assignmentStatus: "ready",
+      emailVerificationStatus: "pending",
+      emailVerificationScore: null,
+      emailVerificationCheckedAt: null,
+      emailVerificationProvider: null,
       status: "new",
       archived: false,
       archivedAt: null,
+      archiveReason: null,
       leadPriority: "medium",
       prioritySource: "auto",
       scoreDirty: true,
       outreachStage: "not_contacted",
       followupCount: 0,
     });
+    await enqueueVerificationEmail(primary.email);
   } else {
     const seqResult = await db.execute(
       sql`SELECT nextval('directory_engine.contractor_leads_lead_number_seq') AS n`
@@ -429,12 +638,18 @@ async function createLeadForDomain(
         country: locationMeta.country ?? "US",
         source: ctx.source,
         leadSource: ctx.source,
+        assignmentStatus: "ready",
+        emailVerificationStatus: "pending",
+        emailVerificationScore: null,
+        emailVerificationCheckedAt: null,
+        emailVerificationProvider: null,
         discoveryMethod: "scraped_email",
         verificationScore: 0,
         verificationStatus: "pending",
         verificationSource: null,
         archived: false,
         archivedAt: null,
+        archiveReason: null,
       })
       .onConflictDoNothing()
       .returning({ id: contractorLeads.id });
@@ -443,6 +658,7 @@ async function createLeadForDomain(
       console.log(`[LGS] Duplicate skipped (email conflict): ${domain} → ${primary.email}`);
       return { inserted: false, duplicate: true };
     }
+    await enqueueVerificationEmail(primary.email);
   }
 
   ctx.insertedDomains.add(domain);
@@ -498,6 +714,7 @@ async function processSingleDomain(
   ctx: RunContext
 ): Promise<void> {
   const baseDomain = domainRow.domain.replace(/^www\./, "");
+  const targetLeadId = ctx.importMeta[baseDomain]?.targetLeadId;
 
   // ── 1. Fetch targeted pages in parallel ────────────────────────────────────
   const pageResults = await Promise.allSettled(
@@ -563,6 +780,25 @@ async function processSingleDomain(
       console.log(
         `[LGS] Discarded ${baseDomain}: only off-domain or free-provider emails found (${validEmails.join(", ")})`
       );
+    }
+    if (targetLeadId) {
+      if (ctx.campaignType === "jobs") {
+        await db.update(jobPosterLeads)
+          .set({
+            needsEnrichment: false,
+            assignmentStatus: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(jobPosterLeads.id, targetLeadId));
+      } else {
+        await db.update(contractorLeads)
+          .set({
+            needsEnrichment: false,
+            assignmentStatus: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(contractorLeads.id, targetLeadId));
+      }
     }
     await Promise.allSettled([
       db.insert(discoveryDomainLogs).values({ runId, domain: baseDomain, emailsFound: emailsFoundCount, status: "discarded" }).catch(() => {}),
@@ -674,6 +910,12 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
 
   // Pre-fetch existing domains once — no per-domain DB round-trips
   const domainList = domainRows.map((r) => r.domain.replace(/^www\./, "").toLowerCase());
+  const enrichmentTargetDomains = new Set(
+    Object.entries(importMeta)
+      .filter(([, meta]) => Boolean(meta?.targetLeadId))
+      .map(([domain]) => domain)
+  );
+
   const existingRows = domainList.length > 0
     ? campaignType === "jobs"
       ? await db
@@ -686,7 +928,9 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
           .where(inArray(contractorLeads.website, domainList))
     : [];
   const existingDomains = new Set(
-    existingRows.map((r) => (r.website ?? "").toLowerCase()).filter(Boolean)
+    existingRows
+      .map((r) => (r.website ?? "").toLowerCase())
+      .filter((website) => website && !enrichmentTargetDomains.has(website))
   );
 
   console.log(
@@ -822,11 +1066,13 @@ export async function runBulkDomainDiscoveryAsync(
 
   const importDomainMetadata: DomainImportMetadata = {};
   for (const row of uniqueRows) {
-    if (row.city || row.state || row.country) {
+    if (row.city || row.state || row.country || row.category || row.targetLeadId) {
       importDomainMetadata[row.domain] = {
         city: row.city,
         state: row.state,
         country: row.country,
+        category: row.category,
+        targetLeadId: row.targetLeadId,
       };
     }
   }
@@ -991,11 +1237,17 @@ export async function importDiscoveryLeads(
       country: locationMeta.country ?? "US",
       source,
       leadSource: source,
+      assignmentStatus: "ready",
+      emailVerificationStatus: "pending",
+      emailVerificationScore: null,
+      emailVerificationCheckedAt: null,
+      emailVerificationProvider: null,
       discoveryMethod: primaryRow.discoveryMethod ?? "scraped_email",
       verificationScore: 0,
       verificationStatus: "pending",
       verificationSource: null,
     });
+    await enqueueVerificationEmail(primaryEntry.email);
 
     await db
       .update(discoveryRunLeads)

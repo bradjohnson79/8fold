@@ -25,13 +25,8 @@ export function getNextDayLimit(day: number): number {
 
 export function isReadyForOutreach(
   day: number,
-  dailyLimitOrStatus: number | string,
-  stabilityVerified?: boolean
+  status: string,
+  stabilityVerified = false
 ): boolean {
-  if (typeof dailyLimitOrStatus === "number") {
-    return day >= 5 && dailyLimitOrStatus >= 50;
-  }
-
-  const status = dailyLimitOrStatus;
-  return day >= 5 && (status === "ready" || status === "warming") && Boolean(stabilityVerified);
+  return stabilityVerified && (status === "ready" || (status === "warming" && getDailyLimit(day) >= 50));
 }

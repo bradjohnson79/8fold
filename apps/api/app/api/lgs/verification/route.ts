@@ -12,9 +12,9 @@ export async function GET() {
       .select({
         id: contractorLeads.id,
         email: contractorLeads.email,
-        verification_score: contractorLeads.verificationScore,
-        verification_status: contractorLeads.verificationStatus,
-        verification_source: contractorLeads.verificationSource,
+        verification_score: contractorLeads.emailVerificationScore,
+        verification_status: contractorLeads.emailVerificationStatus,
+        verification_source: contractorLeads.emailVerificationProvider,
         domain_reputation: contractorLeads.domainReputation,
         email_bounced: contractorLeads.emailBounced,
         created_at: contractorLeads.createdAt,

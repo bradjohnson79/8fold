@@ -49,7 +49,6 @@ export async function GET(req: NextRequest) {
 
     // ── Load brain settings for gate context ────────────────────────────────
     const [settings] = await db.select().from(lgsOutreachSettings).limit(1);
-    const minScoreThreshold = settings?.minLeadScoreToQueue ?? 0;
     const domainCooldownDays = settings?.domainCooldownDays ?? 7;
     const minHealthLevel = settings?.minSenderHealthLevel ?? "risk";
     const minHealthIdx = SENDER_HEALTH_ORDER.indexOf(minHealthLevel as typeof SENDER_HEALTH_ORDER[number]);
@@ -76,7 +75,10 @@ export async function GET(req: NextRequest) {
         trade: contractorLeads.trade,
         city: contractorLeads.city,
         leadScore: contractorLeads.leadScore,
+        priorityScore: contractorLeads.priorityScore,
         leadPriority: contractorLeads.leadPriority,
+        emailVerificationStatus: contractorLeads.emailVerificationStatus,
+        archived: contractorLeads.archived,
         outreachStage: contractorLeads.outreachStage,
         followupCount: contractorLeads.followupCount,
         website: contractorLeads.website,
@@ -86,14 +88,14 @@ export async function GET(req: NextRequest) {
       .innerJoin(contractorLeads, eq(lgsOutreachQueue.leadId, contractorLeads.id))
       .where(whereClause)
       .orderBy(
-        // Priority-ordered for pending; FIFO otherwise
         asc(
-          sql`CASE ${contractorLeads.leadPriority}
-            WHEN 'high' THEN 1
-            WHEN 'medium' THEN 2
-            ELSE 3
+          sql`CASE
+            WHEN lower(coalesce(${contractorLeads.emailVerificationStatus}, 'pending')) IN ('valid', 'verified') THEN 0
+            WHEN lower(coalesce(${contractorLeads.emailVerificationStatus}, 'pending')) = 'invalid' THEN 2
+            ELSE 1
           END`
         ),
+        asc(contractorLeads.createdAt),
         asc(lgsOutreachQueue.createdAt)
       )
       .limit(limit)
@@ -106,25 +108,23 @@ export async function GET(req: NextRequest) {
       const reasonCodes: string[] = [];
       let ready = true;
 
-      // Priority code
-      if (row.sendStatus === "pending") {
-        const pc = row.leadPriority === "high"
-          ? "priority_high"
-          : row.leadPriority === "medium"
-            ? "priority_medium"
-            : "priority_low";
-        reasonCodes.push(pc);
-      }
-
       // Stage block
       if (row.outreachStage && blockedStages.has(row.outreachStage)) {
         reasonCodes.push(`blocked_stage_${row.outreachStage}`);
         ready = false;
       }
 
-      // Score block
-      if ((row.leadScore ?? 0) < minScoreThreshold) {
-        reasonCodes.push("blocked_score_threshold");
+      if (row.archived) {
+        reasonCodes.push("blocked_archived");
+        ready = false;
+      }
+
+      const verificationStatus = String(row.emailVerificationStatus ?? "pending").trim().toLowerCase();
+      if (verificationStatus === "invalid") {
+        reasonCodes.push("blocked_invalid_email");
+        ready = false;
+      } else if (!(verificationStatus === "valid" || verificationStatus === "verified")) {
+        reasonCodes.push("deferred_pending_verification");
         ready = false;
       }
 
@@ -153,7 +153,9 @@ export async function GET(req: NextRequest) {
         trade: row.trade,
         city: row.city,
         lead_score: row.leadScore ?? 0,
+        priority_score: row.priorityScore ?? 0,
         lead_priority: row.leadPriority ?? "medium",
+        email_verification_status: row.emailVerificationStatus ?? "pending",
         outreach_stage: row.outreachStage ?? "not_contacted",
         followup_count: row.followupCount ?? 0,
         reason_codes: reasonCodes,
@@ -170,7 +172,7 @@ export async function GET(req: NextRequest) {
         capacity_used: sysCapacityUsed,
         capacity_total: sysCapacityTotal,
         capacity_remaining: sysCapacityRemaining,
-        min_score_threshold: minScoreThreshold,
+        min_score_threshold: null,
       },
       data,
     });

@@ -12,8 +12,6 @@ export async function GET() {
     const data = rows.map((r) => ({
       id: r.id,
       sender_email: r.senderEmail,
-      gmail_connected: r.gmailConnected,
-      gmail_token_expires_at: r.gmailTokenExpiresAt?.toISOString() ?? null,
       sent_today: r.sentToday,
       daily_limit: r.dailyLimit,
       last_sent_at: r.lastSentAt?.toISOString() ?? null,

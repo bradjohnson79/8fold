@@ -9,7 +9,7 @@ export async function GET() {
       .select()
       .from(lgsWarmupActivity)
       .orderBy(desc(lgsWarmupActivity.sentAt))
-      .limit(25);
+      .limit(50);
 
     const data = rows.map((r) => ({
       id: r.id,
@@ -17,9 +17,6 @@ export async function GET() {
       recipient_email: r.recipientEmail,
       subject: r.subject,
       message_type: r.messageType,
-      provider: r.provider,
-      provider_message_id: r.providerMessageId,
-      latency_ms: r.latencyMs,
       sent_at: r.sentAt?.toISOString() ?? null,
       status: r.status,
       error_message: r.errorMessage,

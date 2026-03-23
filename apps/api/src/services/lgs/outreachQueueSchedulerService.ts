@@ -7,7 +7,6 @@ import {
   contractorContacts,
   emailMessages,
   emailQueue,
-  senderPool,
 } from "@/db/schema/directoryEngine";
 import { sendOutreachEmail } from "./outreachGmailSenderService";
 
@@ -15,6 +14,9 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const HOURLY_CAP_PER_ACCOUNT = 50;
 const DAILY_CAP_PER_ACCOUNT = 300;
+
+const SENDER_1 = process.env.GMAIL_SENDER_1 ?? "info@8fold.app";
+const SENDER_2 = process.env.GMAIL_SENDER_2 ?? "support@8fold.app";
 
 function getTodayMidnightPacific(): Date {
   const now = new Date();
@@ -72,46 +74,6 @@ async function getDailySentCount(senderAccount: string): Promise<number> {
   return Number(row?.c ?? 0);
 }
 
-type SenderCapacityRow = {
-  senderAccount: string;
-  dailyLimit: number;
-  gmailConnected: boolean;
-  gmailRefreshToken: string | null;
-};
-
-function isConnectedSender(sender: SenderCapacityRow): boolean {
-  return Boolean(sender.gmailConnected && sender.gmailRefreshToken?.trim());
-}
-
-async function selectLegacySenderAccount(): Promise<string | null> {
-  const senders = await db
-    .select({
-      senderAccount: senderPool.senderEmail,
-      dailyLimit: senderPool.dailyLimit,
-      gmailConnected: senderPool.gmailConnected,
-      gmailRefreshToken: senderPool.gmailRefreshToken,
-    })
-    .from(senderPool)
-    .where(eq(senderPool.status, "active"))
-    .orderBy(senderPool.senderEmail);
-
-  for (const sender of senders) {
-    if (!isConnectedSender(sender)) continue;
-
-    const [dailySent, hourlySent] = await Promise.all([
-      getDailySentCount(sender.senderAccount),
-      getHourlySentCount(sender.senderAccount),
-    ]);
-
-    const dailyCap = Math.max(1, sender.dailyLimit || DAILY_CAP_PER_ACCOUNT);
-    if (dailySent < dailyCap && hourlySent < HOURLY_CAP_PER_ACCOUNT) {
-      return sender.senderAccount;
-    }
-  }
-
-  return null;
-}
-
 async function pickNextPendingItem(): Promise<{
   queueId: string;
   messageId: string;
@@ -121,8 +83,21 @@ async function pickNextPendingItem(): Promise<{
   body: string;
   senderAccount: string;
 } | null> {
-  const senderAccount = await selectLegacySenderAccount();
-  if (!senderAccount) return null;
+  const [daily1, daily2, hourly1, hourly2] = await Promise.all([
+    getDailySentCount(SENDER_1),
+    getDailySentCount(SENDER_2),
+    getHourlySentCount(SENDER_1),
+    getHourlySentCount(SENDER_2),
+  ]);
+
+  let senderAccount: string;
+  if (daily1 < DAILY_CAP_PER_ACCOUNT && hourly1 < HOURLY_CAP_PER_ACCOUNT) {
+    senderAccount = SENDER_1;
+  } else if (daily2 < DAILY_CAP_PER_ACCOUNT && hourly2 < HOURLY_CAP_PER_ACCOUNT) {
+    senderAccount = SENDER_2;
+  } else {
+    return null;
+  }
 
   const lastSend = await getLastSendAt();
   const now = new Date();

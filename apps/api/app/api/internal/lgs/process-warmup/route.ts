@@ -1,33 +1,37 @@
-import { NextResponse } from "next/server";
-import { runWarmupWorkerCycle } from "@/src/warmup/warmupWorker";
+import { runWarmupCycle } from "@/scripts/lgs-warmup-worker";
 
 export const dynamic = "force-dynamic";
 
-async function handleWarmupRequest(req: Request) {
-  console.log("[LGS Warmup] Warmup route entered", { method: req.method });
-  console.log("[LGS Warmup] Warmup cron triggered at", new Date().toISOString());
+function isAuthorized(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      console.warn("[LGS Warmup] Unauthorized warmup route request", { method: req.method });
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) return true;
+
+  const authHeader = req.headers.get("authorization");
+  return authHeader === `Bearer ${cronSecret}`;
+}
+
+async function handleWarmup(req: Request) {
+  if (!isAuthorized(req)) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  const startedAt = new Date().toISOString();
+  console.log("[LGS Warmup Cron] Triggered", { startedAt, method: req.method });
+
   try {
-    const result = await runWarmupWorkerCycle();
-    return NextResponse.json({ ok: true, ...result });
+    await runWarmupCycle();
+    return Response.json({ ok: true, started_at: startedAt });
   } catch (error) {
-    console.error("[LGS Warmup] cron worker route error:", error);
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[LGS Warmup Cron] Failed", { startedAt, message });
+    return Response.json({ ok: false, error: message, started_at: startedAt }, { status: 500 });
   }
 }
 
 export async function GET(req: Request) {
-  return handleWarmupRequest(req);
+  return handleWarmup(req);
 }
 
 export async function POST(req: Request) {
-  return handleWarmupRequest(req);
+  return handleWarmup(req);
 }

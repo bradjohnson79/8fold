@@ -10,85 +10,8 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { contractorLeads, outreachMessages } from "@/db/schema/directoryEngine";
-import { generateOutreachEmail } from "@/src/services/lgs/outreachEmailGenerationService";
-
-async function generateForLead(
-  leadId: string,
-  existingHashes: Set<string>,
-  skipIfExists = true
-): Promise<{ ok: boolean; id?: string; error?: string; skipped?: boolean }> {
-  const [lead] = await db
-    .select()
-    .from(contractorLeads)
-    .where(eq(contractorLeads.id, leadId))
-    .limit(1);
-
-  if (!lead) return { ok: false, error: "lead_not_found" };
-
-  // Skip if a message already exists for this lead (prevents accidental regeneration)
-  if (skipIfExists) {
-    const [existing] = await db
-      .select({ id: outreachMessages.id })
-      .from(outreachMessages)
-      .where(eq(outreachMessages.leadId, leadId))
-      .limit(1);
-    if (existing) return { ok: true, skipped: true, id: existing.id };
-  }
-
-  const result = await generateOutreachEmail(
-    {
-      businessName: lead.businessName ?? "",
-      trade: lead.trade ?? "",
-      city: lead.city ?? "",
-      state: lead.state ?? "",
-      contactName: lead.leadName ?? undefined,
-      // Brain fields
-      leadPriority: lead.leadPriority ?? "medium",
-      followupCount: lead.followupCount ?? 0,
-      lastMessageTypeSent: lead.lastMessageTypeSent,
-    },
-    existingHashes
-  );
-
-  existingHashes.add(result.hash);
-
-  const generationContext = {
-    business_name: lead.businessName ?? "",
-    trade: lead.trade ?? "",
-    city: lead.city ?? "",
-    state: lead.state ?? "",
-    source: lead.source ?? "",
-    message_type: result.messageType,
-  };
-
-  const [inserted] = await db
-    .insert(outreachMessages)
-    .values({
-      leadId,
-      subject: result.subject,
-      body: result.body,
-      messageHash: result.hash,
-      generationContext,
-      generatedBy: "gpt5-nano",
-      status: "pending_review",
-      messageType: result.messageType,
-      messageVersionHash: result.messageVersionHash,
-    })
-    .returning();
-
-  // Update lead's brain state
-  await db
-    .update(contractorLeads)
-    .set({
-      outreachStage: "message_ready",
-      lastMessageTypeSent: result.messageType,
-      updatedAt: new Date(),
-    })
-    .where(eq(contractorLeads.id, leadId));
-
-  return { ok: true, id: inserted.id };
-}
+import { outreachMessages } from "@/db/schema/directoryEngine";
+import { generateContractorMessageForLead } from "@/src/services/lgs/outreachAutomationService";
 
 export async function POST(req: Request) {
   try {
@@ -120,7 +43,7 @@ export async function POST(req: Request) {
 
       for (const leadId of leadIds) {
         try {
-          const r = await generateForLead(leadId, existingHashes, skipIfExists);
+          const r = await generateContractorMessageForLead(leadId, existingHashes, skipIfExists);
           results.push({ lead_id: leadId, ok: r.ok, message_id: r.id, skipped: r.skipped, error: r.error });
           if (r.skipped) skipped++;
           else if (r.ok) generated++;
@@ -140,63 +63,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "lead_id_required" }, { status: 400 });
     }
 
-    const [lead] = await db
-      .select()
-      .from(contractorLeads)
-      .where(eq(contractorLeads.id, leadId))
-      .limit(1);
-
-    if (!lead) {
-      return NextResponse.json({ ok: false, error: "lead_not_found" }, { status: 404 });
+    const singleResult = await generateContractorMessageForLead(leadId, existingHashes, body.force_regenerate !== true);
+    if (!singleResult.ok || !singleResult.id) {
+      const status = singleResult.error === "lead_not_found" ? 404 : 400;
+      return NextResponse.json({ ok: false, error: singleResult.error ?? "generate_failed" }, { status });
     }
 
-    const result = await generateOutreachEmail(
-      {
-        businessName: lead.businessName ?? "",
-        trade: lead.trade ?? "",
-        city: lead.city ?? "",
-        state: lead.state ?? "",
-        contactName: lead.leadName ?? undefined,
-        leadPriority: lead.leadPriority ?? "medium",
-        followupCount: lead.followupCount ?? 0,
-        lastMessageTypeSent: lead.lastMessageTypeSent,
-      },
-      existingHashes
-    );
-
-    const generationContext = {
-      business_name: lead.businessName ?? "",
-      trade: lead.trade ?? "",
-      city: lead.city ?? "",
-      state: lead.state ?? "",
-      source: lead.source ?? "",
-      message_type: result.messageType,
-    };
-
     const [inserted] = await db
-      .insert(outreachMessages)
-      .values({
-        leadId,
-        subject: result.subject,
-        body: result.body,
-        messageHash: result.hash,
-        generationContext,
-        generatedBy: "gpt5-nano",
-        status: "pending_review",
-        messageType: result.messageType,
-        messageVersionHash: result.messageVersionHash,
-      })
-      .returning();
-
-    // Update lead's brain state
-    await db
-      .update(contractorLeads)
-      .set({
-        outreachStage: "message_ready",
-        lastMessageTypeSent: result.messageType,
-        updatedAt: new Date(),
-      })
-      .where(eq(contractorLeads.id, leadId));
+      .select()
+      .from(outreachMessages)
+      .where(eq(outreachMessages.id, singleResult.id))
+      .limit(1);
+    if (!inserted) {
+      return NextResponse.json({ ok: false, error: "message_not_found_after_generate" }, { status: 500 });
+    }
 
     return NextResponse.json({
       ok: true,

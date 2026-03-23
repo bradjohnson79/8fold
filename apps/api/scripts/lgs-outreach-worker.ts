@@ -10,20 +10,49 @@ import cron from "node-cron";
 import dotenv from "dotenv";
 import { runLgsOutreachScheduler } from "../src/services/lgs/lgsOutreachSchedulerService";
 import { runFollowupEngine } from "../src/services/lgs/lgsFollowupService";
-import { rescoreDirtyLeads } from "../src/services/lgs/lgsLeadScoringService";
+import { runJobPosterQueueCycle } from "../src/services/lgs/jobPosterOutreachService";
+import { rescoreDirtyLeadPriority } from "../src/services/lgs/priorityScoringService";
+import { runAutoAssignmentCycle } from "../src/services/lgs/autoAssignmentService";
+import { runOutreachAutomationCycle } from "../src/services/lgs/outreachAutomationService";
+import { runWarmupCycle } from "./lgs-warmup-worker";
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || path.join(process.cwd(), "apps/api/.env.local") });
 
-function runScheduler() {
-  runLgsOutreachScheduler()
-    .then(({ sent, failed }) => {
-      if (sent > 0 || failed > 0) {
-        console.log(`[LGS Outreach] sent=${sent} failed=${failed}`);
-      }
-    })
-    .catch((err) => {
-      console.error("[LGS Outreach] scheduler error:", err);
-    });
+async function runScheduler() {
+  try {
+    console.log("[LGS Outreach] Running shared warmup cycle...");
+    await runWarmupCycle();
+
+    const assignment = await runAutoAssignmentCycle();
+    if (
+      assignment.contractor.scanned > 0 || assignment.jobs.scanned > 0 ||
+      assignment.contractor.assigned > 0 || assignment.jobs.assigned > 0 ||
+      assignment.contractor.fallback_created > 0 || assignment.jobs.fallback_created > 0
+    ) {
+      console.log("[LGS AutoAssign]", assignment);
+    }
+
+    const automation = await runOutreachAutomationCycle();
+    if (
+      automation.contractor.generated > 0 || automation.jobs.generated > 0 ||
+      automation.contractor.queued > 0 || automation.jobs.queued > 0 ||
+      automation.contractor.failed_generation > 0 || automation.jobs.failed_generation > 0
+    ) {
+      console.log("[LGS Outreach Automation]", automation);
+    }
+
+    const contractor = await runLgsOutreachScheduler();
+    if (contractor.sent > 0 || contractor.failed > 0) {
+      console.log(`[LGS Outreach] contractor sent=${contractor.sent} failed=${contractor.failed}`);
+    }
+
+    const jobs = await runJobPosterQueueCycle();
+    if (jobs.sent > 0 || jobs.failed > 0) {
+      console.log(`[LGS Outreach] job-posters processed=${jobs.processed} sent=${jobs.sent} failed=${jobs.failed}`);
+    }
+  } catch (err) {
+    console.error("[LGS Outreach] scheduler error:", err);
+  }
 }
 
 function runFollowups() {
@@ -39,7 +68,7 @@ function runFollowups() {
 }
 
 function runRescore() {
-  rescoreDirtyLeads(500)
+  rescoreDirtyLeadPriority(500)
     .then((updated) => {
       if (updated > 0) {
         console.log(`[LGS Scoring] rescored ${updated} dirty leads`);

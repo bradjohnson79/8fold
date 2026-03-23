@@ -1,0 +1,260 @@
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { db } from "@/db/drizzle";
+import {
+  jobPosterEmailMessages,
+  jobPosterEmailQueue,
+  jobPosterLeads,
+  leadFinderCampaigns,
+} from "@/db/schema/directoryEngine";
+import {
+  addRandomDelay,
+  getCompanyDomain,
+  incrementOutreachCounter,
+  isDomainOnCooldown,
+  loadBrainSettings,
+  selectAvailableSender,
+  sendWithRetry,
+  triggerBounceCooldown,
+} from "./lgsOutreachSchedulerService";
+import { queueApprovedJobPosterMessages as queueApprovedJobPosterMessagesForAutomation } from "./outreachAutomationService";
+import { syncCampaignDomainReplyRate } from "./priorityScoringService";
+
+type QueueCycleResult = {
+  processed: number;
+  sent: number;
+  failed: number;
+};
+
+async function fetchNextQueuedJobPosterMessage() {
+  const settings = await loadBrainSettings();
+  const sender = await selectAvailableSender(settings);
+  if (!sender) {
+    return { settings, item: null };
+  }
+
+  const rows = await db
+    .select({
+      queueId: jobPosterEmailQueue.id,
+      messageId: jobPosterEmailMessages.id,
+      leadId: jobPosterLeads.id,
+      campaignId: jobPosterEmailMessages.campaignId,
+      subject: jobPosterEmailMessages.subject,
+      body: jobPosterEmailMessages.body,
+      email: jobPosterLeads.email,
+      website: jobPosterLeads.website,
+      city: jobPosterLeads.city,
+      category: jobPosterLeads.category,
+      outreachStage: jobPosterLeads.outreachStage,
+      leadScore: jobPosterLeads.leadScore,
+      leadPriority: jobPosterLeads.leadPriority,
+      priorityScore: jobPosterLeads.priorityScore,
+      replyCount: jobPosterLeads.replyCount,
+      emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
+      emailBounced: jobPosterLeads.emailBounced,
+      archived: jobPosterLeads.archived,
+      scheduledAt: jobPosterEmailQueue.scheduledAt,
+    })
+    .from(jobPosterEmailQueue)
+    .innerJoin(jobPosterEmailMessages, eq(jobPosterEmailQueue.messageId, jobPosterEmailMessages.id))
+    .innerJoin(jobPosterLeads, eq(jobPosterEmailMessages.leadId, jobPosterLeads.id))
+    .where(eq(jobPosterEmailQueue.status, "pending"))
+    .orderBy(
+      asc(
+        sql`CASE
+          WHEN lower(coalesce(${jobPosterLeads.emailVerificationStatus}, 'pending')) IN ('valid', 'verified') THEN 0
+          WHEN lower(coalesce(${jobPosterLeads.emailVerificationStatus}, 'pending')) = 'invalid' THEN 2
+          ELSE 1
+        END`
+      ),
+      asc(jobPosterLeads.createdAt),
+      asc(jobPosterEmailQueue.createdAt)
+    )
+    .limit(20)
+    .for("update", { skipLocked: true });
+
+  const now = new Date();
+  for (const row of rows) {
+    if (!row.subject || !row.body || !row.email) continue;
+    if (row.emailBounced) continue;
+    if (row.archived) continue;
+    const verificationStatus = String(row.emailVerificationStatus ?? "").trim().toLowerCase();
+    const isInvalid = verificationStatus === "invalid";
+    const isValid = verificationStatus === "valid" || verificationStatus === "verified";
+    if (isInvalid || !isValid) continue;
+    if (row.scheduledAt && new Date(row.scheduledAt) > now) continue;
+
+    const blockedStages = ["replied", "converted", "paused", "archived"];
+    if (row.outreachStage && blockedStages.includes(row.outreachStage)) continue;
+    const domain = getCompanyDomain(row.website, row.email);
+    if (domain) {
+      const onCooldown = await isDomainOnCooldown(domain, settings.domainCooldownDays, row.leadId, "jobs");
+      if (onCooldown) continue;
+    }
+
+    return {
+      settings,
+      item: {
+        queueId: row.queueId,
+        messageId: row.messageId,
+        leadId: row.leadId,
+        campaignId: row.campaignId,
+        subject: row.subject,
+        body: row.body,
+        email: row.email.trim().toLowerCase(),
+        website: row.website,
+        senderId: sender.id,
+        senderEmail: sender.senderEmail,
+      },
+    };
+  }
+
+  return { settings, item: null };
+}
+
+export async function runJobPosterQueueCycle(): Promise<QueueCycleResult> {
+  console.log("[Job Poster] Processing queue...");
+
+  const { item } = await fetchNextQueuedJobPosterMessage();
+  if (!item) {
+    return { processed: 0, sent: 0, failed: 0 };
+  }
+
+  await addRandomDelay();
+  const result = await sendWithRetry({
+    subject: item.subject,
+    body: item.body,
+    contactEmail: item.email,
+    senderAccount: item.senderEmail,
+  });
+
+  const now = new Date();
+  if (result.ok) {
+    await db
+      .update(jobPosterEmailQueue)
+      .set({
+        senderEmail: item.senderEmail,
+        status: "sent",
+        sentAt: now,
+        retryCount: sql`${jobPosterEmailQueue.retryCount} + 1`,
+        errorMessage: null,
+      })
+      .where(eq(jobPosterEmailQueue.id, item.queueId));
+
+    await db
+      .update(jobPosterEmailMessages)
+      .set({ status: "sent", updatedAt: now, reviewedAt: now })
+      .where(eq(jobPosterEmailMessages.id, item.messageId));
+
+    await db
+      .update(jobPosterLeads)
+      .set({
+        contactAttempts: sql`${jobPosterLeads.contactAttempts} + 1`,
+        status: "sent",
+        outreachStatus: "sent",
+        outreachStage: "sent",
+        lastContactedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(jobPosterLeads.id, item.leadId));
+
+    if (item.campaignId) {
+      await db
+        .update(leadFinderCampaigns)
+        .set({ sentCount: sql`${leadFinderCampaigns.sentCount} + 1` })
+        .where(eq(leadFinderCampaigns.id, item.campaignId));
+        await syncCampaignDomainReplyRate({
+          pipeline: "jobs",
+          campaignId: item.campaignId,
+          website: item.website,
+        });
+    }
+
+    await incrementOutreachCounter(item.senderId);
+    console.log("[Job Poster] Queue item sent", {
+      queueId: item.queueId,
+      leadId: item.leadId,
+      campaignId: item.campaignId,
+      senderEmail: item.senderEmail,
+    });
+    return { processed: 1, sent: 1, failed: 0 };
+  }
+
+  const updateQueue = {
+    senderEmail: item.senderEmail,
+    status: "failed" as const,
+    retryCount: sql`${jobPosterEmailQueue.retryCount} + 1`,
+    errorMessage: result.message,
+    sentAt: result.bounce ? now : null,
+  };
+
+  await db
+    .update(jobPosterEmailQueue)
+    .set(updateQueue)
+    .where(eq(jobPosterEmailQueue.id, item.queueId));
+
+  await db
+    .update(jobPosterEmailMessages)
+    .set({ status: "failed", updatedAt: now, reviewedAt: now })
+    .where(eq(jobPosterEmailMessages.id, item.messageId));
+
+  await db
+    .update(jobPosterLeads)
+    .set({
+      outreachStatus: "failed",
+      updatedAt: now,
+    })
+    .where(eq(jobPosterLeads.id, item.leadId));
+
+  if (result.bounce) {
+    await db
+      .update(jobPosterLeads)
+      .set({
+        emailBounced: true,
+        bounceReason: result.message,
+        status: "failed",
+        outreachStatus: "failed",
+        updatedAt: now,
+      })
+      .where(eq(jobPosterLeads.id, item.leadId));
+
+    if (item.campaignId) {
+      await db
+        .update(leadFinderCampaigns)
+        .set({ bounceCount: sql`${leadFinderCampaigns.bounceCount} + 1` })
+        .where(eq(leadFinderCampaigns.id, item.campaignId));
+    }
+
+    const { exceeded, rate } = await (async () => {
+      const [row] = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          bounced: sql<number>`count(*) filter (where ${jobPosterEmailQueue.errorMessage} is not null and ${jobPosterEmailQueue.errorMessage} ~* 'bounce|550|rejected|permanent')::int`,
+        })
+        .from(jobPosterEmailQueue)
+        .where(eq(jobPosterEmailQueue.senderEmail, item.senderEmail))
+        .limit(1);
+      const total = Number(row?.total ?? 0);
+      const bounced = Number(row?.bounced ?? 0);
+      const rate = total > 0 ? bounced / total : 0;
+      return { exceeded: total >= 20 && rate > 0.05, rate };
+    })();
+
+    if (exceeded) {
+      await triggerBounceCooldown(item.senderId, item.senderEmail, rate);
+    }
+  }
+
+  console.warn("[Job Poster] Queue item failed", {
+    queueId: item.queueId,
+    leadId: item.leadId,
+    campaignId: item.campaignId,
+    senderEmail: item.senderEmail,
+    bounce: result.bounce,
+    message: result.message,
+  });
+  return { processed: 1, sent: 0, failed: 1 };
+}
+
+export async function queueApprovedJobPosterMessages(campaignId: string): Promise<{ queued: number; skipped: number }> {
+  return queueApprovedJobPosterMessagesForAutomation(campaignId);
+}

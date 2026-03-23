@@ -1,14 +1,6 @@
 /**
- * Parse CSV/XLSX file to extract domain + optional city/state/country columns.
- *
- * Required column (case-insensitive): website | domain | url
- * Optional columns (case-insensitive): city | state | country
- *
- * Domain normalization:
- *   https://abc.com/path?utm=123 → abc.com
- *
- * Rejects: empty websites, invalid domains, social media platforms
- * Limits: max 10,000 rows, max 10MB
+ * Parse CSV/XLSX file to extract normalized website rows plus optional
+ * structured lead fields for import and enrichment.
  */
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -18,9 +10,18 @@ export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
 export type DomainFileRow = {
   domain: string;
+  campaignType?: "contractor" | "jobs";
+  category?: string;
+  company?: string;
+  address?: string;
   city?: string;
   state?: string;
   country?: string;
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+  email?: string;
+  trade?: string;
 };
 
 /** Domains that are social media / directory sites — never valid contractor websites */
@@ -92,30 +93,52 @@ function normalizeDomain(raw: string): string | null {
   }
 }
 
-/** Find the website column value from a row, case-insensitively */
-function getDomainKey(row: Record<string, unknown>): string | null {
-  const WEBSITE_ALIASES = ["website", "domain", "url", "site", "web"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
-  // Try exact match first, then case-insensitive
-  for (const key of Object.keys(row)) {
-    const lower = key.trim().toLowerCase();
-    if (WEBSITE_ALIASES.includes(lower)) {
-      const v = row[key];
-      if (typeof v === "string" && v.trim()) return v.trim();
-      if (typeof v === "number") return String(v).trim();
+function normalizeHeader(header: string): string {
+  return header
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-\/]+/g, "_")
+    .replace(/[()]/g, "");
+}
+
+function normalizeRow(row: Record<string, unknown>): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(row)) {
+    const normalizedKey = normalizeHeader(key);
+    if (!normalizedKey) continue;
+    if (typeof value === "string") {
+      normalized[normalizedKey] = value.trim();
+      continue;
     }
+    if (typeof value === "number") {
+      normalized[normalizedKey] = String(value).trim();
+      continue;
+    }
+    if (typeof value === "boolean") {
+      normalized[normalizedKey] = value ? "true" : "false";
+    }
+  }
+  return normalized;
+}
+
+/** Find the website column value from a normalized row */
+function getDomainKey(row: Record<string, string>): string | null {
+  const WEBSITE_ALIASES = ["website", "domain", "url", "site", "web"];
+  for (const alias of WEBSITE_ALIASES) {
+    const value = row[alias];
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
 }
 
-/** Get an optional string field, case-insensitively across several key aliases */
-function getOptionalField(row: Record<string, unknown>, ...aliases: string[]): string | undefined {
-  for (const key of Object.keys(row)) {
-    const lower = key.trim().toLowerCase();
-    if (aliases.includes(lower)) {
-      const v = row[key];
-      if (typeof v === "string" && v.trim()) return v.trim();
-      if (typeof v === "number") return String(v).trim();
+/** Get an optional string field from a normalized row */
+function getOptionalField(row: Record<string, string>, ...aliases: string[]): string | undefined {
+  for (const alias of aliases.map(normalizeHeader)) {
+    const value = row[alias];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
     }
   }
   return undefined;
@@ -150,9 +173,22 @@ export type ParseStats = {
   accepted: number;
   skipped_empty: number;
   skipped_invalid: number;
+  skipped_invalid_email: number;
   skipped_blocked: number;
   skipped_duplicate: number;
 };
+
+export function hasStructuredLeadFields(row: DomainFileRow): boolean {
+  return Boolean(
+    row.company ||
+    row.address ||
+    row.firstName ||
+    row.lastName ||
+    row.title ||
+    row.email ||
+    row.trade
+  );
+}
 
 function parseRows(rawRows: Record<string, unknown>[]): { rows: DomainFileRow[]; stats: ParseStats } {
   const results: DomainFileRow[] = [];
@@ -160,12 +196,14 @@ function parseRows(rawRows: Record<string, unknown>[]): { rows: DomainFileRow[];
 
   let skipped_empty = 0;
   let skipped_invalid = 0;
+  let skipped_invalid_email = 0;
   let skipped_blocked = 0;
   let skipped_duplicate = 0;
 
   const limited = rawRows.slice(0, MAX_ROWS);
 
-  for (const row of limited) {
+  for (const rawRow of limited) {
+    const row = normalizeRow(rawRow);
     const rawSite = getDomainKey(row);
 
     if (!rawSite) {
@@ -195,12 +233,49 @@ function parseRows(rawRows: Record<string, unknown>[]): { rows: DomainFileRow[];
     seen.add(domain);
 
     const city = getOptionalField(row, "city");
+    const campaignRaw = getOptionalField(row, "campaign", "campaign_type", "pipeline");
+    const normalizedCampaign = campaignRaw?.trim().toLowerCase();
+    if (normalizedCampaign && normalizedCampaign !== "contractor" && normalizedCampaign !== "jobs") {
+      throw new Error(`Invalid campaign type '${campaignRaw}'. Use 'contractor' or 'jobs'.`);
+    }
+    const campaignType =
+      normalizedCampaign === "contractor" || normalizedCampaign === "jobs"
+        ? normalizedCampaign
+        : undefined;
+    const category = getOptionalField(row, "category");
     const stateRaw = getOptionalField(row, "state");
     const state = normalizeState(stateRaw);
     const countryRaw = getOptionalField(row, "country");
     const country = normalizeCountry(countryRaw);
+    const company = getOptionalField(row, "company", "business_name", "company_name");
+    const address = getOptionalField(row, "address", "street_address", "formatted_address");
+    const firstName = getOptionalField(row, "first_name", "firstname", "first");
+    const lastName = getOptionalField(row, "last_name", "lastname", "last");
+    const title = getOptionalField(row, "title", "job_title", "role");
+    const trade = getOptionalField(row, "trade", "trade_category", "industry");
+    const rawEmail = getOptionalField(row, "email", "email_address");
+    const email = rawEmail ? rawEmail.trim().toLowerCase() : undefined;
 
-    results.push({ domain, city, state, country });
+    if (email && !EMAIL_REGEX.test(email)) {
+      skipped_invalid_email++;
+      continue;
+    }
+
+    results.push({
+      domain,
+      campaignType,
+      category,
+      company,
+      address,
+      city,
+      state,
+      country,
+      firstName,
+      lastName,
+      title,
+      email,
+      trade,
+    });
   }
 
   return {
@@ -210,6 +285,7 @@ function parseRows(rawRows: Record<string, unknown>[]): { rows: DomainFileRow[];
       accepted: results.length,
       skipped_empty,
       skipped_invalid,
+      skipped_invalid_email,
       skipped_blocked,
       skipped_duplicate,
     },
@@ -229,9 +305,35 @@ function parseCSV(buffer: Buffer): { rows: DomainFileRow[]; stats: ParseStats } 
 function parseExcel(buffer: Buffer): { rows: DomainFileRow[]; stats: ParseStats } {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
-  if (!sheetName) return { rows: [], stats: { total_rows: 0, accepted: 0, skipped_empty: 0, skipped_invalid: 0, skipped_blocked: 0, skipped_duplicate: 0 } };
+  if (!sheetName) {
+    return {
+      rows: [],
+      stats: {
+        total_rows: 0,
+        accepted: 0,
+        skipped_empty: 0,
+        skipped_invalid: 0,
+        skipped_invalid_email: 0,
+        skipped_blocked: 0,
+        skipped_duplicate: 0,
+      },
+    };
+  }
   const sheet = workbook.Sheets[sheetName];
-  if (!sheet) return { rows: [], stats: { total_rows: 0, accepted: 0, skipped_empty: 0, skipped_invalid: 0, skipped_blocked: 0, skipped_duplicate: 0 } };
+  if (!sheet) {
+    return {
+      rows: [],
+      stats: {
+        total_rows: 0,
+        accepted: 0,
+        skipped_empty: 0,
+        skipped_invalid: 0,
+        skipped_invalid_email: 0,
+        skipped_blocked: 0,
+        skipped_duplicate: 0,
+      },
+    };
+  }
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
   return parseRows(rows);
 }

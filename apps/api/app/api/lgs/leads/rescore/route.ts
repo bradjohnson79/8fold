@@ -8,7 +8,7 @@
  * Returns: { ok: true, updated: number }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { rescoreDirtyLeads, rescoreAllLeads } from "@/src/services/lgs/lgsLeadScoringService";
+import { rescoreAllLeadPriority, rescoreDirtyLeadPriority } from "@/src/services/lgs/priorityScoringService";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
     const mode = body.mode === "all" ? "all" : "dirty";
 
     const updated = mode === "all"
-      ? await rescoreAllLeads()
-      : await rescoreDirtyLeads(500);
+      ? await rescoreAllLeadPriority()
+      : await rescoreDirtyLeadPriority(500);
 
     return NextResponse.json({ ok: true, mode, updated });
   } catch (err) {

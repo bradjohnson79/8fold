@@ -85,6 +85,7 @@ function makeTxMock(opts: {
           limit: async (_n: number) => {
             // Used only by refund tests (not exercised here), but keep for completeness.
             // If the route ever queries disputeCases in-tx, return "resolved" rows when configured.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const t: any = table as any;
             const name = String((t as any)?.[Symbol.for("drizzle:Name")] ?? (t as any)?.name ?? "");
             if (name.includes("DisputeCase")) return opts.resolvedDispute ? [{ id: "dispute_1" }] : [];

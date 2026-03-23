@@ -68,8 +68,11 @@ export function NavBar() {
           <Link href="/leads" style={dropdownItemStyle}>
             Contractor Leads
           </Link>
+          <Link href="/leads/job-posters" style={dropdownItemStyle}>
+            Job Poster Leads
+          </Link>
           <Link href="/leads/import" style={dropdownItemStyle}>
-            Import Contractor Websites
+            Import Leads
           </Link>
           <Link href="/leads/finder" style={dropdownItemStyle}>
             Lead Finder
@@ -96,17 +99,26 @@ export function NavBar() {
           Outreach ▾
         </button>
         <div style={dropdownContentStyle} className="nav-dropdown-content">
+          <Link href="/outreach" style={dropdownItemStyle}>
+            Contractors
+          </Link>
+          <Link href="/outreach/job-posters" style={dropdownItemStyle}>
+            Job Posters
+          </Link>
           <Link href="/outreach/brain" style={{ ...dropdownItemStyle, color: "#a78bfa", fontWeight: 500 }}>
             Outreach Brain ✦
           </Link>
           <Link href="/messages" style={dropdownItemStyle}>
-            Messages
+            Contractor Messages
           </Link>
           <Link href="/outreach/queue" style={dropdownItemStyle}>
-            Email Queue
+            Contractor Queue
           </Link>
-          <Link href="/outreach" style={dropdownItemStyle}>
-            Campaigns
+          <Link href="/outreach/job-posters/review" style={dropdownItemStyle}>
+            Job Poster Review
+          </Link>
+          <Link href="/outreach/job-posters/queue" style={dropdownItemStyle}>
+            Job Poster Queue
           </Link>
           <Link href="/outreach/warmup" style={dropdownItemStyle}>
             Warmup

@@ -9,8 +9,6 @@ import { helpText } from "@/lib/helpText";
 type Sender = {
   id: string;
   sender_email: string;
-  gmail_connected?: boolean;
-  gmail_token_expires_at?: string | null;
   sent_today: number;
   daily_limit: number;
   last_sent_at: string | null;
@@ -96,7 +94,7 @@ export default function SendersPage() {
       </div>
 
       <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>
-        Manage outreach sender accounts. Gmail connection state is now sourced from the sender pool so tokens can be managed dynamically without env-based sender mapping.
+        Manage outreach sender accounts. Edit daily limit and status. Sent counts reset at midnight Pacific.
       </p>
 
       {senders.length === 0 ? (
@@ -107,7 +105,6 @@ export default function SendersPage() {
             <thead>
               <tr style={{ borderBottom: "1px solid #334155", textAlign: "left" }}>
                 <th style={{ padding: "0.75rem" }}>Sender</th>
-                <th style={{ padding: "0.75rem" }}>Gmail</th>
                 <th style={{ padding: "0.75rem" }}>Sent Today</th>
                 <th style={{ padding: "0.75rem" }}>Limit</th>
                 <th style={{ padding: "0.75rem" }}>Warmup</th>
@@ -120,18 +117,6 @@ export default function SendersPage() {
               {senders.map((s) => (
                 <tr key={s.id} style={{ borderBottom: "1px solid #334155" }}>
                   <td style={{ padding: "0.75rem" }}>{s.sender_email}</td>
-                  <td style={{ padding: "0.75rem" }}>
-                    <span style={{
-                      padding: "0.2rem 0.5rem",
-                      borderRadius: 4,
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      background: s.gmail_connected ? "#22c55e22" : "#f8717122",
-                      color: s.gmail_connected ? "#22c55e" : "#f87171",
-                    }}>
-                      {s.gmail_connected ? "Connected" : "Disconnected"}
-                    </span>
-                  </td>
                   <td style={{ padding: "0.75rem" }}>{s.sent_today}</td>
                   <td style={{ padding: "0.75rem" }}>
                     {editing === s.id ? (

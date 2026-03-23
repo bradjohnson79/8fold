@@ -7,7 +7,6 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { senderPool } from "@/db/schema/directoryEngine";
 import { getDailyLimit } from "@/src/services/lgs/warmupSchedule";
-import { computeNextWarmupSendAt } from "@/src/services/lgs/warmupSystem";
 
 export async function POST(
   req: Request,
@@ -31,79 +30,42 @@ export async function POST(
       }
       const resuming = sender.warmupStatus === "paused";
       const day = resuming ? (sender.warmupDay ?? 1) : 1;
-      const currentDayStartedAt = new Date();
-      const dailyLimit = getDailyLimit(day);
       updates = {
         ...updates,
         warmupStatus: "warming",
         warmupStartedAt: sender.warmupStartedAt ?? new Date(),
         warmupDay: day,
-        currentDayStartedAt,
-        dailyLimit,
+        currentDayStartedAt: new Date(),
+        dailyLimit: getDailyLimit(day),
         warmupSentToday: 0,
         outreachSentToday: 0,
         sentToday: 0,
         warmupEmailsSentToday: 0,
         outreachEnabled: false,
+        warmupStabilityVerified: false,
+        warmupStabilityStartedAt: day >= 5 ? null as unknown as undefined : sender.warmupStabilityStartedAt,
         warmupInboxPlacement: "good",
-        warmupIntervalAnchorAt: currentDayStartedAt,
-        warmupSendingAt: null as unknown as undefined,
-        nextWarmupSendAt: computeNextWarmupSendAt({
-          senderId: sender.id,
-          warmupStatus: "warming",
-          warmupDay: day,
-          dailyLimit,
-          warmupTotalSent: sender.warmupTotalSent ?? 0,
-          warmupSentToday: 0,
-          outreachSentToday: 0,
-          currentDayStartedAt,
-          warmupStartedAt: sender.warmupStartedAt ?? new Date(),
-          lastWarmupSentAt: currentDayStartedAt,
-          outreachEnabled: false,
-          now: currentDayStartedAt,
-        }),
       };
     } else if (action === "pause") {
       if (sender.warmupStatus !== "warming") {
         return NextResponse.json({ ok: false, error: "warmup_not_running" }, { status: 400 });
       }
-      updates = {
-        ...updates,
-        warmupStatus: "paused",
-        warmupSendingAt: null as unknown as undefined,
-        nextWarmupSendAt: null as unknown as undefined,
-      };
+      updates = { ...updates, warmupStatus: "paused" };
     } else if (action === "advance") {
       const nextDay = Math.min((sender.warmupDay ?? 0) + 1, 5);
-      const currentDayStartedAt = new Date();
-      const dailyLimit = getDailyLimit(nextDay);
       updates = {
         ...updates,
         warmupDay: nextDay,
-        dailyLimit,
-        currentDayStartedAt,
+        dailyLimit: getDailyLimit(nextDay),
+        currentDayStartedAt: new Date(),
         warmupSentToday: 0,
         outreachSentToday: 0,
         sentToday: 0,
         warmupEmailsSentToday: 0,
-        outreachEnabled: nextDay >= 5,
+        outreachEnabled: false,
+        warmupStabilityVerified: false,
+        warmupStabilityStartedAt: null as unknown as undefined,
         warmupStatus: nextDay >= 5 ? "ready" : "warming",
-        warmupIntervalAnchorAt: sender.warmupIntervalAnchorAt ?? currentDayStartedAt,
-        warmupSendingAt: null as unknown as undefined,
-        nextWarmupSendAt: computeNextWarmupSendAt({
-          senderId: sender.id,
-          warmupStatus: nextDay >= 5 ? "ready" : "warming",
-          warmupDay: nextDay,
-          dailyLimit,
-          warmupTotalSent: sender.warmupTotalSent ?? 0,
-          warmupSentToday: 0,
-          outreachSentToday: 0,
-          currentDayStartedAt,
-          warmupStartedAt: sender.warmupStartedAt ?? currentDayStartedAt,
-          lastWarmupSentAt: sender.warmupIntervalAnchorAt ?? currentDayStartedAt,
-          outreachEnabled: nextDay >= 5,
-          now: currentDayStartedAt,
-        }),
       };
     } else if (action === "reset") {
       updates = {
@@ -121,12 +83,8 @@ export async function POST(
         warmupTotalReplies: 0,
         warmupInboxPlacement: "unknown",
         outreachEnabled: false,
-        warmupIntervalAnchorAt: null as unknown as undefined,
-        nextWarmupSendAt: null as unknown as undefined,
-        lastWarmupSentAt: null as unknown as undefined,
-        lastWarmupResult: null as unknown as undefined,
-        lastWarmupRecipient: null as unknown as undefined,
-        warmupSendingAt: null as unknown as undefined,
+        warmupStabilityVerified: false,
+        warmupStabilityStartedAt: null as unknown as undefined,
       };
     } else {
       return NextResponse.json({ ok: false, error: "invalid_action" }, { status: 400 });
@@ -146,6 +104,8 @@ export async function POST(
         warmup_day: updated.warmupDay,
         daily_limit: updated.dailyLimit,
         outreach_enabled: updated.outreachEnabled,
+        warmup_stability_verified: updated.warmupStabilityVerified,
+        warmup_stability_started_at: updated.warmupStabilityStartedAt,
       },
     });
   } catch (err) {

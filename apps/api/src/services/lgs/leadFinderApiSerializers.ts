@@ -21,6 +21,12 @@ export function serializeLeadFinderCampaign(campaign: Record<string, unknown>) {
     domains_found: campaign.domainsFound,
     unique_domains: campaign.uniqueDomains,
     domains_sent: campaign.domainsSent,
+    sent_count: campaign.sentCount,
+    reply_count: campaign.replyCount,
+    reply_rate: Number(campaign.sentCount ?? 0) > 0
+      ? Math.round((Number(campaign.replyCount ?? 0) / Number(campaign.sentCount ?? 1)) * 1000) / 10
+      : 0,
+    bounce_count: campaign.bounceCount,
     started_at: toIso(campaign.startedAt as MaybeDate),
     finished_at: toIso(campaign.finishedAt as MaybeDate),
     elapsed_seconds: campaign.elapsedSeconds,
@@ -66,6 +72,7 @@ export function serializeLeadFinderDomain(domain: Record<string, unknown>) {
     formatted_address: domain.formattedAddress,
     phone: domain.phone,
     place_id: domain.placeId,
+    reply_rate: domain.replyRate ?? 0,
     created_at: toIso(domain.createdAt as MaybeDate),
   };
 }
