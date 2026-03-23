@@ -17,15 +17,19 @@
  *   - Machine-readable reason codes for queue intelligence UI
  *   - Lead state updates on successful send
  */
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import {
   contractorLeads,
+  jobPosterEmailQueue,
+  jobPosterLeads,
+  leadFinderCampaigns,
   lgsOutreachQueue,
   lgsOutreachSettings,
   outreachMessages,
   senderPool,
 } from "@/db/schema/directoryEngine";
+import { syncCampaignDomainReplyRate } from "./priorityScoringService";
 import {
   hasGmailTokenForSender,
   sendOutreachEmail,
@@ -84,7 +88,7 @@ const BOUNCE_RATE_THRESHOLD = 0.05;
 const BOUNCE_LOOKBACK_COUNT = 20;
 
 // ── Brain settings cache (refreshed each scheduler run) ──────────────────────
-type BrainSettings = {
+export type BrainSettings = {
   minLeadScoreToQueue: number;
   domainCooldownDays: number;
   followup1DelayDays: number;
@@ -102,7 +106,7 @@ const DEFAULT_SETTINGS: BrainSettings = {
   minSenderHealthLevel: "risk",
 };
 
-async function loadBrainSettings(): Promise<BrainSettings> {
+export async function loadBrainSettings(): Promise<BrainSettings> {
   try {
     const [row] = await db.select().from(lgsOutreachSettings).limit(1);
     if (!row) return DEFAULT_SETTINGS;
@@ -140,16 +144,8 @@ function isWithinSendWindow(): boolean {
   return ptHour >= SEND_WINDOW_START_HOUR && ptHour < SEND_WINDOW_END_HOUR;
 }
 
-function interpolateTemplate(template: string, vars: Record<string, string>): string {
-  let out = template;
-  for (const [key, val] of Object.entries(vars)) {
-    out = out.replace(new RegExp(`\\{${key}\\}`, "g"), val ?? "");
-  }
-  return out;
-}
-
 /** Extract normalized domain from a website URL or email, for cooldown checks. */
-function getCompanyDomain(website: string | null, email: string): string | null {
+export function getCompanyDomain(website: string | null, email: string): string | null {
   if (website) {
     try {
       const url = website.startsWith("http") ? website : `https://${website}`;
@@ -162,19 +158,20 @@ function getCompanyDomain(website: string | null, email: string): string | null 
 }
 
 /** Check if the domain was contacted too recently. */
-async function isDomainOnCooldown(
+export async function isDomainOnCooldown(
   companyDomain: string,
   cooldownDays: number,
-  excludeLeadId: string
+  excludeLeadId: string,
+  pipeline: "contractor" | "jobs" = "contractor"
 ): Promise<boolean> {
   if (!companyDomain || cooldownDays <= 0) return false;
   const cutoff = new Date(Date.now() - cooldownDays * 24 * 60 * 60 * 1000);
-  const [row] = await db
+  const [contractorRow] = await db
     .select({ cnt: sql<number>`count(*)::int` })
     .from(contractorLeads)
     .where(
       and(
-        sql`${contractorLeads.id} != ${excludeLeadId}`,
+        pipeline === "contractor" ? sql`${contractorLeads.id} != ${excludeLeadId}` : sql`true`,
         sql`${contractorLeads.lastContactedAt} >= ${cutoff}`,
         sql`(
           (${contractorLeads.website} IS NOT NULL AND lower(regexp_replace(regexp_replace(${contractorLeads.website}, '^https?://(www\\.)?', ''), '/.*$', '')) = ${companyDomain})
@@ -183,14 +180,28 @@ async function isDomainOnCooldown(
         )`
       )
     );
-  return Number(row?.cnt ?? 0) > 0;
+  const [jobPosterRow] = await db
+    .select({ cnt: sql<number>`count(*)::int` })
+    .from(jobPosterLeads)
+    .where(
+      and(
+        pipeline === "jobs" ? sql`${jobPosterLeads.id} != ${excludeLeadId}` : sql`true`,
+        sql`${jobPosterLeads.lastContactedAt} >= ${cutoff}`,
+        sql`(
+          lower(regexp_replace(regexp_replace(${jobPosterLeads.website}, '^https?://(www\\.)?', ''), '/.*$', '')) = ${companyDomain}
+          OR
+          (${jobPosterLeads.email} IS NOT NULL AND split_part(lower(${jobPosterLeads.email}), '@', 2) = ${companyDomain})
+        )`
+      )
+    );
+  return Number(contractorRow?.cnt ?? 0) > 0 || Number(jobPosterRow?.cnt ?? 0) > 0;
 }
 
 // ── Global rate check ─────────────────────────────────────────────────────────
 
 async function checkGlobalPerMinute(): Promise<boolean> {
   const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-  const [row] = await db
+  const [contractorRow] = await db
     .select({ cnt: sql<number>`count(*)::int` })
     .from(lgsOutreachQueue)
     .where(
@@ -199,13 +210,22 @@ async function checkGlobalPerMinute(): Promise<boolean> {
         sql`${lgsOutreachQueue.sentAt} >= ${oneMinuteAgo}`
       )
     );
-  return Number(row?.cnt ?? 0) < MAX_GLOBAL_PER_MINUTE;
+  const [jobPosterRow] = await db
+    .select({ cnt: sql<number>`count(*)::int` })
+    .from(jobPosterEmailQueue)
+    .where(
+      and(
+        eq(jobPosterEmailQueue.status, "sent"),
+        sql`${jobPosterEmailQueue.sentAt} >= ${oneMinuteAgo}`
+      )
+    );
+  return Number(contractorRow?.cnt ?? 0) + Number(jobPosterRow?.cnt ?? 0) < MAX_GLOBAL_PER_MINUTE;
 }
 
 // ── Bounce detection ──────────────────────────────────────────────────────────
 
 async function checkBounceRate(senderEmail: string): Promise<{ exceeded: boolean; rate: number }> {
-  const [row] = await db
+  const [contractorRow] = await db
     .select({
       total: sql<number>`count(*)::int`,
       bounced: sql<number>`count(*) filter (where ${lgsOutreachQueue.errorMessage} is not null and ${lgsOutreachQueue.errorMessage} ~* 'bounce|550|rejected|permanent')::int`,
@@ -219,8 +239,22 @@ async function checkBounceRate(senderEmail: string): Promise<{ exceeded: boolean
     )
     .limit(1);
 
-  const total = Number(row?.total ?? 0);
-  const bounced = Number(row?.bounced ?? 0);
+  const [jobPosterRow] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      bounced: sql<number>`count(*) filter (where ${jobPosterEmailQueue.errorMessage} is not null and ${jobPosterEmailQueue.errorMessage} ~* 'bounce|550|rejected|permanent')::int`,
+    })
+    .from(jobPosterEmailQueue)
+    .where(
+      and(
+        eq(jobPosterEmailQueue.senderEmail, senderEmail),
+        sql`${jobPosterEmailQueue.status} in ('sent', 'failed')`
+      )
+    )
+    .limit(1);
+
+  const total = Number(contractorRow?.total ?? 0) + Number(jobPosterRow?.total ?? 0);
+  const bounced = Number(contractorRow?.bounced ?? 0) + Number(jobPosterRow?.bounced ?? 0);
   if (total < BOUNCE_LOOKBACK_COUNT) return { exceeded: false, rate: 0 };
   const rate = bounced / total;
   return { exceeded: rate > BOUNCE_RATE_THRESHOLD, rate };
@@ -272,7 +306,7 @@ function weightedRandomPick(candidates: ScoredSender[]): ScoredSender {
   return candidates[candidates.length - 1]!;
 }
 
-async function selectAvailableSender(
+export async function selectAvailableSender(
   settings: BrainSettings
 ): Promise<{ id: string; senderEmail: string } | null> {
   if (!isWithinSendWindow()) return null;
@@ -329,7 +363,7 @@ async function selectAvailableSender(
 
     // Per-minute cap per sender
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    const [minRow] = await db
+    const [contractorMinuteRow] = await db
       .select({ cnt: sql<number>`count(*)::int` })
       .from(lgsOutreachQueue)
       .where(
@@ -339,11 +373,21 @@ async function selectAvailableSender(
           sql`${lgsOutreachQueue.sentAt} >= ${oneMinuteAgo}`
         )
       );
-    if (Number(minRow?.cnt ?? 0) >= MAX_PER_MINUTE_PER_SENDER) continue;
+    const [jobPosterMinuteRow] = await db
+      .select({ cnt: sql<number>`count(*)::int` })
+      .from(jobPosterEmailQueue)
+      .where(
+        and(
+          eq(jobPosterEmailQueue.senderEmail, s.senderEmail ?? ""),
+          eq(jobPosterEmailQueue.status, "sent"),
+          sql`${jobPosterEmailQueue.sentAt} >= ${oneMinuteAgo}`
+        )
+      );
+    if (Number(contractorMinuteRow?.cnt ?? 0) + Number(jobPosterMinuteRow?.cnt ?? 0) >= MAX_PER_MINUTE_PER_SENDER) continue;
 
     // Per-hour cap
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const [hourRow] = await db
+    const [contractorHourRow] = await db
       .select({ cnt: sql<number>`count(*)::int` })
       .from(lgsOutreachQueue)
       .where(
@@ -353,7 +397,17 @@ async function selectAvailableSender(
           sql`${lgsOutreachQueue.sentAt} >= ${oneHourAgo}`
         )
       );
-    if (Number(hourRow?.cnt ?? 0) >= HOURLY_CAP) continue;
+    const [jobPosterHourRow] = await db
+      .select({ cnt: sql<number>`count(*)::int` })
+      .from(jobPosterEmailQueue)
+      .where(
+        and(
+          eq(jobPosterEmailQueue.senderEmail, s.senderEmail ?? ""),
+          eq(jobPosterEmailQueue.status, "sent"),
+          sql`${jobPosterEmailQueue.sentAt} >= ${oneHourAgo}`
+        )
+      );
+    if (Number(contractorHourRow?.cnt ?? 0) + Number(jobPosterHourRow?.cnt ?? 0) >= HOURLY_CAP) continue;
 
     const score = computeSenderScore({
       remaining,
@@ -384,6 +438,7 @@ async function fetchNextQueuedMessage(
   queueId: string;
   messageId: string;
   leadId: string;
+  campaignId: string | null;
   email: string;
   subject: string;
   body: string;
@@ -393,29 +448,45 @@ async function fetchNextQueuedMessage(
   outreachStage: string | null;
   leadScore: number;
   leadPriority: string | null;
+  priorityScore: number;
+  emailVerificationStatus: string | null;
 } | null> {
   const sender = await selectAvailableSender(settings);
   if (!sender) return null;
 
-  // ORDER BY lead_priority rank (high=1, medium=2, low=3), then FIFO
+  // Send deterministically: valid email first, then oldest queued leads.
   const rows = await db
     .select({
       queueId: lgsOutreachQueue.id,
       messageId: outreachMessages.id,
       leadId: lgsOutreachQueue.leadId,
+      campaignId: contractorLeads.campaignId,
       subject: outreachMessages.subject,
       body: outreachMessages.body,
       email: contractorLeads.email,
       website: contractorLeads.website,
+      leadCreatedAt: contractorLeads.createdAt,
       outreachStage: contractorLeads.outreachStage,
       leadScore: contractorLeads.leadScore,
       leadPriority: contractorLeads.leadPriority,
+      priorityScore: contractorLeads.priorityScore,
+      replyCount: contractorLeads.replyCount,
+      emailVerificationStatus: contractorLeads.emailVerificationStatus,
+      archived: contractorLeads.archived,
     })
     .from(lgsOutreachQueue)
     .innerJoin(outreachMessages, eq(lgsOutreachQueue.outreachMessageId, outreachMessages.id))
     .innerJoin(contractorLeads, eq(lgsOutreachQueue.leadId, contractorLeads.id))
     .where(eq(lgsOutreachQueue.sendStatus, "pending"))
     .orderBy(
+      asc(
+        sql`CASE
+          WHEN lower(coalesce(${contractorLeads.emailVerificationStatus}, 'pending')) IN ('valid', 'verified') THEN 0
+          WHEN lower(coalesce(${contractorLeads.emailVerificationStatus}, 'pending')) = 'invalid' THEN 2
+          ELSE 1
+        END`
+      ),
+      asc(contractorLeads.createdAt),
       asc(
         sql`CASE ${contractorLeads.leadPriority}
           WHEN 'high' THEN 1
@@ -431,13 +502,15 @@ async function fetchNextQueuedMessage(
   // Apply brain gates on the candidate list
   for (const row of rows) {
     if (!row.subject || !row.body || !row.email) continue;
+    if (row.archived) continue;
+    const verificationStatus = String(row.emailVerificationStatus ?? "").trim().toLowerCase();
+    const isInvalid = verificationStatus === "invalid";
+    const isValid = verificationStatus === "valid" || verificationStatus === "verified";
+    if (isInvalid || !isValid) continue;
 
     // State machine gate
     const blockedStages = ["replied", "converted", "paused", "archived"];
     if (row.outreachStage && blockedStages.includes(row.outreachStage)) continue;
-
-    // Min score gate
-    if ((row.leadScore ?? 0) < settings.minLeadScoreToQueue) continue;
 
     // Domain cooldown gate
     const domain = getCompanyDomain(row.website, row.email);
@@ -450,6 +523,7 @@ async function fetchNextQueuedMessage(
       queueId: row.queueId,
       messageId: row.messageId,
       leadId: row.leadId,
+      campaignId: row.campaignId,
       email: row.email.trim().toLowerCase(),
       subject: row.subject,
       body: row.body,
@@ -459,55 +533,17 @@ async function fetchNextQueuedMessage(
       outreachStage: row.outreachStage,
       leadScore: row.leadScore ?? 0,
       leadPriority: row.leadPriority,
+      priorityScore: row.priorityScore ?? 0,
+      emailVerificationStatus: row.emailVerificationStatus,
     };
   }
 
   return null;
 }
 
-// ── Fallback: fetch next uncontacted lead (template path) ─────────────────────
-
-async function fetchNextLead(): Promise<{
-  id: string;
-  email: string;
-  leadName: string | null;
-  businessName: string | null;
-  trade: string | null;
-} | null> {
-  const rows = await db
-    .select({
-      id: contractorLeads.id,
-      email: contractorLeads.email,
-      leadName: contractorLeads.leadName,
-      businessName: contractorLeads.businessName,
-      trade: contractorLeads.trade,
-    })
-    .from(contractorLeads)
-    .where(
-      and(
-        sql`coalesce(${contractorLeads.verificationScore}, 0) >= 85`,
-        sql`coalesce(${contractorLeads.emailBounced}, false) = false`,
-        sql`${contractorLeads.contactAttempts} = 0`,
-        sql`${contractorLeads.signedUp} = false`
-      )
-    )
-    .limit(1)
-    .for("update", { skipLocked: true });
-
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    id: row.id,
-    email: (row.email ?? "").trim().toLowerCase(),
-    leadName: row.leadName ?? null,
-    businessName: row.businessName ?? null,
-    trade: row.trade ?? null,
-  };
-}
-
 // ── Send helpers ──────────────────────────────────────────────────────────────
 
-async function sendWithRetry(params: {
+export async function sendWithRetry(params: {
   subject: string;
   body: string;
   contactEmail: string;
@@ -525,7 +561,7 @@ async function sendWithRetry(params: {
   return lastResult;
 }
 
-async function incrementOutreachCounter(senderId: string): Promise<void> {
+export async function incrementOutreachCounter(senderId: string): Promise<void> {
   await db
     .update(senderPool)
     .set({
@@ -537,7 +573,7 @@ async function incrementOutreachCounter(senderId: string): Promise<void> {
     .where(eq(senderPool.id, senderId));
 }
 
-async function triggerBounceCooldown(
+export async function triggerBounceCooldown(
   senderId: string,
   senderEmail: string,
   bounceRate: number
@@ -552,7 +588,7 @@ async function triggerBounceCooldown(
   );
 }
 
-async function addRandomDelay(): Promise<void> {
+export async function addRandomDelay(): Promise<void> {
   const delayMs = randomBetween(2000, 8000);
   await new Promise((r) => setTimeout(r, delayMs));
 }
@@ -614,12 +650,25 @@ export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed:
         .set({
           contactAttempts: sql`${contractorLeads.contactAttempts} + 1`,
           emailDate: now,
+          outreachStatus: "sent",
           outreachStage: "sent",
           lastContactedAt: now,
           nextFollowupAt,
           updatedAt: now,
         })
         .where(eq(contractorLeads.id, queued.leadId));
+
+      if (queued.campaignId) {
+        await db
+          .update(leadFinderCampaigns)
+          .set({ sentCount: sql`${leadFinderCampaigns.sentCount} + 1` })
+          .where(eq(leadFinderCampaigns.id, queued.campaignId));
+        await syncCampaignDomainReplyRate({
+          pipeline: "contractor",
+          campaignId: queued.campaignId,
+          website: queued.website,
+        });
+      }
 
       await incrementOutreachCounter(queued.senderId);
       return { sent: 1, failed: 0 };
@@ -628,8 +677,15 @@ export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed:
     if (result.bounce) {
       await db
         .update(contractorLeads)
-        .set({ emailBounced: true, bounceReason: result.message, scoreDirty: true, updatedAt: now })
+        .set({ emailBounced: true, bounceReason: result.message, outreachStatus: "failed", scoreDirty: true, updatedAt: now })
         .where(eq(contractorLeads.id, queued.leadId));
+
+      if (queued.campaignId) {
+        await db
+          .update(leadFinderCampaigns)
+          .set({ bounceCount: sql`${leadFinderCampaigns.bounceCount} + 1` })
+          .where(eq(leadFinderCampaigns.id, queued.campaignId));
+      }
 
       const { exceeded, rate } = await checkBounceRate(queued.senderEmail);
       if (exceeded) {
@@ -641,79 +697,25 @@ export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed:
       .update(lgsOutreachQueue)
       .set({
         attempts: sql`coalesce(${lgsOutreachQueue.attempts}, 0) + 1`,
+        sendStatus: "failed",
         errorMessage: result.message,
       })
       .where(eq(lgsOutreachQueue.id, queued.queueId));
 
-    return { sent: 0, failed: 1 };
-  }
+    await db
+      .update(outreachMessages)
+      .set({ status: "failed" })
+      .where(eq(outreachMessages.id, queued.messageId));
 
-  // 2. Fallback: template-based flow (uses basic sender selection without brain settings)
-  const sender = await selectAvailableSender(settings);
-  if (!sender) return { sent: 0, failed: 0 };
-
-  const lead = await fetchNextLead();
-  if (!lead) return { sent: 0, failed: 0 };
-
-  const subjectTemplate =
-    process.env.LGS_OUTREACH_SUBJECT ?? "Join 8fold — connect with homeowners in your area";
-  const bodyTemplate =
-    process.env.LGS_OUTREACH_BODY ??
-    `Hi {lead_name},\n\nWe're 8fold — a platform connecting contractors with homeowners in your area.\n\nWe'd love to have you join. Sign up at https://8fold.app\n\nBest,`;
-
-  const subject = interpolateTemplate(subjectTemplate, {
-    lead_name: lead.leadName ?? "there",
-    business_name: lead.businessName ?? "",
-    trade: lead.trade ?? "",
-  });
-  const body = interpolateTemplate(bodyTemplate, {
-    lead_name: lead.leadName ?? "there",
-    business_name: lead.businessName ?? "",
-    trade: lead.trade ?? "",
-  });
-
-  await addRandomDelay();
-
-  const result = await sendWithRetry({
-    subject,
-    body,
-    contactEmail: lead.email,
-    senderAccount: sender.senderEmail,
-  });
-
-  const now = new Date();
-
-  if (result.ok) {
-    const nextFollowupAt = new Date(
-      now.getTime() + settings.followup1DelayDays * 24 * 60 * 60 * 1000
-    );
     await db
       .update(contractorLeads)
       .set({
-        contactAttempts: sql`${contractorLeads.contactAttempts} + 1`,
-        emailDate: now,
-        outreachStage: "sent",
-        lastContactedAt: now,
-        nextFollowupAt,
+        outreachStatus: "failed",
         updatedAt: now,
       })
-      .where(eq(contractorLeads.id, lead.id));
+      .where(eq(contractorLeads.id, queued.leadId));
 
-    await incrementOutreachCounter(sender.id);
-    return { sent: 1, failed: 0 };
+    return { sent: 0, failed: 1 };
   }
-
-  if (result.bounce) {
-    await db
-      .update(contractorLeads)
-      .set({ emailBounced: true, bounceReason: result.message, scoreDirty: true, updatedAt: now })
-      .where(eq(contractorLeads.id, lead.id));
-
-    const { exceeded, rate } = await checkBounceRate(sender.senderEmail);
-    if (exceeded) {
-      await triggerBounceCooldown(sender.id, sender.senderEmail, rate);
-    }
-  }
-
-  return { sent: 0, failed: 1 };
+  return { sent: 0, failed: 0 };
 }

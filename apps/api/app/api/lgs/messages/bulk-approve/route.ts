@@ -6,40 +6,12 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
+import { outreachMessages } from "@/db/schema/directoryEngine";
+import { approveContractorMessage } from "@/src/services/lgs/outreachAutomationService";
 
 async function approveMessage(messageId: string): Promise<{ ok: boolean; error?: string }> {
-  const [msg] = await db
-    .select()
-    .from(outreachMessages)
-    .where(eq(outreachMessages.id, messageId))
-    .limit(1);
-
-  if (!msg) return { ok: false, error: "not_found" };
-  if (msg.status !== "pending_review") return { ok: false, error: "not_pending_review" };
-
-  const existing = await db
-    .select({ id: lgsOutreachQueue.id })
-    .from(lgsOutreachQueue)
-    .where(eq(lgsOutreachQueue.outreachMessageId, messageId))
-    .limit(1);
-
-  if (existing.length > 0) return { ok: false, error: "already_queued" };
-
-  await db.insert(lgsOutreachQueue).values({
-    outreachMessageId: messageId,
-    leadId: msg.leadId,
-    priority: 5,
-    sendStatus: "pending",
-    attempts: 0,
-  });
-
-  await db
-    .update(outreachMessages)
-    .set({ status: "approved", reviewedAt: new Date() })
-    .where(eq(outreachMessages.id, messageId));
-
-  return { ok: true };
+  const result = await approveContractorMessage(messageId);
+  return result.ok ? { ok: true } : { ok: false, error: result.error === "message_not_found" ? "not_found" : result.error };
 }
 
 export async function POST(req: Request) {

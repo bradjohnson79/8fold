@@ -76,7 +76,7 @@ export default function MessagesPage() {
         Messages (AI Generated) <HelpTooltip text={helpText.messages} />
       </h1>
       <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>
-        GPT-generated outreach emails awaiting human review. Approve to queue for sending.
+        GPT-generated outreach emails awaiting human review. Approve to mark them ready for automatic queueing.
       </p>
       <p style={{ marginBottom: "1.5rem" }}>
         <Link href="/leads" style={{ padding: "0.5rem 1rem", background: "#1e293b", borderRadius: 8 }}>

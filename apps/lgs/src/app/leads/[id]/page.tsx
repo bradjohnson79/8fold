@@ -24,7 +24,10 @@ type Lead = {
   lead_number: number | null;
   lead_name: string | null;
   business_name: string | null;
-  email: string;
+  email: string | null;
+  needs_enrichment?: boolean;
+  assignment_status?: string | null;
+  outreach_status?: string | null;
   email_type: string | null;
   primary_email_score: number | null;
   secondary_emails: SecondaryEmail[] | null;
@@ -40,8 +43,12 @@ type Lead = {
   contact_attempts: number;
   response_received: boolean;
   signed_up: boolean;
-  verification_score: number | null;
-  verification_status: string | null;
+  email_verification_score: number | null;
+  email_verification_status: string | null;
+  email_verification_checked_at: string | null;
+  email_verification_provider: string | null;
+  priority_score: number | null;
+  lead_priority: string | null;
   email_bounced: boolean | null;
   discovery_method: string | null;
   notes: string | null;
@@ -352,7 +359,7 @@ export default function LeadDetailPage() {
                 #{String(lead.lead_number).padStart(4, "0")}
               </span>
             ) : null}
-            {lead.business_name ?? lead.lead_name ?? lead.email}
+            {lead.business_name ?? lead.lead_name ?? lead.email ?? lead.website ?? "Lead"}
           </h1>
           {lead.trade && (
             <span style={{ padding: "0.2rem 0.6rem", background: "#1e293b", borderRadius: 4, fontSize: "0.8rem", color: "#94a3b8" }}>
@@ -376,7 +383,9 @@ export default function LeadDetailPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.1rem 2.5rem" }}>
           <EditableField label="Contact Name" value={lead.lead_name} fieldKey="lead_name" onSave={handleFieldSave} />
           <EditableField label="Business" value={lead.business_name} fieldKey="business_name" onSave={handleFieldSave} />
-          <Field label="Email" value={lead.email} mono />
+          <Field label="Email" value={lead.email ?? (lead.needs_enrichment ? "Pending enrichment" : null)} mono />
+          <Field label="Assignment Status" value={lead.assignment_status?.replace(/_/g, " ") ?? "pending"} />
+          <Field label="Outreach Status" value={lead.outreach_status?.replace(/_/g, " ") ?? "pending"} />
           <Field label="Email Type" value={lead.email_type} />
           <Field label="Website" value={lead.website} />
           <Field label="Phone" value={lead.phone} />
@@ -384,16 +393,19 @@ export default function LeadDetailPage() {
           <Field
             label="Verification"
             value={
-              lead.verification_score != null
-                ? `${lead.verification_score} (${lead.verification_status ?? "—"})`
+              lead.email_verification_score != null
+                ? `${lead.email_verification_score} (${lead.email_verification_status ?? "—"})`
                 : null
             }
           />
+          <Field label="Lead Status" value={lead.email_bounced ? "Bounced" : "Active"} />
           <EditableField label="City" value={lead.city} fieldKey="city" onSave={handleFieldSave} />
           <EditableField label="State" value={lead.state} fieldKey="state" onSave={handleFieldSave} />
           <Field label="Country" value={lead.country} />
           <Field label="Contact Status" value={lead.contact_status} />
           <Field label="Discovery Method" value={lead.discovery_method} />
+          <Field label="Verified At" value={lead.email_verification_checked_at ? new Date(lead.email_verification_checked_at).toLocaleString() : null} />
+          <Field label="Verification Provider" value={lead.email_verification_provider} />
           <Field label="Bounced" value={lead.email_bounced ? "Yes" : "No"} />
           <Field label="Created" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : null} />
           {lead.notes && <div style={{ gridColumn: "1 / -1" }}><Field label="Notes" value={lead.notes} /></div>}

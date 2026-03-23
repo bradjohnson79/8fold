@@ -12,9 +12,10 @@
  *   DOTENV_CONFIG_PATH=apps/api/.env.local pnpm -C apps/api run lgs:warmup:worker
  */
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import cron from "node-cron";
 import dotenv from "dotenv";
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, gte, or, sql } from "drizzle-orm";
 import { db } from "../db/drizzle";
 import { senderPool, lgsWarmupActivity, lgsWorkerHealth } from "../db/schema/directoryEngine";
 import { sendOutreachEmail, hasGmailTokenForSender } from "../src/services/lgs/outreachGmailSenderService";
@@ -33,6 +34,10 @@ import {
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
 const WORKER_NAME = "warmup";
+const STABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const STABILITY_DELAY_TOLERANCE_MS = 5 * 60 * 1000;
+
+type WarmupSenderRow = typeof senderPool.$inferSelect;
 
 const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
   { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
@@ -79,6 +84,147 @@ async function logActivity(entry: {
     });
   } catch (err) {
     console.error("[LGS Warmup] activity log error:", err);
+  }
+}
+
+async function startWarmupStability(sender: WarmupSenderRow, now: Date): Promise<void> {
+  await db
+    .update(senderPool)
+    .set({
+      warmupStabilityStartedAt: now,
+      warmupStabilityVerified: false,
+      outreachEnabled: false,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.id, sender.id));
+
+  console.log(`[Warmup Stability] Started for ${sender.senderEmail} at ${now.toISOString()}`);
+}
+
+async function resetWarmupStability(
+  sender: WarmupSenderRow,
+  now: Date,
+  reason: string
+): Promise<void> {
+  await db
+    .update(senderPool)
+    .set({
+      warmupStabilityStartedAt: now,
+      warmupStabilityVerified: false,
+      outreachEnabled: false,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.id, sender.id));
+
+  console.warn(`[Warmup Stability] Reset due to failure for ${sender.senderEmail}: ${reason}`);
+}
+
+async function completeWarmupStability(sender: WarmupSenderRow, now: Date): Promise<void> {
+  await db
+    .update(senderPool)
+    .set({
+      warmupStabilityVerified: true,
+      outreachEnabled: true,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.id, sender.id));
+
+  console.log(`[Warmup Stability] Completed for ${sender.senderEmail}`);
+}
+
+async function loadStabilityWindowActivity(senderEmail: string, startedAt: Date) {
+  return db
+    .select({
+      status: lgsWarmupActivity.status,
+      errorMessage: lgsWarmupActivity.errorMessage,
+      sentAt: lgsWarmupActivity.sentAt,
+    })
+    .from(lgsWarmupActivity)
+    .where(
+      and(
+        eq(lgsWarmupActivity.senderEmail, senderEmail),
+        gte(lgsWarmupActivity.sentAt, startedAt)
+      )
+    );
+}
+
+async function evaluateWarmupStability(phase: "pre_send" | "post_send"): Promise<void> {
+  const senders = await db
+    .select()
+    .from(senderPool)
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
+
+  const now = new Date();
+
+  for (const sender of senders) {
+    const day = sender.warmupDay ?? 0;
+    if (day < MAX_WARMUP_DAY) {
+      if (sender.warmupStabilityStartedAt || sender.warmupStabilityVerified) {
+        await db
+          .update(senderPool)
+          .set({
+            warmupStabilityStartedAt: null,
+            warmupStabilityVerified: false,
+            outreachEnabled: false,
+            updatedAt: now,
+          })
+          .where(eq(senderPool.id, sender.id));
+      }
+      continue;
+    }
+
+    const startedAt = sender.warmupStabilityStartedAt;
+    if (!startedAt) {
+      if (phase === "post_send" && sender.lastWarmupResult === "sent") {
+        await startWarmupStability(sender, now);
+      }
+      continue;
+    }
+
+    if (
+      phase === "pre_send" &&
+      sender.nextWarmupSendAt &&
+      now.getTime() - new Date(sender.nextWarmupSendAt).getTime() > STABILITY_DELAY_TOLERANCE_MS
+    ) {
+      const lateByMinutes = Math.round(
+        (now.getTime() - new Date(sender.nextWarmupSendAt).getTime()) / 60_000
+      );
+      await resetWarmupStability(sender, now, `delayed_execution (${lateByMinutes}m late)`);
+      continue;
+    }
+
+    const activity = await loadStabilityWindowActivity(sender.senderEmail, new Date(startedAt));
+    const failedActivity = activity.find((row) => row.status !== "sent");
+    if (failedActivity) {
+      const errorMessage = failedActivity.errorMessage?.toLowerCase() ?? "";
+      const reason = errorMessage.includes("invalid_grant")
+        ? "invalid_grant"
+        : failedActivity.errorMessage ?? "send_failure";
+      await resetWarmupStability(sender, now, reason);
+      continue;
+    }
+
+    if (phase === "post_send" && sender.lastWarmupResult === "error") {
+      await resetWarmupStability(sender, now, "send_failure");
+      continue;
+    }
+
+    if (phase !== "post_send") continue;
+
+    const elapsedMs = now.getTime() - new Date(startedAt).getTime();
+    const elapsedHours = elapsedMs / 3_600_000;
+    console.log(
+      `[Warmup Stability] Progress: ${sender.senderEmail} ${elapsedHours.toFixed(1)}h / 24.0h`
+    );
+
+    if (!sender.warmupStabilityVerified && elapsedMs >= STABILITY_WINDOW_MS && activity.length > 0) {
+      await completeWarmupStability(sender, now);
+    }
   }
 }
 
@@ -140,7 +286,10 @@ async function advanceDays(): Promise<void> {
     if (!advanced) continue;
 
     const newLimit = getDailyLimit(currentDay);
-    const outreachEnabled = currentDay >= 5;
+    const transitionedToReady = (sender.warmupDay ?? 0) < MAX_WARMUP_DAY && currentDay >= MAX_WARMUP_DAY;
+    const outreachEnabled = currentDay >= MAX_WARMUP_DAY
+      ? (sender.warmupStabilityVerified ?? false)
+      : false;
     const warmupStatus = currentDay >= MAX_WARMUP_DAY ? "ready" : "warming";
 
     await db
@@ -154,6 +303,12 @@ async function advanceDays(): Promise<void> {
         sentToday: 0,
         warmupEmailsSentToday: 0,
         outreachEnabled,
+        warmupStabilityVerified: currentDay >= MAX_WARMUP_DAY
+          ? (transitionedToReady ? false : (sender.warmupStabilityVerified ?? false))
+          : false,
+        warmupStabilityStartedAt: currentDay >= MAX_WARMUP_DAY
+          ? (transitionedToReady ? null : sender.warmupStabilityStartedAt)
+          : null,
         warmupStatus,
         updatedAt: now,
       })
@@ -189,6 +344,7 @@ async function sendWarmupEmails(): Promise<void> {
       console.log(`[LGS Warmup] ${email}: skipped (in cooldown until ${sender.cooldownUntil.toISOString()})`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -199,12 +355,13 @@ async function sendWarmupEmails(): Promise<void> {
     if (remaining <= 0) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
     }
 
-    const warmupBudget = sender.outreachEnabled
+    const warmupBudget = warmupDay >= MAX_WARMUP_DAY
       ? Math.min(3, remaining)
       : remaining;
 
@@ -212,6 +369,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (warmupSentSoFar >= warmupBudget) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -220,6 +378,7 @@ async function sendWarmupEmails(): Promise<void> {
     if (!hasGmailTokenForSender(email)) {
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -265,6 +424,7 @@ async function sendWarmupEmails(): Promise<void> {
       console.warn(`[LGS Warmup] ${email}: no valid target — ${(targetResult as { reason: string }).reason}`);
       await db.update(senderPool).set({
         lastWarmupResult: "skipped",
+        nextWarmupSendAt: null,
         updatedAt: now,
       }).where(eq(senderPool.id, sender.id));
       continue;
@@ -371,7 +531,12 @@ async function detectStuckSenders(): Promise<void> {
   const senders = await db
     .select()
     .from(senderPool)
-    .where(eq(senderPool.warmupStatus, "warming"));
+    .where(
+      or(
+        eq(senderPool.warmupStatus, "warming"),
+        eq(senderPool.warmupStatus, "ready")
+      )
+    );
 
   const now = new Date();
   const stuckThresholdMs = STUCK_SENDER_HOURS * 60 * 60 * 1000;
@@ -424,7 +589,7 @@ async function updateHealthScores(): Promise<void> {
 
 // ─── Main Cycle ────────────────────────────────────────────────────────
 
-async function runWarmupCycle(): Promise<void> {
+export async function runWarmupCycle(): Promise<void> {
   try {
     await heartbeatStart();
   } catch (err) {
@@ -441,9 +606,23 @@ async function runWarmupCycle(): Promise<void> {
   }
 
   try {
+    await evaluateWarmupStability("pre_send");
+  } catch (err) {
+    console.error("[Warmup Stability] pre-send evaluation error:", err);
+    cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
+  }
+
+  try {
     await sendWarmupEmails();
   } catch (err) {
     console.error("[LGS Warmup] warmup send error:", err);
+    cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    await evaluateWarmupStability("post_send");
+  } catch (err) {
+    console.error("[Warmup Stability] post-send evaluation error:", err);
     cycleError = cycleError ?? (err instanceof Error ? err.message : String(err));
   }
 
@@ -466,18 +645,23 @@ async function runWarmupCycle(): Promise<void> {
   }
 }
 
-cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
-  timezone: "America/Los_Angeles",
-});
-void runWarmupCycle();
+const isEntrypoint =
+  process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
 
-console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+if (isEntrypoint) {
+  cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
+    timezone: "America/Los_Angeles",
+  });
+  void runWarmupCycle();
 
-process.on("SIGINT", () => {
-  console.log("[LGS Warmup] Shutting down...");
-  process.exit(0);
-});
-process.on("SIGTERM", () => {
-  console.log("[LGS Warmup] Shutting down...");
-  process.exit(0);
-});
+  console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+
+  process.on("SIGINT", () => {
+    console.log("[LGS Warmup] Shutting down...");
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    console.log("[LGS Warmup] Shutting down...");
+    process.exit(0);
+  });
+}

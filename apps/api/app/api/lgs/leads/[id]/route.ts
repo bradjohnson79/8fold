@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorLeads, lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
+import { scoreAndSaveContractorLead } from "@/src/services/lgs/priorityScoringService";
 
 export async function GET(
   _req: Request,
@@ -58,6 +59,9 @@ export async function GET(
         lead_name: lead.leadName,
         business_name: lead.businessName,
         email: lead.email,
+        needs_enrichment: lead.needsEnrichment,
+        assignment_status: lead.assignmentStatus,
+        outreach_status: lead.outreachStatus,
         email_type: lead.emailType,
         website: lead.website,
         phone: lead.phone,
@@ -71,8 +75,12 @@ export async function GET(
         response_received: lead.responseReceived,
         signed_up: lead.signedUp,
         contact_status: contactStatus,
-        verification_score: lead.verificationScore,
-        verification_status: lead.verificationStatus,
+        email_verification_score: lead.emailVerificationScore,
+        email_verification_status: lead.emailVerificationStatus,
+        email_verification_checked_at: lead.emailVerificationCheckedAt?.toISOString() ?? null,
+        email_verification_provider: lead.emailVerificationProvider,
+        priority_score: lead.priorityScore ?? 0,
+        lead_priority: lead.leadPriority ?? "medium",
         email_bounced: lead.emailBounced,
         discovery_method: lead.discoveryMethod,
         notes: lead.notes,
@@ -101,7 +109,7 @@ export async function GET(
 /**
  * PATCH /api/lgs/leads/[id]
  * Update editable fields: business_name, trade, city, state, lead_name (contact name).
- * Protected fields (email, domain, verification_score, lead_number) are never modified here.
+ * Protected fields (email, domain, verification fields, lead_number) are never modified here.
  */
 export async function PATCH(
   req: Request,
@@ -128,8 +136,9 @@ export async function PATCH(
       city: string | null;
       state: string | null;
       leadName: string | null;
+      scoreDirty: boolean;
       updatedAt: Date;
-    }> = { updatedAt: new Date() };
+    }> = { updatedAt: new Date(), scoreDirty: true };
 
     if ("business_name" in body) {
       updates.businessName = typeof body.business_name === "string" && body.business_name.trim()
@@ -168,6 +177,8 @@ export async function PATCH(
     if (!updated) {
       return NextResponse.json({ ok: false, error: "lead_not_found" }, { status: 404 });
     }
+
+    await scoreAndSaveContractorLead(id);
 
     return NextResponse.json({
       ok: true,

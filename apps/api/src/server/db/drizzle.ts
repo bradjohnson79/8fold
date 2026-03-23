@@ -1,7 +1,7 @@
 import { Pool } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { ensureProductionSchema } from "./schemaLock";
-import { logSchemaLock, verifyPublicUserSchema } from "./verifySchemaGuard";
+import { logSchemaLock, verifyLgsSchema, verifyPublicUserSchema } from "./verifySchemaGuard";
 
 ensureProductionSchema();
 const connectionString = process.env.DATABASE_URL;
@@ -25,7 +25,8 @@ async function runSchemaGuardOnce() {
   schemaGuardDone = true;
   await pool.query("select 1");
   logSchemaLock();
-  await verifyPublicUserSchema();
+  await verifyPublicUserSchema(pool);
+  await verifyLgsSchema(pool);
 }
 
 runSchemaGuardOnce().catch((e) => {

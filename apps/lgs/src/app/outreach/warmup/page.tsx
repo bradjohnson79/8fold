@@ -32,9 +32,17 @@ type WarmupSender = {
   is_cooling_down: boolean;
   health_score: string;
   next_warmup_send_at: string | null;
+  next_activity_at: string | null;
+  next_activity_type: "warmup_send" | "rollover" | null;
+  next_activity_label: string;
+  next_activity_reason: string | null;
   last_warmup_sent_at: string | null;
   last_warmup_result: string | null;
   last_warmup_recipient: string | null;
+  warmup_stability_verified: boolean;
+  warmup_stability_started_at: string | null;
+  warmup_stability_required: boolean;
+  warmup_stability_status: "not_applicable" | "pending_start" | "in_progress" | "complete";
 };
 
 type WarmupSummary = {
@@ -51,10 +59,16 @@ type WarmupSummary = {
   system_warmup_capacity: number;
   pending_queue_count: number;
   outreach_enabled_count: number;
+  stability_pending_count: number;
+  stability_verified_count: number;
   worker_status: string;
   worker_last_heartbeat: string | null;
   worker_last_run_status: string | null;
   next_system_warmup_send_at: string | null;
+  next_system_activity_at: string | null;
+  next_system_activity_type: "warmup_send" | "rollover" | null;
+  next_system_activity_label: string;
+  next_system_activity_reason: string | null;
 };
 
 type ActivityEntry = {
@@ -185,6 +199,20 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+function formatStabilityProgress(startedAt: string | null): string {
+  if (!startedAt) return "Awaiting first clean send";
+  const elapsedMs = Math.max(0, Date.now() - new Date(startedAt).getTime());
+  const cappedMs = Math.min(elapsedMs, 24 * 60 * 60 * 1000);
+  const hours = Math.floor(cappedMs / 3_600_000);
+  const minutes = Math.floor((cappedMs % 3_600_000) / 60_000);
+  return `In Progress (${hours}h ${String(minutes).padStart(2, "0")}m / 24h)`;
+}
+
+function formatAbsoluteTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString();
+}
+
 function isExternalEmail(email: string): boolean {
   return !email.toLowerCase().endsWith("@8fold.app");
 }
@@ -220,6 +248,7 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
   }
 
   const isActive = sender.warmup_status === "warming" || sender.warmup_status === "ready";
+  const nextActivityCountdown = useCountdown(sender.next_activity_at);
 
   return (
     <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem", border: `1px solid ${color}33` }}>
@@ -272,16 +301,23 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
         </div>
       </div>
 
-      {/* Next warmup send */}
+      {/* Next activity */}
       {isActive && (
         <div style={{ background: "#0f172a", borderRadius: 6, padding: "0.65rem 0.75rem", marginBottom: "0.75rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "#64748b", marginBottom: "0.3rem" }}>
-            <span>Next Warmup Send</span>
-            <span style={{ fontVariantNumeric: "tabular-nums", color: "#f59e0b", fontWeight: 600 }}>{nextWarmupCountdown}</span>
+            <span>{sender.next_activity_label}</span>
+            <span style={{ fontVariantNumeric: "tabular-nums", color: sender.next_activity_type === "rollover" ? "#94a3b8" : "#f59e0b", fontWeight: 600 }}>
+              {nextActivityCountdown}
+            </span>
           </div>
-          {sender.next_warmup_send_at && (
+          {sender.next_activity_at && (
             <div style={{ fontSize: "0.72rem", color: "#475569" }}>
-              Scheduled: {new Date(sender.next_warmup_send_at).toLocaleString()}
+              Scheduled: {formatAbsoluteTime(sender.next_activity_at)}
+            </div>
+          )}
+          {sender.next_activity_reason && (
+            <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "0.25rem" }}>
+              {sender.next_activity_reason}
             </div>
           )}
         </div>
@@ -339,9 +375,18 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
       )}
 
       {sender.warmup_status === "ready" && (
-        <div style={{ padding: "0.5rem 0.75rem", background: "#1e3a2f", border: "1px solid #166534", borderRadius: 6, fontSize: "0.82rem", color: "#4ade80", marginBottom: "0.75rem" }}>
-          Warmup complete — outreach fully enabled ({sender.daily_outreach_limit}/day)
-        </div>
+        sender.warmup_stability_verified ? (
+          <div style={{ padding: "0.5rem 0.75rem", background: "#1e3a2f", border: "1px solid #166534", borderRadius: 6, fontSize: "0.82rem", color: "#4ade80", marginBottom: "0.75rem" }}>
+            Stability Check: Complete — outreach enabled ({sender.daily_outreach_limit}/day)
+          </div>
+        ) : (
+          <div style={{ padding: "0.5rem 0.75rem", background: "#31210f", border: "1px solid #a16207", borderRadius: 6, fontSize: "0.82rem", color: "#fbbf24", marginBottom: "0.75rem" }}>
+            <div>Stability Check: {formatStabilityProgress(sender.warmup_stability_started_at)}</div>
+            <div style={{ marginTop: "0.2rem", color: "#fcd34d" }}>
+              Outreach locked — completing stability validation (1 clean day required)
+            </div>
+          </div>
+        )
       )}
 
       {/* Actions */}
@@ -431,7 +476,7 @@ export default function WarmupPage() {
     await load();
   }
 
-  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null);
+  const systemCountdown = useCountdown(summary?.next_system_activity_at ?? null);
 
   return (
     <div style={{ maxWidth: 960 }}>
@@ -454,8 +499,22 @@ export default function WarmupPage() {
       {summary && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
-            <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Next System Warmup Send</div>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#f59e0b", fontVariantNumeric: "tabular-nums" }}>{systemCountdown}</div>
+            <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>
+              {summary.next_system_activity_label || "Next System Activity"}
+            </div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: summary.next_system_activity_type === "rollover" ? "#94a3b8" : "#f59e0b", fontVariantNumeric: "tabular-nums" }}>
+              {systemCountdown}
+            </div>
+            {summary.next_system_activity_at && (
+              <div style={{ fontSize: "0.72rem", color: "#475569", marginTop: "0.25rem" }}>
+                {formatAbsoluteTime(summary.next_system_activity_at)}
+              </div>
+            )}
+            {summary.next_system_activity_reason && (
+              <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "0.25rem" }}>
+                {summary.next_system_activity_reason}
+              </div>
+            )}
           </div>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
             <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Last Warmup Activity</div>
@@ -480,10 +539,23 @@ export default function WarmupPage() {
         <div style={{ background: "#3b1a1a", border: "1px solid #7f1d1d", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem", display: "flex", gap: "1rem", alignItems: "flex-start" }}>
           <span style={{ fontSize: "1.2rem" }}>⚠</span>
           <div>
-            <div style={{ fontWeight: 600, color: "#fca5a5", marginBottom: "0.25rem" }}>Outreach disabled — no senders have completed warmup</div>
-            <div style={{ color: "#f87171", fontSize: "0.875rem" }}>
-              Minimum requirement: <strong>50 warmup emails/day</strong> (Day 5+). Start warmup below for each sender account.
-            </div>
+            {summary.stability_pending_count > 0 ? (
+              <>
+                <div style={{ fontWeight: 600, color: "#fca5a5", marginBottom: "0.25rem" }}>
+                  Outreach locked — completing stability validation (1 clean day required)
+                </div>
+                <div style={{ color: "#f87171", fontSize: "0.875rem" }}>
+                  {summary.stability_pending_count} sender{summary.stability_pending_count === 1 ? "" : "s"} reached Day 5 and now need one full clean warmup day before outreach unlocks.
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 600, color: "#fca5a5", marginBottom: "0.25rem" }}>Outreach disabled — no senders have completed warmup</div>
+                <div style={{ color: "#f87171", fontSize: "0.875rem" }}>
+                  Minimum requirement: <strong>50 warmup emails/day</strong> (Day 5+). Start warmup below for each sender account.
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -493,8 +565,9 @@ export default function WarmupPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           <StatCard label="Total Senders" value={summary.total_senders} />
           <StatCard label="Warming" value={summary.warming} color="#f59e0b" sub="in progress" />
-          <StatCard label="Ready" value={summary.ready_for_outreach} color="#22c55e" sub="≥ 50/day" />
+          <StatCard label="Ready" value={summary.ready_for_outreach} color="#22c55e" sub="stability complete" />
           <StatCard label="Not Started" value={summary.not_started} color="#475569" />
+          <StatCard label="Stability Check" value={summary.stability_pending_count} color="#f59e0b" sub="in progress" />
           <StatCard label="Queue Pending" value={summary.pending_queue_count} color="#38bdf8" sub="approved msgs" />
           <StatCard label="Outreach Enabled" value={summary.outreach_enabled_count} color="#22c55e" sub={`of ${summary.total_senders}`} />
         </div>

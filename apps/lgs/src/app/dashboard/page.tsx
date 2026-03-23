@@ -7,21 +7,40 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
 
 type FunnelData = {
-  leads: number;
-  verified_leads?: number;
+  total_leads: number;
   emails_sent: number;
-  emails_sent_today?: number;
-  emails_sent_week?: number;
-  responses: number;
+  bounces: number;
+  replies: number;
   signups: number;
   active_contractors: number;
-  messages_generated?: number;
-  messages_approved?: number;
+  active_job_posters: number;
   bounce_rate?: number;
-  verification_rate?: number;
-  outreach_conversion_rate?: number;
-  discovery_success_rate?: number;
+  reply_rate?: number;
+  conversion_rate?: number;
 };
+
+function toNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): FunnelData {
+  return {
+    total_leads: toNumber(value?.total_leads),
+    emails_sent: toNumber(value?.emails_sent),
+    bounces: toNumber(value?.bounces),
+    replies: toNumber(value?.replies),
+    signups: toNumber(value?.signups),
+    active_contractors: toNumber(value?.active_contractors),
+    active_job_posters: toNumber(value?.active_job_posters),
+    bounce_rate: toNumber(value?.bounce_rate),
+    reply_rate: toNumber(value?.reply_rate),
+    conversion_rate: toNumber(value?.conversion_rate),
+  };
+}
+
+function formatNumber(value: unknown): string {
+  return toNumber(value).toLocaleString();
+}
 
 export default function DashboardPage() {
   const [data, setData] = useState<FunnelData | null>(null);
@@ -30,7 +49,7 @@ export default function DashboardPage() {
   useEffect(() => {
     lgsFetch<FunnelData>("/api/lgs/funnel")
       .then((r) => {
-        if (r.ok && r.data) setData(r.data);
+        if (r.ok && r.data) setData(normalizeFunnelData(r.data));
         else setErr(r.error ?? "Failed to load");
       })
       .catch((e) => setErr(String(e)));
@@ -39,9 +58,8 @@ export default function DashboardPage() {
   if (err) return <p style={{ color: "#f87171" }}>{err}</p>;
   if (!data) return <p>Loading…</p>;
 
-  const responseRate = data.emails_sent > 0 ? ((data.responses / data.emails_sent) * 100).toFixed(1) : "0";
-  const signupRate = data.emails_sent > 0 ? ((data.signups / data.emails_sent) * 100).toFixed(1) : "0";
-  const activationRate = data.signups > 0 ? ((data.active_contractors / data.signups) * 100).toFixed(0) : "0";
+  const replyRate = data.reply_rate?.toFixed(1) ?? "0.0";
+  const conversionRate = data.conversion_rate?.toFixed(1) ?? "0.0";
 
   return (
     <div>
@@ -58,49 +76,35 @@ export default function DashboardPage() {
         }}
       >
         <h2 style={{ marginBottom: "1rem", fontSize: "1.125rem" }}>
-          Lead Funnel <HelpTooltip text={helpText.dashboard} />
+          Operating Snapshot <HelpTooltip text={helpText.dashboard} />
         </h2>
         <div style={{ display: "grid", gap: "0.5rem", fontFamily: "monospace" }}>
-          <Row label="Total Leads" value={data.leads} />
-          <Row label="Verified Leads" value={data.verified_leads ?? 0} />
-          <Row label="Messages Generated" value={data.messages_generated ?? 0} />
-          <Row label="Messages Approved" value={data.messages_approved ?? 0} />
+          <Row label="Total Leads" value={data.total_leads} />
           <Row label="Emails Sent" value={data.emails_sent} />
-          <Row label="Replies" value={data.responses} />
+          <Row label="Bounces" value={data.bounces} />
+          <Row label="Replies" value={data.replies} />
           <Row label="Contractor Signups" value={data.signups} />
           <Row label="Active Contractors" value={data.active_contractors} />
+          <Row label="Active Job Posters" value={data.active_job_posters} />
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-          <span style={{ color: "#94a3b8" }}>Response Rate: {responseRate}%</span>
-          <span style={{ color: "#94a3b8" }}>Signup Rate: {signupRate}%</span>
-          <span style={{ color: "#94a3b8" }}>Activation Rate: {activationRate}%</span>
-          {data.emails_sent_today != null && (
-            <span style={{ color: "#94a3b8" }}>Emails Today: {data.emails_sent_today}</span>
-          )}
-          {data.emails_sent_week != null && (
-            <span style={{ color: "#94a3b8" }}>Emails This Week: {data.emails_sent_week}</span>
-          )}
-          {data.bounce_rate != null && (
-            <span style={{ color: "#94a3b8" }}>Bounce Rate: {data.bounce_rate}%</span>
-          )}
+          <span style={{ color: "#94a3b8" }}>Bounce Rate: {data.bounce_rate ?? 0}%</span>
+          <span style={{ color: "#94a3b8" }}>Reply Rate: {replyRate}%</span>
+          <span style={{ color: "#94a3b8" }}>Conversion Rate: {conversionRate}%</span>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
-        <Card title="Total Leads" value={data.leads} />
-        <Card title="Verified Leads" value={data.verified_leads ?? 0} />
-        <Card title="Messages Generated" value={data.messages_generated ?? 0} />
-        <Card title="Messages Approved" value={data.messages_approved ?? 0} />
+        <Card title="Total Leads" value={data.total_leads} />
         <Card title="Emails Sent" value={data.emails_sent} />
-        <Card title="Emails Today" value={data.emails_sent_today ?? 0} />
-        <Card title="Emails This Week" value={data.emails_sent_week ?? 0} />
-        <Card title="Responses" value={data.responses} />
+        <Card title="Bounces" value={data.bounces} />
+        <Card title="Replies" value={data.replies} />
         <Card title="Signups" value={data.signups} />
         <Card title="Active Contractors" value={data.active_contractors} />
+        <Card title="Active Job Posters" value={data.active_job_posters} />
         <Card title="Bounce Rate" value={data.bounce_rate ?? 0} suffix="%" />
-        <Card title="Verification Rate" value={data.verification_rate ?? 0} suffix="%" />
-        <Card title="Outreach Conversion" value={data.outreach_conversion_rate ?? 0} suffix="%" />
-        <Card title="Discovery Success" value={data.discovery_success_rate ?? 0} suffix="%" />
+        <Card title="Reply Rate" value={data.reply_rate ?? 0} suffix="%" />
+        <Card title="Conversion Rate" value={data.conversion_rate ?? 0} suffix="%" />
       </div>
 
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
@@ -134,13 +138,13 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "2rem" }}>
       <span style={{ color: "#94a3b8" }}>{label}</span>
-      <span style={{ fontWeight: 600 }}>{value.toLocaleString()}</span>
+      <span style={{ fontWeight: 600 }}>{formatNumber(value)}</span>
     </div>
   );
 }
 
 function Card({ title, value, suffix = "" }: { title: string; value: number; suffix?: string }) {
-  const display = typeof value === "number" ? value.toLocaleString() : String(value);
+  const display = formatNumber(value);
   return (
     <div style={{ padding: "1.25rem", background: "#1e293b", borderRadius: 8 }}>
       <div style={{ fontSize: "0.875rem", color: "#94a3b8", marginBottom: "0.25rem" }}>{title}</div>

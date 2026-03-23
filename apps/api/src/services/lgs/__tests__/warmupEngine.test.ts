@@ -184,20 +184,24 @@ describe("getDailyLimit", () => {
 // ─── isReadyForOutreach ───────────────────────────────────────────────────────
 
 describe("isReadyForOutreach", () => {
-  it("returns true when status is ready", () => {
-    expect(isReadyForOutreach(5, "ready")).toBe(true);
+  it("returns true when status is ready and stability is verified", () => {
+    expect(isReadyForOutreach(5, "ready", true)).toBe(true);
   });
 
-  it("returns true when warming at day 5 (limit >= 50)", () => {
-    expect(isReadyForOutreach(5, "warming")).toBe(true);
+  it("returns true when warming at day 5 and stability is verified", () => {
+    expect(isReadyForOutreach(5, "warming", true)).toBe(true);
+  });
+
+  it("returns false when stability is not yet verified", () => {
+    expect(isReadyForOutreach(5, "ready", false)).toBe(false);
   });
 
   it("returns false when warming at day 4 (limit < 50)", () => {
-    expect(isReadyForOutreach(4, "warming")).toBe(false);
+    expect(isReadyForOutreach(4, "warming", true)).toBe(false);
   });
 
   it("returns false when not started", () => {
-    expect(isReadyForOutreach(0, "not_started")).toBe(false);
+    expect(isReadyForOutreach(0, "not_started", false)).toBe(false);
   });
 });
 

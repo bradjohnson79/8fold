@@ -17,7 +17,7 @@ export function getApiOrigin(): string {
 export async function proxyToApi(
   path: string,
   opts: {
-    method?: "GET" | "POST" | "PATCH";
+    method?: "GET" | "POST" | "PATCH" | "OPTIONS";
     body?: unknown;
     searchParams?: URLSearchParams;
   } = {}

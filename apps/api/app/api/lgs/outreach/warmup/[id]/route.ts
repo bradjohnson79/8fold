@@ -42,6 +42,8 @@ export async function POST(
         sentToday: 0,
         warmupEmailsSentToday: 0,
         outreachEnabled: false,
+        warmupStabilityVerified: false,
+        warmupStabilityStartedAt: day >= 5 ? null as unknown as undefined : sender.warmupStabilityStartedAt,
         warmupInboxPlacement: "good",
       };
     } else if (action === "pause") {
@@ -60,7 +62,9 @@ export async function POST(
         outreachSentToday: 0,
         sentToday: 0,
         warmupEmailsSentToday: 0,
-        outreachEnabled: nextDay >= 5,
+        outreachEnabled: false,
+        warmupStabilityVerified: false,
+        warmupStabilityStartedAt: null as unknown as undefined,
         warmupStatus: nextDay >= 5 ? "ready" : "warming",
       };
     } else if (action === "reset") {
@@ -79,6 +83,8 @@ export async function POST(
         warmupTotalReplies: 0,
         warmupInboxPlacement: "unknown",
         outreachEnabled: false,
+        warmupStabilityVerified: false,
+        warmupStabilityStartedAt: null as unknown as undefined,
       };
     } else {
       return NextResponse.json({ ok: false, error: "invalid_action" }, { status: 400 });
@@ -98,6 +104,8 @@ export async function POST(
         warmup_day: updated.warmupDay,
         daily_limit: updated.dailyLimit,
         outreach_enabled: updated.outreachEnabled,
+        warmup_stability_verified: updated.warmupStabilityVerified,
+        warmup_stability_started_at: updated.warmupStabilityStartedAt,
       },
     });
   } catch (err) {

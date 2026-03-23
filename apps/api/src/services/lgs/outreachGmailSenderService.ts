@@ -12,27 +12,39 @@ export type GmailMessagePayload = {
   senderAccount: string;
 };
 
-const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.send"];
+export const GMAIL_SEND_SCOPES = ["https://www.googleapis.com/auth/gmail.send"];
+export const GMAIL_READ_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.modify",
+];
+export const GMAIL_INBOUND_SCOPES = [...new Set([...GMAIL_SEND_SCOPES, ...GMAIL_READ_SCOPES])];
+export const GMAIL_OAUTH_REDIRECT_URI =
+  process.env.GMAIL_OAUTH_REDIRECT_URI ?? "http://127.0.0.1:8788/oauth2callback";
 
-function getOAuth2Client(refreshToken: string) {
+export function getOAuth2Client(refreshToken: string) {
   const clientId = process.env.GMAIL_CLIENT_ID;
   const clientSecret = process.env.GMAIL_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error("GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET required");
   }
-  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, "urn:ietf:wg:oauth:2.0:oob");
+  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, GMAIL_OAUTH_REDIRECT_URI);
   oauth2.setCredentials({ refresh_token: refreshToken });
   return oauth2;
 }
 
-const SENDER_ENV_PAIRS = [
-  { sender: process.env.GMAIL_SENDER_1 ?? "info@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN },
+export const SENDER_ENV_PAIRS = [
+  { sender: process.env.GMAIL_SENDER_1 ?? "info@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_1 ?? process.env.GMAIL_REFRESH_TOKEN },
   { sender: process.env.GMAIL_SENDER_2 ?? "support@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_2 },
   { sender: process.env.GMAIL_SENDER_3 ?? "hello@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_3 },
   { sender: process.env.GMAIL_SENDER_4 ?? "partners@8fold.app", token: process.env.GMAIL_REFRESH_TOKEN_4 },
 ] as const;
 
-function getRefreshTokenForSender(senderAccount: string): string | null {
+export function getConfiguredGmailSenders(): string[] {
+  return SENDER_ENV_PAIRS.map(({ sender }) => sender?.trim().toLowerCase())
+    .filter((sender): sender is string => Boolean(sender));
+}
+
+export function getRefreshTokenForSender(senderAccount: string): string | null {
   const normalized = senderAccount.trim().toLowerCase();
   for (const { sender, token } of SENDER_ENV_PAIRS) {
     if (sender?.trim().toLowerCase() === normalized && token) return token;
@@ -43,6 +55,15 @@ function getRefreshTokenForSender(senderAccount: string): string | null {
 /** Returns true if sender has a configured Gmail token. */
 export function hasGmailTokenForSender(senderAccount: string): boolean {
   return getRefreshTokenForSender(senderAccount) !== null;
+}
+
+export function createGmailClientForSender(senderAccount: string) {
+  const refreshToken = getRefreshTokenForSender(senderAccount);
+  if (!refreshToken) {
+    throw new Error(`No Gmail refresh token configured for sender: ${senderAccount}`);
+  }
+  const auth = getOAuth2Client(refreshToken);
+  return google.gmail({ version: "v1", auth });
 }
 
 function buildMimeMessage(params: {
@@ -84,8 +105,7 @@ export async function sendOutreachEmail(msg: GmailMessagePayload): Promise<SendR
     throw new Error(`No Gmail refresh token configured for sender: ${senderAccount}`);
   }
 
-  const auth = getOAuth2Client(refreshToken);
-  const gmail = google.gmail({ version: "v1", auth });
+  const gmail = createGmailClientForSender(senderAccount);
 
   const bodyWithSignature = appendSignature(msg.body);
   const mime = buildMimeMessage({

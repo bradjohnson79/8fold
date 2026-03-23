@@ -9,7 +9,10 @@ import {
   leadFinderCampaigns,
   leadFinderDomains,
 } from "@/db/schema/directoryEngine";
-import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
+import {
+  runBulkDomainDiscoveryAsync,
+  type DomainImportRow,
+} from "@/src/services/lgs/domainDiscoveryService";
 
 const BATCH_SIZE = 200;
 
@@ -21,7 +24,12 @@ export async function POST(
     const { id } = await params;
 
     const [campaign] = await db
-      .select({ id: leadFinderCampaigns.id, status: leadFinderCampaigns.status, state: leadFinderCampaigns.state })
+      .select({
+        id: leadFinderCampaigns.id,
+        status: leadFinderCampaigns.status,
+        state: leadFinderCampaigns.state,
+        campaignType: leadFinderCampaigns.campaignType,
+      })
       .from(leadFinderCampaigns)
       .where(eq(leadFinderCampaigns.id, id))
       .limit(1);
@@ -37,7 +45,8 @@ export async function POST(
       .where(
         and(
           eq(leadFinderDomains.campaignId, id),
-          eq(leadFinderDomains.sentToDiscovery, false)
+          eq(leadFinderDomains.sentToDiscovery, false),
+          sql`${leadFinderDomains.domain} IS NOT NULL`
         )
       );
 
@@ -57,14 +66,22 @@ export async function POST(
     const runIds: string[] = [];
 
     for (const batch of batches) {
-      const domainRows = batch.map((d) => ({
-        domain: d.domain,
-        city: d.city ?? undefined,
-        state: d.state ?? campaign.state ?? undefined,
-      }));
+      const domainRows: DomainImportRow[] = batch.flatMap((d) => {
+        if (!d.domain) return [];
+        return [{
+          domain: d.domain,
+          campaignType: (campaign.campaignType ?? "contractor") as "contractor" | "jobs",
+          category: d.category ?? undefined,
+          city: d.city ?? undefined,
+          state: d.state ?? campaign.state ?? undefined,
+        }];
+      });
 
       const runId = await runBulkDomainDiscoveryAsync(domainRows, {
-        autoImportSource: "lead_finder",
+        autoImportSource: `lead_finder_${campaign.campaignType ?? "contractor"}`,
+        campaignType: (campaign.campaignType ?? "contractor") as "contractor" | "jobs",
+        targetCampaignId: campaign.id,
+        targetCategory: batch[0]?.category ?? undefined,
       });
       runIds.push(runId);
 

@@ -1,8 +1,8 @@
 /**
  * LGS Email Enrichment Worker — Phase 2
  *
- * Picks up contractor_leads with verification_status = 'pending',
- * runs DNS + SMTP verification, updates score, and archives low-quality leads.
+ * Picks up contractor leads needing verification and queues them for the
+ * shared email verification worker.
  *
  * Designed to run as a cron job or long-running background process.
  * Processes in small batches to avoid overwhelming DNS.
@@ -16,105 +16,53 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: path.join(process.cwd(), "apps/api/.env.local") });
 
-import { eq, sql, isNull, or } from "drizzle-orm";
-import pLimit from "p-limit";
-import EmailValidator from "email-deep-validator";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db/drizzle";
 import { contractorLeads } from "../db/schema/directoryEngine";
+import { enqueueVerificationEmail } from "../src/services/lgs/emailVerificationService";
 
 const BATCH_SIZE = parseInt(process.argv.find((a) => a.startsWith("--batch="))?.split("=")[1] ?? "25", 10);
 const RUN_ONCE = process.argv.includes("--once");
-const VERIFY_CONCURRENCY = 5;
 const POLL_INTERVAL_MS = 10_000;
-const ARCHIVE_THRESHOLD = 85;
 const BACKPRESSURE_THRESHOLD = 1000;
 const BACKPRESSURE_DELAY_MS = 30_000;
-
-const validator = new EmailValidator({ timeout: 5000 });
-const verifyLimit = pLimit(VERIFY_CONCURRENCY);
-
-async function verifyEmail(email: string): Promise<{ score: number; status: string }> {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized.includes("@")) return { score: 0, status: "rejected" };
-
-  try {
-    const result = await validator.verify(normalized);
-    let score = 0;
-    if (result.wellFormed) score += 20;
-    if (result.validDomain) score += 50;
-    if (result.validMailbox === true) score += 20;
-    else if (result.validMailbox === null) score += 10;
-    if (result.validDomain && result.validMailbox === true) score += 10;
-
-    if (score >= 80) return { score, status: "verified" };
-    if (score >= 70) return { score, status: "qualified" };
-    return { score, status: "low_quality" };
-  } catch {
-    return { score: 0, status: "verification_failed" };
-  }
-}
 
 async function processBatch(): Promise<number> {
   const leads = await db
     .select({ id: contractorLeads.id, email: contractorLeads.email })
     .from(contractorLeads)
     .where(
-      or(
-        eq(contractorLeads.verificationStatus, "pending"),
-        isNull(contractorLeads.verificationStatus)
-      )
+      sql`(
+        ${contractorLeads.email} is not null
+        and ${contractorLeads.email} != ''
+        and (
+          ${contractorLeads.emailVerificationStatus} = 'pending'
+          or ${contractorLeads.emailVerificationStatus} is null
+        )
+      )`
     )
     .limit(BATCH_SIZE);
 
   if (leads.length === 0) return 0;
 
-  console.log(`[Enrichment] Processing ${leads.length} leads...`);
+  console.log(`[Enrichment] Queueing ${leads.length} leads for verification...`);
 
-  const results = await Promise.allSettled(
-    leads.map((lead) =>
-      verifyLimit(async () => {
-        const { score, status } = await verifyEmail(lead.email);
-
-        const shouldArchive = score > 0 && score < ARCHIVE_THRESHOLD;
-
-        await db
-          .update(contractorLeads)
-          .set({
-            verificationScore: score,
-            verificationStatus: status,
-            verificationSource: "enrichment_worker",
-            archived: shouldArchive ? true : undefined,
-            archivedAt: shouldArchive ? new Date() : undefined,
-          })
-          .where(eq(contractorLeads.id, lead.id));
-
-        return { id: lead.id, email: lead.email, score, status, archived: shouldArchive };
-      })
-    )
-  );
-
-  let verified = 0;
-  let archived = 0;
-  let failed = 0;
-
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      verified++;
-      if (r.value.archived) archived++;
-    } else {
-      failed++;
+  let queued = 0;
+  for (const lead of leads) {
+    if (!lead.email) continue;
+    const result = await enqueueVerificationEmail(lead.email);
+    if (result.action === "queued" || result.action === "cached") {
+      queued++;
     }
   }
 
-  console.log(
-    `[Enrichment] Batch done: ${verified} verified, ${archived} archived (<${ARCHIVE_THRESHOLD}), ${failed} failed`
-  );
+  console.log(`[Enrichment] Batch queued: ${queued}/${leads.length}`);
 
   return leads.length;
 }
 
 async function main() {
-  console.log(`[Enrichment] Starting worker — batch=${BATCH_SIZE}, concurrency=${VERIFY_CONCURRENCY}, once=${RUN_ONCE}`);
+  console.log(`[Enrichment] Starting worker — batch=${BATCH_SIZE}, once=${RUN_ONCE}`);
 
   if (RUN_ONCE) {
     let total = 0;
@@ -134,10 +82,14 @@ async function main() {
         .select({ count: sql<number>`count(*)` })
         .from(contractorLeads)
         .where(
-          or(
-            eq(contractorLeads.verificationStatus, "pending"),
-            isNull(contractorLeads.verificationStatus)
-          )
+          sql`(
+            ${contractorLeads.email} is not null
+            and ${contractorLeads.email} != ''
+            and (
+              ${contractorLeads.emailVerificationStatus} = 'pending'
+              or ${contractorLeads.emailVerificationStatus} is null
+            )
+          )`
         );
       const pendingCount = Number(pending);
 
