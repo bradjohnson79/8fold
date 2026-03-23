@@ -133,8 +133,7 @@ export async function importLeadsFromFile(buffer: Buffer, mimeType: string): Pro
         city: row.city ?? null,
         state: row.state ?? null,
         source: row.source ?? null,
-        status: "new",
-        leadScore: 10,
+        status: "active",
       });
       imported++;
     } catch (err) {

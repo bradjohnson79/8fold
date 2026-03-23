@@ -171,7 +171,6 @@ export default function SettingsPage() {
   // System settings
   const [dedupMode, setDedupMode] = useState("email");
   const [autoGenerate, setAutoGenerate] = useState(false);
-  const [leadQualThreshold, setLeadQualThreshold] = useState(85);
 
   // User / password settings
   const [currentPassword, setCurrentPassword] = useState("");
@@ -367,13 +366,13 @@ export default function SettingsPage() {
             />
 
             <SettingRow
-              label="Email Verification Threshold"
-              description="Minimum score (0–100) to accept an email. Recommended: 85."
+              label="Email Validation Rules"
+              description="Used internally for obvious invalid-pattern filtering. Invalid emails are blocked; unresolved emails stay pending."
             >
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <NumberInput value={verificationThreshold} onChange={setVerificationThreshold} min={0} max={100} />
                 <Badge
-                  label={verificationThreshold >= 90 ? "Strict" : verificationThreshold >= 80 ? "Standard" : "Lenient"}
+                  label={verificationThreshold >= 90 ? "Strict" : verificationThreshold >= 80 ? "Standard" : "Relaxed"}
                   color={verificationThreshold >= 90 ? "#4ade80" : verificationThreshold >= 80 ? "#facc15" : "#f87171"}
                 />
               </div>
@@ -469,24 +468,10 @@ export default function SettingsPage() {
               <Toggle value={autoGenerate} onChange={setAutoGenerate} />
             </SettingRow>
 
-            <SettingRow
-              label="Lead Qualification Threshold"
-              description="Minimum verification score for a lead to be considered qualified."
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <NumberInput value={leadQualThreshold} onChange={setLeadQualThreshold} min={0} max={100} />
-                <Badge
-                  label={leadQualThreshold >= 90 ? "Strict" : leadQualThreshold >= 80 ? "Standard" : "Lenient"}
-                  color={leadQualThreshold >= 90 ? "#4ade80" : leadQualThreshold >= 80 ? "#facc15" : "#f87171"}
-                />
-              </div>
-            </SettingRow>
-
             <div style={{ marginTop: "1.25rem", padding: "0.75rem 1rem", background: "#0f172a", borderRadius: 8, fontSize: "0.82rem", color: "#64748b" }}>
               <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
                 <span>Dedup mode: <strong style={{ color: "#94a3b8" }}>{dedupMode}</strong></span>
                 <span>Auto generate: <strong style={{ color: autoGenerate ? "#4ade80" : "#f87171" }}>{autoGenerate ? "On" : "Off"}</strong></span>
-                <span>Qual threshold: <strong style={{ color: "#94a3b8" }}>{leadQualThreshold}</strong></span>
               </div>
             </div>
           </>

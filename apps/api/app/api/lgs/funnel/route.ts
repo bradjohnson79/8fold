@@ -1,57 +1,35 @@
-/**
- * LGS: Conversion funnel aggregates.
- */
 import { NextResponse } from "next/server";
-import { desc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import {
-  contractorLeads,
-  discoveryRuns,
-  outreachMessages,
-  senderPool,
-} from "@/db/schema/directoryEngine";
+import { contractorLeads } from "@/db/schema/directoryEngine";
 import { users } from "@/db/schema/user";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 
-function getTodayMidnightPacific(): Date {
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Los_Angeles",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = formatter.formatToParts(now);
-  const y = parts.find((p) => p.type === "year")?.value ?? "2025";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
-  return new Date(`${y}-${m}-${d}T08:00:00.000Z`);
-}
-
 export async function GET() {
   try {
-    const midnight = getTodayMidnightPacific();
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const [
-      leadsRes,
+      totalLeadsRes,
       emailsSentRes,
-      responsesRes,
+      bouncesRes,
+      repliesRes,
       signupsRes,
-      activeRes,
-      emailsTodayRes,
-      emailsWeekRes,
-      bouncedRes,
-      verifiedRes,
-      discoveryRunRes,
-      messagesGeneratedRes,
-      messagesApprovedRes,
+      activeContractorsRes,
+      activeJobPostersRes,
+      sendsTodayRes,
+      repliesTodayRes,
     ] = await Promise.all([
       db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads),
       db
         .select({ c: sql<number>`count(*)::int` })
         .from(contractorLeads)
         .where(sql`${contractorLeads.contactAttempts} > 0`),
+      db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(contractorLeads)
+        .where(sql`coalesce(${contractorLeads.emailBounced}, false) = true`),
       db
         .select({ c: sql<number>`count(*)::int` })
         .from(contractorLeads)
@@ -65,72 +43,51 @@ export async function GET() {
         .from(users)
         .innerJoin(contractorAccounts, eq(users.id, contractorAccounts.userId))
         .where(sql`${users.role} = 'CONTRACTOR'`),
-      db.select({ total: sql<number>`coalesce(sum(${senderPool.sentToday}), 0)::int` }).from(senderPool),
+      db
+        .select({ c: sql<number>`count(*)::int` })
+        .from(users)
+        .where(sql`${users.role} = 'JOB_POSTER' AND ${users.status} = 'ACTIVE'`),
       db
         .select({ c: sql<number>`count(*)::int` })
         .from(contractorLeads)
-        .where(
-          sql`${contractorLeads.contactAttempts} > 0 and ${contractorLeads.emailDate} >= ${weekAgo}`
-        ),
+        .where(sql`${contractorLeads.lastContactedAt} >= ${today}`),
       db
         .select({ c: sql<number>`count(*)::int` })
         .from(contractorLeads)
-        .where(sql`coalesce(${contractorLeads.emailBounced}, false) = true`),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(eq(contractorLeads.verificationStatus, "verified")),
-      db
-        .select()
-        .from(discoveryRuns)
-        .orderBy(desc(discoveryRuns.createdAt))
-        .limit(1),
-      db.select({ c: sql<number>`count(*)::int` }).from(outreachMessages),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(outreachMessages)
-        .where(eq(outreachMessages.status, "approved")),
+        .where(sql`${contractorLeads.lastRepliedAt} >= ${today}`),
     ]);
 
-    const toNum = (r: { c?: unknown; total?: unknown }[]) =>
-      Number((r[0] as { c?: number; total?: number })?.c ?? (r[0] as { total?: number })?.total ?? 0);
-    const leads = toNum(leadsRes);
+    const toNum = (r: { c?: unknown }[]) => Number((r[0] as { c?: number })?.c ?? 0);
+
+    const totalLeads = toNum(totalLeadsRes);
     const emailsSent = toNum(emailsSentRes);
-    const responses = toNum(responsesRes);
+    const bounces = toNum(bouncesRes);
+    const replies = toNum(repliesRes);
     const signups = toNum(signupsRes);
-    const activeContractors = toNum(activeRes);
-    const emailsSentToday = toNum(emailsTodayRes);
-    const emailsSentWeek = toNum(emailsWeekRes);
-    const bounced = toNum(bouncedRes);
-    const bounceRate = emailsSent > 0 ? (bounced / emailsSent) * 100 : 0;
-    const verifiedCount = toNum(verifiedRes);
-    const verificationRate = leads > 0 ? (verifiedCount / leads) * 100 : 0;
-    const outreachConversionRate = emailsSent > 0 ? (signups / emailsSent) * 100 : 0;
-    const latestRun = discoveryRunRes[0] as { domainsProcessed?: number; successfulDomains?: number } | undefined;
-    const discoverySuccessRate =
-      latestRun?.domainsProcessed && latestRun.domainsProcessed > 0
-        ? ((latestRun.successfulDomains ?? 0) / latestRun.domainsProcessed) * 100
-        : 0;
-    const messagesGenerated = toNum(messagesGeneratedRes);
-    const messagesApproved = toNum(messagesApprovedRes);
+    const activeContractors = toNum(activeContractorsRes);
+    const activeJobPosters = toNum(activeJobPostersRes);
+    const sendsToday = toNum(sendsTodayRes);
+    const repliesToday = toNum(repliesTodayRes);
+
+    const bounceRate = emailsSent > 0 ? (bounces / emailsSent) * 100 : 0;
+    const replyRate = emailsSent > 0 ? (replies / emailsSent) * 100 : 0;
+    const conversionRate = totalLeads > 0 ? (signups / totalLeads) * 100 : 0;
 
     return NextResponse.json({
       ok: true,
       data: {
-        leads,
-        verified_leads: verifiedCount,
+        total_leads: totalLeads,
         emails_sent: emailsSent,
-        emails_sent_today: emailsSentToday,
-        emails_sent_week: emailsSentWeek,
-        responses,
+        bounces,
+        replies,
         signups,
         active_contractors: activeContractors,
-        messages_generated: messagesGenerated,
-        messages_approved: messagesApproved,
+        active_job_posters: activeJobPosters,
+        sends_today: sendsToday,
+        replies_today: repliesToday,
         bounce_rate: Math.round(bounceRate * 10) / 10,
-        verification_rate: Math.round(verificationRate * 10) / 10,
-        outreach_conversion_rate: Math.round(outreachConversionRate * 10) / 10,
-        discovery_success_rate: Math.round(discoverySuccessRate * 10) / 10,
+        reply_rate: Math.round(replyRate * 10) / 10,
+        conversion_rate: Math.round(conversionRate * 10) / 10,
       },
     });
   } catch (err) {
@@ -139,20 +96,18 @@ export async function GET() {
       return NextResponse.json({
         ok: true,
         data: {
-          leads: 0,
-          verified_leads: 0,
+          total_leads: 0,
           emails_sent: 0,
-          emails_sent_today: 0,
-          emails_sent_week: 0,
-          responses: 0,
+          bounces: 0,
+          replies: 0,
           signups: 0,
           active_contractors: 0,
-          messages_generated: 0,
-          messages_approved: 0,
+          active_job_posters: 0,
+          sends_today: 0,
+          replies_today: 0,
           bounce_rate: 0,
-          verification_rate: 0,
-          outreach_conversion_rate: 0,
-          discovery_success_rate: 0,
+          reply_rate: 0,
+          conversion_rate: 0,
         },
       });
     }

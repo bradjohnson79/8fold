@@ -5,6 +5,7 @@ import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatDateTime } from "@/lib/formatters";
 
 type Sender = {
   id: string;
@@ -147,7 +148,7 @@ export default function SendersPage() {
                     ) : "—"}
                   </td>
                   <td style={{ padding: "0.75rem" }}>
-                    {s.last_sent_at ? new Date(s.last_sent_at).toLocaleString() : "—"}
+                    {formatDateTime(s.last_sent_at)}
                   </td>
                   <td style={{ padding: "0.75rem" }}>
                     {editing === s.id ? (

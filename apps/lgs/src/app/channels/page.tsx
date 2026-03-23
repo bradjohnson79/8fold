@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber } from "@/lib/formatters";
 
 type ChannelRow = {
   channel: string;
@@ -63,9 +64,9 @@ export default function ChannelsPage() {
 
       {/* Metric cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
-        <StatCard title="Total Leads" value={totalLeads.toLocaleString()} />
+        <StatCard title="Total Leads" value={formatNumber(totalLeads)} />
         <StatCard title="Active Channels" value={data.length} />
-        <StatCard title="Total Signups" value={totalSignups.toLocaleString()} />
+        <StatCard title="Total Signups" value={formatNumber(totalSignups)} />
         <StatCard
           title="Best Conversion"
           value={bestChannel ? bestChannel.conversion : "—"}
@@ -73,7 +74,7 @@ export default function ChannelsPage() {
         />
         <StatCard
           title="Top Lead Source"
-          value={topByLeads ? topByLeads.leads.toLocaleString() : "—"}
+          value={topByLeads ? formatNumber(topByLeads.leads) : "—"}
           sub={topByLeads?.channel ?? undefined}
         />
       </div>
@@ -112,10 +113,10 @@ export default function ChannelsPage() {
                       fontSize: "0.82rem",
                     }}>{row.channel}</span>
                   </td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.leads.toLocaleString()}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.emails_sent.toLocaleString()}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.responses.toLocaleString()}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.signups.toLocaleString()}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.leads)}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.emails_sent)}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.responses)}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.signups)}</td>
                   <td style={{ padding: "0.75rem 1rem" }}>
                     <span style={{
                       color: parseFloat(row.conversion) > 0 ? "#4ade80" : "#94a3b8",

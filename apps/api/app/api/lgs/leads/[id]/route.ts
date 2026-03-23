@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorLeads, lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
+import { normalizeVerificationStatus } from "@/src/services/lgs/simpleEmailVerification";
 
 export async function GET(
   _req: Request,
@@ -69,15 +70,20 @@ export async function GET(
         status: lead.status,
         contact_attempts: lead.contactAttempts,
         response_received: lead.responseReceived,
+        reply_received: lead.responseReceived,
+        reply_at: lead.lastRepliedAt?.toISOString() ?? null,
         signed_up: lead.signedUp,
         contact_status: contactStatus,
         verification_score: lead.verificationScore,
-        verification_status: lead.verificationStatus,
+        verification_status: normalizeVerificationStatus(lead.verificationStatus),
         email_bounced: lead.emailBounced,
         discovery_method: lead.discoveryMethod,
         notes: lead.notes,
         primary_email_score: lead.primaryEmailScore ?? null,
         secondary_emails: lead.secondaryEmails ?? null,
+        email_sent_at: lead.lastContactedAt?.toISOString() ?? null,
+        last_contacted_at: lead.lastContactedAt?.toISOString() ?? null,
+        last_replied_at: lead.lastRepliedAt?.toISOString() ?? null,
         created_at: lead.createdAt?.toISOString() ?? null,
         updated_at: lead.updatedAt?.toISOString() ?? null,
         latest_message: latestMsg

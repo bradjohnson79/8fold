@@ -10,11 +10,17 @@ import cron from "node-cron";
 import dotenv from "dotenv";
 import { runLgsOutreachScheduler } from "../src/services/lgs/lgsOutreachSchedulerService";
 import { runFollowupEngine } from "../src/services/lgs/lgsFollowupService";
-import { rescoreDirtyLeads } from "../src/services/lgs/lgsLeadScoringService";
+import { syncGmailReplies } from "../src/services/lgs/gmailReplySyncService";
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || path.join(process.cwd(), "apps/api/.env.local") });
 
+let schedulerRunning = false;
+let followupsRunning = false;
+let replySyncRunning = false;
+
 function runScheduler() {
+  if (schedulerRunning) return;
+  schedulerRunning = true;
   runLgsOutreachScheduler()
     .then(({ sent, failed }) => {
       if (sent > 0 || failed > 0) {
@@ -23,10 +29,15 @@ function runScheduler() {
     })
     .catch((err) => {
       console.error("[LGS Outreach] scheduler error:", err);
+    })
+    .finally(() => {
+      schedulerRunning = false;
     });
 }
 
 function runFollowups() {
+  if (followupsRunning) return;
+  followupsRunning = true;
   runFollowupEngine()
     .then((r) => {
       if (r.generated > 0 || r.paused > 0 || r.errors > 0) {
@@ -35,18 +46,26 @@ function runFollowups() {
     })
     .catch((err) => {
       console.error("[LGS Follow-up] engine error:", err);
+    })
+    .finally(() => {
+      followupsRunning = false;
     });
 }
 
-function runRescore() {
-  rescoreDirtyLeads(500)
-    .then((updated) => {
-      if (updated > 0) {
-        console.log(`[LGS Scoring] rescored ${updated} dirty leads`);
+function runReplySync() {
+  if (replySyncRunning) return;
+  replySyncRunning = true;
+  syncGmailReplies()
+    .then((r) => {
+      if (r.updated > 0 || r.errors > 0) {
+        console.log(`[LGS Replies] scanned=${r.scanned} matched=${r.matched} updated=${r.updated} errors=${r.errors}`);
       }
     })
     .catch((err) => {
-      console.error("[LGS Scoring] rescore error:", err);
+      console.error("[LGS Replies] sync error:", err);
+    })
+    .finally(() => {
+      replySyncRunning = false;
     });
 }
 
@@ -54,10 +73,11 @@ function runRescore() {
 cron.schedule("*/1 * * * *", runScheduler, { timezone: "America/Los_Angeles" });
 // Follow-up engine: every 5 minutes
 cron.schedule("*/5 * * * *", runFollowups, { timezone: "America/Los_Angeles" });
-// Dirty-lead rescore: every 10 minutes
-cron.schedule("*/10 * * * *", runRescore, { timezone: "America/Los_Angeles" });
+// Reply sync: every 5 minutes
+cron.schedule("*/5 * * * *", runReplySync, { timezone: "America/Los_Angeles" });
 
 runScheduler();
+runReplySync();
 
 console.log("[LGS Outreach] Worker started. Cron: */1 * * * * (every minute)");
 

@@ -5,32 +5,44 @@ import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber, toNumber } from "@/lib/formatters";
 
 type FunnelData = {
-  leads: number;
-  verified_leads: number;
+  total_leads: number;
   emails_sent: number;
-  emails_sent_today: number;
-  emails_sent_week: number;
-  responses: number;
+  bounces: number;
+  replies: number;
   signups: number;
   active_contractors: number;
-  messages_generated: number;
-  messages_approved: number;
+  active_job_posters: number;
   bounce_rate: number;
-  verification_rate: number;
-  outreach_conversion_rate: number;
-  discovery_success_rate: number;
+  reply_rate: number;
+  conversion_rate: number;
 };
 
 type ChannelRow = { channel: string; leads: number; signups: number; conversion: string };
 type RegionRow = { state: string; city: string; leads: number; signups: number; status: string };
 
+function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): FunnelData {
+  return {
+    total_leads: toNumber(value?.total_leads),
+    emails_sent: toNumber(value?.emails_sent),
+    bounces: toNumber(value?.bounces),
+    replies: toNumber(value?.replies),
+    signups: toNumber(value?.signups),
+    active_contractors: toNumber(value?.active_contractors),
+    active_job_posters: toNumber(value?.active_job_posters),
+    bounce_rate: toNumber(value?.bounce_rate),
+    reply_rate: toNumber(value?.reply_rate),
+    conversion_rate: toNumber(value?.conversion_rate),
+  };
+}
+
 function MetricCard({ title, value, color = "#f8fafc", sub }: { title: string; value: string | number; color?: string; sub?: string }) {
   return (
     <div style={{ padding: "1rem 1.25rem", background: "#1e293b", borderRadius: 8 }}>
       <div style={{ fontSize: "0.78rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.35rem" }}>{title}</div>
-      <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
+      <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{typeof value === "number" ? formatNumber(value) : value}</div>
       {sub && <div style={{ fontSize: "0.75rem", color: "#475569", marginTop: "0.2rem" }}>{sub}</div>}
     </div>
   );
@@ -56,7 +68,7 @@ function FunnelStep({ label, value, pct, color }: { label: string; value: number
     <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.65rem 0", borderBottom: "1px solid #1e293b" }}>
       <div style={{ width: 12, height: 12, borderRadius: "50%", background: color, flexShrink: 0 }} />
       <div style={{ flex: 1, fontSize: "0.9rem", color: "#94a3b8" }}>{label}</div>
-      <div style={{ fontWeight: 700, fontSize: "1rem" }}>{value.toLocaleString()}</div>
+      <div style={{ fontWeight: 700, fontSize: "1rem" }}>{formatNumber(value)}</div>
       {pct && <div style={{ fontSize: "0.8rem", color: "#475569", width: 55, textAlign: "right" }}>{pct}</div>}
     </div>
   );
@@ -81,7 +93,7 @@ export default function InvestorPage() {
         const c = r2 as unknown as { ok: boolean; data?: ChannelRow[]; error?: string };
         const rg = r3 as unknown as { ok: boolean; data?: RegionRow[]; error?: string };
 
-        if (f.ok && f.data) setFunnel(f.data);
+        if (f.ok && f.data) setFunnel(normalizeFunnelData(f.data));
         else setErr(f.error ?? "Failed to load funnel");
 
         if (c.ok) setChannels(c.data ?? []);
@@ -93,13 +105,8 @@ export default function InvestorPage() {
 
   if (err) return <p style={{ color: "#f87171", padding: "2rem" }}>{err}</p>;
 
-  const conversionRate = funnel && funnel.leads > 0
-    ? ((funnel.signups / funnel.leads) * 100).toFixed(2)
-    : "0.00";
-
-  const responseRate = funnel && funnel.emails_sent > 0
-    ? ((funnel.responses / funnel.emails_sent) * 100).toFixed(1)
-    : "0.0";
+  const conversionRate = String(funnel?.conversion_rate?.toFixed(1) ?? "0.0");
+  const responseRate = String(funnel?.reply_rate?.toFixed(1) ?? "0.0");
 
   const topChannels = [...channels]
     .sort((a, b) => b.leads - a.leads)
@@ -125,11 +132,13 @@ export default function InvestorPage() {
         <>
           {/* Primary KPI cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
-            <MetricCard title="Total Leads" value={funnel?.leads ?? 0} />
+            <MetricCard title="Total Leads" value={funnel?.total_leads ?? 0} />
             <MetricCard title="Emails Sent" value={funnel?.emails_sent ?? 0} color="#60a5fa" />
-            <MetricCard title="Responses" value={funnel?.responses ?? 0} color="#a78bfa" />
+            <MetricCard title="Bounces" value={funnel?.bounces ?? 0} color="#f87171" />
+            <MetricCard title="Replies" value={funnel?.replies ?? 0} color="#a78bfa" />
             <MetricCard title="Signups" value={funnel?.signups ?? 0} color="#4ade80" />
             <MetricCard title="Active Contractors" value={funnel?.active_contractors ?? 0} color="#34d399" />
+            <MetricCard title="Active Job Posters" value={funnel?.active_job_posters ?? 0} color="#38bdf8" />
             <MetricCard
               title="Conversion Rate"
               value={`${conversionRate}%`}
@@ -137,7 +146,7 @@ export default function InvestorPage() {
               sub="leads → signup"
             />
             <MetricCard title="Response Rate" value={`${responseRate}%`} color="#a78bfa" sub="sent → reply" />
-            <MetricCard title="Sent Today" value={funnel?.emails_sent_today ?? 0} color="#38bdf8" sub="current day" />
+            <MetricCard title="Bounce Rate" value={`${funnel?.bounce_rate ?? 0}%`} color="#f87171" sub="sent → bounce" />
           </div>
 
           {/* Two-column layout: funnel + rates */}
@@ -147,12 +156,11 @@ export default function InvestorPage() {
               <h3 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.75rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Acquisition Funnel
               </h3>
-              <FunnelStep label="Total Leads" value={funnel?.leads ?? 0} color="#3b82f6" />
-              <FunnelStep label="Messages Generated" value={funnel?.messages_generated ?? 0} pct={funnel?.leads ? `${((funnel.messages_generated / funnel.leads) * 100).toFixed(0)}%` : "—"} color="#6366f1" />
-              <FunnelStep label="Messages Approved" value={funnel?.messages_approved ?? 0} pct={funnel?.messages_generated ? `${((funnel.messages_approved / funnel.messages_generated) * 100).toFixed(0)}%` : "—"} color="#8b5cf6" />
-              <FunnelStep label="Emails Sent" value={funnel?.emails_sent ?? 0} pct={funnel?.messages_approved ? `${((funnel.emails_sent / funnel.messages_approved) * 100).toFixed(0)}%` : "—"} color="#60a5fa" />
-              <FunnelStep label="Responses" value={funnel?.responses ?? 0} pct={funnel?.emails_sent ? `${((funnel.responses / funnel.emails_sent) * 100).toFixed(0)}%` : "—"} color="#a78bfa" />
-              <FunnelStep label="Contractor Signups" value={funnel?.signups ?? 0} pct={funnel?.responses ? `${((funnel.signups / funnel.responses) * 100).toFixed(0)}%` : "—"} color="#4ade80" />
+              <FunnelStep label="Total Leads" value={funnel?.total_leads ?? 0} color="#3b82f6" />
+              <FunnelStep label="Emails Sent" value={funnel?.emails_sent ?? 0} pct={funnel?.total_leads ? `${((funnel.emails_sent / funnel.total_leads) * 100).toFixed(0)}%` : "—"} color="#60a5fa" />
+              <FunnelStep label="Bounces" value={funnel?.bounces ?? 0} pct={funnel?.emails_sent ? `${((funnel.bounces / funnel.emails_sent) * 100).toFixed(0)}%` : "—"} color="#f87171" />
+              <FunnelStep label="Replies" value={funnel?.replies ?? 0} pct={funnel?.emails_sent ? `${((funnel.replies / funnel.emails_sent) * 100).toFixed(0)}%` : "—"} color="#a78bfa" />
+              <FunnelStep label="Contractor Signups" value={funnel?.signups ?? 0} pct={funnel?.replies ? `${((funnel.signups / funnel.replies) * 100).toFixed(0)}%` : "—"} color="#4ade80" />
             </div>
 
             {/* Rate metrics */}
@@ -160,16 +168,14 @@ export default function InvestorPage() {
               <h3 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "1rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Performance Rates
               </h3>
-              <RateBar label="Verification Rate" value={funnel?.verification_rate ?? 0} color="#38bdf8" />
+              <RateBar label="Bounce Rate" value={funnel?.bounce_rate ?? 0} color="#f87171" />
               <RateBar label="Response Rate" value={parseFloat(responseRate)} color="#a78bfa" />
               <RateBar label="Conversion Rate (Lead→Signup)" value={parseFloat(conversionRate)} color="#4ade80" />
-              <RateBar label="Outreach Conversion" value={funnel?.outreach_conversion_rate ?? 0} color="#60a5fa" />
-              <RateBar label="Discovery Success" value={funnel?.discovery_success_rate ?? 0} color="#facc15" />
 
               {funnel && (
                 <div style={{ marginTop: "1.25rem", padding: "0.75rem", background: "#0f172a", borderRadius: 7, fontSize: "0.8rem", color: "#64748b" }}>
                   Bounce rate: <strong style={{ color: funnel.bounce_rate > 10 ? "#f87171" : "#4ade80" }}>{funnel.bounce_rate}%</strong>
-                  {" · "}Sent this week: <strong style={{ color: "#94a3b8" }}>{funnel.emails_sent_week.toLocaleString()}</strong>
+                  {" · "}Active job posters: <strong style={{ color: "#94a3b8" }}>{formatNumber(funnel.active_job_posters)}</strong>
                 </div>
               )}
             </div>
@@ -192,7 +198,7 @@ export default function InvestorPage() {
                   <div key={c.channel} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid #0f172a" }}>
                     <span style={{ fontFamily: "monospace", fontSize: "0.82rem", color: "#94a3b8" }}>{c.channel}</span>
                     <div style={{ textAlign: "right" }}>
-                      <span style={{ fontWeight: 600 }}>{c.leads.toLocaleString()}</span>
+                      <span style={{ fontWeight: 600 }}>{formatNumber(c.leads)}</span>
                       <span style={{ color: "#475569", fontSize: "0.78rem", marginLeft: 8 }}>leads</span>
                     </div>
                   </div>
@@ -218,7 +224,7 @@ export default function InvestorPage() {
                       {r.state && <span style={{ color: "#475569", marginLeft: 4 }}>{r.state}</span>}
                     </span>
                     <div style={{ textAlign: "right" }}>
-                      <span style={{ fontWeight: 600 }}>{r.leads.toLocaleString()}</span>
+                      <span style={{ fontWeight: 600 }}>{formatNumber(r.leads)}</span>
                       <span style={{ color: "#475569", fontSize: "0.78rem", marginLeft: 8 }}>leads</span>
                     </div>
                   </div>

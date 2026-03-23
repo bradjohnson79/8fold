@@ -8,10 +8,10 @@
  *
  * Returns JSON { subject, body } where body is the complete assembled HTML.
  *
- * Message types (Outreach Brain):
- *   intro_short         — sparse leads, low priority
+ * Message types:
+ *   intro_short         — sparse leads
  *   intro_standard      — default for most leads
- *   intro_trade_specific — high-priority leads with known trade + city
+ *   intro_trade_specific — richer leads with known trade + city
  *   followup_1          — first follow-up after no reply
  *   followup_2          — second follow-up after no reply
  */
@@ -36,8 +36,6 @@ export type GenerateInput = {
   city: string;
   state?: string;
   contactName?: string;
-  // Brain fields — optional for backward compat
-  leadPriority?: string;
   followupCount?: number;
   lastMessageTypeSent?: string | null;
 };
@@ -58,7 +56,7 @@ export type GenerateResult = {
  * Never re-generates an intro if one was already sent.
  */
 export function determineMessageType(input: GenerateInput): MessageType {
-  const { followupCount = 0, lastMessageTypeSent, leadPriority } = input;
+  const { followupCount = 0, lastMessageTypeSent } = input;
 
   // Follow-up path — driven by followup_count
   if (followupCount >= 2) return "followup_2";
@@ -71,9 +69,9 @@ export function determineMessageType(input: GenerateInput): MessageType {
     return "followup_1";
   }
 
-  // Intro path — based on lead priority and data richness
-  if (leadPriority === "high" && input.trade && input.city) return "intro_trade_specific";
-  if (leadPriority === "low" || (!input.trade && !input.city)) return "intro_short";
+  // Intro path — based on available lead context only
+  if (input.trade && input.city) return "intro_trade_specific";
+  if (!input.trade && !input.city) return "intro_short";
   return "intro_standard";
 }
 
@@ -83,9 +81,9 @@ export function determineMessageType(input: GenerateInput): MessageType {
  */
 export function computeMessageVersionHash(
   messageType: MessageType,
-  input: Pick<GenerateInput, "trade" | "city" | "leadPriority">
+  input: Pick<GenerateInput, "trade" | "city">
 ): string {
-  const payload = `${messageType}|${input.trade ?? ""}|${input.city ?? ""}|${input.leadPriority ?? "medium"}`;
+  const payload = `${messageType}|${input.trade ?? ""}|${input.city ?? ""}`;
   return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 16);
 }
 

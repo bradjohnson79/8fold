@@ -1,6 +1,12 @@
-import { NextRequest } from "next/server";
-import { proxyToApiRaw } from "@/server/api/proxy";
+import { NextResponse } from "next/server";
 
-export async function POST(req: NextRequest) {
-  return proxyToApiRaw("/api/lgs/leads/archive-quality", req);
+export async function POST() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "route_disabled",
+      message: "Quality-based archiving was retired in the simplicity reset.",
+    },
+    { status: 410 }
+  );
 }

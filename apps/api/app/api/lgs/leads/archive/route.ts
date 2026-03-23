@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     await db
       .update(contractorLeads)
-      .set({ archived: true, archivedAt: new Date() })
+      .set({ archived: true, archivedAt: new Date(), status: "archived" })
       .where(inArray(contractorLeads.id, leadIds));
 
     return NextResponse.json({ ok: true, data: { archived: leadIds.length } });

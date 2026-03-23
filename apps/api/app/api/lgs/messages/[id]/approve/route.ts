@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
+import { contractorLeads, lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
 
 export async function POST(
   req: Request,
@@ -15,9 +15,6 @@ export async function POST(
     if (!messageId) {
       return NextResponse.json({ ok: false, error: "message_id_required" }, { status: 400 });
     }
-
-    const body = (await req.json().catch(() => ({}))) as { priority?: number };
-    const priority = typeof body.priority === "number" ? body.priority : 5;
 
     const [msg] = await db
       .select()
@@ -43,12 +40,29 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "already_queued" }, { status: 400 });
     }
 
+    const [lead] = await db
+      .select({
+        contactAttempts: contractorLeads.contactAttempts,
+        archived: contractorLeads.archived,
+        status: contractorLeads.status,
+      })
+      .from(contractorLeads)
+      .where(eq(contractorLeads.id, msg.leadId))
+      .limit(1);
+
+    if (!lead || lead.archived || lead.status === "archived") {
+      return NextResponse.json({ ok: false, error: "lead_not_sendable" }, { status: 400 });
+    }
+
+    if ((msg.messageType ?? "intro_standard").startsWith("intro") && (lead.contactAttempts ?? 0) > 0) {
+      return NextResponse.json({ ok: false, error: "lead_already_contacted" }, { status: 400 });
+    }
+
     const [queued] = await db
       .insert(lgsOutreachQueue)
       .values({
         outreachMessageId: messageId,
         leadId: msg.leadId,
-        priority,
         sendStatus: "pending",
         attempts: 0,
       })

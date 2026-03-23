@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { formatDateTime } from "@/lib/formatters";
 
 type WarmupSender = {
   id: string;
@@ -281,7 +282,7 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
           </div>
           {sender.next_warmup_send_at && (
             <div style={{ fontSize: "0.72rem", color: "#475569" }}>
-              Scheduled: {new Date(sender.next_warmup_send_at).toLocaleString()}
+              Scheduled: {formatDateTime(sender.next_warmup_send_at)}
             </div>
           )}
         </div>
@@ -600,7 +601,7 @@ export default function WarmupPage() {
                 <tbody>
                   {activity.slice(0, 25).map((a) => (
                     <tr key={a.id} style={{ borderBottom: "1px solid #0f172a" }}>
-                      <td style={{ padding: "0.5rem 0.6rem", color: "#94a3b8", whiteSpace: "nowrap" }}>{a.sent_at ? new Date(a.sent_at).toLocaleString() : "—"}</td>
+                      <td style={{ padding: "0.5rem 0.6rem", color: "#94a3b8", whiteSpace: "nowrap" }}>{formatDateTime(a.sent_at)}</td>
                       <td style={{ padding: "0.5rem 0.6rem", fontFamily: "monospace", color: "#e2e8f0" }}>{a.sender_email}</td>
                       <td style={{ padding: "0.5rem 0.6rem", fontFamily: "monospace", color: "#94a3b8" }}>
                         {a.recipient_email}

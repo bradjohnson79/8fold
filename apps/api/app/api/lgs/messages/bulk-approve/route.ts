@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
+import { contractorLeads, lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
 
 async function approveMessage(messageId: string): Promise<{ ok: boolean; error?: string }> {
   const [msg] = await db
@@ -26,10 +26,27 @@ async function approveMessage(messageId: string): Promise<{ ok: boolean; error?:
 
   if (existing.length > 0) return { ok: false, error: "already_queued" };
 
+  const [lead] = await db
+    .select({
+      contactAttempts: contractorLeads.contactAttempts,
+      archived: contractorLeads.archived,
+      status: contractorLeads.status,
+    })
+    .from(contractorLeads)
+    .where(eq(contractorLeads.id, msg.leadId))
+    .limit(1);
+
+  if (!lead || lead.archived || lead.status === "archived") {
+    return { ok: false, error: "lead_not_sendable" };
+  }
+
+  if ((msg.messageType ?? "intro_standard").startsWith("intro") && (lead.contactAttempts ?? 0) > 0) {
+    return { ok: false, error: "lead_already_contacted" };
+  }
+
   await db.insert(lgsOutreachQueue).values({
     outreachMessageId: messageId,
     leadId: msg.leadId,
-    priority: 5,
     sendStatus: "pending",
     attempts: 0,
   });

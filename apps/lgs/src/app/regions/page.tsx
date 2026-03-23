@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber } from "@/lib/formatters";
 
 type RegionRow = {
   state: string;
@@ -22,7 +23,7 @@ function StatCard({ title, value, sub }: { title: string; value: string | number
   return (
     <div style={{ padding: "1rem 1.25rem", background: "#1e293b", borderRadius: 8 }}>
       <div style={{ fontSize: "0.8rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.35rem" }}>{title}</div>
-      <div style={{ fontSize: "1.4rem", fontWeight: 700 }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
+      <div style={{ fontSize: "1.4rem", fontWeight: 700 }}>{typeof value === "number" ? formatNumber(value) : value}</div>
       {sub && <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "0.2rem" }}>{sub}</div>}
     </div>
   );
@@ -137,10 +138,10 @@ export default function RegionsPage() {
                 <tr key={i} style={{ borderBottom: "1px solid #1e293b" }}>
                   <td style={{ padding: "0.75rem 1rem", color: "#94a3b8" }}>{row.state || "—"}</td>
                   <td style={{ padding: "0.75rem 1rem", fontWeight: 500 }}>{row.city || "—"}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.leads.toLocaleString()}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.emails_sent.toLocaleString()}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.responses.toLocaleString()}</td>
-                  <td style={{ padding: "0.75rem 1rem" }}>{row.signups.toLocaleString()}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.leads)}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.emails_sent)}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.responses)}</td>
+                  <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.signups)}</td>
                   <td style={{ padding: "0.75rem 1rem" }}>
                     <span style={{
                       padding: "0.2rem 0.55rem",
@@ -176,8 +177,8 @@ export default function RegionsPage() {
                 return (
                   <tr key={row.state} style={{ borderBottom: "1px solid #1e293b" }}>
                     <td style={{ padding: "0.75rem 1rem", fontWeight: 500 }}>{row.state || "Unknown"}</td>
-                    <td style={{ padding: "0.75rem 1rem" }}>{row.leads.toLocaleString()}</td>
-                    <td style={{ padding: "0.75rem 1rem" }}>{row.signups.toLocaleString()}</td>
+                    <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.leads)}</td>
+                    <td style={{ padding: "0.75rem 1rem" }}>{formatNumber(row.signups)}</td>
                     <td style={{ padding: "0.75rem 1rem" }}>
                       <span style={{ padding: "0.2rem 0.55rem", borderRadius: 4, fontSize: "0.78rem", fontWeight: 600, color, background: color + "1a" }}>
                         {row.status}

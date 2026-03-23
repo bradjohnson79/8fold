@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { LeadFinderMap, type LatLng } from "@/components/LeadFinderMap";
+import { formatNumber } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,7 +83,7 @@ function StatCard({ label, value, color = "#f8fafc", sub }: { label: string; val
   return (
     <div style={{ background: "#0f172a", borderRadius: 8, padding: "0.9rem 1.1rem", textAlign: "center", minWidth: 110 }}>
       <div style={{ fontSize: "1.4rem", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
-        {typeof value === "number" ? value.toLocaleString() : value}
+        {typeof value === "number" ? formatNumber(value) : value}
       </div>
       <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "0.2rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
       {sub && <div style={{ fontSize: "0.7rem", color: "#475569", marginTop: "0.1rem" }}>{sub}</div>}
@@ -557,7 +558,7 @@ export default function LeadFinderPage() {
               </div>
               <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexShrink: 0 }}>
                 <div style={{ textAlign: "right", fontSize: "0.82rem" }}>
-                  <div style={{ color: "#4ade80", fontWeight: 700 }}>{(c.unique_domains ?? 0).toLocaleString()} domains</div>
+                  <div style={{ color: "#4ade80", fontWeight: 700 }}>{formatNumber(c.unique_domains ?? 0)} domains</div>
                   <div style={{ color: "#64748b" }}>{formatElapsed(c.elapsed_seconds)}</div>
                 </div>
                 <StatusBadge status={c.status} />
@@ -637,14 +638,14 @@ export default function LeadFinderPage() {
             <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem", marginBottom: "1.5rem", border: "1px solid #334155" }}>
               {sendResult ? (
                 <div style={{ color: "#4ade80", fontSize: "0.9rem" }}>
-                  <strong>{sendResult.domains.toLocaleString()} domains</strong> sent to Domain Discovery in {sendResult.batches} batch{sendResult.batches !== 1 ? "es" : ""}.{" "}
+                  <strong>{formatNumber(sendResult.domains ?? 0)} domains</strong> sent to Domain Discovery in {sendResult.batches} batch{sendResult.batches !== 1 ? "es" : ""}.{" "}
                   <Link href="/discovery" style={{ color: "#38bdf8" }}>View Discovery Runs →</Link>
                 </div>
               ) : (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 600, color: "#f8fafc", marginBottom: "0.2rem" }}>
-                      {(selectedCampaign.unique_domains - selectedCampaign.domains_sent).toLocaleString()} domains ready to send
+                      {formatNumber(selectedCampaign.unique_domains - selectedCampaign.domains_sent)} domains remaining to send
                     </div>
                     <div style={{ fontSize: "0.82rem", color: "#64748b" }}>
                       Will be chunked into batches of 200 discovery runs. Emails will be extracted and verified automatically.

@@ -12,7 +12,6 @@ type DiscoveryLead = {
   contact_name: string | null;
   industry: string | null;
   domain: string | null;
-  verification_score: number | null;
   discovery_method: string | null;
   imported: boolean;
 };
@@ -496,7 +495,7 @@ export default function DiscoveryPage() {
                   <th style={{ padding: "0.75rem" }}>Contact</th>
                   <th style={{ padding: "0.75rem" }}>Industry</th>
                   <th style={{ padding: "0.75rem" }}>Email</th>
-                  <th style={{ padding: "0.75rem" }}>Score</th>
+                  <th style={{ padding: "0.75rem" }}>Email Safety</th>
                   <th style={{ padding: "0.75rem" }}>Method</th>
                   <th style={{ padding: "0.75rem" }}>Status</th>
                 </tr>
@@ -520,7 +519,7 @@ export default function DiscoveryPage() {
                     <td style={{ padding: "0.75rem" }}>{l.contact_name ?? "—"}</td>
                     <td style={{ padding: "0.75rem" }}>{l.industry ?? "—"}</td>
                     <td style={{ padding: "0.75rem" }}>{l.email}</td>
-                    <td style={{ padding: "0.75rem" }}>{l.verification_score ?? "—"}</td>
+                    <td style={{ padding: "0.75rem" }}>{l.imported ? "Valid" : "Pending"}</td>
                     <td style={{ padding: "0.75rem" }}>
                       {l.discovery_method === "scraped_email"
                         ? "scraped"
@@ -528,7 +527,7 @@ export default function DiscoveryPage() {
                           ? "pattern"
                           : l.discovery_method ?? "—"}
                     </td>
-                    <td style={{ padding: "0.75rem" }}>{l.imported ? "Imported" : "Verified"}</td>
+                    <td style={{ padding: "0.75rem" }}>{l.imported ? "Imported" : "Pending"}</td>
                   </tr>
                 ))}
               </tbody>

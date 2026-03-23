@@ -3,6 +3,7 @@
  * Bounce protection: on 550/bounce, mark contact invalid_email.
  */
 import { google } from "googleapis";
+import type { gmail_v1 } from "googleapis";
 import { appendSignature } from "./outreachSignatureService";
 
 export type GmailMessagePayload = {
@@ -40,9 +41,25 @@ function getRefreshTokenForSender(senderAccount: string): string | null {
   return null;
 }
 
+export function listConfiguredLgsSenders(): string[] {
+  return SENDER_ENV_PAIRS
+    .filter((pair) => pair.sender && pair.token)
+    .map((pair) => pair.sender.trim().toLowerCase());
+}
+
 /** Returns true if sender has a configured Gmail token. */
 export function hasGmailTokenForSender(senderAccount: string): boolean {
   return getRefreshTokenForSender(senderAccount) !== null;
+}
+
+export function createGmailClientForSender(senderAccount: string): gmail_v1.Gmail {
+  const refreshToken = getRefreshTokenForSender(senderAccount);
+  if (!refreshToken) {
+    throw new Error(`No Gmail refresh token configured for sender: ${senderAccount}`);
+  }
+
+  const auth = getOAuth2Client(refreshToken);
+  return google.gmail({ version: "v1", auth });
 }
 
 function buildMimeMessage(params: {
@@ -79,13 +96,7 @@ export type SendResult =
 
 export async function sendOutreachEmail(msg: GmailMessagePayload): Promise<SendResult> {
   const senderAccount = msg.senderAccount ?? process.env.GMAIL_SENDER_1 ?? "info@8fold.app";
-  const refreshToken = getRefreshTokenForSender(senderAccount);
-  if (!refreshToken) {
-    throw new Error(`No Gmail refresh token configured for sender: ${senderAccount}`);
-  }
-
-  const auth = getOAuth2Client(refreshToken);
-  const gmail = google.gmail({ version: "v1", auth });
+  const gmail = createGmailClientForSender(senderAccount);
 
   const bodyWithSignature = appendSignature(msg.body);
   const mime = buildMimeMessage({

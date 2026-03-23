@@ -9,13 +9,19 @@ import { helpText } from "@/lib/helpText";
 type VerificationLead = {
   id: string;
   email: string;
-  verification_score: number | null;
   verification_status: string | null;
   verification_source: string | null;
   domain_reputation: string | null;
   email_bounced: boolean | null;
   created_at: string | null;
 };
+
+function normalizeVerificationStatus(status: string | null | undefined): "pending" | "valid" | "invalid" {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (normalized === "valid" || normalized === "verified" || normalized === "qualified") return "valid";
+  if (normalized === "invalid" || normalized === "blocked" || normalized === "rejected" || normalized === "low_quality") return "invalid";
+  return "pending";
+}
 
 export default function VerificationPage() {
   const [leads, setLeads] = useState<VerificationLead[]>([]);
@@ -38,7 +44,7 @@ export default function VerificationPage() {
         Email Verification <HelpTooltip text={helpText.verification} />
       </h1>
       <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>
-        Verification worker runs every 5 minutes. Only verified leads (score ≥ 85) are eligible for outreach.
+        Verification retries run in the background. `Valid` emails can send, `pending` retries later, and only `invalid` is blocked.
       </p>
       <p style={{ marginBottom: "1.5rem" }}>
         <Link href="/leads" style={{ color: "#38bdf8" }}>
@@ -50,22 +56,22 @@ export default function VerificationPage() {
           <thead>
             <tr style={{ borderBottom: "1px solid #334155", textAlign: "left" }}>
               <th style={{ padding: "0.75rem" }}>Email</th>
-              <th style={{ padding: "0.75rem" }}>Score</th>
               <th style={{ padding: "0.75rem" }}>Status</th>
               <th style={{ padding: "0.75rem" }}>Source</th>
               <th style={{ padding: "0.75rem" }}>Domain Reputation</th>
               <th style={{ padding: "0.75rem" }}>Bounced</th>
+              <th style={{ padding: "0.75rem" }}>Created</th>
             </tr>
           </thead>
           <tbody>
             {leads.map((l) => (
               <tr key={l.id} style={{ borderBottom: "1px solid #334155" }}>
                 <td style={{ padding: "0.75rem" }}>{l.email}</td>
-                <td style={{ padding: "0.75rem" }}>{l.verification_score ?? "—"}</td>
-                <td style={{ padding: "0.75rem" }}>{l.verification_status ?? "—"}</td>
+                <td style={{ padding: "0.75rem" }}>{normalizeVerificationStatus(l.verification_status)}</td>
                 <td style={{ padding: "0.75rem" }}>{l.verification_source ?? "—"}</td>
                 <td style={{ padding: "0.75rem" }}>{l.domain_reputation ?? "—"}</td>
                 <td style={{ padding: "0.75rem" }}>{l.email_bounced ? "Yes" : "—"}</td>
+                <td style={{ padding: "0.75rem" }}>{l.created_at ? new Date(l.created_at).toLocaleDateString() : "—"}</td>
               </tr>
             ))}
           </tbody>

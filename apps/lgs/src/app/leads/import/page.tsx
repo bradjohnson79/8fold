@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber } from "@/lib/formatters";
 
 const CSV_TEMPLATE = `website,city,state,country
 proper-handyman.com,San Jose,CA,US
@@ -47,7 +48,7 @@ function StatRow({ label, value, color = "#f8fafc", sub }: { label: string; valu
       <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{label}</span>
       <div style={{ textAlign: "right" }}>
         <span style={{ fontWeight: 700, fontSize: "1.1rem", color, fontVariantNumeric: "tabular-nums" }}>
-          {typeof value === "number" ? value.toLocaleString() : value}
+          {typeof value === "number" ? formatNumber(value) : value}
         </span>
         {sub && <div style={{ fontSize: "0.7rem", color: "#475569" }}>{sub}</div>}
       </div>
@@ -477,7 +478,7 @@ export default function ImportContractorWebsitesPage() {
               <div style={{ fontWeight: 700, color: "#4ade80", marginBottom: "0.35rem" }}>Discovery Cancelled</div>
               <div style={{ color: "#94a3b8", fontSize: "0.875rem", marginBottom: "0.75rem" }}>
                 {(s.inserted_leads ?? 0) > 0
-                  ? `${(s.inserted_leads ?? 0).toLocaleString()} leads were created before cancellation and are available in your database.`
+                  ? `${formatNumber(s.inserted_leads ?? 0)} leads were created before cancellation and are available in your database.`
                   : "Scan was cancelled before any leads were created."}
               </div>
               <div style={{ display: "flex", gap: "0.75rem" }}>
@@ -486,7 +487,7 @@ export default function ImportContractorWebsitesPage() {
                     href="/leads"
                     style={{ padding: "0.5rem 1rem", background: "#22c55e", borderRadius: 7, color: "#0f172a", fontWeight: 700, textDecoration: "none", fontSize: "0.875rem" }}
                   >
-                    View {(s.inserted_leads ?? 0).toLocaleString()} Leads →
+                    View {formatNumber(s.inserted_leads ?? 0)} Leads →
                   </Link>
                 )}
                 <button
@@ -515,7 +516,7 @@ export default function ImportContractorWebsitesPage() {
                     fontSize: "0.9rem",
                   }}
                 >
-                  View {(s.inserted_leads ?? 0).toLocaleString()} New Leads →
+                  View {formatNumber(s.inserted_leads ?? 0)} New Leads →
                 </Link>
                 <button
                   type="button"
@@ -527,7 +528,7 @@ export default function ImportContractorWebsitesPage() {
               </div>
               {(s.inserted_leads ?? 0) > 0 && (
                 <div style={{ marginTop: "0.85rem", padding: "0.6rem 0.85rem", background: "#1a2b3d", border: "1px solid #334155", borderRadius: 7, fontSize: "0.82rem", color: "#94a3b8" }}>
-                  Leads created with <strong style={{ color: "#fbbf24" }}>pending</strong> verification status. Run the enrichment worker to verify emails and archive low-quality leads:
+                  Leads are created with <strong style={{ color: "#fbbf24" }}>pending</strong> verification status. Run the verification worker to process them in the background without blocking imports:
                   <code style={{ display: "block", marginTop: "0.4rem", padding: "0.3rem 0.5rem", background: "#0f172a", borderRadius: 4, color: "#38bdf8", fontSize: "0.78rem" }}>
                     npx tsx apps/api/scripts/lgs-email-enrichment-worker.ts --once
                   </code>

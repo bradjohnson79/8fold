@@ -96,9 +96,6 @@ export function NavBar() {
           Outreach ▾
         </button>
         <div style={dropdownContentStyle} className="nav-dropdown-content">
-          <Link href="/outreach/brain" style={{ ...dropdownItemStyle, color: "#a78bfa", fontWeight: 500 }}>
-            Outreach Brain ✦
-          </Link>
           <Link href="/messages" style={dropdownItemStyle}>
             Messages
           </Link>
@@ -169,9 +166,6 @@ export function NavBar() {
           </Link>
           <Link href="/settings" style={dropdownItemStyle}>
             Settings
-          </Link>
-          <Link href="/settings/outreach" style={dropdownItemStyle}>
-            Outreach Settings
           </Link>
           <Link href="/workers" style={dropdownItemStyle}>
             System Monitor

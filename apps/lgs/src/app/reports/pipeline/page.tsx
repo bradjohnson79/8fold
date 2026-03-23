@@ -5,6 +5,7 @@ import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber } from "@/lib/formatters";
 
 type Stage = { stage: string; count: number };
 
@@ -42,7 +43,7 @@ export default function PipelinePage() {
             {data.map((row) => (
               <tr key={row.stage} style={{ borderBottom: "1px solid #334155" }}>
                 <td style={{ padding: "0.75rem" }}>{row.stage}</td>
-                <td style={{ padding: "0.75rem" }}>{row.count.toLocaleString()}</td>
+                <td style={{ padding: "0.75rem" }}>{formatNumber(row.count)}</td>
               </tr>
             ))}
           </tbody>
