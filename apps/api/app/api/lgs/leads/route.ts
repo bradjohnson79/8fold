@@ -8,14 +8,13 @@
  *   filter_source          filter by source value
  *   filter_contact_status  unsent|sent|replied|converted
  *   filter_message_status  none|ready|approved|sent
- *   filter_verification_status pending|valid|invalid
  *   filter_archived        active (default) | archived | all
  */
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorLeads, lgsOutreachQueue, outreachMessages } from "@/db/schema/directoryEngine";
-import { deriveLeadBinaryState, deriveLeadUiVerificationLabel } from "@/src/services/lgs/leadBinaryState";
+import { normalizeVerificationStatus } from "@/src/services/lgs/simpleEmailVerification";
 
 const STATE_ABBREVS: Record<string, string> = {
   alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR",
@@ -69,7 +68,6 @@ export async function GET(req: NextRequest) {
     const filterSource = sp.get("filter_source")?.trim() ?? null;
     const filterContactStatus = sp.get("filter_contact_status")?.trim() ?? null;
     const filterMessageStatus = sp.get("filter_message_status")?.trim() ?? null;
-    const filterVerificationStatus = sp.get("filter_verification_status")?.trim() ?? null;
     // active (default) = hide archived; archived = show only archived; all = show everything
     const filterArchived = sp.get("filter_archived")?.trim() ?? "active";
 
@@ -104,15 +102,6 @@ export async function GET(req: NextRequest) {
     if (filterSource) {
       conditions.push(sql`${contractorLeads.source} = ${filterSource}` as ReturnType<typeof ilike>);
     }
-    if (filterVerificationStatus) {
-      if (filterVerificationStatus === "valid") {
-        conditions.push(sql`coalesce(lower(trim(${contractorLeads.emailVerificationStatus})), 'pending') in ('valid', 'verified')` as ReturnType<typeof ilike>);
-      } else if (filterVerificationStatus === "invalid") {
-        conditions.push(sql`coalesce(lower(trim(${contractorLeads.emailVerificationStatus})), 'pending') = 'invalid'` as ReturnType<typeof ilike>);
-      } else {
-        conditions.push(sql`coalesce(lower(trim(${contractorLeads.emailVerificationStatus})), 'pending') not in ('valid', 'verified', 'invalid')` as ReturnType<typeof ilike>);
-      }
-    }
 
     // contact_status is derived; filter in SQL using equivalent logic
     if (filterContactStatus) {
@@ -139,8 +128,8 @@ export async function GET(req: NextRequest) {
     // Enrichment summary — always computed globally (ignores filters) for the status bar
     const enrichmentRes = await db.execute(sql`
       SELECT
-        count(*) FILTER (WHERE email_verification_status = 'pending' OR email_verification_status IS NULL) AS pending,
-        count(*) FILTER (WHERE lower(coalesce(email_verification_status, 'pending')) IN ('valid', 'verified')) AS valid,
+        count(*) FILTER (WHERE verification_status = 'pending' OR verification_status IS NULL) AS pending,
+        count(*) FILTER (WHERE verification_status IN ('valid', 'verified', 'qualified')) AS verified,
         count(*) FILTER (WHERE archived = true) AS archived_count,
         count(*) AS total_all
       FROM directory_engine.contractor_leads
@@ -148,7 +137,7 @@ export async function GET(req: NextRequest) {
     const eRow = (enrichmentRes.rows?.[0] ?? {}) as Record<string, string>;
     const enrichment = {
       pending: Number(eRow.pending ?? 0),
-      valid: Number(eRow.valid ?? 0),
+      verified: Number(eRow.verified ?? 0),
       archived: Number(eRow.archived_count ?? 0),
       total: Number(eRow.total_all ?? 0),
     };
@@ -169,17 +158,10 @@ export async function GET(req: NextRequest) {
         state: contractorLeads.state,
         country: contractorLeads.country,
         source: contractorLeads.source,
-        needs_enrichment: contractorLeads.needsEnrichment,
-        assignment_status: contractorLeads.assignmentStatus,
-        outreach_status: contractorLeads.outreachStatus,
-        email_verification_status: contractorLeads.emailVerificationStatus,
-        email_verification_checked_at: contractorLeads.emailVerificationCheckedAt,
-        email_verification_score: contractorLeads.emailVerificationScore,
-        email_verification_provider: contractorLeads.emailVerificationProvider,
+        status: contractorLeads.status,
         contact_attempts: contractorLeads.contactAttempts,
         response_received: contractorLeads.responseReceived,
         signed_up: contractorLeads.signedUp,
-        reply_count: contractorLeads.replyCount,
         created_at: contractorLeads.createdAt,
         verification_score: contractorLeads.verificationScore,
         verification_status: contractorLeads.verificationStatus,
@@ -189,19 +171,12 @@ export async function GET(req: NextRequest) {
         website: contractorLeads.website,
         archived: contractorLeads.archived,
         archived_at: contractorLeads.archivedAt,
-        archive_reason: contractorLeads.archiveReason,
-        // Brain fields
-        priority_score: contractorLeads.priorityScore,
-        lead_score: contractorLeads.leadScore,
-        lead_priority: contractorLeads.leadPriority,
-        priority_source: contractorLeads.prioritySource,
         outreach_stage: contractorLeads.outreachStage,
         followup_count: contractorLeads.followupCount,
         next_followup_at: contractorLeads.nextFollowupAt,
         last_contacted_at: contractorLeads.lastContactedAt,
         last_replied_at: contractorLeads.lastRepliedAt,
         last_message_type_sent: contractorLeads.lastMessageTypeSent,
-        score_dirty: contractorLeads.scoreDirty,
       })
       .from(contractorLeads)
       .where(whereClause)
@@ -280,22 +255,6 @@ export async function GET(req: NextRequest) {
         signed_up: r.signed_up,
       });
       const messageStatus = deriveMessageStatus(msg);
-      const finalStatus = deriveLeadBinaryState({
-        archived: r.archived,
-        emailVerificationStatus: r.email_verification_status,
-        priorityScore: r.priority_score,
-        needsEnrichment: r.needs_enrichment,
-        emailVerificationCheckedAt: r.email_verification_checked_at,
-        createdAt: r.created_at,
-      });
-      const uiVerificationStatus = deriveLeadUiVerificationLabel({
-        archived: r.archived,
-        emailVerificationStatus: r.email_verification_status,
-        priorityScore: r.priority_score,
-        needsEnrichment: r.needs_enrichment,
-        emailVerificationCheckedAt: r.email_verification_checked_at,
-        createdAt: r.created_at,
-      });
 
       return {
         id: r.id,
@@ -309,47 +268,31 @@ export async function GET(req: NextRequest) {
         state: r.state,
         country: r.country,
         source: r.source,
-        needs_enrichment: r.needs_enrichment,
-        assignment_status: r.assignment_status,
-        outreach_status: r.outreach_status,
-        email_verification_status: r.email_verification_status,
-        email_verification_checked_at: r.email_verification_checked_at?.toISOString() ?? null,
-        email_verification_score: r.email_verification_score,
-        email_verification_provider: r.email_verification_provider,
+        status: r.status ?? "active",
         contact_attempts: r.contact_attempts,
         response_received: r.response_received,
         signed_up: r.signed_up,
-        reply_count: r.reply_count ?? 0,
         created_at: r.created_at?.toISOString() ?? null,
         verification_score: r.verification_score,
-        verification_status: r.verification_status,
+        verification_status: normalizeVerificationStatus(r.verification_status),
         verification_source: r.verification_source,
         domain_reputation: r.domain_reputation,
         email_bounced: r.email_bounced,
         website: r.website,
         archived: r.archived,
         archived_at: r.archived_at?.toISOString() ?? null,
-        archive_reason: r.archive_reason,
-        final_status: finalStatus,
-        ready_for_outreach: finalStatus === "ready",
-        ui_verification_status: uiVerificationStatus,
         contact_status: contactStatus,
         message_status: messageStatus,
         latest_message_id: msg?.message_id ?? null,
         latest_message_subject: msg?.latest_message_subject ?? null,
         latest_message_body: msg?.latest_message_body ?? null,
-        // Brain fields
-        priority_score: r.priority_score ?? 0,
-        lead_score: r.lead_score ?? 0,
-        lead_priority: r.lead_priority ?? "medium",
-        priority_source: r.priority_source ?? "auto",
         outreach_stage: r.outreach_stage ?? "not_contacted",
         followup_count: r.followup_count ?? 0,
         next_followup_at: r.next_followup_at?.toISOString() ?? null,
+        email_sent_at: r.last_contacted_at?.toISOString() ?? null,
         last_contacted_at: r.last_contacted_at?.toISOString() ?? null,
         last_replied_at: r.last_replied_at?.toISOString() ?? null,
         last_message_type_sent: r.last_message_type_sent ?? null,
-        score_dirty: r.score_dirty ?? false,
       };
     });
 

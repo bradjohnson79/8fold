@@ -13,61 +13,6 @@ import {
   isReadyForOutreach,
 } from "@/src/services/lgs/warmupSchedule";
 
-type NextActivity = {
-  at: string | null;
-  type: "warmup_send" | "rollover" | null;
-  label: string;
-  reason: string | null;
-};
-
-function getNextActivityForSender(input: {
-  nextWarmupSendAt: Date | null;
-  nextRolloverAt: string | null;
-  warmupStatus: string;
-  remainingCapacity: number;
-  effectiveWarmupBudget: number;
-  warmupSentToday: number;
-  warmupStabilityRequired: boolean;
-}): NextActivity {
-  if (input.nextWarmupSendAt) {
-    return {
-      at: input.nextWarmupSendAt.toISOString(),
-      type: "warmup_send",
-      label: "Next warmup send",
-      reason: null,
-    };
-  }
-
-  if (input.nextRolloverAt && (input.warmupStatus === "warming" || input.warmupStatus === "ready")) {
-    let reason = "Current warmup window complete.";
-    if (input.remainingCapacity <= 0) {
-      reason = "Daily sending capacity exhausted.";
-    } else if (input.effectiveWarmupBudget <= 0) {
-      reason = input.warmupStabilityRequired
-        ? "Stability day budget finished; next warmup window opens at rollover."
-        : "No warmup sends remaining until rollover.";
-    } else if (input.warmupSentToday >= input.effectiveWarmupBudget) {
-      reason = input.warmupStabilityRequired
-        ? "Today's stability-check sends are complete."
-        : "Today's warmup sends are complete.";
-    }
-
-    return {
-      at: input.nextRolloverAt,
-      type: "rollover",
-      label: "Next warmup window opens",
-      reason,
-    };
-  }
-
-  return {
-    at: null,
-    type: null,
-    label: "No next activity scheduled",
-    reason: null,
-  };
-}
-
 export async function GET() {
   try {
     const rows = await db.select().from(senderPool).orderBy(senderPool.senderEmail);
@@ -84,18 +29,7 @@ export async function GET() {
       const status = r.warmupStatus ?? "not_started";
       const currentLimit = getDailyLimit(day);
       const nextLimit = getNextDayLimit(day);
-      const stabilityVerified = r.warmupStabilityVerified ?? false;
-      const stabilityStartedAt = r.warmupStabilityStartedAt?.toISOString() ?? null;
-      const ready = isReadyForOutreach(day, status, stabilityVerified);
-      const stabilityRequired = day >= 5 && !stabilityVerified;
-      const stabilityStatus =
-        day < 5
-          ? "not_applicable"
-          : stabilityVerified
-            ? "complete"
-            : stabilityStartedAt
-              ? "in_progress"
-              : "pending_start";
+      const ready = isReadyForOutreach(day, status);
 
       const warmupSent = r.warmupSentToday ?? 0;
       const outreachSent = r.outreachSentToday ?? 0;
@@ -103,10 +37,10 @@ export async function GET() {
       const remaining = Math.max(0, (r.dailyLimit ?? 0) - totalSent);
 
       const warmupBudget =
-        day >= 5
+        r.outreachEnabled
           ? Math.min(3, remaining)
           : (status === "warming" || status === "ready") ? remaining : 0;
-      const outreachBudget = r.outreachEnabled ? Math.max(0, remaining - warmupBudget) : 0;
+      const outreachBudget = Math.max(0, remaining - warmupBudget);
 
       const nextRollover =
         r.currentDayStartedAt
@@ -114,15 +48,6 @@ export async function GET() {
           : null;
 
       const isCoolingDown = r.cooldownUntil && new Date(r.cooldownUntil) > new Date();
-      const nextActivity = getNextActivityForSender({
-        nextWarmupSendAt: r.nextWarmupSendAt ?? null,
-        nextRolloverAt: nextRollover,
-        warmupStatus: status,
-        remainingCapacity: remaining,
-        effectiveWarmupBudget: warmupBudget,
-        warmupSentToday: warmupSent,
-        warmupStabilityRequired: stabilityRequired,
-      });
 
       return {
         id: r.id,
@@ -147,10 +72,6 @@ export async function GET() {
         effective_warmup_budget: warmupBudget,
         effective_outreach_budget: outreachBudget,
         outreach_enabled: r.outreachEnabled ?? false,
-        warmup_stability_verified: stabilityVerified,
-        warmup_stability_started_at: stabilityStartedAt,
-        warmup_stability_required: stabilityRequired,
-        warmup_stability_status: stabilityStatus,
         current_day_started_at: r.currentDayStartedAt?.toISOString() ?? null,
         next_rollover_at: nextRollover,
         // Safety fields
@@ -159,10 +80,6 @@ export async function GET() {
         health_score: r.healthScore ?? "unknown",
         // Warmup reliability fields
         next_warmup_send_at: r.nextWarmupSendAt?.toISOString() ?? null,
-        next_activity_at: nextActivity.at,
-        next_activity_type: nextActivity.type,
-        next_activity_label: nextActivity.label,
-        next_activity_reason: nextActivity.reason,
         last_warmup_sent_at: r.lastWarmupSentAt?.toISOString() ?? null,
         last_warmup_result: r.lastWarmupResult ?? null,
         last_warmup_recipient: r.lastWarmupRecipient ?? null,
@@ -178,9 +95,7 @@ export async function GET() {
     const warming = data.filter((d) => d.warmup_status === "warming").length;
     const readyCount = data.filter((d) => d.ready_for_outreach).length;
     const notStarted = data.filter((d) => d.warmup_status === "not_started").length;
-    const stabilityPendingCount = data.filter((d) => d.warmup_stability_required).length;
-    const stabilityVerifiedCount = data.filter((d) => d.warmup_stability_verified).length;
-    const outreachBlocked = (readyCount === 0 && data.length > 0) || stabilityPendingCount > 0;
+    const outreachBlocked = readyCount === 0 && data.length > 0;
 
     const systemDailyCapacity = managedSenders.reduce(
       (sum, d) => sum + (d.daily_outreach_limit ?? 0),
@@ -220,16 +135,11 @@ export async function GET() {
     }
 
     // Earliest next warmup send across all senders
-    const nextActivityCandidates = data
-      .filter((d) => d.next_activity_at)
-      .map((d) => ({
-        at: d.next_activity_at!,
-        type: d.next_activity_type,
-        label: d.next_activity_label,
-        reason: d.next_activity_reason,
-      }))
-      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-    const nextSystemActivity = nextActivityCandidates[0] ?? null;
+    const nextSendTimes = data
+      .map((d) => d.next_warmup_send_at)
+      .filter((t): t is string => t !== null)
+      .sort();
+    const nextSystemWarmupSendAt = nextSendTimes[0] ?? null;
 
     return NextResponse.json({
       ok: true,
@@ -240,8 +150,6 @@ export async function GET() {
         ready_for_outreach: readyCount,
         not_started: notStarted,
         outreach_blocked: outreachBlocked,
-        stability_pending_count: stabilityPendingCount,
-        stability_verified_count: stabilityVerifiedCount,
         schedule: WARMUP_SCHEDULE,
         system_daily_capacity: systemDailyCapacity,
         system_sent_today: systemSentToday,
@@ -253,11 +161,7 @@ export async function GET() {
         worker_status: workerStatus,
         worker_last_heartbeat: workerRow?.lastHeartbeatAt?.toISOString() ?? null,
         worker_last_run_status: workerRow?.lastRunStatus ?? null,
-        next_system_warmup_send_at: nextSystemActivity?.type === "warmup_send" ? nextSystemActivity.at : null,
-        next_system_activity_at: nextSystemActivity?.at ?? null,
-        next_system_activity_type: nextSystemActivity?.type ?? null,
-        next_system_activity_label: nextSystemActivity?.label ?? "No next activity scheduled",
-        next_system_activity_reason: nextSystemActivity?.reason ?? null,
+        next_system_warmup_send_at: nextSystemWarmupSendAt,
       },
     });
   } catch (err) {

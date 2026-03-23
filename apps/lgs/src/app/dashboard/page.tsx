@@ -5,23 +5,22 @@ import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber, toNumber } from "@/lib/formatters";
 
 type FunnelData = {
   total_leads: number;
   emails_sent: number;
   bounces: number;
   replies: number;
+  sends_today: number;
+  replies_today: number;
   signups: number;
   active_contractors: number;
   active_job_posters: number;
-  bounce_rate?: number;
-  reply_rate?: number;
-  conversion_rate?: number;
+  bounce_rate: number;
+  reply_rate: number;
+  conversion_rate: number;
 };
-
-function toNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
 
 function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): FunnelData {
   return {
@@ -29,6 +28,8 @@ function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): Fun
     emails_sent: toNumber(value?.emails_sent),
     bounces: toNumber(value?.bounces),
     replies: toNumber(value?.replies),
+    sends_today: toNumber(value?.sends_today),
+    replies_today: toNumber(value?.replies_today),
     signups: toNumber(value?.signups),
     active_contractors: toNumber(value?.active_contractors),
     active_job_posters: toNumber(value?.active_job_posters),
@@ -36,10 +37,6 @@ function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): Fun
     reply_rate: toNumber(value?.reply_rate),
     conversion_rate: toNumber(value?.conversion_rate),
   };
-}
-
-function formatNumber(value: unknown): string {
-  return toNumber(value).toLocaleString();
 }
 
 export default function DashboardPage() {
@@ -58,9 +55,6 @@ export default function DashboardPage() {
   if (err) return <p style={{ color: "#f87171" }}>{err}</p>;
   if (!data) return <p>Loading…</p>;
 
-  const replyRate = data.reply_rate?.toFixed(1) ?? "0.0";
-  const conversionRate = data.conversion_rate?.toFixed(1) ?? "0.0";
-
   return (
     <div>
       <h1 style={{ marginBottom: "1.5rem" }}>
@@ -76,21 +70,23 @@ export default function DashboardPage() {
         }}
       >
         <h2 style={{ marginBottom: "1rem", fontSize: "1.125rem" }}>
-          Operating Snapshot <HelpTooltip text={helpText.dashboard} />
+          Core Metrics <HelpTooltip text={helpText.dashboard} />
         </h2>
         <div style={{ display: "grid", gap: "0.5rem", fontFamily: "monospace" }}>
           <Row label="Total Leads" value={data.total_leads} />
           <Row label="Emails Sent" value={data.emails_sent} />
           <Row label="Bounces" value={data.bounces} />
           <Row label="Replies" value={data.replies} />
+          <Row label="Sends Today" value={data.sends_today} />
+          <Row label="Replies Today" value={data.replies_today} />
           <Row label="Contractor Signups" value={data.signups} />
           <Row label="Active Contractors" value={data.active_contractors} />
           <Row label="Active Job Posters" value={data.active_job_posters} />
         </div>
         <div style={{ marginTop: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-          <span style={{ color: "#94a3b8" }}>Bounce Rate: {data.bounce_rate ?? 0}%</span>
-          <span style={{ color: "#94a3b8" }}>Reply Rate: {replyRate}%</span>
-          <span style={{ color: "#94a3b8" }}>Conversion Rate: {conversionRate}%</span>
+          <span style={{ color: "#94a3b8" }}>Bounce Rate: {data.bounce_rate}%</span>
+          <span style={{ color: "#94a3b8" }}>Reply Rate: {data.reply_rate}%</span>
+          <span style={{ color: "#94a3b8" }}>Conversion Rate: {data.conversion_rate}%</span>
         </div>
       </div>
 
@@ -99,6 +95,8 @@ export default function DashboardPage() {
         <Card title="Emails Sent" value={data.emails_sent} />
         <Card title="Bounces" value={data.bounces} />
         <Card title="Replies" value={data.replies} />
+        <Card title="Sends Today" value={data.sends_today} />
+        <Card title="Replies Today" value={data.replies_today} />
         <Card title="Signups" value={data.signups} />
         <Card title="Active Contractors" value={data.active_contractors} />
         <Card title="Active Job Posters" value={data.active_job_posters} />

@@ -4,11 +4,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import {
-  leadFinderCampaigns,
-  leadFinderDomains,
-  leadFinderJobs,
-} from "@/db/schema/directoryEngine";
+import { leadFinderCampaigns } from "@/db/schema/directoryEngine";
 import { runLeadFinderCampaign } from "@/src/services/lgs/leadFinderService";
 
 export async function POST(
@@ -32,25 +28,9 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "campaign_already_running" }, { status: 409 });
     }
 
-    // Reset prior staged data for a clean re-run.
-    await db.delete(leadFinderDomains).where(eq(leadFinderDomains.campaignId, id));
-    await db.delete(leadFinderJobs).where(eq(leadFinderJobs.campaignId, id));
-
     // Reset counters for re-run
     await db.update(leadFinderCampaigns)
-      .set({
-        status: "draft",
-        startedAt: null,
-        finishedAt: null,
-        elapsedSeconds: null,
-        domainsPerSecond: null,
-        jobsTotal: 0,
-        jobsComplete: 0,
-        domainsFound: 0,
-        uniqueDomains: 0,
-        domainsSent: 0,
-        errorMessage: null,
-      })
+      .set({ status: "draft", startedAt: null, finishedAt: null, elapsedSeconds: null, errorMessage: null })
       .where(eq(leadFinderCampaigns.id, id));
 
     setImmediate(() => {

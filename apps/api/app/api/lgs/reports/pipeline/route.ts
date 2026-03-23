@@ -1,52 +1,29 @@
-/**
- * LGS: Pipeline report (stage counts).
- */
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { contractorLeads, jobPosterLeads } from "@/db/schema/directoryEngine";
+import { contractorLeads } from "@/db/schema/directoryEngine";
 import { users } from "@/db/schema/user";
 import { contractorAccounts } from "@/db/schema/contractorAccount";
 
 export async function GET() {
   try {
-    const [contractorLeadRes, jobPosterLeadRes, contacted, bounced, replied, signups, activeContractors, activeJobPosters] = await Promise.all([
+    const [totalLeads, emailsSent, bounces, replies, signups, activeContractors, activeJobPosters] = await Promise.all([
       db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads),
-      db.select({ c: sql<number>`count(*)::int` }).from(jobPosterLeads),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(sql`${contractorLeads.contactAttempts} > 0`),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(sql`coalesce(${contractorLeads.emailBounced}, false) = true`),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(eq(contractorLeads.responseReceived, true)),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(contractorLeads)
-        .where(eq(contractorLeads.signedUp, true)),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(users)
-        .innerJoin(contractorAccounts, eq(users.id, contractorAccounts.userId))
-        .where(sql`${users.role} = 'CONTRACTOR'`),
-      db
-        .select({ c: sql<number>`count(*)::int` })
-        .from(jobPosterLeads)
-        .where(eq(jobPosterLeads.archived, false)),
+      db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads).where(sql`${contractorLeads.contactAttempts} > 0`),
+      db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads).where(sql`coalesce(${contractorLeads.emailBounced}, false) = true`),
+      db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads).where(eq(contractorLeads.responseReceived, true)),
+      db.select({ c: sql<number>`count(*)::int` }).from(contractorLeads).where(eq(contractorLeads.signedUp, true)),
+      db.select({ c: sql<number>`count(*)::int` }).from(users).innerJoin(contractorAccounts, eq(users.id, contractorAccounts.userId)).where(sql`${users.role} = 'CONTRACTOR'`),
+      db.select({ c: sql<number>`count(*)::int` }).from(users).where(sql`${users.role} = 'JOB_POSTER' AND ${users.status} = 'ACTIVE'`),
     ]);
 
     const toNum = (r: { c: unknown }[]) => Number((r[0] as { c: number })?.c ?? 0);
 
     const data = [
-      { stage: "Total Leads", count: toNum(contractorLeadRes) + toNum(jobPosterLeadRes) },
-      { stage: "Emails Sent", count: toNum(contacted) },
-      { stage: "Bounces", count: toNum(bounced) },
-      { stage: "Replies", count: toNum(replied) },
+      { stage: "Total Leads", count: toNum(totalLeads) },
+      { stage: "Emails Sent", count: toNum(emailsSent) },
+      { stage: "Bounces", count: toNum(bounces) },
+      { stage: "Replies", count: toNum(replies) },
       { stage: "Signed Up", count: toNum(signups) },
       { stage: "Active Contractors", count: toNum(activeContractors) },
       { stage: "Active Job Posters", count: toNum(activeJobPosters) },

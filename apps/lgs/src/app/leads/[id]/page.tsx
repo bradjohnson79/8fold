@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/formatters";
 
 type Message = {
   id: string;
@@ -16,7 +17,6 @@ type Message = {
 
 type SecondaryEmail = {
   email: string;
-  score: number;
 };
 
 type Lead = {
@@ -25,11 +25,7 @@ type Lead = {
   lead_name: string | null;
   business_name: string | null;
   email: string | null;
-  needs_enrichment?: boolean;
-  assignment_status?: string | null;
-  outreach_status?: string | null;
   email_type: string | null;
-  primary_email_score: number | null;
   secondary_emails: SecondaryEmail[] | null;
   website: string | null;
   phone: string | null;
@@ -43,12 +39,7 @@ type Lead = {
   contact_attempts: number;
   response_received: boolean;
   signed_up: boolean;
-  email_verification_score: number | null;
-  email_verification_status: string | null;
-  email_verification_checked_at: string | null;
-  email_verification_provider: string | null;
-  priority_score: number | null;
-  lead_priority: string | null;
+  verification_status: string | null;
   email_bounced: boolean | null;
   discovery_method: string | null;
   notes: string | null;
@@ -56,8 +47,27 @@ type Lead = {
   latest_message: Message | null;
 };
 
+function normalizeVerificationStatus(status: string | null | undefined): "pending" | "valid" | "invalid" {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (normalized === "valid" || normalized === "verified" || normalized === "qualified") return "valid";
+  if (normalized === "invalid" || normalized === "blocked" || normalized === "rejected" || normalized === "low_quality") return "invalid";
+  return "pending";
+}
+
+function canGenerateForLead(lead: Lead | null): boolean {
+  if (!lead?.email) return false;
+  if (lead.status === "archived") return false;
+  return normalizeVerificationStatus(lead.verification_status) !== "invalid";
+}
+
+function getGenerateErrorMessage(status: number): string {
+  if (status === 400) return "Missing required data";
+  if (status >= 500) return "Generation failed, try again";
+  return "Generate failed";
+}
+
 const MSG_STATUS_LABEL: Record<string, string> = {
-  pending_review: "MSG Ready",
+  pending_review: "Draft MSG",
   approved: "Approved",
   rejected: "Rejected",
   sent: "Sent",
@@ -291,6 +301,7 @@ export default function LeadDetailPage() {
   }
 
   async function handleGenerate() {
+    if (!lead?.email) return;
     setGenerating(true);
     setEditing(false);
     setShowRegenPrompt(false);
@@ -306,9 +317,10 @@ export default function LeadDetailPage() {
         const updated = await fetchLead(leadId);
         if (updated) setLead(updated);
       } else {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        setActionMsg({ text: j.error ?? "Generate failed", ok: false });
+        setActionMsg({ text: getGenerateErrorMessage(res.status), ok: false });
       }
+    } catch {
+      setActionMsg({ text: "Generation failed, try again", ok: false });
     } finally {
       setGenerating(false);
     }
@@ -344,6 +356,8 @@ export default function LeadDetailPage() {
   const msgStatus = msg?.status ?? null;
   const msgColor = msgStatus ? (MSG_STATUS_COLOR[msgStatus] ?? "#475569") : "#475569";
   const location = [lead.city, lead.state, lead.country].filter(Boolean).join(", ");
+  const generateDisabled = !canGenerateForLead(lead);
+  const verificationStatus = normalizeVerificationStatus(lead.verification_status);
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -359,7 +373,7 @@ export default function LeadDetailPage() {
                 #{String(lead.lead_number).padStart(4, "0")}
               </span>
             ) : null}
-            {lead.business_name ?? lead.lead_name ?? lead.email ?? lead.website ?? "Lead"}
+            {lead.business_name ?? lead.lead_name ?? lead.email}
           </h1>
           {lead.trade && (
             <span style={{ padding: "0.2rem 0.6rem", background: "#1e293b", borderRadius: 4, fontSize: "0.8rem", color: "#94a3b8" }}>
@@ -383,31 +397,19 @@ export default function LeadDetailPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.1rem 2.5rem" }}>
           <EditableField label="Contact Name" value={lead.lead_name} fieldKey="lead_name" onSave={handleFieldSave} />
           <EditableField label="Business" value={lead.business_name} fieldKey="business_name" onSave={handleFieldSave} />
-          <Field label="Email" value={lead.email ?? (lead.needs_enrichment ? "Pending enrichment" : null)} mono />
-          <Field label="Assignment Status" value={lead.assignment_status?.replace(/_/g, " ") ?? "pending"} />
-          <Field label="Outreach Status" value={lead.outreach_status?.replace(/_/g, " ") ?? "pending"} />
+          <Field label="Email" value={lead.email ?? "Email not found yet"} mono />
           <Field label="Email Type" value={lead.email_type} />
           <Field label="Website" value={lead.website} />
           <Field label="Phone" value={lead.phone} />
           <EditableField label="Trade" value={lead.trade} fieldKey="trade" onSave={handleFieldSave} />
-          <Field
-            label="Verification"
-            value={
-              lead.email_verification_score != null
-                ? `${lead.email_verification_score} (${lead.email_verification_status ?? "—"})`
-                : null
-            }
-          />
-          <Field label="Lead Status" value={lead.email_bounced ? "Bounced" : "Active"} />
+          <Field label="Verification" value={verificationStatus} />
           <EditableField label="City" value={lead.city} fieldKey="city" onSave={handleFieldSave} />
           <EditableField label="State" value={lead.state} fieldKey="state" onSave={handleFieldSave} />
           <Field label="Country" value={lead.country} />
           <Field label="Contact Status" value={lead.contact_status} />
           <Field label="Discovery Method" value={lead.discovery_method} />
-          <Field label="Verified At" value={lead.email_verification_checked_at ? new Date(lead.email_verification_checked_at).toLocaleString() : null} />
-          <Field label="Verification Provider" value={lead.email_verification_provider} />
           <Field label="Bounced" value={lead.email_bounced ? "Yes" : "No"} />
-          <Field label="Created" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : null} />
+          <Field label="Created" value={formatDateTime(lead.created_at)} />
           {lead.notes && <div style={{ gridColumn: "1 / -1" }}><Field label="Notes" value={lead.notes} /></div>}
         </div>
 
@@ -420,7 +422,7 @@ export default function LeadDetailPage() {
       </div>
 
       {/* Contact Emails — shows primary selection + all secondary emails discovered */}
-      {(lead.primary_email_score != null || (lead.secondary_emails && lead.secondary_emails.length > 0)) && (
+      {(lead.email || (lead.secondary_emails && lead.secondary_emails.length > 0)) && (
         <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.5rem", marginBottom: "1.5rem" }}>
           <h2 style={{ margin: "0 0 1rem", fontSize: "0.85rem", color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Contact Emails
@@ -433,21 +435,8 @@ export default function LeadDetailPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
               <span style={{ color: "#e2e8f0", fontFamily: "monospace", fontSize: "0.88rem" }}>
-                {lead.email}
+                {lead.email ?? "Email not found yet"}
               </span>
-              {lead.primary_email_score != null && (
-                <span style={{
-                  padding: "1px 7px",
-                  background: lead.primary_email_score >= 100 ? "#14532d" : lead.primary_email_score >= 80 ? "#1e3a5f" : lead.primary_email_score >= 60 ? "#1e293b" : "#1a1a2e",
-                  border: `1px solid ${lead.primary_email_score >= 100 ? "#22c55e" : lead.primary_email_score >= 80 ? "#3b82f6" : lead.primary_email_score >= 60 ? "#475569" : "#334155"}`,
-                  borderRadius: 4,
-                  fontSize: "0.72rem",
-                  fontWeight: 700,
-                  color: lead.primary_email_score >= 100 ? "#4ade80" : lead.primary_email_score >= 80 ? "#60a5fa" : lead.primary_email_score >= 60 ? "#94a3b8" : "#64748b",
-                }}>
-                  score {lead.primary_email_score}
-                </span>
-              )}
               <span style={{ padding: "1px 7px", background: "#0f2e1f", border: "1px solid #22c55e", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "#4ade80" }}>
                 primary
               </span>
@@ -466,16 +455,6 @@ export default function LeadDetailPage() {
                     <span style={{ color: "#94a3b8", fontFamily: "monospace", fontSize: "0.85rem" }}>
                       {se.email}
                     </span>
-                    <span style={{
-                      padding: "1px 6px",
-                      background: "#0f172a",
-                      border: "1px solid #334155",
-                      borderRadius: 4,
-                      fontSize: "0.7rem",
-                      color: "#475569",
-                    }}>
-                      score {se.score}
-                    </span>
                   </div>
                 ))}
               </div>
@@ -492,8 +471,8 @@ export default function LeadDetailPage() {
           </span>
           <button
             onClick={() => void handleGenerate()}
-            disabled={generating}
-            style={{ padding: "0.4rem 0.9rem", background: "#16a34a", border: "none", borderRadius: 6, color: "#fff", cursor: generating ? "not-allowed" : "pointer", fontSize: "0.85rem", fontWeight: 600 }}
+            disabled={generating || generateDisabled}
+            style={{ padding: "0.4rem 0.9rem", background: "#16a34a", border: "none", borderRadius: 6, color: "#fff", cursor: generating || generateDisabled ? "not-allowed" : "pointer", fontSize: "0.85rem", fontWeight: 600, opacity: generateDisabled ? 0.5 : 1 }}
           >
             {generating ? "Generating…" : "Regenerate"}
           </button>
@@ -635,8 +614,8 @@ export default function LeadDetailPage() {
                   )}
                   <button
                     onClick={() => void handleGenerate()}
-                    disabled={generating}
-                    style={{ padding: "0.5rem 1rem", background: "transparent", border: "1px solid #475569", borderRadius: 6, color: "#94a3b8", cursor: generating ? "not-allowed" : "pointer", fontSize: "0.875rem" }}
+                    disabled={generating || generateDisabled}
+                    style={{ padding: "0.5rem 1rem", background: "transparent", border: "1px solid #475569", borderRadius: 6, color: generateDisabled ? "#475569" : "#94a3b8", cursor: generating || generateDisabled ? "not-allowed" : "pointer", fontSize: "0.875rem" }}
                   >
                     {generating ? "Generating…" : "↺ Regenerate"}
                   </button>
@@ -651,11 +630,16 @@ export default function LeadDetailPage() {
             </p>
             <button
               onClick={() => void handleGenerate()}
-              disabled={generating}
-              style={{ padding: "0.55rem 1.1rem", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", cursor: generating ? "not-allowed" : "pointer", fontSize: "0.875rem", fontWeight: 500 }}
+              disabled={generating || generateDisabled}
+              style={{ padding: "0.55rem 1.1rem", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", cursor: generating || generateDisabled ? "not-allowed" : "pointer", fontSize: "0.875rem", fontWeight: 500, opacity: generateDisabled ? 0.5 : 1 }}
             >
               {generating ? "Generating…" : "✦ Generate Message"}
             </button>
+            {generateDisabled && (
+              <p style={{ color: "#94a3b8", marginTop: "0.75rem", fontSize: "0.8rem" }}>
+                {!lead.email ? "Email not found yet." : "Invalid emails cannot generate outreach."}
+              </p>
+            )}
           </div>
         )}
 

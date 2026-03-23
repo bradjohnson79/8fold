@@ -4,24 +4,24 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber } from "@/lib/formatters";
 
-const CSV_TEMPLATE = `website,company,address,city,state,country,first_name,last_name,title,email,trade
-proper-handyman.com,Proper Handyman,123 Market St,San Jose,CA,US,Alex,Rivera,Owner,alex@proper-handyman.com,Handyman
-torreshandymanservice.com,Torres Handyman Service,88 Elm St,San Jose,CA,US,Maria,Torres,Manager,,Handyman
-abcroofing.com,ABC Roofing,400 Main St,San Jose,CA,USA,,,,,Roofing`;
+const CSV_TEMPLATE = `website,city,state,country
+proper-handyman.com,San Jose,CA,US
+torreshandymanservice.com,San Jose,CA,US
+abcroofing.com,San Jose,CA,US`;
 
 type ParseStats = {
   total_rows: number;
   accepted: number;
   skipped_empty: number;
   skipped_invalid: number;
-  skipped_invalid_email: number;
   skipped_blocked: number;
   skipped_duplicate: number;
 };
 
 type StatusData = {
-  run_id: string | null;
+  run_id: string;
   status: string;
   domains_total: number;
   domains_processed: number;
@@ -38,7 +38,6 @@ type StatusData = {
   elapsed_ms: number | null;
   elapsed_display: string | null;
   avg_domains_per_second: number | null;
-  needs_enrichment: number;
 };
 
 const POLL_INTERVAL_MS = 2000;
@@ -49,7 +48,7 @@ function StatRow({ label, value, color = "#f8fafc", sub }: { label: string; valu
       <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{label}</span>
       <div style={{ textAlign: "right" }}>
         <span style={{ fontWeight: 700, fontSize: "1.1rem", color, fontVariantNumeric: "tabular-nums" }}>
-          {typeof value === "number" ? value.toLocaleString() : value}
+          {typeof value === "number" ? formatNumber(value) : value}
         </span>
         {sub && <div style={{ fontSize: "0.7rem", color: "#475569" }}>{sub}</div>}
       </div>
@@ -137,40 +136,30 @@ export default function ImportContractorWebsitesPage() {
         ok?: boolean;
         error?: string;
         stats?: ParseStats;
-        data?: {
-          total_rows: number;
-          inserted: number;
-          skipped: number;
-          needs_enrichment: number;
-          parse_stats?: ParseStats;
-          enrichment_run_ids?: Array<{ campaign_type: string; run_id: string; domains_total: number }>;
-        };
+        data?: { run_id: string; domains_total: number; parse_stats?: ParseStats };
       };
 
       if (res.ok && json.ok && json.data) {
-        const firstRunId = json.data.enrichment_run_ids?.[0]?.run_id ?? null;
-        setRunId(firstRunId);
+        setRunId(json.data.run_id);
         if (json.data.parse_stats) setParseStats(json.data.parse_stats);
         setStatus({
-          run_id: firstRunId,
-          status: "complete",
-          domains_total: json.data.total_rows ?? 0,
-          domains_processed: json.data.total_rows ?? 0,
-          successful_domains: json.data.inserted ?? 0,
+          run_id: json.data.run_id,
+          status: "running",
+          domains_total: json.data.domains_total ?? 0,
+          domains_processed: 0,
+          successful_domains: 0,
           emails_found: 0,
           qualified_emails: 0,
           rejected_emails: 0,
-          inserted_leads: json.data.inserted ?? 0,
-          duplicates_skipped: json.data.skipped ?? 0,
+          inserted_leads: 0,
+          duplicates_skipped: 0,
           failed_domains: 0,
-          started_at: new Date().toISOString(),
-          finished_at: new Date().toISOString(),
+          started_at: null,
+          finished_at: null,
           elapsed_ms: null,
-          elapsed_display: "0s",
+          elapsed_display: null,
           avg_domains_per_second: null,
-          needs_enrichment: json.data.needs_enrichment ?? 0,
         });
-        setLoading(false);
       } else {
         setErr(json.error ?? "Import failed");
         if (json.stats) setParseStats(json.stats);
@@ -215,7 +204,7 @@ export default function ImportContractorWebsitesPage() {
         <HelpTooltip text={helpText.importContractorWebsites} />
       </div>
       <p style={{ color: "#64748b", marginBottom: "2rem", fontSize: "0.9rem" }}>
-        Upload a CSV or Excel file with contractor leads. Website is required. Company, address, contact name, title, email, and trade are optional. If email is missing, we will automatically search the website for contact details.
+        Upload a CSV or Excel file with contractor websites. The system will crawl each site, extract emails, and create lead records instantly. Email verification runs in the background afterward.
       </p>
 
       {/* Format documentation */}
@@ -231,8 +220,8 @@ export default function ImportContractorWebsitesPage() {
           </div>
           <div>
             <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: "0.4rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>Optional columns</div>
-            <code style={{ color: "#94a3b8", fontSize: "0.85rem" }}>company · address · city · state · country · first_name · last_name · title · email · trade</code>
-            <div style={{ color: "#475569", fontSize: "0.78rem", marginTop: "0.2rem" }}>Headers are case-insensitive and normalized automatically</div>
+            <code style={{ color: "#94a3b8", fontSize: "0.85rem" }}>city · state · country</code>
+            <div style={{ color: "#475569", fontSize: "0.78rem", marginTop: "0.2rem" }}>USA → US converted automatically</div>
           </div>
         </div>
 
@@ -241,16 +230,16 @@ export default function ImportContractorWebsitesPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", fontFamily: "monospace" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
-                {["website", "company", "city", "state", "email", "trade"].map((h) => (
+                {["website", "city", "state", "country"].map((h) => (
                   <th key={h} style={{ padding: "0.4rem 0.75rem", textAlign: "left", fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {[
-                ["proper-handyman.com", "Proper Handyman", "San Jose", "CA", "alex@proper-handyman.com", "Handyman"],
-                ["torreshandymanservice.com", "Torres Handyman Service", "San Jose", "CA", "", "Handyman"],
-                ["https://abc.com/?utm_source=google", "ABC Roofing", "San Jose", "CA", "", "Roofing"],
+                ["proper-handyman.com", "San Jose", "CA", "US"],
+                ["torreshandymanservice.com", "San Jose", "CA", "US"],
+                ["https://abc.com/?utm_source=google", "San Jose", "CA", "USA"],
               ].map((row, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid #0f172a" }}>
                   {row.map((cell, j) => (
@@ -266,7 +255,6 @@ export default function ImportContractorWebsitesPage() {
           <span>✓ Accepts: CSV, XLSX</span>
           <span>✓ Headers case-insensitive</span>
           <span>✓ Full URLs stripped automatically</span>
-          <span>✓ Optional fields supported: Company, Address, Contact Name, Title, Email, Trade</span>
           <span>✗ Skips: Facebook, Instagram, Yelp, etc.</span>
           <span>Max: 10,000 rows · 10 MB</span>
         </div>
@@ -320,7 +308,7 @@ export default function ImportContractorWebsitesPage() {
             fontSize: "0.95rem",
           }}
         >
-          {loading ? "Importing leads…" : "Upload & Import"}
+          {loading ? "Scanning websites…" : "Upload & Import"}
         </button>
       </form>
 
@@ -339,7 +327,6 @@ export default function ImportContractorWebsitesPage() {
             <span style={{ color: "#4ade80" }}>Accepted: <strong>{parseStats.accepted}</strong></span>
             {parseStats.skipped_blocked > 0 && <span style={{ color: "#f87171" }}>Social media skipped: <strong>{parseStats.skipped_blocked}</strong></span>}
             {parseStats.skipped_invalid > 0 && <span style={{ color: "#f87171" }}>Invalid URL: <strong>{parseStats.skipped_invalid}</strong></span>}
-            {parseStats.skipped_invalid_email > 0 && <span style={{ color: "#f87171" }}>Invalid email: <strong>{parseStats.skipped_invalid_email}</strong></span>}
             {parseStats.skipped_duplicate > 0 && <span style={{ color: "#94a3b8" }}>Duplicates: <strong>{parseStats.skipped_duplicate}</strong></span>}
           </div>
         </div>
@@ -427,9 +414,10 @@ export default function ImportContractorWebsitesPage() {
           <div style={{ marginTop: "0.5rem" }}>
             <StatRow label="Domains Uploaded" value={domainsTotal} color="#f8fafc" />
             <StatRow label="Domains Scanned" value={domainsProcessed} color={isComplete ? "#f8fafc" : "#60a5fa"} sub={domainsTotal > 0 ? `of ${domainsTotal}` : undefined} />
-            <StatRow label="Leads Created" value={s.inserted_leads ?? 0} color="#4ade80" sub="new leads added" />
-            <StatRow label="Duplicates Skipped" value={s.duplicates_skipped ?? 0} color="#94a3b8" sub="existing row preserved" />
-            <StatRow label="Needs Enrichment" value={s.needs_enrichment ?? 0} color="#fbbf24" sub="website queued for contact discovery" />
+            <StatRow label="Emails Found" value={s.emails_found ?? 0} color="#a78bfa" sub="all extracted" />
+            <StatRow label="Rejected Emails" value={s.rejected_emails ?? 0} color="#f87171" sub="noise / automated" />
+            <StatRow label="Leads Created" value={s.inserted_leads ?? 0} color="#4ade80" sub={isRunning ? "live — updating now" : "new leads added"} />
+            <StatRow label="Duplicates Skipped" value={s.duplicates_skipped ?? 0} color="#94a3b8" sub="domain already in DB" />
             {(s.failed_domains ?? 0) > 0 && (
               <StatRow label="Failed Domains" value={s.failed_domains} color="#f87171" sub="unreachable" />
             )}
@@ -490,7 +478,7 @@ export default function ImportContractorWebsitesPage() {
               <div style={{ fontWeight: 700, color: "#4ade80", marginBottom: "0.35rem" }}>Discovery Cancelled</div>
               <div style={{ color: "#94a3b8", fontSize: "0.875rem", marginBottom: "0.75rem" }}>
                 {(s.inserted_leads ?? 0) > 0
-                  ? `${(s.inserted_leads ?? 0).toLocaleString()} leads were created before cancellation and are available in your database.`
+                  ? `${formatNumber(s.inserted_leads ?? 0)} leads were created before cancellation and are available in your database.`
                   : "Scan was cancelled before any leads were created."}
               </div>
               <div style={{ display: "flex", gap: "0.75rem" }}>
@@ -499,7 +487,7 @@ export default function ImportContractorWebsitesPage() {
                     href="/leads"
                     style={{ padding: "0.5rem 1rem", background: "#22c55e", borderRadius: 7, color: "#0f172a", fontWeight: 700, textDecoration: "none", fontSize: "0.875rem" }}
                   >
-                    View {(s.inserted_leads ?? 0).toLocaleString()} Leads →
+                    View {formatNumber(s.inserted_leads ?? 0)} Leads →
                   </Link>
                 )}
                 <button
@@ -528,7 +516,7 @@ export default function ImportContractorWebsitesPage() {
                     fontSize: "0.9rem",
                   }}
                 >
-                  View {(s.inserted_leads ?? 0).toLocaleString()} New Leads →
+                  View {formatNumber(s.inserted_leads ?? 0)} New Leads →
                 </Link>
                 <button
                   type="button"
@@ -540,9 +528,10 @@ export default function ImportContractorWebsitesPage() {
               </div>
               {(s.inserted_leads ?? 0) > 0 && (
                 <div style={{ marginTop: "0.85rem", padding: "0.6rem 0.85rem", background: "#1a2b3d", border: "1px solid #334155", borderRadius: 7, fontSize: "0.82rem", color: "#94a3b8" }}>
-                  {s.needs_enrichment > 0
-                    ? "Rows without email were inserted and queued for website enrichment automatically."
-                    : "Rows with email were inserted directly and are ready for downstream verification/outreach."}
+                  Leads are created with <strong style={{ color: "#fbbf24" }}>pending</strong> verification status. Run the verification worker to process them in the background without blocking imports:
+                  <code style={{ display: "block", marginTop: "0.4rem", padding: "0.3rem 0.5rem", background: "#0f172a", borderRadius: 4, color: "#38bdf8", fontSize: "0.78rem" }}>
+                    npx tsx apps/api/scripts/lgs-email-enrichment-worker.ts --once
+                  </code>
                 </div>
               )}
             </div>
@@ -558,13 +547,13 @@ export default function ImportContractorWebsitesPage() {
           </h3>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.85rem" }}>
             {[
-              ["1", "Parse CSV / XLSX", "Normalize website and optional structured fields"],
-              ["2", "Validate each row", "Reject rows with no website or invalid email"],
-              ["3", "Insert or update leads", "Conservative duplicate handling fills blank fields only"],
-              ["4", "Flag missing email", "Rows without email are marked for enrichment"],
-              ["5", "Queue website discovery", "Contact discovery runs asynchronously"],
-              ["6", "Ready for outreach", "Rows with email can move downstream immediately"],
-              ["7", "Background verification", "DNS/SMTP verification still runs after import"],
+              ["1", "Parse CSV / XLSX", "Extract website, city, state, country"],
+              ["2", "Normalize domains", "Strip URLs, tracking params, paths"],
+              ["3", "Crawl each website", "10 parallel workers · 5s timeout · 4 pages"],
+              ["4", "Extract & filter emails", "Regex extraction · reject spam addresses"],
+              ["5", "Deduplicate by domain", "One lead per company domain"],
+              ["6", "Create leads instantly", "No verification wait — leads appear in real time"],
+              ["7", "Background enrichment", "DNS/SMTP verification runs after import"],
             ].map(([num, step, detail]) => (
               <div key={num} style={{ display: "flex", gap: "0.75rem", alignItems: "baseline" }}>
                 <span style={{ color: "#334155", fontWeight: 700, minWidth: 18, fontFamily: "monospace" }}>{num}.</span>

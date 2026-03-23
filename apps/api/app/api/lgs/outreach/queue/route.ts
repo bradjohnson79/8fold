@@ -1,22 +1,13 @@
-/**
- * LGS Outreach: List LGS queue items with brain intelligence fields.
- *
- * Query params:
- *   status      — filter by send_status (pending | sent | failed)
- *   limit       — default 100, max 200
- *   offset      — default 0
- */
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import {
   contractorLeads,
   lgsOutreachQueue,
-  lgsOutreachSettings,
   outreachMessages,
   senderPool,
 } from "@/db/schema/directoryEngine";
-import { SENDER_HEALTH_ORDER } from "@/src/services/lgs/lgsOutreachSchedulerService";
+import { normalizeVerificationStatus } from "@/src/services/lgs/simpleEmailVerification";
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,13 +38,6 @@ export async function GET(req: NextRequest) {
     const sysCapacityTotal = Number(capacityRow?.totalLimit ?? 0);
     const sysCapacityRemaining = Math.max(0, sysCapacityTotal - sysCapacityUsed);
 
-    // ── Load brain settings for gate context ────────────────────────────────
-    const [settings] = await db.select().from(lgsOutreachSettings).limit(1);
-    const domainCooldownDays = settings?.domainCooldownDays ?? 7;
-    const minHealthLevel = settings?.minSenderHealthLevel ?? "risk";
-    const minHealthIdx = SENDER_HEALTH_ORDER.indexOf(minHealthLevel as typeof SENDER_HEALTH_ORDER[number]);
-
-    // ── Main queue items ─────────────────────────────────────────────────────
     const whereClause = status ? eq(lgsOutreachQueue.sendStatus, status) : undefined;
 
     const rows = await db
@@ -74,66 +58,38 @@ export async function GET(req: NextRequest) {
         businessName: contractorLeads.businessName,
         trade: contractorLeads.trade,
         city: contractorLeads.city,
-        leadScore: contractorLeads.leadScore,
-        priorityScore: contractorLeads.priorityScore,
-        leadPriority: contractorLeads.leadPriority,
-        emailVerificationStatus: contractorLeads.emailVerificationStatus,
+        verificationStatus: contractorLeads.verificationStatus,
         archived: contractorLeads.archived,
-        outreachStage: contractorLeads.outreachStage,
-        followupCount: contractorLeads.followupCount,
-        website: contractorLeads.website,
       })
       .from(lgsOutreachQueue)
       .innerJoin(outreachMessages, eq(lgsOutreachQueue.outreachMessageId, outreachMessages.id))
       .innerJoin(contractorLeads, eq(lgsOutreachQueue.leadId, contractorLeads.id))
       .where(whereClause)
-      .orderBy(
-        asc(
-          sql`CASE
-            WHEN lower(coalesce(${contractorLeads.emailVerificationStatus}, 'pending')) IN ('valid', 'verified') THEN 0
-            WHEN lower(coalesce(${contractorLeads.emailVerificationStatus}, 'pending')) = 'invalid' THEN 2
-            ELSE 1
-          END`
-        ),
-        asc(contractorLeads.createdAt),
-        asc(lgsOutreachQueue.createdAt)
-      )
+      .orderBy(asc(lgsOutreachQueue.createdAt))
       .limit(limit)
       .offset(offset);
 
-    // ── Build reason codes for each item ─────────────────────────────────────
-    const blockedStages = new Set(["replied", "converted", "paused", "archived"]);
-
     const data = rows.map((row) => {
       const reasonCodes: string[] = [];
-      let ready = true;
+      const verificationStatus = normalizeVerificationStatus(row.verificationStatus);
+      const isPendingVerification = verificationStatus === "pending";
+      const isInvalid = verificationStatus === "invalid";
+      const isArchived = Boolean(row.archived);
 
-      // Stage block
-      if (row.outreachStage && blockedStages.has(row.outreachStage)) {
-        reasonCodes.push(`blocked_stage_${row.outreachStage}`);
-        ready = false;
-      }
-
-      if (row.archived) {
+      if (isArchived) {
         reasonCodes.push("blocked_archived");
-        ready = false;
-      }
-
-      const verificationStatus = String(row.emailVerificationStatus ?? "pending").trim().toLowerCase();
-      if (verificationStatus === "invalid") {
+      } else if (isInvalid) {
         reasonCodes.push("blocked_invalid_email");
-        ready = false;
-      } else if (!(verificationStatus === "valid" || verificationStatus === "verified")) {
+      } else if (isPendingVerification) {
         reasonCodes.push("deferred_pending_verification");
-        ready = false;
       }
 
-      // Capacity indicator
+      const ready = !isArchived && !isInvalid && !isPendingVerification && sysCapacityRemaining > 0;
+
       if (sysCapacityRemaining > 0 && ready) {
         reasonCodes.push("sender_capacity_ok");
       } else if (sysCapacityRemaining === 0) {
         reasonCodes.push("blocked_no_capacity");
-        ready = false;
       }
 
       return {
@@ -152,12 +108,8 @@ export async function GET(req: NextRequest) {
         business_name: row.businessName,
         trade: row.trade,
         city: row.city,
-        lead_score: row.leadScore ?? 0,
-        priority_score: row.priorityScore ?? 0,
-        lead_priority: row.leadPriority ?? "medium",
-        email_verification_status: row.emailVerificationStatus ?? "pending",
-        outreach_stage: row.outreachStage ?? "not_contacted",
-        followup_count: row.followupCount ?? 0,
+        verification_status: verificationStatus,
+        archived: isArchived,
         reason_codes: reasonCodes,
         is_ready: ready && row.sendStatus === "pending",
       };
@@ -172,7 +124,6 @@ export async function GET(req: NextRequest) {
         capacity_used: sysCapacityUsed,
         capacity_total: sysCapacityTotal,
         capacity_remaining: sysCapacityRemaining,
-        min_score_threshold: null,
       },
       data,
     });

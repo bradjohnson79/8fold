@@ -12,7 +12,6 @@ type DiscoveryLead = {
   contact_name: string | null;
   industry: string | null;
   domain: string | null;
-  verification_score: number | null;
   discovery_method: string | null;
   imported: boolean;
 };
@@ -51,13 +50,6 @@ type StatusData = {
   skipped_domains: number;
 };
 
-type ImportSummary = {
-  total_rows: number;
-  inserted: number;
-  skipped: number;
-  needs_enrichment: number;
-};
-
 const POLL_INTERVAL_MS = 2000;
 
 export default function DiscoveryPage() {
@@ -66,7 +58,6 @@ export default function DiscoveryPage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusData | null>(null);
   const [runData, setRunData] = useState<RunData | null>(null);
-  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -117,7 +108,6 @@ export default function DiscoveryPage() {
     setErr(null);
     setStatus(null);
     setRunData(null);
-    setImportSummary(null);
 
     try {
       const formData = new FormData();
@@ -129,25 +119,9 @@ export default function DiscoveryPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok && json.data) {
-        if (typeof json.data.total_rows === "number") {
-          setImportSummary({
-            total_rows: json.data.total_rows ?? 0,
-            inserted: json.data.inserted ?? 0,
-            skipped: json.data.skipped ?? 0,
-            needs_enrichment: json.data.needs_enrichment ?? 0,
-          });
-          setRunning(false);
-          return;
-        }
-        const firstRunId = json.data.run_id ?? json.data.run_ids?.[0]?.run_id ?? null;
-        if (!firstRunId) {
-          setErr("Discovery started but no run ID was returned.");
-          setRunning(false);
-          return;
-        }
-        setRunId(firstRunId);
+        setRunId(json.data.run_id);
         setStatus({
-          run_id: firstRunId,
+          run_id: json.data.run_id,
           status: "running",
           domains_total: json.data.domains_total ?? 0,
           domains_processed: 0,
@@ -270,7 +244,7 @@ export default function DiscoveryPage() {
             </button>
           </div>
           <p style={{ fontSize: "0.875rem", color: "#94a3b8" }}>
-            Supported formats: CSV, XLSX. Required column: <code>domain</code> or <code>website</code>. Optional columns: <code>campaign</code>, <code>category</code>, <code>company</code>, <code>address</code>, <code>first_name</code>, <code>last_name</code>, <code>title</code>, <code>email</code>, <code>trade</code>, <code>city</code>, <code>state</code>, <code>country</code>.
+            Supported formats: CSV, XLSX. Required column: <code>domain</code>
           </p>
           {file && (
             <p style={{ fontSize: "0.875rem", color: "#94a3b8", marginTop: "0.5rem" }}>
@@ -297,20 +271,6 @@ export default function DiscoveryPage() {
       </div>
 
       {err && <p style={{ color: "#f87171", marginBottom: "1rem" }}>{err}</p>}
-
-      {importSummary && (
-        <div style={{ marginBottom: "1.5rem", background: "#1e293b", borderRadius: 10, padding: "1rem 1.25rem" }}>
-          <div style={{ fontSize: "0.82rem", color: "#64748b", marginBottom: "0.5rem", fontWeight: 600 }}>
-            Structured import summary
-          </div>
-          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", fontSize: "0.84rem" }}>
-            <span>Rows: <strong style={{ color: "#f8fafc" }}>{importSummary.total_rows}</strong></span>
-            <span style={{ color: "#4ade80" }}>Inserted: <strong>{importSummary.inserted}</strong></span>
-            <span style={{ color: "#94a3b8" }}>Skipped: <strong>{importSummary.skipped}</strong></span>
-            <span style={{ color: "#fbbf24" }}>Needs enrichment: <strong>{importSummary.needs_enrichment}</strong></span>
-          </div>
-        </div>
-      )}
 
       {(running || status || runData) && (
         <div style={{ marginBottom: "2rem" }}>
@@ -535,7 +495,7 @@ export default function DiscoveryPage() {
                   <th style={{ padding: "0.75rem" }}>Contact</th>
                   <th style={{ padding: "0.75rem" }}>Industry</th>
                   <th style={{ padding: "0.75rem" }}>Email</th>
-                  <th style={{ padding: "0.75rem" }}>Score</th>
+                  <th style={{ padding: "0.75rem" }}>Email Safety</th>
                   <th style={{ padding: "0.75rem" }}>Method</th>
                   <th style={{ padding: "0.75rem" }}>Status</th>
                 </tr>
@@ -559,7 +519,7 @@ export default function DiscoveryPage() {
                     <td style={{ padding: "0.75rem" }}>{l.contact_name ?? "—"}</td>
                     <td style={{ padding: "0.75rem" }}>{l.industry ?? "—"}</td>
                     <td style={{ padding: "0.75rem" }}>{l.email}</td>
-                    <td style={{ padding: "0.75rem" }}>{l.verification_score ?? "—"}</td>
+                    <td style={{ padding: "0.75rem" }}>{l.imported ? "Valid" : "Pending"}</td>
                     <td style={{ padding: "0.75rem" }}>
                       {l.discovery_method === "scraped_email"
                         ? "scraped"
@@ -567,7 +527,7 @@ export default function DiscoveryPage() {
                           ? "pattern"
                           : l.discovery_method ?? "—"}
                     </td>
-                    <td style={{ padding: "0.75rem" }}>{l.imported ? "Imported" : "Verified"}</td>
+                    <td style={{ padding: "0.75rem" }}>{l.imported ? "Imported" : "Pending"}</td>
                   </tr>
                 ))}
               </tbody>

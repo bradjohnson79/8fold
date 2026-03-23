@@ -10,52 +10,34 @@ import cron from "node-cron";
 import dotenv from "dotenv";
 import { runLgsOutreachScheduler } from "../src/services/lgs/lgsOutreachSchedulerService";
 import { runFollowupEngine } from "../src/services/lgs/lgsFollowupService";
-import { runJobPosterQueueCycle } from "../src/services/lgs/jobPosterOutreachService";
-import { rescoreDirtyLeadPriority } from "../src/services/lgs/priorityScoringService";
-import { runAutoAssignmentCycle } from "../src/services/lgs/autoAssignmentService";
-import { runOutreachAutomationCycle } from "../src/services/lgs/outreachAutomationService";
-import { runWarmupCycle } from "./lgs-warmup-worker";
+import { syncGmailReplies } from "../src/services/lgs/gmailReplySyncService";
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || path.join(process.cwd(), "apps/api/.env.local") });
 
-async function runScheduler() {
-  try {
-    console.log("[LGS Outreach] Running shared warmup cycle...");
-    await runWarmupCycle();
+let schedulerRunning = false;
+let followupsRunning = false;
+let replySyncRunning = false;
 
-    const assignment = await runAutoAssignmentCycle();
-    if (
-      assignment.contractor.scanned > 0 || assignment.jobs.scanned > 0 ||
-      assignment.contractor.assigned > 0 || assignment.jobs.assigned > 0 ||
-      assignment.contractor.fallback_created > 0 || assignment.jobs.fallback_created > 0
-    ) {
-      console.log("[LGS AutoAssign]", assignment);
-    }
-
-    const automation = await runOutreachAutomationCycle();
-    if (
-      automation.contractor.generated > 0 || automation.jobs.generated > 0 ||
-      automation.contractor.queued > 0 || automation.jobs.queued > 0 ||
-      automation.contractor.failed_generation > 0 || automation.jobs.failed_generation > 0
-    ) {
-      console.log("[LGS Outreach Automation]", automation);
-    }
-
-    const contractor = await runLgsOutreachScheduler();
-    if (contractor.sent > 0 || contractor.failed > 0) {
-      console.log(`[LGS Outreach] contractor sent=${contractor.sent} failed=${contractor.failed}`);
-    }
-
-    const jobs = await runJobPosterQueueCycle();
-    if (jobs.sent > 0 || jobs.failed > 0) {
-      console.log(`[LGS Outreach] job-posters processed=${jobs.processed} sent=${jobs.sent} failed=${jobs.failed}`);
-    }
-  } catch (err) {
-    console.error("[LGS Outreach] scheduler error:", err);
-  }
+function runScheduler() {
+  if (schedulerRunning) return;
+  schedulerRunning = true;
+  runLgsOutreachScheduler()
+    .then(({ sent, failed }) => {
+      if (sent > 0 || failed > 0) {
+        console.log(`[LGS Outreach] sent=${sent} failed=${failed}`);
+      }
+    })
+    .catch((err) => {
+      console.error("[LGS Outreach] scheduler error:", err);
+    })
+    .finally(() => {
+      schedulerRunning = false;
+    });
 }
 
 function runFollowups() {
+  if (followupsRunning) return;
+  followupsRunning = true;
   runFollowupEngine()
     .then((r) => {
       if (r.generated > 0 || r.paused > 0 || r.errors > 0) {
@@ -64,18 +46,26 @@ function runFollowups() {
     })
     .catch((err) => {
       console.error("[LGS Follow-up] engine error:", err);
+    })
+    .finally(() => {
+      followupsRunning = false;
     });
 }
 
-function runRescore() {
-  rescoreDirtyLeadPriority(500)
-    .then((updated) => {
-      if (updated > 0) {
-        console.log(`[LGS Scoring] rescored ${updated} dirty leads`);
+function runReplySync() {
+  if (replySyncRunning) return;
+  replySyncRunning = true;
+  syncGmailReplies()
+    .then((r) => {
+      if (r.updated > 0 || r.errors > 0) {
+        console.log(`[LGS Replies] scanned=${r.scanned} matched=${r.matched} updated=${r.updated} errors=${r.errors}`);
       }
     })
     .catch((err) => {
-      console.error("[LGS Scoring] rescore error:", err);
+      console.error("[LGS Replies] sync error:", err);
+    })
+    .finally(() => {
+      replySyncRunning = false;
     });
 }
 
@@ -83,10 +73,11 @@ function runRescore() {
 cron.schedule("*/1 * * * *", runScheduler, { timezone: "America/Los_Angeles" });
 // Follow-up engine: every 5 minutes
 cron.schedule("*/5 * * * *", runFollowups, { timezone: "America/Los_Angeles" });
-// Dirty-lead rescore: every 10 minutes
-cron.schedule("*/10 * * * *", runRescore, { timezone: "America/Los_Angeles" });
+// Reply sync: every 5 minutes
+cron.schedule("*/5 * * * *", runReplySync, { timezone: "America/Los_Angeles" });
 
 runScheduler();
+runReplySync();
 
 console.log("[LGS Outreach] Worker started. Cron: */1 * * * * (every minute)");
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { lgsFetch } from "@/lib/api";
+import { formatNumber } from "@/lib/formatters";
 
 type WorkerStatus = "running" | "idle" | "error" | "stopped" | "configured" | "future";
 
@@ -36,7 +37,7 @@ function StatCard({ title, value, color = "#f8fafc", sub }: { title: string; val
   return (
     <div style={{ padding: "1rem 1.25rem", background: "#1e293b", borderRadius: 8 }}>
       <div style={{ fontSize: "0.78rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.35rem" }}>{title}</div>
-      <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
+      <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{typeof value === "number" ? formatNumber(value) : value}</div>
       {sub && <div style={{ fontSize: "0.75rem", color: "#475569", marginTop: "0.2rem" }}>{sub}</div>}
     </div>
   );
@@ -223,7 +224,7 @@ export default function SystemMonitorPage() {
                 {/* Jobs */}
                 <div>
                   <div style={{ fontSize: "0.75rem", color: "#475569", marginBottom: "0.25rem" }}>Jobs Processed</div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 600 }}>{w.jobs_processed.toLocaleString()}</div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 600 }}>{formatNumber(w.jobs_processed)}</div>
                 </div>
               </div>
             );

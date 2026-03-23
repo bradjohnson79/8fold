@@ -14,18 +14,11 @@ import {
   pgSchema,
   serial,
   text,
-  timestamp as pgTimestamp,
+  timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
 
 export const directoryEngineSchema = pgSchema("directory_engine");
-
-function timestamp(
-  name: string,
-  config?: { mode?: "date" | "string"; withTimezone?: boolean }
-) {
-  return pgTimestamp(name, { withTimezone: true, ...config });
-}
 
 export const directories = directoryEngineSchema.table("directories", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -114,7 +107,6 @@ export const emailMessages = directoryEngineSchema.table("email_messages", {
   contactId: uuid("contact_id")
     .notNull()
     .references(() => contractorContacts.id),
-  campaignType: text("campaign_type").notNull().default("contractor"),
   subject: text("subject").notNull(),
   body: text("body").notNull(),
   hash: text("hash").notNull(),
@@ -162,8 +154,6 @@ export const senderPool = directoryEngineSchema.table("sender_pool", {
   outreachSentToday: integer("outreach_sent_today").notNull().default(0),
   warmupSentToday: integer("warmup_sent_today").notNull().default(0),
   outreachEnabled: boolean("outreach_enabled").notNull().default(false),
-  warmupStabilityVerified: boolean("warmup_stability_verified").notNull().default(false),
-  warmupStabilityStartedAt: timestamp("warmup_stability_started_at", { mode: "date" }),
   // Safety: cooldown kill-switch (skip sender entirely until this time)
   cooldownUntil: timestamp("cooldown_until", { mode: "date" }),
   // Warmup health score: GOOD / WARNING / RISK (computed by worker)
@@ -173,12 +163,6 @@ export const senderPool = directoryEngineSchema.table("sender_pool", {
   lastWarmupSentAt: timestamp("last_warmup_sent_at", { mode: "date" }),
   lastWarmupResult: text("last_warmup_result"),
   lastWarmupRecipient: text("last_warmup_recipient"),
-  gmailRefreshToken: text("gmail_refresh_token"),
-  gmailAccessToken: text("gmail_access_token"),
-  gmailTokenExpiresAt: timestamp("gmail_token_expires_at", { mode: "date" }),
-  gmailConnected: boolean("gmail_connected").notNull().default(false),
-  warmupIntervalAnchorAt: timestamp("warmup_interval_anchor_at", { mode: "date" }),
-  warmupSendingAt: timestamp("warmup_sending_at", { mode: "date" }),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
@@ -188,14 +172,10 @@ export const contractorLeads = directoryEngineSchema.table("contractor_leads", {
   id: uuid("id").primaryKey().defaultRandom(),
   leadNumber: integer("lead_number"),
   leadName: text("lead_name"),
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  title: text("title"),
   businessName: text("business_name"),
-  address: text("address"),
   // Original scraped value preserved for debugging / re-cleaning
   scrapedBusinessName: text("scraped_business_name"),
-  email: text("email"),
+  email: text("email").notNull(),
   website: text("website"),
   phone: text("phone"),
   trade: text("trade"),
@@ -203,14 +183,6 @@ export const contractorLeads = directoryEngineSchema.table("contractor_leads", {
   state: text("state"),
   country: text("country"),
   source: text("source"),
-  needsEnrichment: boolean("needs_enrichment").notNull().default(false),
-  assignmentStatus: text("assignment_status").notNull().default("pending"),
-  outreachStatus: text("outreach_status").notNull().default("pending"),
-  emailVerificationStatus: text("email_verification_status").notNull().default("pending"),
-  verificationAttempts: integer("verification_attempts").notNull().default(0),
-  emailVerificationCheckedAt: timestamp("email_verification_checked_at"),
-  emailVerificationScore: integer("email_verification_score"),
-  emailVerificationProvider: text("email_verification_provider"),
   // email_type: business | free_provider | disposable | unknown
   emailType: text("email_type"),
   status: text("status").notNull().default("new"),
@@ -220,7 +192,6 @@ export const contractorLeads = directoryEngineSchema.table("contractor_leads", {
   emailCopy: text("email_copy"),
   responseReceived: boolean("response_received").notNull().default(false),
   signedUp: boolean("signed_up").notNull().default(false),
-  replyCount: integer("reply_count").notNull().default(0),
   leadScore: integer("lead_score").notNull().default(0),
   verificationScore: integer("verification_score").default(0),
   verificationStatus: text("verification_status"),
@@ -237,8 +208,6 @@ export const contractorLeads = directoryEngineSchema.table("contractor_leads", {
   // Archiving: low-quality or manually archived leads are hidden from the active pipeline
   archived: boolean("archived").notNull().default(false),
   archivedAt: timestamp("archived_at", { mode: "date" }),
-  archiveReason: text("archive_reason"),
-  processedReplyIds: jsonb("processed_reply_ids").notNull().default([]),
   // Outreach Brain: lead scoring + lifecycle
   // lead_priority: high | medium | low — auto-computed from lead_score unless priority_source = 'manual'
   leadPriority: text("lead_priority").default("medium"),
@@ -246,7 +215,6 @@ export const contractorLeads = directoryEngineSchema.table("contractor_leads", {
   prioritySource: text("priority_source").default("auto"),
   // score_dirty: true when scoring inputs change; cleared by rescoreDirtyLeads worker cycle
   scoreDirty: boolean("score_dirty").notNull().default(true),
-  priorityScore: integer("priority_score").notNull().default(0),
   // outreach_stage: lifecycle state — not_contacted | message_ready | queued | sent | replied | converted | paused | archived
   outreachStage: text("outreach_stage").default("not_contacted"),
   followupCount: integer("followup_count").notNull().default(0),
@@ -260,70 +228,14 @@ export const contractorLeads = directoryEngineSchema.table("contractor_leads", {
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
-// LGS: job_poster_leads (parallel CRM for job poster targets)
-export const jobPosterLeads = directoryEngineSchema.table("job_poster_leads", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  campaignId: uuid("campaign_id").references(() => leadFinderCampaigns.id, { onDelete: "set null" }),
-  website: text("website").notNull(),
-  companyName: text("company_name"),
-  contactName: text("contact_name"),
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  title: text("title"),
-  email: text("email"),
-  phone: text("phone"),
-  category: text("category").notNull().default("business"),
-  trade: text("trade"),
-  address: text("address"),
-  city: text("city"),
-  state: text("state"),
-  country: text("country"),
-  source: text("source"),
-  needsEnrichment: boolean("needs_enrichment").notNull().default(false),
-  assignmentStatus: text("assignment_status").notNull().default("pending"),
-  outreachStatus: text("outreach_status").notNull().default("pending"),
-  emailVerificationStatus: text("email_verification_status").notNull().default("pending"),
-  verificationAttempts: integer("verification_attempts").notNull().default(0),
-  emailVerificationCheckedAt: timestamp("email_verification_checked_at"),
-  emailVerificationScore: integer("email_verification_score"),
-  emailVerificationProvider: text("email_verification_provider"),
-  status: text("status").notNull().default("new"),
-  contactAttempts: integer("contact_attempts").notNull().default(0),
-  responseReceived: boolean("response_received").notNull().default(false),
-  signedUp: boolean("signed_up").notNull().default(false),
-  replyCount: integer("reply_count").notNull().default(0),
-  leadScore: integer("lead_score").notNull().default(0),
-  emailBounced: boolean("email_bounced").default(false),
-  bounceReason: text("bounce_reason"),
-  notes: text("notes"),
-  archived: boolean("archived").notNull().default(false),
-  archivedAt: timestamp("archived_at", { mode: "date" }),
-  archiveReason: text("archive_reason"),
-  processedReplyIds: jsonb("processed_reply_ids").notNull().default([]),
-  leadPriority: text("lead_priority").default("medium"),
-  prioritySource: text("priority_source").default("auto"),
-  scoreDirty: boolean("score_dirty").notNull().default(true),
-  priorityScore: integer("priority_score").notNull().default(0),
-  outreachStage: text("outreach_stage").default("not_contacted"),
-  followupCount: integer("followup_count").notNull().default(0),
-  lastContactedAt: timestamp("last_contacted_at", { mode: "date" }),
-  lastRepliedAt: timestamp("last_replied_at", { mode: "date" }),
-  nextFollowupAt: timestamp("next_followup_at", { mode: "date" }),
-  lastMessageTypeSent: text("last_message_type_sent"),
-  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
-});
-
 // LGS: outreach_messages (GPT-generated per lead)
 export const outreachMessages = directoryEngineSchema.table("outreach_messages", {
   id: uuid("id").primaryKey().defaultRandom(),
   leadId: uuid("lead_id")
     .notNull()
     .references(() => contractorLeads.id),
-  campaignType: text("campaign_type").notNull().default("contractor"),
   subject: text("subject"),
   body: text("body"),
-  replyReceived: boolean("reply_received").notNull().default(false),
   messageHash: text("message_hash"),
   generationContext: jsonb("generation_context"),
   generatedBy: text("generated_by").default("gpt5-nano"),
@@ -355,78 +267,6 @@ export const lgsOutreachQueue = directoryEngineSchema.table("lgs_outreach_queue"
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
 });
 
-// LGS: job_poster_email_messages (isolated job poster review/send drafts)
-export const jobPosterEmailMessages = directoryEngineSchema.table("job_poster_email_messages", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  campaignId: uuid("campaign_id").references(() => leadFinderCampaigns.id, { onDelete: "cascade" }),
-  leadId: uuid("lead_id")
-    .notNull()
-    .references(() => jobPosterLeads.id),
-  subject: text("subject"),
-  body: text("body"),
-  replyReceived: boolean("reply_received").notNull().default(false),
-  messageHash: text("message_hash"),
-  generationContext: jsonb("generation_context"),
-  generatedBy: text("generated_by").default("gpt5-nano"),
-  status: text("status").default("draft"),
-  messageType: text("message_type").default("intro_standard"),
-  messageVersionHash: text("message_version_hash"),
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
-  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow(),
-  reviewedAt: timestamp("reviewed_at", { mode: "date" }),
-  reviewer: text("reviewer"),
-});
-
-// LGS: job_poster_email_queue (isolated job poster queue)
-export const jobPosterEmailQueue = directoryEngineSchema.table("job_poster_email_queue", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  messageId: uuid("message_id")
-    .notNull()
-    .references(() => jobPosterEmailMessages.id),
-  senderEmail: text("sender_email").notNull(),
-  scheduledAt: timestamp("scheduled_at", { mode: "date" }),
-  sentAt: timestamp("sent_at", { mode: "date" }),
-  status: text("status").default("pending"),
-  retryCount: integer("retry_count").default(0),
-  errorMessage: text("error_message"),
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
-});
-
-export const emailVerificationQueue = directoryEngineSchema.table("email_verification_queue", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  normalizedEmail: text("normalized_email").notNull(),
-  originalEmail: text("original_email").notNull(),
-  status: text("status").notNull().default("pending"),
-  attempts: integer("attempts").notNull().default(0),
-  lastError: text("last_error"),
-  checkedAt: timestamp("checked_at"),
-  provider: text("provider"),
-  resultStatus: text("result_status"),
-  resultScore: integer("result_score"),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
-});
-
-// LGS: lgs_inbound_events (shared inbound reply/bounce audit log)
-export const lgsInboundEvents = directoryEngineSchema.table("lgs_inbound_events", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  provider: text("provider").notNull().default("manual"),
-  externalEventId: text("external_event_id"),
-  campaignType: text("campaign_type").notNull().default("contractor"),
-  eventType: text("event_type").notNull(),
-  fromEmail: text("from_email").notNull(),
-  toEmail: text("to_email").notNull(),
-  subject: text("subject"),
-  body: text("body"),
-  matchedMessageId: uuid("matched_message_id"),
-  matchedLeadId: uuid("matched_lead_id"),
-  matchedCampaignId: uuid("matched_campaign_id"),
-  rawPayload: jsonb("raw_payload"),
-  processedAt: timestamp("processed_at", { mode: "date" }).notNull().defaultNow(),
-  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-});
-
 // LGS: discovery_runs (bulk domain search stats)
 export const discoveryRuns = directoryEngineSchema.table("discovery_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -451,9 +291,6 @@ export const discoveryRuns = directoryEngineSchema.table("discovery_runs", {
   emailsVerified: integer("emails_verified").default(0),
   emailsImported: integer("emails_imported").default(0),
   contactsFound: integer("contacts_found").default(0),
-  campaignType: text("campaign_type").notNull().default("contractor"),
-  targetCampaignId: uuid("target_campaign_id"),
-  targetCategory: text("target_category"),
   autoImportSource: text("auto_import_source"),
   // Stores { [domain]: { city, state } } from CSV/XLSX import
   importDomainMetadata: jsonb("import_domain_metadata"),
@@ -494,7 +331,6 @@ export const discoveryRunLeads = directoryEngineSchema.table("discovery_run_lead
   industry: text("industry"),
   verificationScore: integer("verification_score"),
   discoveryMethod: text("discovery_method"),
-  campaignType: text("campaign_type").notNull().default("contractor"),
   imported: boolean("imported").default(false),
   // import_status: pending | inserted | skipped_duplicate | skipped_rejected
   importStatus: text("import_status").default("pending"),
@@ -554,12 +390,6 @@ export const lgsWarmupActivity = directoryEngineSchema.table("lgs_warmup_activit
   sentAt: timestamp("sent_at", { mode: "date" }).notNull().defaultNow(),
   status: text("status").notNull(),
   errorMessage: text("error_message"),
-  provider: text("provider"),
-  providerMessageId: text("provider_message_id"),
-  latencyMs: integer("latency_ms"),
-  statusReason: text("status_reason"),
-  attemptNumber: integer("attempt_number"),
-  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
@@ -575,30 +405,16 @@ export const lgsWorkerHealth = directoryEngineSchema.table("lgs_worker_health", 
   configCheckResult: jsonb("config_check_result"),
 });
 
-export const warmupSystemState = directoryEngineSchema.table("warmup_system_state", {
-  id: serial("id").primaryKey(),
-  systemName: text("system_name").notNull().default("default").unique(),
-  lastWorkerRunAt: timestamp("last_worker_run_at", { mode: "date" }),
-  lastSuccessfulSendAt: timestamp("last_successful_send_at", { mode: "date" }),
-  workerStatus: text("worker_status").notNull().default("stale"),
-  lastError: text("last_error"),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
-});
-
 // ─── Lead Finder ─────────────────────────────────────────────────────────────
 
 // LGS: lead_finder_campaigns — city×trade discovery campaign config + metrics
 export const leadFinderCampaigns = directoryEngineSchema.table("lead_finder_campaigns", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  campaignType: text("campaign_type").notNull().default("contractor"),
   state: text("state").notNull().default("CA"),
   // JSON arrays: string[]
   cities: jsonb("cities").notNull().default([]),
   trades: jsonb("trades").notNull().default([]),
-  categories: jsonb("categories").notNull().default([]),
   sources: jsonb("sources").notNull().default([]),
   maxResultsPerCombo: integer("max_results_per_combo").notNull().default(25),
   // Geographic radius search — optional; when set, passes locationBias.circle to Google Places
@@ -615,9 +431,6 @@ export const leadFinderCampaigns = directoryEngineSchema.table("lead_finder_camp
   domainsFound: integer("domains_found").notNull().default(0),
   uniqueDomains: integer("unique_domains").notNull().default(0),
   domainsSent: integer("domains_sent").notNull().default(0),
-  sentCount: integer("sent_count").notNull().default(0),
-  replyCount: integer("reply_count").notNull().default(0),
-  bounceCount: integer("bounce_count").notNull().default(0),
   // Timing + performance
   startedAt: timestamp("started_at", { mode: "date" }),
   finishedAt: timestamp("finished_at", { mode: "date" }),
@@ -637,8 +450,7 @@ export const leadFinderJobs = directoryEngineSchema.table("lead_finder_jobs", {
     .references(() => leadFinderCampaigns.id),
   city: text("city").notNull(),
   state: text("state").notNull(),
-  trade: text("trade"),
-  category: text("category"),
+  trade: text("trade").notNull(),
   source: text("source").notNull(), // google_maps | google_search | yelp | directories
   // status: pending | running | complete | failed | skipped
   status: text("status").notNull().default("pending"),
@@ -654,19 +466,12 @@ export const leadFinderDomains = directoryEngineSchema.table("lead_finder_domain
     .notNull()
     .references(() => leadFinderCampaigns.id),
   jobId: uuid("job_id").references(() => leadFinderJobs.id),
-  domain: text("domain"),
+  domain: text("domain").notNull(),
   businessName: text("business_name"),
-  campaignType: text("campaign_type").notNull().default("contractor"),
   trade: text("trade"),
-  category: text("category"),
   city: text("city"),
   state: text("state"),
   source: text("source"), // google_maps | google_search | yelp | directories
-  websiteUrl: text("website_url"),
-  formattedAddress: text("formatted_address"),
-  phone: text("phone"),
-  placeId: text("place_id"),
-  replyRate: doublePrecision("reply_rate").notNull().default(0),
   sentToDiscovery: boolean("sent_to_discovery").notNull().default(false),
   discoveryRunId: uuid("discovery_run_id"), // set when sent to domain discovery pipeline
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),

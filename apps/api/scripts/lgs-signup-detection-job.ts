@@ -28,7 +28,7 @@ async function main() {
 
     const result = await db
       .update(contractorLeads)
-      .set({ signedUp: true, leadScore: sql`greatest(${contractorLeads.leadScore}, 30)`, updatedAt: new Date() })
+      .set({ signedUp: true, updatedAt: new Date() })
       .where(sql`lower(${contractorLeads.email}) = ${email} and ${contractorLeads.signedUp} = false`)
       .returning({ id: contractorLeads.id });
 

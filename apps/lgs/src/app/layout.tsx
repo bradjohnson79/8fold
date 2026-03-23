@@ -3,7 +3,7 @@ import { AppShell } from "@/components/AppShell";
 
 export const metadata = {
   title: "8Fold LGS — Lead Generation System",
-  description: "Contractor acquisition, outreach tracking, and investor-ready reporting",
+  description: "Contractor acquisition, outreach tracking, and operating metrics",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

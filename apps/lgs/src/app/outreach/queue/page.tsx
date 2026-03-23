@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/formatters";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,10 +23,8 @@ type QueueItem = {
   business_name: string | null;
   trade: string | null;
   city: string | null;
-  lead_score: number;
-  lead_priority: string;
-  outreach_stage: string;
-  followup_count: number;
+  verification_status: string;
+  archived: boolean;
   reason_codes: string[];
   is_ready: boolean;
 };
@@ -37,7 +36,6 @@ type QueueSummary = {
   capacity_used: number;
   capacity_total: number;
   capacity_remaining: number;
-  min_score_threshold: number;
 };
 
 type QueueResponse = {
@@ -50,25 +48,11 @@ type QueueResponse = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const QUEUE_REASON_LABELS: Record<string, string> = {
-  priority_high: "High Priority",
-  priority_medium: "Medium Priority",
-  priority_low: "Low Priority",
   sender_capacity_ok: "Capacity Available",
   blocked_no_capacity: "Blocked: No Capacity",
-  blocked_domain_cooldown: "Blocked: Domain Cooldown",
-  blocked_sender_health: "Blocked: Sender Health",
-  blocked_stage_replied: "Blocked: Lead Replied",
-  blocked_stage_converted: "Blocked: Lead Converted",
-  blocked_stage_paused: "Blocked: Lead Paused",
-  blocked_stage_archived: "Blocked: Lead Archived",
-  blocked_score_threshold: "Blocked: Score Too Low",
-  send_window_closed: "Blocked: Outside Send Window",
-};
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: "#22c55e",
-  medium: "#3b82f6",
-  low: "#94a3b8",
+  blocked_archived: "Blocked: Archived",
+  blocked_invalid_email: "Blocked: Invalid Email",
+  deferred_pending_verification: "Deferred: Pending Verification",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -77,34 +61,13 @@ const STATUS_COLORS: Record<string, string> = {
   failed: "#ef4444",
 };
 
-function PriorityBadge({ priority }: { priority: string }) {
-  const color = PRIORITY_COLORS[priority] ?? "#64748b";
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 6px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 600,
-        background: `${color}22`,
-        border: `1px solid ${color}55`,
-        color,
-        textTransform: "capitalize",
-      }}
-    >
-      {priority}
-    </span>
-  );
-}
-
 function StatusIndicator({ status, isReady }: { status: string; isReady: boolean }) {
   let color = STATUS_COLORS[status] ?? "#64748b";
   let label = status.charAt(0).toUpperCase() + status.slice(1);
 
   if (status === "pending") {
-    if (isReady) { color = "#22c55e"; label = "Ready"; }
-    else { color = "#f59e0b"; label = "Waiting"; }
+    if (isReady) { color = "#22c55e"; label = "Queued"; }
+    else { color = "#f59e0b"; label = "Deferred"; }
   }
 
   return (
@@ -211,15 +174,12 @@ export default function QueuePage() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
         <div>
-          <h1 style={{ margin: 0 }}>Outreach Queue</h1>
+        <h1 style={{ margin: 0 }}>Outreach Queue</h1>
           <p style={{ margin: "0.25rem 0 0", color: "#64748b", fontSize: 13 }}>
-            LGS intelligent send queue
+            Valid emails move forward, pending emails defer, invalid emails stay blocked
             {lastUpdated && <span style={{ marginLeft: 8 }}>· Updated {lastUpdated.toLocaleTimeString()}</span>}
           </p>
         </div>
-        <Link href="/outreach/brain" style={{ fontSize: 13, color: "#64748b", textDecoration: "none" }}>
-          Brain Dashboard →
-        </Link>
       </div>
 
       {/* ── Queue Intelligence Summary Bar ────────────────────────────────── */}
@@ -299,7 +259,6 @@ export default function QueuePage() {
           </button>
         ))}
 
-        {/* Blocked reason filter */}
         <select
           value={blockedReasonFilter}
           onChange={(e) => setBlockedReasonFilter(e.target.value)}
@@ -315,10 +274,9 @@ export default function QueuePage() {
         >
           <option value="">All (Blocked Reason)</option>
           <option value="no_capacity">Blocked: Capacity</option>
-          <option value="domain_cooldown">Blocked: Domain Cooldown</option>
-          <option value="sender_health">Blocked: Sender Health</option>
-          <option value="stage">Blocked: Stage</option>
-          <option value="score_threshold">Blocked: Score</option>
+          <option value="invalid_email">Blocked: Invalid Email</option>
+          <option value="pending_verification">Deferred: Pending Verification</option>
+          <option value="archived">Blocked: Archived</option>
         </select>
 
         {(statusFilter || blockedReasonFilter) && (
@@ -342,8 +300,7 @@ export default function QueuePage() {
             <tr style={{ borderBottom: "1px solid #334155", color: "#94a3b8" }}>
               <th style={{ textAlign: "left", padding: "0.6rem 0.75rem" }}>Business</th>
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Subject</th>
-              <th style={{ textAlign: "center", padding: "0.6rem 0.5rem" }}>Score</th>
-              <th style={{ textAlign: "center", padding: "0.6rem 0.5rem" }}>Priority</th>
+              <th style={{ textAlign: "center", padding: "0.6rem 0.5rem" }}>Email</th>
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Type</th>
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Status</th>
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Sender</th>
@@ -377,15 +334,9 @@ export default function QueuePage() {
                   {item.subject ?? "—"}
                 </td>
                 <td style={{ padding: "0.6rem 0.5rem", textAlign: "center" }}>
-                  <span style={{
-                    fontWeight: 600,
-                    color: item.lead_score >= 80 ? "#22c55e" : item.lead_score >= 55 ? "#3b82f6" : "#94a3b8",
-                  }}>
-                    {item.lead_score}
+                  <span style={{ fontSize: 11, fontWeight: 600, color: item.verification_status === "valid" ? "#22c55e" : item.verification_status === "invalid" ? "#ef4444" : "#f59e0b" }}>
+                    {item.verification_status}
                   </span>
-                </td>
-                <td style={{ padding: "0.6rem 0.5rem", textAlign: "center" }}>
-                  <PriorityBadge priority={item.lead_priority} />
                 </td>
                 <td style={{ padding: "0.6rem 0.5rem" }}>
                   <span style={{ fontSize: 11, color: "#64748b", background: "#1e293b", border: "1px solid #334155", borderRadius: 3, padding: "1px 5px" }}>
@@ -409,12 +360,10 @@ export default function QueuePage() {
                   <ReasonPills codes={item.reason_codes} />
                 </td>
                 <td style={{ padding: "0.6rem 0.5rem", color: "#475569", fontSize: 11, whiteSpace: "nowrap" }}>
-                  {item.created_at
-                    ? new Date(item.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
-                    : "—"}
+                  {formatDateTime(item.created_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   {item.sent_at && (
                     <div>
-                      Sent: {new Date(item.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      Sent: {formatDateTime(item.sent_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </div>
                   )}
                 </td>

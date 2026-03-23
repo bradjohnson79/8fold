@@ -35,7 +35,7 @@ export default function OutreachPage() {
   return (
     <div>
       <h1 style={{ marginBottom: "1.5rem" }}>
-        Contractor Outreach <HelpTooltip text={helpText.campaigns} />
+        Outreach Dashboard <HelpTooltip text={helpText.campaigns} />
       </h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
         <Card title="Total Contacts" value={data.totalContacts} />
@@ -58,9 +58,6 @@ export default function OutreachPage() {
         </Link>
         <Link href="/outreach/queue" style={{ padding: "0.75rem 1.25rem", background: "#1e293b", borderRadius: 8 }}>
           Queue Monitor
-        </Link>
-        <Link href="/outreach/job-posters" style={{ padding: "0.75rem 1.25rem", background: "#1e293b", borderRadius: 8 }}>
-          Job Poster Outreach
         </Link>
       </div>
     </div>

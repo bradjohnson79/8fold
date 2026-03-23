@@ -41,10 +41,12 @@ export async function GET() {
     }));
     const allTokensValid = gmailTokens.every((t) => t.hasToken);
 
-    // Next send timing: either a concrete send is scheduled or the sender has a valid rollover anchor.
-    const nextSendComputed = senders.every((s) =>
-      Boolean(s.nextWarmupSendAt) || Boolean(s.currentDayStartedAt)
-    );
+    // Next send timing
+    const nextSendTimes = senders
+      .filter((s) => s.nextWarmupSendAt)
+      .map((s) => s.nextWarmupSendAt!.toISOString())
+      .sort();
+    const nextSendComputed = nextSendTimes.length > 0;
 
     // Recent activity
     const [recentActivity] = await db

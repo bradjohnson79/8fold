@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     await db
       .update(contractorLeads)
-      .set({ archived: false, archivedAt: null })
+      .set({ archived: false, archivedAt: null, status: "active" })
       .where(inArray(contractorLeads.id, leadIds));
 
     return NextResponse.json({ ok: true, data: { restored: leadIds.length } });

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
-import { VerificationProgressModal, type VerificationProgress } from "@/components/VerificationProgressModal";
 import { helpText } from "@/lib/helpText";
+import { formatDateTime } from "@/lib/formatters";
 
 type Lead = {
   id: string;
@@ -13,111 +13,32 @@ type Lead = {
   lead_name: string | null;
   business_name: string | null;
   email: string | null;
-  needs_enrichment?: boolean;
-  assignment_status?: string | null;
-  outreach_status?: string | null;
   email_type: string | null;
   trade: string | null;
   city: string | null;
   state: string | null;
   country: string | null;
+  status?: string | null;
   contact_attempts: number;
   response_received: boolean;
-  reply_count?: number;
   signed_up: boolean;
   created_at: string;
-  email_verification_status?: string | null;
-  email_verification_checked_at?: string | null;
-  email_verification_score?: number | null;
-  email_verification_provider?: string | null;
+  verification_status?: string | null;
   email_bounced?: boolean | null;
   archived: boolean;
   archived_at?: string | null;
-  archive_reason?: string | null;
-  final_status?: "ready" | "risky" | "archived";
-  ready_for_outreach?: boolean;
-  ui_verification_status?: string | null;
   contact_status: string;
   message_status: string;
   latest_message_id: string | null;
   latest_message_subject: string | null;
   latest_message_body: string | null;
-  // Brain fields
-  priority_score?: number;
-  lead_score?: number;
-  lead_priority?: string;
-  priority_source?: string;
   outreach_stage?: string;
   followup_count?: number;
   next_followup_at?: string | null;
+  email_sent_at?: string | null;
   last_contacted_at?: string | null;
+  last_replied_at?: string | null;
 };
-
-// ── Brain color maps ──────────────────────────────────────────────────────────
-const PRIORITY_COLORS: Record<string, string> = {
-  high: "#22c55e",
-  medium: "#3b82f6",
-  low: "#94a3b8",
-  archived: "#ef4444",
-};
-
-const STAGE_COLORS: Record<string, string> = {
-  not_contacted: "#475569",
-  message_ready: "#a78bfa",
-  queued: "#eab308",
-  sent: "#3b82f6",
-  replied: "#22c55e",
-  converted: "#8b5cf6",
-  paused: "#ef4444",
-  archived: "#475569",
-};
-
-function PriorityBadge({ priority, isManual }: { priority: string; isManual?: boolean }) {
-  const color = PRIORITY_COLORS[priority] ?? "#64748b";
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
-        padding: "1px 6px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 600,
-        background: `${color}22`,
-        border: `1px solid ${color}55`,
-        color,
-        textTransform: "capitalize",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {isManual && <span title="Manually set">🔒</span>}
-      {priority}
-    </span>
-  );
-}
-
-function StageBadge({ stage }: { stage: string }) {
-  const color = STAGE_COLORS[stage] ?? "#475569";
-  const label = stage.replace(/_/g, " ");
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 6px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 500,
-        background: `${color}22`,
-        border: `1px solid ${color}44`,
-        color,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
 
 type EnrichmentSummary = {
   pending: number;
@@ -137,17 +58,9 @@ type ApiResponse = {
   error?: string;
 };
 
-type VerificationJob = {
-  title: string;
-  summary: string | null;
-  pipeline: "contractor";
-  leadIds: string[];
-  allPending: boolean;
-};
-
 const MSG_LABELS: Record<string, string> = {
   none: "No MSG",
-  ready: "MSG Ready",
+  ready: "Draft MSG",
   approved: "Approved",
   sent: "Sent",
 };
@@ -166,82 +79,56 @@ const CONTACT_LABELS: Record<string, string> = {
   converted: "Converted",
 };
 
-const VERIFY_STATUS_COLORS: Record<string, string> = {
-  pending: "#fbbf24",
-  valid: "#22c55e",
-  verified: "#22c55e",
-  invalid: "#ef4444",
-  risky: "#fbbf24",
-  catch_all: "#fbbf24",
-  unknown: "#fbbf24",
-  processing: "#fbbf24",
-};
-
-function VerificationBadge({ status }: { status?: string | null }) {
-  const normalized = normalizeVerificationStatus(status);
-  const color = VERIFY_STATUS_COLORS[normalized] ?? "#94a3b8";
-  const label = normalized === "valid" ? "Valid" : normalized === "invalid" ? "Invalid" : "Pending";
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 6px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 600,
-        background: `${color}22`,
-        border: `1px solid ${color}44`,
-        color,
-        whiteSpace: "nowrap",
-        textTransform: "capitalize",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function FinalStatusBadge({ status, reason }: { status?: string | null; reason?: string | null }) {
-  void reason;
-  const normalized = status === "archived" ? "archived" : "active";
-  const color = normalized === "archived" ? "#f59e0b" : "#38bdf8";
-  const label = normalized === "archived" ? "Archived" : "Active";
-
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 6px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 600,
-        background: `${color}22`,
-        border: `1px solid ${color}55`,
-        color,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function normalizeVerificationStatus(status?: string | null): string {
+function normalizeVerificationStatus(status: string | null | undefined): "pending" | "valid" | "invalid" {
   const normalized = String(status ?? "").trim().toLowerCase();
-  if (!normalized) return "pending";
-  if (normalized === "valid" || normalized === "verified") return "valid";
-  if (normalized === "invalid") return "invalid";
+  if (normalized === "valid" || normalized === "verified" || normalized === "qualified") return "valid";
+  if (normalized === "invalid" || normalized === "blocked" || normalized === "rejected" || normalized === "low_quality") return "invalid";
   return "pending";
 }
 
-function MsgCell({ lead, onGenerated }: { lead: Lead; onGenerated: (leadId: string) => void }) {
+function verificationColor(status: "pending" | "valid" | "invalid"): string {
+  if (status === "valid") return "#22c55e";
+  if (status === "invalid") return "#ef4444";
+  return "#f59e0b";
+}
+
+function verificationLabel(status: "pending" | "valid" | "invalid", email: string | null): string {
+  if (!email) return "Email not found yet";
+  if (status === "valid") return "Valid";
+  if (status === "invalid") return "Invalid";
+  return "Pending";
+}
+
+function canGenerateForLead(lead: Lead): boolean {
+  if (lead.archived || lead.status === "archived") return false;
+  if (!lead.email) return false;
+  return normalizeVerificationStatus(lead.verification_status) !== "invalid";
+}
+
+function getGenerateErrorMessage(status: number): string {
+  if (status === 400) return "Missing required data";
+  if (status >= 500) return "Generation failed, try again";
+  return "Generate failed";
+}
+
+function MsgCell({
+  lead,
+  onGenerated,
+  onError,
+}: {
+  lead: Lead;
+  onGenerated: (leadId: string) => void;
+  onError: (message: string) => void;
+}) {
   const [generating, setGenerating] = useState(false);
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const status = lead.message_status;
   const label = MSG_LABELS[status] ?? status;
   const color = MSG_COLORS[status] ?? "#475569";
+  const generateDisabled = !canGenerateForLead(lead);
 
   const handleGenerate = useCallback(async () => {
+    if (!lead.email) return;
     setGenerating(true);
     try {
       const res = await fetch("/api/lgs/messages/generate", {
@@ -249,24 +136,31 @@ function MsgCell({ lead, onGenerated }: { lead: Lead; onGenerated: (leadId: stri
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_id: lead.id }),
       });
-      if (res.ok) onGenerated(lead.id);
+      if (res.ok) {
+        onGenerated(lead.id);
+      } else {
+        onError(getGenerateErrorMessage(res.status));
+      }
+    } catch {
+      onError("Generation failed, try again");
     } finally {
       setGenerating(false);
     }
-  }, [lead.id, onGenerated]);
+  }, [lead.email, lead.id, onError, onGenerated]);
 
   if (status === "none") {
     return (
       <button
         onClick={handleGenerate}
-        disabled={generating}
+        disabled={generating || generateDisabled}
+        title={generateDisabled ? (!lead.email ? "Email not found yet" : "Invalid email") : "Generate message"}
         style={{
           padding: "0.2rem 0.5rem",
           background: "#1e293b",
           border: "1px solid #334155",
           borderRadius: 4,
-          color: "#94a3b8",
-          cursor: generating ? "not-allowed" : "pointer",
+          color: generateDisabled ? "#475569" : "#94a3b8",
+          cursor: generating || generateDisabled ? "not-allowed" : "pointer",
           fontSize: "0.75rem",
           whiteSpace: "nowrap",
         }}
@@ -340,26 +234,17 @@ export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const [filterContactStatus, setFilterContactStatus] = useState("");
   const [filterMessageStatus, setFilterMessageStatus] = useState("");
-  const [filterVerificationStatus, setFilterVerificationStatus] = useState("");
   const [filterArchived, setFilterArchived] = useState("active"); // active | archived | all
-  const [filterPriority, setFilterPriority] = useState("");
   const [filterStage, setFilterStage] = useState("");
   const [filterNeedsFollowup, setFilterNeedsFollowup] = useState(false);
-  const [highPriorityOnly, setHighPriorityOnly] = useState(false);
-  const [scoreSort, setScoreSort] = useState<"asc" | "desc" | "">("");
   const [followupSort, setFollowupSort] = useState<"asc" | "desc" | "">("");
-  const [bulkPriorityPending, setBulkPriorityPending] = useState<string | null>(null);
   const [bulkPausePending, setBulkPausePending] = useState(false);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
-  const [bulkVerifying, setBulkVerifying] = useState(false);
-  const [verifyPendingRunning, setVerifyPendingRunning] = useState(false);
   const [bulkRemoving, setBulkRemoving] = useState(false);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
-  const [verificationJob, setVerificationJob] = useState<VerificationJob | null>(null);
-  const [verificationProgress, setVerificationProgress] = useState<VerificationProgress | null>(null);
 
   // Deduplicate state
   const [dedupeModal, setDedupeModal] = useState<{
@@ -381,8 +266,6 @@ export default function LeadsPage() {
   const [archiveModal, setArchiveModal] = useState<{ lead_ids: string[]; count: number } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
-  const [archiveQualityModal, setArchiveQualityModal] = useState(false);
-  const [archiveQualityRunning, setArchiveQualityRunning] = useState(false);
 
   const [enrichment, setEnrichment] = useState<EnrichmentSummary | null>(null);
 
@@ -406,7 +289,6 @@ export default function LeadsPage() {
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (filterContactStatus) params.set("filter_contact_status", filterContactStatus);
       if (filterMessageStatus) params.set("filter_message_status", filterMessageStatus);
-      if (filterVerificationStatus) params.set("filter_verification_status", filterVerificationStatus);
       params.set("filter_archived", filterArchived);
 
       const r = await lgsFetch<ApiResponse>(`/api/lgs/leads?${params.toString()}`);
@@ -424,51 +306,15 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, filterContactStatus, filterMessageStatus, filterVerificationStatus, filterArchived]);
+  }, [page, pageSize, debouncedSearch, filterContactStatus, filterMessageStatus, filterArchived]);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, filterContactStatus, filterMessageStatus, filterVerificationStatus, filterArchived]);
+  }, [debouncedSearch, filterContactStatus, filterMessageStatus, filterArchived]);
 
   useEffect(() => {
     void fetchLeads();
   }, [fetchLeads]);
-
-  useEffect(() => {
-    if (!verificationJob) return;
-
-    let cancelled = false;
-    const run = async () => {
-      const params = new URLSearchParams({
-        pipeline: verificationJob.pipeline,
-      });
-      if (verificationJob.allPending) {
-        params.set("all_pending", "true");
-      } else if (verificationJob.leadIds.length > 0) {
-        params.set("lead_ids", verificationJob.leadIds.join(","));
-      }
-
-      try {
-        const res = await lgsFetch<VerificationProgress>(`/api/lgs/verification/status?${params.toString()}`);
-        const payload = res as unknown as { ok: boolean; data?: VerificationProgress };
-        if (!cancelled && payload.ok && payload.data) {
-          setVerificationProgress(payload.data);
-        }
-      } catch {
-        // Keep existing progress on transient polling errors.
-      }
-    };
-
-    void run();
-    const timer = setInterval(() => {
-      void run();
-    }, 2000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [verificationJob]);
 
   const allSelected = leads.length > 0 && leads.every((l) => selected.has(l.id));
 
@@ -486,11 +332,10 @@ export default function LeadsPage() {
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
   const selectedLeads = useMemo(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
-  const selectedVerifiable = useMemo(
-    () => selectedLeads.filter((l) => !!l.email && normalizeVerificationStatus(l.email_verification_status) !== "valid"),
+  const selectedWithNoMsg = useMemo(
+    () => selectedLeads.filter((l) => l.message_status === "none" && canGenerateForLead(l)),
     [selectedLeads]
   );
-  const selectedWithNoMsg = useMemo(() => selectedLeads.filter((l) => l.message_status === "none"), [selectedLeads]);
   const selectedWithReadyMsg = useMemo(() => selectedLeads.filter((l) => l.message_status === "ready"), [selectedLeads]);
   // Any lead with an existing message (ready, approved, or sent) — shown in Remove MSG
   const selectedWithMsg = useMemo(() => selectedLeads.filter((l) => l.message_status !== "none"), [selectedLeads]);
@@ -519,10 +364,12 @@ export default function LeadsPage() {
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: { generated?: number; skipped?: number } };
       const generated = json.data?.generated ?? 0;
       const skipped = json.data?.skipped ?? 0;
-      let msg = res.ok ? `Generated ${generated} message${generated !== 1 ? "s" : ""}` : "Generate failed";
+      let msg = res.ok ? `Generated ${generated} message${generated !== 1 ? "s" : ""}` : getGenerateErrorMessage(res.status);
       if (res.ok && skipped > 0) msg += ` (${skipped} already had messages — skipped)`;
       setBulkMsg(msg);
       if (res.ok) void fetchLeads();
+    } catch {
+      setBulkMsg("Generation failed, try again");
     } finally {
       setBulkGenerating(false);
     }
@@ -564,62 +411,6 @@ export default function LeadsPage() {
       if (res.ok) void fetchLeads();
     } finally {
       setBulkApproving(false);
-    }
-  }
-
-  async function bulkVerify(allPending = false) {
-    setBulkMsg(null);
-    if (!allPending && selectedVerifiable.length === 0) return;
-    if (allPending) setVerifyPendingRunning(true);
-    else setBulkVerifying(true);
-    try {
-      const res = await fetch("/api/lgs/leads/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pipeline: "contractor",
-          lead_ids: allPending ? [] : selectedVerifiable.map((l) => l.id),
-          all_pending: allPending,
-        }),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        data?: { queued?: number; cached?: number; alreadyQueued?: number; invalid?: number; skipped?: number; accepted?: number };
-        error?: string;
-      };
-      if (res.ok) {
-        const queued = json.data?.queued ?? 0;
-        const cached = json.data?.cached ?? 0;
-        const alreadyQueued = json.data?.alreadyQueued ?? 0;
-        const invalid = json.data?.invalid ?? 0;
-        const skipped = json.data?.skipped ?? 0;
-        setBulkMsg(
-          `Verification queued: ${queued}` +
-          (cached ? `, reused cached: ${cached}` : "") +
-          (alreadyQueued ? `, already queued: ${alreadyQueued}` : "") +
-          (invalid ? `, invalid: ${invalid}` : "") +
-          (skipped ? `, skipped: ${skipped}` : "")
-        );
-        setVerificationJob({
-          title: allPending ? "Verifying Pending Contractor Leads" : `Verifying Selected Contractor Leads (${selectedVerifiable.length})`,
-          summary:
-            `Queued ${queued}` +
-            (cached ? `, reused cached ${cached}` : "") +
-            (alreadyQueued ? `, already queued ${alreadyQueued}` : "") +
-            (invalid ? `, invalid ${invalid}` : "") +
-            (skipped ? `, skipped ${skipped}` : ""),
-          pipeline: "contractor",
-          leadIds: allPending ? [] : selectedVerifiable.map((l) => l.id),
-          allPending,
-        });
-        setVerificationProgress(null);
-        void fetchLeads();
-      } else {
-        setBulkMsg(json.error ?? "Verify failed");
-      }
-    } finally {
-      setBulkVerifying(false);
-      setVerifyPendingRunning(false);
     }
   }
 
@@ -726,40 +517,6 @@ export default function LeadsPage() {
     }
   }
 
-  async function runArchiveQuality() {
-    setArchiveQualityRunning(true);
-    setArchiveQualityModal(false);
-    setBulkMsg(null);
-    try {
-      const res = await fetch("/api/lgs/leads/archive-quality", { method: "POST" });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: { archived?: number } };
-      const archived = json.data?.archived ?? 0;
-      setBulkMsg(res.ok ? `Archived ${archived} low-quality lead${archived !== 1 ? "s" : ""} (score < 85)` : "Archive quality failed");
-      if (res.ok) void fetchLeads();
-    } finally {
-      setArchiveQualityRunning(false);
-    }
-  }
-
-  async function bulkSetPriority(priority: string) {
-    if (selectedIds.length === 0) return;
-    setBulkPriorityPending(priority);
-    setBulkMsg(null);
-    try {
-      const res = await fetch("/api/lgs/leads/set-priority", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_ids: selectedIds, priority }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: { updated?: number } };
-      const updated = json.data?.updated ?? 0;
-      setBulkMsg(res.ok ? `Set ${updated} lead${updated !== 1 ? "s" : ""} to ${priority} priority` : "Priority update failed");
-      if (res.ok) void fetchLeads();
-    } finally {
-      setBulkPriorityPending(null);
-    }
-  }
-
   async function bulkPause() {
     if (selectedIds.length === 0) return;
     setBulkPausePending(true);
@@ -782,7 +539,6 @@ export default function LeadsPage() {
   // Client-side sort + filter for brain fields (server doesn't support these yet)
   const displayedLeads = useMemo(() => {
     let list = leads;
-    if (filterPriority) list = list.filter((l) => l.lead_priority === filterPriority);
     if (filterStage) list = list.filter((l) => l.outreach_stage === filterStage);
     if (filterNeedsFollowup) {
       const today = new Date();
@@ -791,21 +547,15 @@ export default function LeadsPage() {
         (l) => l.next_followup_at && new Date(l.next_followup_at) <= today && l.outreach_stage === "sent"
       );
     }
-    if (scoreSort) {
-      list = [...list].sort((a, b) =>
-        scoreSort === "desc"
-          ? (b.priority_score ?? b.lead_score ?? 0) - (a.priority_score ?? a.lead_score ?? 0)
-          : (a.priority_score ?? a.lead_score ?? 0) - (b.priority_score ?? b.lead_score ?? 0)
-      );
-    } else if (followupSort) {
+    if (followupSort) {
       list = [...list].sort((a, b) => {
-        const ta = a.next_followup_at ? new Date(a.next_followup_at).getTime() : Infinity;
-        const tb = b.next_followup_at ? new Date(b.next_followup_at).getTime() : Infinity;
+        const ta = a.last_contacted_at ? new Date(a.last_contacted_at).getTime() : Infinity;
+        const tb = b.last_contacted_at ? new Date(b.last_contacted_at).getTime() : Infinity;
         return followupSort === "asc" ? ta - tb : tb - ta;
       });
     }
     return list;
-  }, [leads, filterPriority, filterStage, filterNeedsFollowup, scoreSort, followupSort]);
+  }, [leads, filterStage, filterNeedsFollowup, followupSort]);
 
   const startIdx = (page - 1) * pageSize + 1;
   const endIdx = Math.min(page * pageSize, total);
@@ -818,13 +568,6 @@ export default function LeadsPage() {
         </h1>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <button
-            onClick={() => void bulkVerify(true)}
-            disabled={verifyPendingRunning}
-            style={{ padding: "0.6rem 1rem", background: "transparent", border: "1px solid #22c55e66", borderRadius: 8, fontSize: "0.875rem", color: "#4ade80", cursor: verifyPendingRunning ? "not-allowed" : "pointer", fontWeight: 500 }}
-          >
-            {verifyPendingRunning ? "Queueing Verify…" : "Verify Pending"}
-          </button>
-          <button
             onClick={() => void openDedupeModal([])}
             style={{ padding: "0.6rem 1rem", background: "transparent", border: "1px solid #7c3aed66", borderRadius: 8, fontSize: "0.875rem", color: "#a78bfa", cursor: "pointer", fontWeight: 500 }}
           >
@@ -834,10 +577,6 @@ export default function LeadsPage() {
             + Import Contractor Websites
           </Link>
         </div>
-      </div>
-
-      <div style={{ marginBottom: "1rem", padding: "0.85rem 1rem", borderRadius: 10, border: "1px solid #334155", background: "#0f172a", color: "#cbd5e1", fontSize: "0.9rem" }}>
-        Verification here is bounce safety only. `Pending` will retry, `Valid` can send, and only `Invalid` is blocked from outreach.
       </div>
 
       {/* Enrichment status bar */}
@@ -917,29 +656,9 @@ export default function LeadsPage() {
         >
           <option value="">All MSG Status</option>
           <option value="none">No MSG</option>
-          <option value="ready">MSG Ready</option>
+          <option value="ready">Draft MSG</option>
           <option value="approved">Approved</option>
           <option value="sent">Sent</option>
-        </select>
-        <select
-          value={filterVerificationStatus}
-          onChange={(e) => setFilterVerificationStatus(e.target.value)}
-          style={{ padding: "0.5rem 0.75rem", background: "#1e293b", border: "1px solid #334155", borderRadius: 6, color: "#e2e8f0", fontSize: "0.875rem" }}
-        >
-          <option value="">All Verify Status</option>
-          <option value="pending">Pending</option>
-          <option value="valid">Valid</option>
-          <option value="invalid">Invalid</option>
-        </select>
-        <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          style={{ padding: "0.5rem 0.75rem", background: filterPriority ? "#1e293b" : "#1e293b", border: filterPriority ? "1px solid #22c55e55" : "1px solid #334155", borderRadius: 6, color: "#e2e8f0", fontSize: "0.875rem" }}
-        >
-          <option value="">All Priority</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
         </select>
         <select
           value={filterStage}
@@ -948,7 +667,7 @@ export default function LeadsPage() {
         >
           <option value="">All Stage</option>
           <option value="not_contacted">Not Contacted</option>
-          <option value="message_ready">Message Ready</option>
+          <option value="message_ready">Message Drafted</option>
           <option value="queued">Queued</option>
           <option value="sent">Sent</option>
           <option value="replied">Replied</option>
@@ -971,9 +690,9 @@ export default function LeadsPage() {
         >
           Follow-up Due Today
         </button>
-        {(search || filterContactStatus || filterMessageStatus || filterVerificationStatus || filterArchived !== "active" || filterPriority || filterStage || filterNeedsFollowup || highPriorityOnly) && (
+        {(search || filterContactStatus || filterMessageStatus || filterArchived !== "active" || filterStage || filterNeedsFollowup) && (
           <button
-            onClick={() => { setSearch(""); setFilterContactStatus(""); setFilterMessageStatus(""); setFilterVerificationStatus(""); setFilterArchived("active"); setFilterPriority(""); setFilterStage(""); setFilterNeedsFollowup(false); setHighPriorityOnly(false); }}
+            onClick={() => { setSearch(""); setFilterContactStatus(""); setFilterMessageStatus(""); setFilterArchived("active"); setFilterStage(""); setFilterNeedsFollowup(false); }}
             style={{ padding: "0.5rem 0.75rem", background: "transparent", border: "1px solid #475569", borderRadius: 6, color: "#94a3b8", fontSize: "0.875rem", cursor: "pointer" }}
           >
             Clear
@@ -985,15 +704,6 @@ export default function LeadsPage() {
       {selectedIds.length > 0 && (
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginBottom: "1rem", padding: "0.75rem 1rem", background: "#1e293b", borderRadius: 8, border: "1px solid #334155" }}>
           <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{selectedIds.length} selected</span>
-          {selectedVerifiable.length > 0 && (
-            <button
-              onClick={() => void bulkVerify(false)}
-              disabled={bulkVerifying}
-              style={{ padding: "0.4rem 0.875rem", background: "#14532d", border: "1px solid #22c55e66", borderRadius: 6, color: "#bbf7d0", fontSize: "0.875rem", cursor: bulkVerifying ? "not-allowed" : "pointer" }}
-            >
-              {bulkVerifying ? "Queueing Verify…" : `Verify Selected (${selectedVerifiable.length})`}
-            </button>
-          )}
           {selectedWithNoMsg.length > 0 && (
             <button
               onClick={() => void bulkGenerate()}
@@ -1005,7 +715,7 @@ export default function LeadsPage() {
           )}
           {selectedWithReadyMsg.length > 0 && (
             <button
-              onClick={() => void bulkApprove()}
+              onClick={bulkApprove}
               disabled={bulkApproving}
               style={{ padding: "0.4rem 0.875rem", background: "#16a34a", border: "none", borderRadius: 6, color: "#fff", fontSize: "0.875rem", cursor: bulkApproving ? "not-allowed" : "pointer" }}
             >
@@ -1047,30 +757,6 @@ export default function LeadsPage() {
               Deduplicate Run
             </button>
           )}
-          {/* Brain: Set Priority */}
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <span style={{ color: "#64748b", fontSize: "0.75rem" }}>Priority:</span>
-            {["high", "medium", "low"].map((p) => (
-              <button
-                key={p}
-                onClick={() => void bulkSetPriority(p)}
-                disabled={!!bulkPriorityPending}
-                style={{
-                  padding: "0.3rem 0.6rem",
-                  background: bulkPriorityPending === p ? "#22c55e22" : "#1e293b",
-                  border: `1px solid ${p === "high" ? "#22c55e" : p === "medium" ? "#3b82f6" : "#94a3b8"}44`,
-                  borderRadius: 5,
-                  color: p === "high" ? "#22c55e" : p === "medium" ? "#3b82f6" : "#94a3b8",
-                  cursor: bulkPriorityPending ? "not-allowed" : "pointer",
-                  fontSize: "0.75rem",
-                  textTransform: "capitalize",
-                }}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-          {/* Brain: Pause */}
           <button
             onClick={() => void bulkPause()}
             disabled={bulkPausePending}
@@ -1125,7 +811,6 @@ export default function LeadsPage() {
       {!loading && leads.length === 0 ? (
         <p style={{ color: "#94a3b8" }}>
           {total === 0 && !search && !filterContactStatus && !filterMessageStatus
-            && !filterVerificationStatus && !highPriorityOnly
             ? "No leads yet. Import leads from CSV or Excel."
             : "No leads match your filters."}
         </p>
@@ -1144,17 +829,14 @@ export default function LeadsPage() {
                 <th style={{ padding: "0.6rem 0.75rem" }}>City</th>
                 <th style={{ padding: "0.6rem 0.5rem" }}>St</th>
                 <th style={{ padding: "0.6rem 0.75rem" }}>Verify</th>
-                <th style={{ padding: "0.6rem 0.75rem" }}>Assign</th>
-                <th style={{ padding: "0.6rem 0.75rem" }}>Outreach</th>
-                <th style={{ padding: "0.6rem 0.5rem" }}>Stage</th>
-                <th style={{ padding: "0.6rem 0.5rem" }}>F/U</th>
+                <th style={{ padding: "0.6rem 0.75rem" }}>Sent</th>
+                <th style={{ padding: "0.6rem 0.75rem" }}>Replied</th>
                 <th
                   style={{ padding: "0.6rem 0.5rem", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
                   onClick={() => setFollowupSort((s) => (s === "asc" ? "desc" : "asc"))}
                 >
-                  Next F/U {followupSort === "asc" ? "↑" : followupSort === "desc" ? "↓" : "↕"}
+                  Last Contacted {followupSort === "asc" ? "↑" : followupSort === "desc" ? "↓" : "↕"}
                 </th>
-                <th style={{ padding: "0.6rem 0.5rem" }}>Replies</th>
                 <th style={{ padding: "0.6rem 0.75rem" }}>MSG</th>
                 <th style={{ padding: "0.6rem 0.75rem" }}>Contact</th>
                 <th style={{ padding: "0.6rem 0.75rem" }}>Signup</th>
@@ -1162,10 +844,6 @@ export default function LeadsPage() {
             </thead>
             <tbody>
               {displayedLeads.map((l) => {
-                const needsFollowup =
-                  l.outreach_stage === "sent" &&
-                  l.next_followup_at &&
-                  new Date(l.next_followup_at) <= new Date();
                 return (
                 <tr
                   key={l.id}
@@ -1199,77 +877,37 @@ export default function LeadsPage() {
                     )}
                   </td>
                   <td style={{ padding: "0.6rem 0.75rem", fontFamily: "monospace", fontSize: "0.8rem", color: "#94a3b8" }}>
-                    {l.email ?? (l.needs_enrichment ? "Pending enrichment" : "—")}
+                    {l.email ?? "Email not found yet"}
                   </td>
                   <td style={{ padding: "0.6rem 0.75rem" }}>{l.trade ?? "—"}</td>
                   <td style={{ padding: "0.6rem 0.75rem" }}>{l.city ?? "—"}</td>
                   <td style={{ padding: "0.6rem 0.5rem", color: "#94a3b8" }}>{l.state ?? "—"}</td>
                   <td style={{ padding: "0.6rem 0.75rem" }}>
-                    <VerificationBadge status={l.email_verification_status} />
+                    {(() => {
+                      const normalized = normalizeVerificationStatus(l.verification_status);
+                      const color = verificationColor(normalized);
+                      return (
+                        <span style={{ color, fontSize: "0.78rem", fontWeight: 600 }}>
+                          {verificationLabel(normalized, l.email)}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td style={{ padding: "0.6rem 0.75rem", color: l.contact_attempts > 0 ? "#22c55e" : "#94a3b8" }}>
+                    {l.contact_attempts > 0 ? "Yes" : "No"}
+                  </td>
+                  <td style={{ padding: "0.6rem 0.75rem", color: l.response_received ? "#22c55e" : "#94a3b8" }}>
+                    {l.response_received ? "Yes" : "No"}
+                  </td>
+                  <td style={{ padding: "0.6rem 0.5rem", whiteSpace: "nowrap", fontSize: 11, color: "#94a3b8" }}>
+                    {l.last_contacted_at ? formatDateTime(l.last_contacted_at) : "—"}
                   </td>
                   <td style={{ padding: "0.6rem 0.75rem" }}>
-                    <span style={{
-                      padding: "0.2rem 0.5rem",
-                      background: "#0f172a",
-                      border: "1px solid #334155",
-                      borderRadius: 4,
-                      color:
-                        l.assignment_status === "assigned"
-                          ? "#22c55e"
-                          : l.assignment_status === "ready"
-                            ? "#38bdf8"
-                            : l.assignment_status === "waiting_enrichment"
-                              ? "#fbbf24"
-                              : "#94a3b8",
-                      fontSize: "0.75rem",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {(l.assignment_status ?? "pending").replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td style={{ padding: "0.6rem 0.75rem" }}>
-                    <span style={{
-                      padding: "0.2rem 0.5rem",
-                      background: "#0f172a",
-                      border: "1px solid #334155",
-                      borderRadius: 4,
-                      color:
-                        l.outreach_status === "sent"
-                          ? "#22c55e"
-                          : l.outreach_status === "queued"
-                            ? "#38bdf8"
-                            : l.outreach_status === "approved"
-                              ? "#a78bfa"
-                              : l.outreach_status === "message_generated"
-                                ? "#fbbf24"
-                                : l.outreach_status === "failed"
-                                  ? "#f87171"
-                                  : "#94a3b8",
-                      fontSize: "0.75rem",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {(l.outreach_status ?? "pending").replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td style={{ padding: "0.6rem 0.5rem" }}>
-                    {l.outreach_stage ? <StageBadge stage={l.outreach_stage} /> : "—"}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.5rem", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                    {l.followup_count ?? 0}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.5rem", whiteSpace: "nowrap", fontSize: 11 }}>
-                    {l.next_followup_at ? (
-                      <span style={{ color: needsFollowup ? "#f59e0b" : "#64748b" }}>
-                        {new Date(l.next_followup_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        {needsFollowup && " ⚡"}
-                      </span>
-                    ) : "—"}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.5rem", textAlign: "center", color: (l.reply_count ?? 0) > 0 ? "#34d399" : "#94a3b8", fontWeight: (l.reply_count ?? 0) > 0 ? 700 : 500 }}>
-                    {l.reply_count ?? 0}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.75rem" }}>
-                    <MsgCell lead={l} onGenerated={() => void fetchLeads()} />
+                    <MsgCell
+                      lead={l}
+                      onGenerated={() => void fetchLeads()}
+                      onError={(message) => setBulkMsg(message)}
+                    />
                   </td>
                   <td style={{ padding: "0.6rem 0.75rem", color: "#94a3b8" }}>
                     {CONTACT_LABELS[l.contact_status] ?? l.contact_status}
@@ -1307,18 +945,6 @@ export default function LeadsPage() {
         </div>
       )}
 
-      <VerificationProgressModal
-        open={verificationJob !== null}
-        title={verificationJob?.title ?? "Verifying Emails"}
-        progress={verificationProgress}
-        summary={verificationJob?.summary ?? null}
-        onClose={() => {
-          setVerificationJob(null);
-          setVerificationProgress(null);
-          void fetchLeads();
-        }}
-      />
-
       {/* ── Archive confirmation modal ────────────────────────────────── */}
       {archiveModal && (
         <div
@@ -1330,8 +956,7 @@ export default function LeadsPage() {
               Archive {archiveModal.count} Lead{archiveModal.count !== 1 ? "s" : ""}?
             </h2>
             <p style={{ color: "#94a3b8", fontSize: "0.875rem", marginBottom: "1.5rem", lineHeight: 1.6 }}>
-              Leads with low verification scores should not be used for outreach.
-              Archived leads will be <strong style={{ color: "#e2e8f0" }}>removed from the active contractor list</strong> but kept in the database for analytics and future reprocessing.
+              Archived leads are removed from the active outreach list but kept in the database for reporting and manual restoration.
               <br /><br />
               You can restore them at any time using the <strong style={{ color: "#e2e8f0" }}>Archived Leads</strong> view.
             </p>
@@ -1347,48 +972,6 @@ export default function LeadsPage() {
                 onClick={() => setArchiveModal(null)}
                 disabled={archiving}
                 style={{ padding: "0.65rem 1rem", background: "transparent", border: "1px solid #475569", borderRadius: 8, color: "#94a3b8", cursor: archiving ? "not-allowed" : "pointer" }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Archive Low-Quality confirmation modal ─────────────────────── */}
-      {archiveQualityModal && (
-        <div
-          style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setArchiveQualityModal(false); }}
-        >
-          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: "2rem", width: 440, maxWidth: "90vw" }}>
-            <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem", fontWeight: 700 }}>Archive All Low-Quality Leads?</h2>
-            <p style={{ color: "#94a3b8", fontSize: "0.875rem", marginBottom: "1.5rem", lineHeight: 1.6 }}>
-              This will archive every active lead with a verification score <strong style={{ color: "#f59e0b" }}>below 85</strong>.
-              These leads remain in the database and can be restored at any time.
-              <br /><br />
-              Use this to ensure your active outreach pipeline only contains high-quality contacts.
-            </p>
-            <div style={{ background: "#0f172a", borderRadius: 8, padding: "0.75rem 1rem", marginBottom: "1.5rem", fontSize: "0.82rem" }}>
-              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-                <span style={{ color: "#16a34a" }}>● 95–100 = Active (Green)</span>
-                <span style={{ color: "#3b82f6" }}>● 85–94 = Active (Blue)</span>
-              </div>
-              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginTop: "0.35rem" }}>
-                <span style={{ color: "#f59e0b" }}>● 70–84 = Archived (Orange)</span>
-                <span style={{ color: "#ef4444" }}>● &lt;70 = Archived (Red)</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              <button
-                onClick={() => void runArchiveQuality()}
-                style={{ flex: 1, padding: "0.65rem 1rem", background: "#92400e", border: "1px solid #f59e0b66", borderRadius: 8, color: "#fde68a", fontWeight: 700, cursor: "pointer", fontSize: "0.9rem" }}
-              >
-                Archive Low-Quality Leads
-              </button>
-              <button
-                onClick={() => setArchiveQualityModal(false)}
-                style={{ padding: "0.65rem 1rem", background: "transparent", border: "1px solid #475569", borderRadius: 8, color: "#94a3b8", cursor: "pointer" }}
               >
                 Cancel
               </button>
@@ -1537,7 +1120,7 @@ export default function LeadsPage() {
             )}
 
             <div style={{ marginTop: "1rem", fontSize: "0.72rem", color: "#475569", lineHeight: 1.7 }}>
-              Keep priority: Converted → Replied → Sent → Approved MSG → Highest verify score → Earliest lead #
+              Keep order: Converted → Replied → Sent → Approved MSG → Valid email → Earliest lead #
             </div>
           </div>
         </div>

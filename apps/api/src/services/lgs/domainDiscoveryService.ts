@@ -24,15 +24,8 @@ import {
   discoveryDomainLogs,
   discoveryRunLeads,
   discoveryRuns,
-  jobPosterLeads,
 } from "@/db/schema/directoryEngine";
 import { rankEmailsForDomain } from "@/src/utils/scoreEmailPrefix";
-import {
-  getEmailDomain,
-  isCompanyDomainEmail,
-  selectDiscoveryEmailsForDomain,
-} from "@/src/services/lgs/discoveryEmailHeuristics";
-import { enqueueVerificationEmail } from "@/src/services/lgs/emailVerificationService";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -119,12 +112,13 @@ export function classifyEmailType(
   companyDomain?: string
 ): "business" | "free_provider" | "disposable" | "unknown" {
   const lower = email.toLowerCase();
-  const emailDomain = getEmailDomain(lower);
+  const emailDomain = lower.split("@")[1] ?? "";
 
   if (DISPOSABLE_DOMAINS.has(emailDomain)) return "disposable";
   if (FREE_EMAIL_PROVIDERS.has(emailDomain)) return "free_provider";
   if (companyDomain) {
-    if (isCompanyDomainEmail(lower, companyDomain)) return "business";
+    const base = companyDomain.replace(/^www\./, "").toLowerCase();
+    if (emailDomain === base) return "business";
   }
   if (emailDomain && emailDomain.includes(".")) return "business";
   return "unknown";
@@ -334,212 +328,21 @@ export type DiscoveryRunLead = {
   skip_reason: string | null;
 };
 
-type DomainImportMetadata = Record<string, {
-  city?: string;
-  state?: string;
-  country?: string;
-  category?: string;
-  targetLeadId?: string;
-}>;
+type DomainImportMetadata = Record<string, { city?: string; state?: string; country?: string }>;
 
 type RunContext = {
   importMeta: DomainImportMetadata;
   source: string;
-  campaignType: "contractor" | "jobs";
-  targetCampaignId?: string;
-  targetCategory?: string;
   existingDomains: Set<string>;
   insertedDomains: Set<string>;
 };
 
 export type DomainImportRow = {
   domain: string;
-  campaignType?: "contractor" | "jobs";
-  category?: string;
   city?: string;
   state?: string;
   country?: string;
-  targetLeadId?: string;
 };
-
-function assignDiscoveryValueIfBlank<T extends Record<string, unknown>>(
-  patch: T,
-  key: keyof T,
-  current: string | null | undefined,
-  incoming: string | null | undefined
-) {
-  if (!String(current ?? "").trim() && String(incoming ?? "").trim()) {
-    patch[key] = incoming as T[keyof T];
-  }
-}
-
-async function enrichExistingLeadForDomain(
-  domain: string,
-  primary: { email: string; score: number },
-  secondaries: Array<{ email: string; score: number }>,
-  companyName: string,
-  industry: string,
-  contactName: string | null,
-  ctx: RunContext,
-  targetLeadId: string,
-  locationMeta: DomainImportMetadata[string]
-): Promise<{ inserted: boolean; duplicate: boolean }> {
-  if (ctx.campaignType === "jobs") {
-    const [existing] = await db
-      .select({
-        id: jobPosterLeads.id,
-        companyName: jobPosterLeads.companyName,
-        contactName: jobPosterLeads.contactName,
-        firstName: jobPosterLeads.firstName,
-        lastName: jobPosterLeads.lastName,
-        title: jobPosterLeads.title,
-        email: jobPosterLeads.email,
-        emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
-        trade: jobPosterLeads.trade,
-        address: jobPosterLeads.address,
-        category: jobPosterLeads.category,
-        city: jobPosterLeads.city,
-        state: jobPosterLeads.state,
-        country: jobPosterLeads.country,
-      })
-      .from(jobPosterLeads)
-      .where(eq(jobPosterLeads.id, targetLeadId))
-      .limit(1);
-
-    if (!existing) {
-      console.log(`[LGS] Enrichment target missing (jobs): ${domain}`);
-      return { inserted: false, duplicate: true };
-    }
-
-    const patch: Partial<typeof jobPosterLeads.$inferInsert> = {
-      updatedAt: new Date(),
-      needsEnrichment: false,
-      assignmentStatus: "ready",
-    };
-    const canReplaceWeakEmail =
-      String(existing.email ?? "").trim() &&
-      !["valid", "verified"].includes(String(existing.emailVerificationStatus ?? "").trim().toLowerCase()) &&
-      primary.email &&
-      primary.email.toLowerCase() !== String(existing.email ?? "").trim().toLowerCase();
-
-    assignDiscoveryValueIfBlank(patch, "companyName", existing.companyName, companyName || null);
-    assignDiscoveryValueIfBlank(
-      patch,
-      "contactName",
-      existing.contactName,
-      contactName && isValidPersonName(contactName) ? contactName : null
-    );
-    assignDiscoveryValueIfBlank(patch, "email", existing.email, primary.email);
-    if (canReplaceWeakEmail) {
-      patch.email = primary.email;
-      patch.emailVerificationStatus = "pending";
-      patch.emailVerificationScore = null;
-      patch.emailVerificationCheckedAt = null;
-      patch.emailVerificationProvider = null;
-    }
-    assignDiscoveryValueIfBlank(patch, "trade", existing.trade, industry || null);
-    assignDiscoveryValueIfBlank(patch, "city", existing.city, locationMeta.city ?? null);
-    assignDiscoveryValueIfBlank(patch, "state", existing.state, locationMeta.state ?? null);
-    assignDiscoveryValueIfBlank(patch, "country", existing.country, locationMeta.country ?? null);
-    if (!String(existing.category ?? "").trim() && String(locationMeta.category ?? ctx.targetCategory ?? "").trim()) {
-      patch.category = locationMeta.category ?? ctx.targetCategory ?? "business";
-    }
-    if (!String(existing.email ?? "").trim()) {
-      patch.emailVerificationStatus = "pending";
-      patch.emailVerificationScore = null;
-      patch.emailVerificationCheckedAt = null;
-      patch.emailVerificationProvider = null;
-    }
-
-    await db.update(jobPosterLeads).set(patch).where(eq(jobPosterLeads.id, targetLeadId));
-    await enqueueVerificationEmail(primary.email);
-    console.log(`[LGS] Enrichment update success (jobs): ${domain} → ${primary.email}`);
-    return { inserted: true, duplicate: false };
-  }
-
-  const [existing] = await db
-    .select({
-      id: contractorLeads.id,
-      leadName: contractorLeads.leadName,
-      businessName: contractorLeads.businessName,
-      scrapedBusinessName: contractorLeads.scrapedBusinessName,
-      email: contractorLeads.email,
-      emailVerificationStatus: contractorLeads.emailVerificationStatus,
-      trade: contractorLeads.trade,
-      city: contractorLeads.city,
-      state: contractorLeads.state,
-      country: contractorLeads.country,
-    })
-    .from(contractorLeads)
-    .where(eq(contractorLeads.id, targetLeadId))
-    .limit(1);
-
-  if (!existing) {
-    console.log(`[LGS] Enrichment target missing (contractor): ${domain}`);
-    return { inserted: false, duplicate: true };
-  }
-
-  const patch: Partial<typeof contractorLeads.$inferInsert> = {
-    updatedAt: new Date(),
-    needsEnrichment: false,
-    assignmentStatus: "ready",
-  };
-  const canReplaceWeakEmail =
-    String(existing.email ?? "").trim() &&
-    !["valid", "verified"].includes(String(existing.emailVerificationStatus ?? "").trim().toLowerCase()) &&
-    primary.email &&
-    primary.email.toLowerCase() !== String(existing.email ?? "").trim().toLowerCase();
-
-  assignDiscoveryValueIfBlank(
-    patch,
-    "leadName",
-    existing.leadName,
-    contactName && isValidPersonName(contactName) ? contactName : null
-  );
-  assignDiscoveryValueIfBlank(patch, "businessName", existing.businessName, companyName || null);
-  assignDiscoveryValueIfBlank(patch, "scrapedBusinessName", existing.scrapedBusinessName, companyName || null);
-  assignDiscoveryValueIfBlank(patch, "email", existing.email, primary.email);
-  if (canReplaceWeakEmail) {
-    patch.email = primary.email;
-    patch.emailType = classifyEmailType(primary.email, domain);
-    patch.primaryEmailScore = primary.score;
-    patch.secondaryEmails = secondaries.length > 0
-      ? secondaries.map((entry) => ({ email: entry.email, score: entry.score }))
-      : null;
-    patch.discoveryMethod = "scraped_email";
-    patch.verificationScore = 0;
-    patch.verificationStatus = "pending";
-    patch.verificationSource = null;
-    patch.emailVerificationStatus = "pending";
-    patch.emailVerificationScore = null;
-    patch.emailVerificationCheckedAt = null;
-    patch.emailVerificationProvider = null;
-  }
-  assignDiscoveryValueIfBlank(patch, "trade", existing.trade, industry || null);
-  assignDiscoveryValueIfBlank(patch, "city", existing.city, locationMeta.city ?? null);
-  assignDiscoveryValueIfBlank(patch, "state", existing.state, locationMeta.state ?? null);
-  assignDiscoveryValueIfBlank(patch, "country", existing.country, locationMeta.country ?? null);
-  if (!String(existing.email ?? "").trim()) {
-    patch.emailType = classifyEmailType(primary.email, domain);
-    patch.primaryEmailScore = primary.score;
-    patch.secondaryEmails = secondaries.length > 0
-      ? secondaries.map((entry) => ({ email: entry.email, score: entry.score }))
-      : null;
-    patch.discoveryMethod = "scraped_email";
-    patch.verificationScore = 0;
-    patch.verificationStatus = "pending";
-    patch.verificationSource = null;
-    patch.emailVerificationStatus = "pending";
-    patch.emailVerificationScore = null;
-    patch.emailVerificationCheckedAt = null;
-    patch.emailVerificationProvider = null;
-  }
-
-  await db.update(contractorLeads).set(patch).where(eq(contractorLeads.id, targetLeadId));
-  await enqueueVerificationEmail(primary.email);
-  console.log(`[LGS] Enrichment update success (contractor): ${domain} → ${primary.email}`);
-  return { inserted: true, duplicate: false };
-}
 
 // ─── Lead Creation (FAST — no verification) ──────────────────────────────────
 
@@ -551,27 +354,6 @@ async function createLeadForDomain(
   contactName: string | null,
   ctx: RunContext
 ): Promise<{ inserted: boolean; duplicate: boolean }> {
-  const locationMeta = ctx.importMeta[domain] ?? {};
-  const ranked = rankEmailsForDomain(emails);
-  if (ranked.length === 0) return { inserted: false, duplicate: false };
-
-  const primary = ranked[0];
-  const secondaries = ranked.slice(1);
-
-  if (locationMeta.targetLeadId) {
-    return enrichExistingLeadForDomain(
-      domain,
-      primary,
-      secondaries,
-      companyName,
-      industry,
-      contactName,
-      ctx,
-      locationMeta.targetLeadId,
-      locationMeta
-    );
-  }
-
   if (ctx.existingDomains.has(domain)) {
     console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
     return { inserted: false, duplicate: true };
@@ -580,86 +362,46 @@ async function createLeadForDomain(
     console.log(`[LGS] Duplicate skipped (in-run): ${domain}`);
     return { inserted: false, duplicate: true };
   }
+
+  const ranked = rankEmailsForDomain(emails);
+  if (ranked.length === 0) return { inserted: false, duplicate: false };
+
+  const primary = ranked[0];
+  const secondaries = ranked.slice(1);
   const emailType = classifyEmailType(primary.email, domain);
+  const locationMeta = ctx.importMeta[domain] ?? {};
 
-  if (ctx.campaignType === "jobs") {
-    await db.insert(jobPosterLeads).values({
-      campaignId: ctx.targetCampaignId ?? null,
-      website: domain,
-      companyName: companyName || null,
-      contactName: contactName && isValidPersonName(contactName) ? contactName : null,
-      email: primary.email,
-      category: locationMeta.category ?? ctx.targetCategory ?? "business",
-      trade: industry || null,
-      city: locationMeta.city ?? null,
-      state: locationMeta.state ?? null,
-      country: locationMeta.country ?? "US",
-      source: ctx.source,
-      assignmentStatus: "ready",
-      emailVerificationStatus: "pending",
-      emailVerificationScore: null,
-      emailVerificationCheckedAt: null,
-      emailVerificationProvider: null,
-      status: "new",
-      archived: false,
-      archivedAt: null,
-      archiveReason: null,
-      leadPriority: "medium",
-      prioritySource: "auto",
-      scoreDirty: true,
-      outreachStage: "not_contacted",
-      followupCount: 0,
-    });
-    await enqueueVerificationEmail(primary.email);
-  } else {
-    const seqResult = await db.execute(
-      sql`SELECT nextval('directory_engine.contractor_leads_lead_number_seq') AS n`
-    );
-    const leadNumber = Number(((seqResult.rows ?? seqResult) as Array<{ n: string }>)[0].n);
+  const seqResult = await db.execute(
+    sql`SELECT nextval('directory_engine.contractor_leads_lead_number_seq') AS n`
+  );
+  const leadNumber = Number(((seqResult.rows ?? seqResult) as Array<{ n: string }>)[0].n);
 
-    const insertedLead = await db
-      .insert(contractorLeads)
-      .values({
-        leadNumber,
-        email: primary.email,
-        emailType,
-        primaryEmailScore: primary.score,
-        secondaryEmails:
-          secondaries.length > 0
-            ? secondaries.map((e) => ({ email: e.email, score: e.score }))
-            : null,
-        leadName: contactName && isValidPersonName(contactName) ? contactName : null,
-        businessName: companyName || null,
-        scrapedBusinessName: companyName || null,
-        website: domain || null,
-        trade: industry || null,
-        city: locationMeta.city ?? null,
-        state: locationMeta.state ?? null,
-        country: locationMeta.country ?? "US",
-        source: ctx.source,
-        leadSource: ctx.source,
-        assignmentStatus: "ready",
-        emailVerificationStatus: "pending",
-        emailVerificationScore: null,
-        emailVerificationCheckedAt: null,
-        emailVerificationProvider: null,
-        discoveryMethod: "scraped_email",
-        verificationScore: 0,
-        verificationStatus: "pending",
-        verificationSource: null,
-        archived: false,
-        archivedAt: null,
-        archiveReason: null,
-      })
-      .onConflictDoNothing()
-      .returning({ id: contractorLeads.id });
-
-    if (insertedLead.length === 0) {
-      console.log(`[LGS] Duplicate skipped (email conflict): ${domain} → ${primary.email}`);
-      return { inserted: false, duplicate: true };
-    }
-    await enqueueVerificationEmail(primary.email);
-  }
+  await db.insert(contractorLeads).values({
+    leadNumber,
+    email: primary.email,
+    emailType,
+    primaryEmailScore: primary.score,
+    secondaryEmails:
+      secondaries.length > 0
+        ? secondaries.map((e) => ({ email: e.email, score: e.score }))
+        : null,
+    leadName: contactName && isValidPersonName(contactName) ? contactName : null,
+    businessName: companyName || null,
+    scrapedBusinessName: companyName || null,
+    website: domain || null,
+    trade: industry || null,
+    city: locationMeta.city ?? null,
+    state: locationMeta.state ?? null,
+    country: locationMeta.country ?? "US",
+    source: ctx.source,
+    leadSource: ctx.source,
+    discoveryMethod: "scraped_email",
+    verificationScore: 0,
+    verificationStatus: "pending",
+    verificationSource: null,
+    archived: false,
+    archivedAt: null,
+  });
 
   ctx.insertedDomains.add(domain);
   return { inserted: true, duplicate: false };
@@ -714,7 +456,6 @@ async function processSingleDomain(
   ctx: RunContext
 ): Promise<void> {
   const baseDomain = domainRow.domain.replace(/^www\./, "");
-  const targetLeadId = ctx.importMeta[baseDomain]?.targetLeadId;
 
   // ── 1. Fetch targeted pages in parallel ────────────────────────────────────
   const pageResults = await Promise.allSettled(
@@ -771,35 +512,7 @@ async function processSingleDomain(
     }
   }
 
-  const emailSelection = selectDiscoveryEmailsForDomain(validEmails, baseDomain);
-  const qualifiedEmails = emailSelection.acceptedEmails;
-  rejectedCount += emailSelection.rejectedEmails.length;
-
-  if (qualifiedEmails.length === 0) {
-    if (emailSelection.rejectionReason === "no_company_domain_email" && validEmails.length > 0) {
-      console.log(
-        `[LGS] Discarded ${baseDomain}: only off-domain or free-provider emails found (${validEmails.join(", ")})`
-      );
-    }
-    if (targetLeadId) {
-      if (ctx.campaignType === "jobs") {
-        await db.update(jobPosterLeads)
-          .set({
-            needsEnrichment: false,
-            assignmentStatus: "pending",
-            updatedAt: new Date(),
-          })
-          .where(eq(jobPosterLeads.id, targetLeadId));
-      } else {
-        await db.update(contractorLeads)
-          .set({
-            needsEnrichment: false,
-            assignmentStatus: "pending",
-            updatedAt: new Date(),
-          })
-          .where(eq(contractorLeads.id, targetLeadId));
-      }
-    }
+  if (validEmails.length === 0) {
     await Promise.allSettled([
       db.insert(discoveryDomainLogs).values({ runId, domain: baseDomain, emailsFound: emailsFoundCount, status: "discarded" }).catch(() => {}),
       updateRunProgress(runId, {
@@ -814,7 +527,7 @@ async function processSingleDomain(
 
   // ── 4. Match best contact name ─────────────────────────────────────────────
   let bestContactName: string | null = null;
-  for (const email of qualifiedEmails) {
+  for (const email of validEmails) {
     const match = matchEmailToContact(email, contactsWithRoles);
     if (match) { bestContactName = match; break; }
   }
@@ -825,18 +538,18 @@ async function processSingleDomain(
 
   try {
     ({ inserted, duplicate } = await createLeadForDomain(
-      baseDomain, qualifiedEmails, companyName, industry, bestContactName, ctx
+      baseDomain, validEmails, companyName, industry, bestContactName, ctx
     ));
   } catch (err) {
     console.error(`[LGS] createLeadForDomain failed (${baseDomain}):`, err instanceof Error ? err.message : err);
   }
 
   // ── 6. Log to history tables (non-fatal) ───────────────────────────────────
-  const ranked = rankEmailsForDomain(qualifiedEmails);
-  const primaryEmail = ranked[0]?.email ?? qualifiedEmails[0];
+  const ranked = rankEmailsForDomain(validEmails);
+  const primaryEmail = ranked[0]?.email ?? validEmails[0];
 
   await Promise.allSettled(
-    qualifiedEmails.map(async (email) => {
+    validEmails.map(async (email) => {
       const isPrimary = email.toLowerCase() === primaryEmail.toLowerCase();
       await db
         .insert(discoveryRunLeads)
@@ -849,7 +562,6 @@ async function processSingleDomain(
           industry: industry || null,
           verificationScore: 0,
           discoveryMethod: scrapedCount > 0 ? "scraped_email" : "pattern_generated",
-          campaignType: ctx.campaignType,
           imported: true,
           importStatus: duplicate ? "skipped_duplicate" : isPrimary ? "inserted" : "consolidated_secondary",
           skipReason: duplicate ? "duplicate_domain" : isPrimary ? null : "consolidated_secondary",
@@ -865,7 +577,7 @@ async function processSingleDomain(
       .values({ domain: baseDomain, lastDiscoveredAt: now })
       .onConflictDoUpdate({ target: discoveryDomainCache.domain, set: { lastDiscoveredAt: now } }),
     db.insert(discoveryDomainLogs).values({
-      runId, domain: baseDomain, emailsFound: qualifiedEmails.length, status: inserted ? "success" : "duplicate",
+      runId, domain: baseDomain, emailsFound: validEmails.length, status: inserted ? "success" : "duplicate",
     }),
   ]);
 
@@ -875,7 +587,7 @@ async function processSingleDomain(
       domainsProcessed: 1,
       successfulDomains: 1,
       emailsFound: emailsFoundCount,
-      qualifiedEmails: qualifiedEmails.length,
+      qualifiedEmails: validEmails.length,
       insertedLeads: inserted ? 1 : 0,
       duplicatesSkipped: duplicate ? 1 : 0,
       rejectedEmails: rejectedCount,
@@ -896,9 +608,6 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
     .select({
       autoImportSource: discoveryRuns.autoImportSource,
       importDomainMetadata: discoveryRuns.importDomainMetadata,
-      campaignType: discoveryRuns.campaignType,
-      targetCampaignId: discoveryRuns.targetCampaignId,
-      targetCategory: discoveryRuns.targetCategory,
     })
     .from(discoveryRuns)
     .where(eq(discoveryRuns.id, runId))
@@ -906,31 +615,17 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
 
   const importMeta = ((runRecord?.importDomainMetadata ?? {}) as DomainImportMetadata);
   const source = runRecord?.autoImportSource ?? "website_import";
-  const campaignType = (runRecord?.campaignType ?? "contractor") as "contractor" | "jobs";
 
   // Pre-fetch existing domains once — no per-domain DB round-trips
   const domainList = domainRows.map((r) => r.domain.replace(/^www\./, "").toLowerCase());
-  const enrichmentTargetDomains = new Set(
-    Object.entries(importMeta)
-      .filter(([, meta]) => Boolean(meta?.targetLeadId))
-      .map(([domain]) => domain)
-  );
-
   const existingRows = domainList.length > 0
-    ? campaignType === "jobs"
-      ? await db
-          .select({ website: jobPosterLeads.website })
-          .from(jobPosterLeads)
-          .where(inArray(jobPosterLeads.website, domainList))
-      : await db
-          .select({ website: contractorLeads.website })
-          .from(contractorLeads)
-          .where(inArray(contractorLeads.website, domainList))
+    ? await db
+        .select({ website: contractorLeads.website })
+        .from(contractorLeads)
+        .where(inArray(contractorLeads.website, domainList))
     : [];
   const existingDomains = new Set(
-    existingRows
-      .map((r) => (r.website ?? "").toLowerCase())
-      .filter((website) => website && !enrichmentTargetDomains.has(website))
+    existingRows.map((r) => (r.website ?? "").toLowerCase()).filter(Boolean)
   );
 
   console.log(
@@ -940,9 +635,6 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
   const ctx: RunContext = {
     importMeta,
     source,
-    campaignType,
-    targetCampaignId: runRecord?.targetCampaignId ?? undefined,
-    targetCategory: runRecord?.targetCategory ?? undefined,
     existingDomains,
     insertedDomains: new Set<string>(),
   };
@@ -1026,12 +718,7 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
 
 export async function runBulkDomainDiscoveryAsync(
   rows: DomainImportRow[] | string[],
-  opts?: {
-    autoImportSource?: string;
-    campaignType?: "contractor" | "jobs";
-    targetCampaignId?: string;
-    targetCategory?: string;
-  }
+  opts?: { autoImportSource?: string }
 ): Promise<string> {
   const normalizedRows: DomainImportRow[] = rows.map((r) => {
     if (typeof r === "string") {
@@ -1041,7 +728,6 @@ export async function runBulkDomainDiscoveryAsync(
           .replace(/\/.*$/, "")
           .replace(/^www\./, "")
           .toLowerCase(),
-        campaignType: opts?.campaignType ?? "contractor",
       };
     }
     return {
@@ -1051,7 +737,6 @@ export async function runBulkDomainDiscoveryAsync(
         .replace(/\/.*$/, "")
         .replace(/^www\./, "")
         .toLowerCase(),
-      campaignType: r.campaignType ?? opts?.campaignType ?? "contractor",
     };
   });
 
@@ -1066,13 +751,11 @@ export async function runBulkDomainDiscoveryAsync(
 
   const importDomainMetadata: DomainImportMetadata = {};
   for (const row of uniqueRows) {
-    if (row.city || row.state || row.country || row.category || row.targetLeadId) {
+    if (row.city || row.state || row.country) {
       importDomainMetadata[row.domain] = {
         city: row.city,
         state: row.state,
         country: row.country,
-        category: row.category,
-        targetLeadId: row.targetLeadId,
       };
     }
   }
@@ -1095,9 +778,6 @@ export async function runBulkDomainDiscoveryAsync(
       emailsPatternGenerated: 0,
       emailsVerified: 0,
       emailsImported: 0,
-      campaignType: opts?.campaignType ?? normalizedRows[0]?.campaignType ?? "contractor",
-      targetCampaignId: opts?.targetCampaignId ?? null,
-      targetCategory: opts?.targetCategory ?? normalizedRows[0]?.category ?? null,
       autoImportSource: opts?.autoImportSource ?? null,
       importDomainMetadata: Object.keys(importDomainMetadata).length > 0 ? importDomainMetadata : null,
       status: "running",
@@ -1190,16 +870,12 @@ export async function importDiscoveryLeads(
       continue;
     }
 
-    const emailSelection = selectDiscoveryEmailsForDomain(
-      domainRows.map((r) => r.email),
-      domain
-    );
-    const ranked = rankEmailsForDomain(emailSelection.acceptedEmails);
+    const ranked = rankEmailsForDomain(domainRows.map((r) => r.email));
     if (ranked.length === 0) {
       for (const row of domainRows) {
         await db
           .update(discoveryRunLeads)
-          .set({ imported: true, importStatus: "skipped_rejected", skipReason: "no_company_domain_email" })
+          .set({ imported: true, importStatus: "skipped_rejected", skipReason: "all_emails_rejected" })
           .where(eq(discoveryRunLeads.id, row.id));
         duplicates++;
       }
@@ -1237,17 +913,11 @@ export async function importDiscoveryLeads(
       country: locationMeta.country ?? "US",
       source,
       leadSource: source,
-      assignmentStatus: "ready",
-      emailVerificationStatus: "pending",
-      emailVerificationScore: null,
-      emailVerificationCheckedAt: null,
-      emailVerificationProvider: null,
       discoveryMethod: primaryRow.discoveryMethod ?? "scraped_email",
       verificationScore: 0,
       verificationStatus: "pending",
       verificationSource: null,
     });
-    await enqueueVerificationEmail(primaryEntry.email);
 
     await db
       .update(discoveryRunLeads)

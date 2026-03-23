@@ -1,9 +1,11 @@
 /**
- * LGS: Import contractor leads from CSV/XLSX.
- * Supports website-only rows plus optional structured lead fields.
+ * LGS: Import contractor websites from CSV/XLSX.
+ * Extracts domains (+ optional city/state/country), queues for discovery, auto-imports leads when complete.
+ * Required column: website (or domain, url) — case-insensitive.
+ * Optional columns: city, state, country — case-insensitive.
  */
 import { NextResponse } from "next/server";
-import { importStructuredLeadRows } from "@/src/services/lgs/importLeadsService";
+import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
 import { parseDomainFile } from "@/src/services/lgs/parseDomainFile";
 
 export async function POST(req: Request) {
@@ -40,15 +42,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const summary = await importStructuredLeadRows(rows, {
-      forceCampaignType: "contractor",
-      source: "lead_import",
+    const runId = await runBulkDomainDiscoveryAsync(rows, {
+      autoImportSource: "website_import",
     });
 
     return NextResponse.json({
       ok: true,
       data: {
-        ...summary,
+        run_id: runId,
+        domains_total: rows.length,
         parse_stats: stats,
       },
     });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatNumber } from "@/lib/formatters";
 
 type ConsolidateResult = {
   domains_analyzed: number;
@@ -36,7 +37,7 @@ function StatCard({
         {title}
       </div>
       <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>
-        {typeof value === "number" ? value.toLocaleString() : value}
+        {typeof value === "number" ? formatNumber(value) : value}
       </div>
       {sub && (
         <div style={{ fontSize: "0.75rem", color: "#475569", marginTop: "0.2rem" }}>{sub}</div>
@@ -124,7 +125,7 @@ export default function DataCleanupPage() {
           other emails internally.
         </p>
 
-        {/* Priority legend */}
+        {/* Email selection legend */}
         <div
           style={{
             background: "#1e293b",
@@ -137,27 +138,27 @@ export default function DataCleanupPage() {
           }}
         >
           {[
-            { label: "Personal name (john@, sarah@)", score: 100, color: "#4ade80" },
-            { label: "Business contact (sales@, contracts@)", score: 80, color: "#60a5fa" },
-            { label: "General inbox (info@, contact@)", score: 60, color: "#94a3b8" },
-            { label: "Low priority (support@, admin@)", score: 40, color: "#475569" },
-            { label: "Rejected (noreply@, test@, sentry@)", score: -1, color: "#f87171" },
+            { label: "Preferred: personal name (john@, sarah@)", token: "A", color: "#4ade80" },
+            { label: "Allowed: business contact (sales@, contracts@)", token: "B", color: "#60a5fa" },
+            { label: "Fallback: general inbox (info@, contact@)", token: "C", color: "#94a3b8" },
+            { label: "Deprioritized: support/admin inbox", token: "D", color: "#475569" },
+            { label: "Rejected: noreply, test, sentry", token: "X", color: "#f87171" },
           ].map((item) => (
-            <div key={item.score} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}>
+            <div key={item.token} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}>
               <span
                 style={{
                   display: "inline-block",
                   minWidth: 36,
                   padding: "1px 6px",
                   borderRadius: 4,
-                  background: item.score === -1 ? "#3b1a1a" : "#0f172a",
+                  background: item.token === "X" ? "#3b1a1a" : "#0f172a",
                   color: item.color,
                   fontWeight: 700,
                   fontSize: "0.72rem",
                   textAlign: "center",
                 }}
               >
-                {item.score === -1 ? "✗" : item.score}
+                {item.token}
               </span>
               <span style={{ color: "#94a3b8" }}>{item.label}</span>
             </div>
@@ -232,7 +233,7 @@ export default function DataCleanupPage() {
           </div>
           {result.leads_removed > 0 ? (
             <p style={{ color: "#94a3b8", fontSize: "0.85rem" }}>
-              {result.leads_removed.toLocaleString()} duplicate lead{result.leads_removed !== 1 ? "s" : ""} removed.
+              {formatNumber(result.leads_removed)} duplicate lead{result.leads_removed !== 1 ? "s" : ""} removed.
               Each company now has exactly one outreach lead with the best email selected as primary.
             </p>
           ) : (
@@ -286,7 +287,7 @@ export default function DataCleanupPage() {
                   Domains with Duplicates
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "#f59e0b" }}>
-                  {preview.duplicate_domains.toLocaleString()}
+                  {formatNumber(preview.duplicate_domains)}
                 </div>
               </div>
               <div style={{ background: "#1e293b", borderRadius: 8, padding: "0.75rem 1rem" }}>
@@ -294,7 +295,7 @@ export default function DataCleanupPage() {
                   Leads Before
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700 }}>
-                  {preview.leads_before.toLocaleString()}
+                  {formatNumber(preview.leads_before)}
                 </div>
               </div>
               <div style={{ background: "#3b1a1a", borderRadius: 8, padding: "0.75rem 1rem" }}>
@@ -302,7 +303,7 @@ export default function DataCleanupPage() {
                   Leads to Remove
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "#f87171" }}>
-                  {preview.leads_removed.toLocaleString()}
+                  {formatNumber(preview.leads_removed)}
                 </div>
               </div>
               <div style={{ background: "#0f2e1f", borderRadius: 8, padding: "0.75rem 1rem" }}>
@@ -310,7 +311,7 @@ export default function DataCleanupPage() {
                   Leads After
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "#4ade80" }}>
-                  {preview.leads_after.toLocaleString()}
+                  {formatNumber(preview.leads_after)}
                 </div>
               </div>
             </div>

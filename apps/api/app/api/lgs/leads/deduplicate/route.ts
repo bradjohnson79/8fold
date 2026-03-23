@@ -113,10 +113,10 @@ export async function POST(req: Request) {
     }
 
     // Count remaining leads
-    const countResult = await db.execute<{ count: string }>(sql`
+    const [countResult] = await db.execute<{ count: string }>(sql`
       SELECT COUNT(*)::text AS count FROM directory_engine.contractor_leads
     `);
-    const recordsRemaining = parseInt(countResult.rows[0]?.count ?? "0", 10);
+    const recordsRemaining = parseInt((countResult as { count: string }).count ?? "0", 10);
 
     return NextResponse.json({
       ok: true,

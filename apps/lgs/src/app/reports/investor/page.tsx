@@ -5,6 +5,7 @@ import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
+import { formatNumber, toNumber } from "@/lib/formatters";
 
 type FunnelData = {
   total_leads: number;
@@ -19,9 +20,8 @@ type FunnelData = {
   conversion_rate: number;
 };
 
-function toNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
+type ChannelRow = { channel: string; leads: number; signups: number; conversion: string };
+type RegionRow = { state: string; city: string; leads: number; signups: number; status: string };
 
 function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): FunnelData {
   return {
@@ -37,13 +37,6 @@ function normalizeFunnelData(value: Partial<FunnelData> | null | undefined): Fun
     conversion_rate: toNumber(value?.conversion_rate),
   };
 }
-
-function formatNumber(value: unknown): string {
-  return toNumber(value).toLocaleString();
-}
-
-type ChannelRow = { channel: string; leads: number; signups: number; conversion: string };
-type RegionRow = { state: string; city: string; leads: number; signups: number; status: string };
 
 function MetricCard({ title, value, color = "#f8fafc", sub }: { title: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -112,8 +105,8 @@ export default function InvestorPage() {
 
   if (err) return <p style={{ color: "#f87171", padding: "2rem" }}>{err}</p>;
 
-  const conversionRate = funnel?.conversion_rate?.toFixed(1) ?? "0.0";
-  const responseRate = funnel?.reply_rate?.toFixed(1) ?? "0.0";
+  const conversionRate = String(funnel?.conversion_rate?.toFixed(1) ?? "0.0");
+  const responseRate = String(funnel?.reply_rate?.toFixed(1) ?? "0.0");
 
   const topChannels = [...channels]
     .sort((a, b) => b.leads - a.leads)
@@ -130,7 +123,7 @@ export default function InvestorPage() {
         <HelpTooltip text={helpText.investorSnapshot} />
       </div>
       <p style={{ color: "#64748b", fontSize: "0.875rem", marginBottom: "2rem" }}>
-        Lean operating snapshot — as of {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+        Real-time contractor acquisition funnel — as of {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
       </p>
 
       {loading ? (
@@ -141,7 +134,7 @@ export default function InvestorPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
             <MetricCard title="Total Leads" value={funnel?.total_leads ?? 0} />
             <MetricCard title="Emails Sent" value={funnel?.emails_sent ?? 0} color="#60a5fa" />
-            <MetricCard title="Bounces" value={funnel?.bounces ?? 0} color="#f59e0b" />
+            <MetricCard title="Bounces" value={funnel?.bounces ?? 0} color="#f87171" />
             <MetricCard title="Replies" value={funnel?.replies ?? 0} color="#a78bfa" />
             <MetricCard title="Signups" value={funnel?.signups ?? 0} color="#4ade80" />
             <MetricCard title="Active Contractors" value={funnel?.active_contractors ?? 0} color="#34d399" />
@@ -150,9 +143,10 @@ export default function InvestorPage() {
               title="Conversion Rate"
               value={`${conversionRate}%`}
               color={parseFloat(conversionRate) > 0 ? "#4ade80" : "#94a3b8"}
-              sub="sent → signup"
+              sub="leads → signup"
             />
             <MetricCard title="Response Rate" value={`${responseRate}%`} color="#a78bfa" sub="sent → reply" />
+            <MetricCard title="Bounce Rate" value={`${funnel?.bounce_rate ?? 0}%`} color="#f87171" sub="sent → bounce" />
           </div>
 
           {/* Two-column layout: funnel + rates */}
@@ -160,11 +154,11 @@ export default function InvestorPage() {
             {/* Acquisition funnel steps */}
             <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem" }}>
               <h3 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.75rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Operating Funnel
+                Acquisition Funnel
               </h3>
               <FunnelStep label="Total Leads" value={funnel?.total_leads ?? 0} color="#3b82f6" />
               <FunnelStep label="Emails Sent" value={funnel?.emails_sent ?? 0} pct={funnel?.total_leads ? `${((funnel.emails_sent / funnel.total_leads) * 100).toFixed(0)}%` : "—"} color="#60a5fa" />
-              <FunnelStep label="Bounces" value={funnel?.bounces ?? 0} pct={funnel?.emails_sent ? `${((funnel.bounces / funnel.emails_sent) * 100).toFixed(0)}%` : "—"} color="#f59e0b" />
+              <FunnelStep label="Bounces" value={funnel?.bounces ?? 0} pct={funnel?.emails_sent ? `${((funnel.bounces / funnel.emails_sent) * 100).toFixed(0)}%` : "—"} color="#f87171" />
               <FunnelStep label="Replies" value={funnel?.replies ?? 0} pct={funnel?.emails_sent ? `${((funnel.replies / funnel.emails_sent) * 100).toFixed(0)}%` : "—"} color="#a78bfa" />
               <FunnelStep label="Contractor Signups" value={funnel?.signups ?? 0} pct={funnel?.replies ? `${((funnel.signups / funnel.replies) * 100).toFixed(0)}%` : "—"} color="#4ade80" />
             </div>
@@ -174,9 +168,9 @@ export default function InvestorPage() {
               <h3 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "1rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Performance Rates
               </h3>
+              <RateBar label="Bounce Rate" value={funnel?.bounce_rate ?? 0} color="#f87171" />
               <RateBar label="Response Rate" value={parseFloat(responseRate)} color="#a78bfa" />
-              <RateBar label="Bounce Rate" value={funnel?.bounce_rate ?? 0} color="#f59e0b" />
-              <RateBar label="Conversion Rate" value={parseFloat(conversionRate)} color="#4ade80" />
+              <RateBar label="Conversion Rate (Lead→Signup)" value={parseFloat(conversionRate)} color="#4ade80" />
 
               {funnel && (
                 <div style={{ marginTop: "1.25rem", padding: "0.75rem", background: "#0f172a", borderRadius: 7, fontSize: "0.8rem", color: "#64748b" }}>

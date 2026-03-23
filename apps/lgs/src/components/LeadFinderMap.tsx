@@ -17,7 +17,7 @@ import { useEffect, useRef, useCallback } from "react";
 
 declare global {
   interface Window {
-    google: any;
+    google: typeof google;
     initLeadFinderMap?: () => void;
   }
 }
@@ -56,9 +56,9 @@ function loadMapsScript(onLoad: () => void) {
 
 export function LeadFinderMap({ center, radiusKm, onCenterChange, height = 320 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const circleRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const circleRef = useRef<google.maps.Circle | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
 
   const initMap = useCallback(() => {
     if (!containerRef.current || !window.google) return;
@@ -110,7 +110,7 @@ export function LeadFinderMap({ center, radiusKm, onCenterChange, height = 320 }
     });
 
     // Click on map sets new center
-    map.addListener("click", (e: any) => {
+    map.addListener("click", (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
       const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       marker.setPosition(pos);
