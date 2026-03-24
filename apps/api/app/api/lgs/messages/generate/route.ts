@@ -188,7 +188,7 @@ async function generateForLead(
         city: lead.city ?? "",
         state: lead.state ?? "",
       },
-      generatedBy: MODEL,
+      generatedBy: OUTREACH_MODEL,
       status: "pending_review",
       messageType: MESSAGE_TYPE,
       messageVersionHash: MESSAGE_VERSION,
