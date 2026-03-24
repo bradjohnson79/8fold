@@ -225,6 +225,8 @@ export async function GET(req: NextRequest) {
         last_contacted_at: contractorLeads.lastContactedAt,
         last_replied_at: contractorLeads.lastRepliedAt,
         last_message_type_sent: contractorLeads.lastMessageTypeSent,
+        verification_attempts: contractorLeads.verificationAttempts,
+        email_verification_checked_at: contractorLeads.emailVerificationCheckedAt,
       })
       .from(contractorLeads)
       .where(whereClause)
@@ -341,6 +343,8 @@ export async function GET(req: NextRequest) {
         last_contacted_at: r.last_contacted_at?.toISOString() ?? null,
         last_replied_at: r.last_replied_at?.toISOString() ?? null,
         last_message_type_sent: r.last_message_type_sent ?? null,
+        verification_attempts: r.verification_attempts ?? 0,
+        email_verification_checked_at: r.email_verification_checked_at?.toISOString() ?? null,
       };
     });
 

@@ -7,6 +7,7 @@ import { db } from "@/db/drizzle";
 import {
   discoveryRuns,
   lgsOutreachQueue,
+  lgsWorkerHealth,
   outreachMessages,
   senderPool,
 } from "@/db/schema/directoryEngine";
@@ -28,6 +29,7 @@ export async function GET() {
       outreachSentToday,
       msgPendingCount,
       activeSenders,
+      verificationHealth,
     ] = await Promise.all([
       db
         .select({
@@ -62,10 +64,36 @@ export async function GET() {
         .select({ count: sql<number>`count(*)::int` })
         .from(senderPool)
         .where(eq(senderPool.status, "active")),
+
+      db
+        .select({
+          lastHeartbeatAt: lgsWorkerHealth.lastHeartbeatAt,
+          lastRunStatus: lgsWorkerHealth.lastRunStatus,
+          lastError: lgsWorkerHealth.lastError,
+        })
+        .from(lgsWorkerHealth)
+        .where(eq(lgsWorkerHealth.workerName, "verification_cron"))
+        .limit(1),
     ]);
 
     const discovery = lastDiscovery[0] ?? null;
     const discoveryRunning = discovery?.status === "running";
+
+    const verifyHealth = verificationHealth[0] ?? null;
+    const verifyHeartbeatAge = verifyHealth?.lastHeartbeatAt
+      ? (Date.now() - verifyHealth.lastHeartbeatAt.getTime()) / 1000
+      : null;
+    // "running" = heartbeat within last 2 minutes; "idle" = within last hour; "stopped" = older or never
+    const verifyStatus: "running" | "idle" | "stopped" | "error" =
+      verifyHealth?.lastRunStatus === "error"
+        ? "error"
+        : verifyHeartbeatAge === null
+          ? "stopped"
+          : verifyHeartbeatAge < 120
+            ? "running"
+            : verifyHeartbeatAge < 3600
+              ? "idle"
+              : "stopped";
 
     const queueDepth = outreachPending[0]?.count ?? 0;
     const sentToday = outreachSentToday[0]?.count ?? 0;
@@ -104,12 +132,16 @@ export async function GET() {
       },
       {
         name: "Verification Worker",
-        description: "Verifies lead emails via syntax, DNS, MX, and SMTP checks",
-        status: "configured",
-        last_run: "—",
+        description: "Verifies lead emails via DNS, MX, and SMTP checks · auto-enqueues pending leads",
+        status: verifyStatus,
+        last_run: timeAgo(verifyHealth?.lastHeartbeatAt ?? null),
         jobs_processed: 0,
-        detail: "Threshold: 85. Runs during discovery.",
-        schedule: "During discovery",
+        detail: verifyHealth
+          ? verifyHealth.lastRunStatus === "error"
+            ? `Last error: ${verifyHealth.lastError ?? "unknown"}`
+            : `Last run: ${timeAgo(verifyHealth.lastHeartbeatAt ?? null)}`
+          : "Not yet run — will start on next cron tick",
+        schedule: "Every 1 min",
       },
       {
         name: "Bounce Monitor",
