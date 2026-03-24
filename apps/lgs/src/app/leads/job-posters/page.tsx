@@ -34,12 +34,19 @@ type JobPosterLead = {
   ui_verification_status?: string | null;
 };
 
+type EnrichmentSummary = {
+  sendable: number;
+  needs_attention: number;
+  unusable: number;
+};
+
 type ApiResponse = {
   ok: boolean;
   total: number;
   page: number;
   page_size: number;
   total_pages: number;
+  enrichment?: EnrichmentSummary;
   data: JobPosterLead[];
   error?: string;
 };
@@ -96,10 +103,9 @@ function finalStatusLabel(status?: string | null, reason?: string | null): strin
 
 export default function JobPosterLeadsPage() {
   const [leads, setLeads] = useState<JobPosterLead[]>([]);
+  const [enrichment, setEnrichment] = useState<EnrichmentSummary | null>(null);
   const [search, setSearch] = useState("");
-  const [filterVerificationStatus, setFilterVerificationStatus] = useState("");
-  const [filterArchived, setFilterArchived] = useState("active");
-  const [highPriorityOnly, setHighPriorityOnly] = useState(false);
+  const [filterActionability, setFilterActionability] = useState<"sendable" | "needs_attention" | "unusable">("sendable");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -115,12 +121,12 @@ export default function JobPosterLeadsPage() {
     try {
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
-      if (filterVerificationStatus) params.set("filter_verification_status", filterVerificationStatus);
-      params.set("filter_archived", filterArchived);
+      params.set("filter_actionability", filterActionability);
       const res = await lgsFetch<ApiResponse>(`/api/lgs/job-poster-leads?${params.toString()}`);
       const data = res as unknown as ApiResponse;
       if (data.ok) {
         setLeads(data.data ?? []);
+        if (data.enrichment) setEnrichment(data.enrichment);
       } else {
         setError(data.error ?? "Failed to load job poster leads");
       }
@@ -129,7 +135,7 @@ export default function JobPosterLeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterVerificationStatus, filterArchived]);
+  }, [search, filterActionability]);
 
   useEffect(() => {
     void load();
@@ -281,10 +287,53 @@ export default function JobPosterLeadsPage() {
         </div>
       </div>
 
-      <div style={{ marginBottom: "1rem", padding: "0.85rem 1rem", borderRadius: 10, border: "1px solid #334155", background: "#0f172a", color: "#cbd5e1", fontSize: "0.9rem" }}>
-        Verification only answers one question here: is the email usable? `Pending` will retry, `Valid` is sendable, and only `Invalid` is blocked.
+      {/* Actionability tabs */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        {(
+          [
+            { key: "sendable", label: "Ready to Send", color: "#22c55e", dimColor: "#16a34a33", borderColor: "#22c55e66" },
+            { key: "needs_attention", label: "Processing", color: "#f59e0b", dimColor: "#f59e0b22", borderColor: "#f59e0b66" },
+            { key: "unusable", label: "Not Ready", color: "#64748b", dimColor: "#1e293b", borderColor: "#334155" },
+          ] as const
+        ).map(({ key, label, color, dimColor, borderColor }) => {
+          const active = filterActionability === key;
+          const count = enrichment?.[key] ?? 0;
+          return (
+            <button
+              key={key}
+              onClick={() => setFilterActionability(key)}
+              style={{
+                padding: "0.55rem 1.1rem",
+                background: active ? dimColor : "transparent",
+                border: `1px solid ${active ? borderColor : "#334155"}`,
+                borderRadius: 8,
+                color: active ? color : "#64748b",
+                fontSize: "0.875rem",
+                fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                transition: "all 0.15s",
+              }}
+            >
+              {label}
+              <span style={{
+                fontSize: "0.75rem",
+                background: active ? `${color}33` : "#1e293b",
+                color: active ? color : "#475569",
+                borderRadius: 12,
+                padding: "0.1rem 0.45rem",
+                fontWeight: 600,
+              }}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
+      {/* Secondary filters */}
       <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <input
           value={search}
@@ -300,25 +349,6 @@ export default function JobPosterLeadsPage() {
             padding: "0.6rem 0.8rem",
           }}
         />
-        <select
-          value={filterVerificationStatus}
-          onChange={(e) => setFilterVerificationStatus(e.target.value)}
-          style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", padding: "0.6rem 0.8rem" }}
-        >
-          <option value="">All Verify Status</option>
-          <option value="pending">Pending</option>
-          <option value="valid">Valid</option>
-          <option value="invalid">Invalid</option>
-        </select>
-        <select
-          value={filterArchived}
-          onChange={(e) => setFilterArchived(e.target.value)}
-          style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", padding: "0.6rem 0.8rem" }}
-        >
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
-          <option value="all">All</option>
-        </select>
       </div>
 
       {error && <p style={{ color: "#f87171" }}>{error}</p>}

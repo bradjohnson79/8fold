@@ -1,5 +1,17 @@
 /**
  * LGS: List job poster leads with pagination and search.
+ *
+ * Query params:
+ *   page                   (default: 1)
+ *   page_size              (default: 50)
+ *   search                 search across website, company, contact, email, category, city, state
+ *   filter_archived        active (default) | archived | all
+ *   filter_verification_status  valid|invalid|(any other = pending)
+ *   filter_actionability   sendable|needs_attention|unusable
+ *                          sendable:       archived=false, email present, email_verification_status='valid'
+ *                          needs_attention:archived=false, email present, email_verification_status='pending', age<48h
+ *                          unusable:       archived=false, no email OR invalid OR pending>48h
+ *                          When set, overrides filter_archived (all three imply archived=false).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
@@ -15,12 +27,42 @@ export async function GET(req: NextRequest) {
     const search = sp.get("search")?.trim() ?? "";
     const archivedFilter = sp.get("filter_archived")?.trim() ?? "active";
     const filterVerificationStatus = sp.get("filter_verification_status")?.trim() ?? "";
+    // sendable | needs_attention | unusable — when set, overrides archivedFilter (all imply archived=false)
+    const filterActionability = sp.get("filter_actionability")?.trim() ?? null;
 
     const conditions: Array<ReturnType<typeof eq>> = [];
-    if (archivedFilter === "active") {
-      conditions.push(eq(jobPosterLeads.archived, false) as ReturnType<typeof eq>);
-    } else if (archivedFilter === "archived") {
-      conditions.push(eq(jobPosterLeads.archived, true) as ReturnType<typeof eq>);
+
+    if (filterActionability === "sendable") {
+      conditions.push(sql`
+        ${jobPosterLeads.archived} = false
+        AND ${jobPosterLeads.email} IS NOT NULL
+        AND ${jobPosterLeads.email} != ''
+        AND ${jobPosterLeads.emailVerificationStatus} = 'valid'
+      ` as ReturnType<typeof eq>);
+    } else if (filterActionability === "needs_attention") {
+      conditions.push(sql`
+        ${jobPosterLeads.archived} = false
+        AND ${jobPosterLeads.email} IS NOT NULL
+        AND ${jobPosterLeads.email} != ''
+        AND ${jobPosterLeads.emailVerificationStatus} = 'pending'
+        AND ${jobPosterLeads.createdAt} > NOW() - interval '48 hours'
+      ` as ReturnType<typeof eq>);
+    } else if (filterActionability === "unusable") {
+      conditions.push(sql`
+        ${jobPosterLeads.archived} = false
+        AND (
+          ${jobPosterLeads.email} IS NULL
+          OR ${jobPosterLeads.email} = ''
+          OR ${jobPosterLeads.emailVerificationStatus} = 'invalid'
+          OR (${jobPosterLeads.emailVerificationStatus} = 'pending' AND ${jobPosterLeads.createdAt} <= NOW() - interval '48 hours')
+        )
+      ` as ReturnType<typeof eq>);
+    } else {
+      if (archivedFilter === "active") {
+        conditions.push(eq(jobPosterLeads.archived, false) as ReturnType<typeof eq>);
+      } else if (archivedFilter === "archived") {
+        conditions.push(eq(jobPosterLeads.archived, true) as ReturnType<typeof eq>);
+      }
     }
 
     if (search) {
@@ -36,7 +78,7 @@ export async function GET(req: NextRequest) {
         ) as ReturnType<typeof eq>
       );
     }
-    if (filterVerificationStatus) {
+    if (filterVerificationStatus && !filterActionability) {
       if (filterVerificationStatus === "valid") {
         conditions.push(sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending') in ('valid', 'verified')` as ReturnType<typeof eq>);
       } else if (filterVerificationStatus === "invalid") {
@@ -47,6 +89,38 @@ export async function GET(req: NextRequest) {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Actionability counts — same SQL fragments used for filtering, ensuring count/filter parity
+    const enrichmentRes = await db.execute(sql`
+      SELECT
+        count(*) FILTER (
+          WHERE archived = false
+            AND email IS NOT NULL AND email != ''
+            AND email_verification_status = 'valid'
+        ) AS sendable,
+        count(*) FILTER (
+          WHERE archived = false
+            AND email IS NOT NULL AND email != ''
+            AND email_verification_status = 'pending'
+            AND created_at > NOW() - interval '48 hours'
+        ) AS needs_attention,
+        count(*) FILTER (
+          WHERE archived = false
+            AND (
+              email IS NULL OR email = ''
+              OR email_verification_status = 'invalid'
+              OR (email_verification_status = 'pending' AND created_at <= NOW() - interval '48 hours')
+            )
+        ) AS unusable
+      FROM directory_engine.job_poster_leads
+    `);
+    const eRow = (enrichmentRes.rows?.[0] ?? {}) as Record<string, string>;
+    const enrichment = {
+      sendable: Number(eRow.sendable ?? 0),
+      needs_attention: Number(eRow.needs_attention ?? 0),
+      unusable: Number(eRow.unusable ?? 0),
+    };
+
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(jobPosterLeads)
@@ -66,6 +140,7 @@ export async function GET(req: NextRequest) {
       page,
       page_size: pageSize,
       total_pages: Math.ceil(Number(count ?? 0) / pageSize),
+      enrichment,
       data: rows.map((row) => {
         const finalStatus = deriveLeadBinaryState({
           archived: row.archived,
