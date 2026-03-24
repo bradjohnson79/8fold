@@ -18,15 +18,24 @@ async function verifyPassword(provided: string): Promise<boolean> {
       .limit(1);
 
     const config = row?.configCheckResult as Record<string, string> | null;
+    console.log("[LGS_AUTH] DB row found:", !!row);
+    console.log("[LGS_AUTH] Hash present:", !!config?.password_hash);
+    console.log("[LGS_AUTH] configCheckResult keys:", config ? Object.keys(config) : null);
+
     if (config?.password_hash) {
-      return bcrypt.compare(provided, config.password_hash);
+      const match = await bcrypt.compare(provided, config.password_hash);
+      console.log("[LGS_AUTH] bcrypt.compare result:", match);
+      return match;
     }
-  } catch {
-    // DB unavailable — fall through to env var
+  } catch (dbErr) {
+    console.error("[LGS_AUTH] DB lookup failed:", dbErr instanceof Error ? dbErr.message : String(dbErr));
+    // fall through to env var
   }
 
   const envPassword = String(process.env.LGS_AUTH_PASSWORD ?? "").trim();
-  return !!envPassword && provided === envPassword;
+  const envMatch = !!envPassword && provided === envPassword;
+  console.log("[LGS_AUTH] Falling back to env var. LGS_AUTH_PASSWORD set:", !!envPassword, "match:", envMatch);
+  return envMatch;
 }
 
 type AttemptBucket = { count: number; resetAt: number };
@@ -73,6 +82,7 @@ export async function POST(req: Request) {
     }
 
     const jwtSecret = String(process.env.ADMIN_JWT_SECRET ?? "").trim();
+    console.log("[LGS_AUTH] ADMIN_JWT_SECRET set:", !!jwtSecret);
     if (!jwtSecret) {
       console.error("[LGS_AUTH_LOGIN_ERROR] ADMIN_JWT_SECRET not configured");
       return NextResponse.json(
