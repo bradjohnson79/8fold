@@ -1,39 +1,23 @@
 /**
- * LGS Outreach: Generate unique outreach emails via GPT-5 Nano.
+ * LGS Outreach Email Generation — single prompt, no branches.
  *
- * Assembly order (GPT only writes the body — system appends the rest):
- *   [gpt_body]   ← 3–4 short paragraphs, 90–140 words
- *   [cta_line]   ← system-locked, never from GPT
- *   [signature]  ← system-locked, never from GPT
+ * Old system: SYSTEM_PROMPT + user prompt templates + JSON parsing + conditional
+ * message types + enrichment-dependent fallbacks + CTA assembly = garbage output.
  *
- * Returns JSON { subject, body } where body is the complete assembled HTML.
- *
- * Message types:
- *   intro_short         — sparse leads
- *   intro_standard      — default for most leads
- *   intro_trade_specific — richer leads with known trade + city
- *   followup_1          — first follow-up after no reply
- *   followup_2          — second follow-up after no reply
+ * New system: one prompt, plain text output, signature appended by system.
  */
 import crypto from "crypto";
-import { getOpenAiClient, OPENAI_APPRAISAL_MODEL } from "@/src/lib/openai";
+import { getOpenAiClient } from "@/src/lib/openai";
 import { computeBodyHash } from "./outreachHashService";
 
-const MAX_REGENERATE_ATTEMPTS = 5;
+// ─── Types (kept for caller compatibility) ────────────────────────────────────
 
-// ── Message type definitions ─────────────────────────────────────────────────
-
-export type MessageType =
-  | "intro_short"
-  | "intro_standard"
-  | "intro_trade_specific"
-  | "followup_1"
-  | "followup_2";
+export type MessageType = "intro_standard";
 
 export type GenerateInput = {
   businessName: string;
-  trade: string;
-  city: string;
+  trade?: string;
+  city?: string;
   state?: string;
   contactName?: string;
   leadPriority?: string;
@@ -49,338 +33,50 @@ export type GenerateResult = {
   messageVersionHash: string;
 };
 
-// ── Message type selection ───────────────────────────────────────────────────
-
-/**
- * Determines the appropriate message type for a lead.
- * Uses lastMessageTypeSent + followupCount as primary signals.
- * Never re-generates an intro if one was already sent.
- */
-export function determineMessageType(input: GenerateInput): MessageType {
-  const { followupCount = 0, lastMessageTypeSent } = input;
-
-  // Follow-up path — driven by followup_count
-  if (followupCount >= 2) return "followup_2";
-  if (followupCount === 1) return "followup_1";
-
-  // Guard: if an intro was already sent, don't generate another intro
-  const introTypes: MessageType[] = ["intro_short", "intro_standard", "intro_trade_specific"];
-  if (lastMessageTypeSent && introTypes.includes(lastMessageTypeSent as MessageType)) {
-    // Treat as followup_1 if somehow we're here with no followup count
-    return "followup_1";
-  }
-
-  // Intro path — based on available lead context only
-  if (input.trade && input.city) return "intro_trade_specific";
-  if (!input.trade && !input.city) return "intro_short";
-  return "intro_standard";
-}
-
-/**
- * Compute a stable fingerprint of the strategic context used for generation.
- * Useful for later performance analysis — identifies which strategy produced which results.
- */
-export function computeMessageVersionHash(
-  messageType: MessageType,
-  input: Pick<GenerateInput, "trade" | "city">
-): string {
-  const payload = `${messageType}|${input.trade ?? ""}|${input.city ?? ""}`;
-  return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 16);
-}
-
-// ─── System prompt ────────────────────────────────────────────────────────────
-
-const SYSTEM_PROMPT = `You are generating short contractor outreach emails on behalf of Brad Johnson from 8Fold.
-
-About 8Fold:
-8Fold is a fair-trade marketplace that connects skilled tradespeople with real local jobs.
-The platform is built around fairness, transparency, and straightforward collaboration between contractors and job posters.
-The purpose of this outreach is to invite contractors to consider joining 8Fold as part of its growing contractor network.
-
-Your job:
-Write a short, clear, human-sounding outreach email to a contractor lead.
-
-Primary goal:
-Explain why we are contacting them today and how joining 8Fold could benefit them.
-
-Tone requirements:
-- Direct
-- Respectful
-- Friendly
-- Professional
-- Casual but not sloppy
-- Straightforward
-- Not pushy
-- Not overly formal
-
-Do NOT:
-- Use fake praise
-- Use exaggerated compliments
-- Sound like a marketer
-- Sound desperate
-- Sound like a corporate sales script
-- Use emojis
-- Use exclamation marks
-- Use buzzwords such as "revolutionary," "game-changing," "cutting-edge," "synergy," or similar fluff
-- Claim we have been following their work
-- Invent facts about the contractor or their company
-- Mention things that were not provided in the lead data
-- Mention "I found your profile online" or anything that sounds creepy or invasive
-- Praise the contractor
-- Mention "following," "admiring," or "impressed"
-- Use metaphorical language
-- Use hype language
-- Include a call booking request
-- Include a phone number
-
-Avoid these specific phrases:
-- "I've been following your work"
-- "I'm impressed by your craftsmanship"
-- "As a fellow builder"
-- "I noticed your amazing company"
-- "We'd be honored"
-- "Change the way you do business"
-- "Unlock your potential"
-
-Required message goals:
-1. Start with "Hi there,"
-2. Introduce Brad Johnson and 8Fold
-3. Explain why the contractor is being contacted now
-4. Briefly explain what 8Fold is
-5. Briefly explain the practical benefit to the contractor
-6. Invite them to learn more
-
-Use one of these approved opening structures — pick the one that fits the available data best:
-1. "My name's Brad Johnson, COO at 8Fold. I came across [business name] and wanted to reach out because..."
-2. "My name's Brad Johnson, COO at 8Fold. We're currently expanding our network of contractors, and [business name] looks like a strong fit..."
-3. "My name's Brad Johnson, COO at 8Fold. I wanted to reach out because we're growing 8Fold's contractor network in [city]..."
-
-Personalization rules:
-- Use light personalization only
-- If business_name exists, mention it naturally once
-- If trade exists, mention the trade naturally once
-- If city exists, mention the city naturally once
-- Do not over-personalize
-- Do not stack all variables into one awkward sentence
-- Do not guess missing information
-
-Structure rules:
-- 3 to 4 short paragraphs maximum
-- Each paragraph should be 1 to 2 sentences
-- Total length target: 90 to 140 words — no more, no less
-- Keep it concise and easy to skim
-
-Fallback rules:
-- If business_name is missing, do not mention the business name
-- If trade is missing, do not mention the trade
-- If city is missing, do not mention the city
-- If multiple fields are missing, still write a natural message without drawing attention to missing data
-
-Hard constraints:
-- Do not write more than 140 words
-- Do not use more than 4 paragraphs
-- Do not mention more than one trade
-- Do not include a call-to-action line (it is appended by the system)
-- Do not include a website link
-- Do not include the signature
-
-CRITICAL output rules:
-- Return ONLY the message body — 3 to 4 short paragraphs of plain text wrapped in <p> tags
-- Do NOT include a subject line in the body
-- Do NOT include a website link
-- Do NOT include the signature block
-- Do NOT include a CTA line — the system appends it after
-- Do NOT wrap the response in markdown
-- Do NOT add labels like "Email:" or "Message:"
-- Use only these HTML tags: <p>, <strong>, <br>
-- No CSS, no style attributes, no extra HTML structure
-
-Return ONLY valid JSON with exactly two keys:
-{
-  "subject": "short email subject line, 6–10 words, no hype",
-  "body": "3–4 paragraph HTML body — greeting + message paragraphs only, NO signature, NO CTA, NO website link"
-}
-
-No markdown. No code fences. Just the JSON.`;
-
-// ─── System-locked CTA and signature (never from GPT) ─────────────────────────
-
-const HTML_CTA = `<p>If that sounds like something worth exploring, you can create a free account at <a href="https://8fold.app" style="color:#3b82f6;">8fold.app</a> — takes a couple minutes.</p>`;
-
+const MESSAGE_VERSION = "v3-clean-single";
 const HTML_SIGNATURE = `<p>Best,<br>\n<strong>Brad Johnson</strong><br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
 
-/**
- * Strip any GPT-generated CTA or signature attempt, then unconditionally
- * append the system-locked CTA and canonical HTML signature.
- *
- * This guarantees correct branding and CTA on every message regardless of
- * what the model returns.
- */
-function assembleEmail(gptBody: string): string {
-  let cleaned = gptBody
-    // Remove any <p> that opens with a sign-off word
-    .replace(/<p[^>]*>\s*(?:Best|Regards|Sincerely|Thanks|Thank you),?[\s\S]*?<\/p>\s*$/i, "")
-    // Remove bare <br>-separated trailing sign-off blocks
-    .replace(/(?:<br\s*\/?>[\s\S]*?)?(?:Best|Regards|Sincerely),?\s*<br>[\s\S]*?(?:8fold|info@)[\s\S]*?$/i, "")
-    // Remove any CTA / website link paragraph GPT may have snuck in
-    .replace(/<p[^>]*>[\s\S]*?8fold\.app[\s\S]*?<\/p>\s*$/i, "")
-    .trimEnd();
+// ─── Single clean prompt ──────────────────────────────────────────────────────
 
-  return `${cleaned}\n${HTML_CTA}\n${HTML_SIGNATURE}`;
+function buildPrompt(input: GenerateInput): string {
+  const name = input.businessName || "your business";
+  const city = input.city || "your area";
+  const trade = input.trade || "your type of work";
+
+  return `Write a short, natural outreach email to a contractor.
+
+Business: ${name}
+Trade: ${trade}
+Location: ${city}
+
+Context:
+8Fold connects contractors with real jobs without bidding wars or lead fees.
+
+Write like a real person:
+- no corporate tone
+- no fluff
+- no "hope you're doing well"
+- no "visit our website"
+- under 90 words
+- end with a simple question
+
+Only return the email body.`;
 }
 
-// ─── User prompt templates (per message type) ────────────────────────────────
+function buildSubject(input: GenerateInput): string {
+  return input.businessName
+    ? `Quick question — ${input.businessName.trim()}`
+    : "Quick question about 8Fold";
+}
 
-function buildDataLines(input: GenerateInput): string {
-  return [
-    input.businessName ? `Business name: ${input.businessName}` : "Business name: (not available)",
-    input.trade        ? `Trade: ${input.trade}`                 : "Trade: (not available)",
-    input.city         ? `City: ${input.city}`                   : "City: (not available)",
-    input.state        ? `State: ${input.state}`                 : null,
-  ]
+function textToHtml(text: string): string {
+  return text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
     .filter(Boolean)
+    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
     .join("\n");
-}
-
-function buildUserPrompt(input: GenerateInput, messageType: MessageType): string {
-  const dataLines = buildDataLines(input);
-  const reminder = `Reminder:
-- Do not include a subject line in the body
-- Do not include a website link — it is appended by the system
-- Do not include the signature — it is appended by the system
-- Do not include a CTA line — it is appended by the system
-- Return only the message body as HTML`;
-
-  switch (messageType) {
-    case "intro_short":
-      return `Write a SHORT outreach email for this contractor lead. Keep it under 80 words — just a simple, friendly introduction.
-
-Lead data:
-${dataLines}
-
-Goals:
-- Brief intro: who we are (Brad Johnson, 8Fold)
-- One sentence on what 8Fold does
-- Invite them to check us out
-
-Keep it simple. No detail. Light and easy.
-
-${reminder}
-- Target: 60–80 words`;
-
-    case "intro_trade_specific":
-      return `Write a targeted outreach email for this contractor lead. This is a high-quality lead — reference their trade and city naturally.
-
-Lead data:
-${dataLines}
-
-Goals:
-- Introduce Brad Johnson and 8Fold
-- Mention the trade and city naturally once each
-- Explain that we're expanding our contractor network in their area
-- Explain that 8Fold connects skilled tradespeople with real local jobs
-- Explain the practical benefit to the contractor
-
-Personalization: Use trade and city each once. Do not force both into the same sentence.
-
-${reminder}
-- Target: 100–140 words`;
-
-    case "followup_1":
-      return `Write a short, polite follow-up email for this contractor lead. They were contacted once before and didn't reply.
-
-Lead data:
-${dataLines}
-
-Goals:
-- Brief reminder that we reached out before
-- Acknowledge they may have been busy
-- Re-invite them to check out 8Fold
-- Keep it very short — this is a nudge, not a pitch
-
-Do NOT:
-- Sound desperate
-- Repeat the full pitch from the first email
-- Sound annoyed or pushy
-
-${reminder}
-- Target: 50–80 words`;
-
-    case "followup_2":
-      return `Write a brief final follow-up email for this contractor lead. They received two previous emails and haven't replied.
-
-Lead data:
-${dataLines}
-
-Goals:
-- Very short — one or two sentences max
-- Acknowledge this is the last follow-up
-- Leave the door open if they're ever interested
-- End positively
-
-Do NOT:
-- Sound passive aggressive
-- Repeat the pitch again
-- Be overly formal
-
-${reminder}
-- Target: 30–50 words`;
-
-    case "intro_standard":
-    default:
-      return `Write a short outreach email for this contractor lead.
-
-Lead data:
-${dataLines}
-
-What the email should accomplish:
-- Explain that we came across their company and are reaching out
-- Explain that we are expanding 8Fold's contractor network in their area
-- Briefly explain that 8Fold is a fair-trade marketplace connecting skilled tradespeople with real local jobs
-- Briefly explain how this could benefit the contractor
-- Invite them to learn more
-
-Light personalization instructions:
-- If available, mention the business name naturally once
-- If available, mention the trade naturally once
-- If available, mention the city naturally once
-- Keep personalization subtle and natural
-- Do not force all variables into the same sentence
-- Do not mention unavailable fields
-
-${reminder}
-- Target: 90–140 words`;
-  }
-}
-
-// ─── JSON parser ──────────────────────────────────────────────────────────────
-
-/**
- * Parse JSON from model output, handling literal newlines inside string values
- * (common Nano quirk) and falling back to regex extraction.
- */
-function parseJsonRobust(raw: string): { subject?: string; body?: string } {
-  try {
-    return JSON.parse(raw) as { subject?: string; body?: string };
-  } catch { /* fall through */ }
-
-  try {
-    const fixed = raw.replace(/("(?:[^"\\]|\\.)*")/gs, (match) =>
-      match.replace(/\r?\n/g, "\\n")
-    );
-    return JSON.parse(fixed) as { subject?: string; body?: string };
-  } catch { /* fall through */ }
-
-  const subjectMatch = raw.match(/"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  const bodyMatch    = raw.match(/"body"\s*:\s*"([\s\S]*?)(?="?\s*}?\s*$|",?\s*"(?:subject|body)")/);
-  if (subjectMatch) {
-    return {
-      subject: subjectMatch[1].replace(/\\n/g, "\n"),
-      body: bodyMatch ? bodyMatch[1].replace(/\\n/g, "\n") : undefined,
-    };
-  }
-
-  throw new Error("Cannot extract JSON from model output");
 }
 
 // ─── Main generator ───────────────────────────────────────────────────────────
@@ -390,64 +86,61 @@ export async function generateOutreachEmail(
   existingHashes: Set<string>
 ): Promise<GenerateResult> {
   const openai = getOpenAiClient();
+  const prompt = buildPrompt(input);
+  const subject = buildSubject(input);
 
-  const messageType = determineMessageType(input);
-  const messageVersionHash = computeMessageVersionHash(messageType, input);
-  const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n${buildUserPrompt(input, messageType)}`;
+  console.log("PROMPT:", prompt);
 
-  for (let attempt = 0; attempt < MAX_REGENERATE_ATTEMPTS; attempt++) {
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // gpt-5-nano is a reasoning model — needs ~1600 tokens for internal reasoning
+    // before output. 4000 gives enough headroom. temperature is not supported.
     const raw = (await openai.responses.create({
-      model: process.env.OPENAI_MESSAGE_MODEL?.trim() || OPENAI_APPRAISAL_MODEL,
-      input: fullPrompt,
-      temperature: 0.7,
-      max_output_tokens: 300,
-    })) as { output_text?: string };
+      model: process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano",
+      input: prompt,
+      max_output_tokens: 4000,
+    })) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
 
-    const rawAny = raw as Record<string, unknown>;
-    const content: string =
-      typeof rawAny?.output_text === "string"
-        ? rawAny.output_text
-        : Array.isArray(rawAny?.output)
-          ? (rawAny.output as Array<{ content?: Array<{ text?: string }> }>)
-              .flatMap((o) => o?.content ?? [])
-              .map((c) => c?.text ?? "")
-              .join("")
-          : "";
+    const text =
+      raw.output_text ||
+      (raw.output as Array<{ content?: Array<{ text?: string }> }>)?.[0]?.content?.[0]?.text;
 
-    if (!content) {
-      console.warn(`[generateOutreachEmail] empty output on attempt ${attempt + 1}, retrying...`);
+    console.log("OUTPUT:", text);
+
+    if (!text?.trim()) {
+      console.warn(`[generateOutreachEmail] empty output on attempt ${attempt + 1}`);
       continue;
     }
 
-    // Strip markdown code fences if model wraps output
-    const stripped = content
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-
-    let parsed: { subject?: string; body?: string };
-    try {
-      parsed = parseJsonRobust(stripped);
-    } catch {
-      console.warn(`[generateOutreachEmail] JSON parse failed on attempt ${attempt + 1}, retrying...`);
-      continue;
-    }
-
-    const subject  = String(parsed?.subject ?? "").trim();
-    const gptBody  = String(parsed?.body ?? "").trim();
-    if (!subject || !gptBody) {
-      console.warn(`[generateOutreachEmail] missing subject/body on attempt ${attempt + 1}, retrying...`);
-      continue;
-    }
-
-    // Strip any GPT signature/CTA attempt, then append system-locked CTA + signature
-    const body = assembleEmail(gptBody);
-
+    const body = `${textToHtml(text)}\n${HTML_SIGNATURE}`;
     const hash = computeBodyHash(body);
+
     if (existingHashes.has(hash)) continue;
 
-    return { subject, body, hash, messageType, messageVersionHash };
+    return {
+      subject,
+      body,
+      hash,
+      messageType: "intro_standard",
+      messageVersionHash: crypto
+        .createHash("sha256")
+        .update(MESSAGE_VERSION)
+        .digest("hex")
+        .slice(0, 16),
+    };
   }
 
   throw new Error("Could not generate unique email after max attempts");
+}
+
+// ─── Legacy compat shims ──────────────────────────────────────────────────────
+
+/** @deprecated — use generateOutreachEmail directly */
+export function determineMessageType(): MessageType {
+  return "intro_standard";
+}
+
+/** @deprecated — no-op */
+export function computeMessageVersionHash(): string {
+  return MESSAGE_VERSION;
 }

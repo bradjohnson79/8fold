@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
     const conditions: ReturnType<typeof ilike>[] = [];
 
     if (filterActionability === "sendable") {
+      // Ready to Send: has a valid email (format-classified)
       conditions.push(sql`
         ${contractorLeads.archived} = false
         AND ${contractorLeads.email} IS NOT NULL
@@ -89,22 +90,18 @@ export async function GET(req: NextRequest) {
         AND ${contractorLeads.verificationStatus} = 'valid'
       ` as ReturnType<typeof ilike>);
     } else if (filterActionability === "needs_attention") {
+      // Processing: no email yet — enrichment in progress
+      conditions.push(sql`
+        ${contractorLeads.archived} = false
+        AND (${contractorLeads.email} IS NULL OR ${contractorLeads.email} = '')
+      ` as ReturnType<typeof ilike>);
+    } else if (filterActionability === "unusable") {
+      // Not Ready: has an email but it's classified invalid
       conditions.push(sql`
         ${contractorLeads.archived} = false
         AND ${contractorLeads.email} IS NOT NULL
         AND ${contractorLeads.email} != ''
-        AND ${contractorLeads.verificationStatus} = 'pending'
-        AND ${contractorLeads.createdAt} > NOW() - interval '48 hours'
-      ` as ReturnType<typeof ilike>);
-    } else if (filterActionability === "unusable") {
-      conditions.push(sql`
-        ${contractorLeads.archived} = false
-        AND (
-          ${contractorLeads.email} IS NULL
-          OR ${contractorLeads.email} = ''
-          OR ${contractorLeads.verificationStatus} = 'invalid'
-          OR (${contractorLeads.verificationStatus} = 'pending' AND ${contractorLeads.createdAt} <= NOW() - interval '48 hours')
-        )
+        AND coalesce(lower(trim(${contractorLeads.verificationStatus})), 'pending') != 'valid'
       ` as ReturnType<typeof ilike>);
     } else {
       // No actionability filter — use archive filter
@@ -159,7 +156,7 @@ export async function GET(req: NextRequest) {
       .where(whereClause);
     const total = countRes[0]?.c ?? 0;
 
-    // Actionability counts — same SQL fragments used for filtering, ensuring count/filter parity
+    // Actionability counts — exact same SQL fragments as the filters above
     const enrichmentRes = await db.execute(sql`
       SELECT
         count(*) FILTER (
@@ -169,17 +166,12 @@ export async function GET(req: NextRequest) {
         ) AS sendable,
         count(*) FILTER (
           WHERE archived = false
-            AND email IS NOT NULL AND email != ''
-            AND verification_status = 'pending'
-            AND created_at > NOW() - interval '48 hours'
+            AND (email IS NULL OR email = '')
         ) AS needs_attention,
         count(*) FILTER (
           WHERE archived = false
-            AND (
-              email IS NULL OR email = ''
-              OR verification_status = 'invalid'
-              OR (verification_status = 'pending' AND created_at <= NOW() - interval '48 hours')
-            )
+            AND email IS NOT NULL AND email != ''
+            AND coalesce(lower(trim(verification_status)), 'pending') != 'valid'
         ) AS unusable
       FROM directory_engine.contractor_leads
     `);
