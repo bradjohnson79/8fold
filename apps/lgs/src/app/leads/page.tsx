@@ -91,20 +91,17 @@ function verificationColor(status: "pending" | "valid" | "invalid", email: strin
   if (!email) return "#64748b";
   if (status === "valid") return "#22c55e";
   if (status === "invalid") return "#ef4444";
-  return "#f59e0b";
+  return "#64748b";
 }
 
 function verificationLabel(
   status: "pending" | "valid" | "invalid",
   email: string | null,
-  attempts: number
 ): string {
   if (!email) return "No email";
   if (status === "valid") return "Valid";
   if (status === "invalid") return "Invalid";
-  // pending
-  if (attempts === 0) return "Queued";
-  return `Checking… (${Math.min(attempts, 5)} of 5)`;
+  return "Unclassified";
 }
 
 function canGenerateForLead(lead: Lead): boolean {
@@ -646,12 +643,10 @@ export default function LeadsPage() {
         })}
       </div>
 
-      {/* Processing tab heartbeat */}
+      {/* Processing tab note */}
       {filterActionability === "needs_attention" && (
         <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
-          {workerLastRun
-            ? `Verification worker last ran: ${workerLastRun} · runs every 1 min`
-            : "Verification worker: checking status…"}
+          These leads have no email address yet — enrichment will populate them when discovered.
         </p>
       )}
 
@@ -911,11 +906,10 @@ export default function LeadsPage() {
                   <td style={{ padding: "0.6rem 0.75rem" }}>
                     {(() => {
                       const normalized = normalizeVerificationStatus(l.verification_status);
-                      const attempts = l.verification_attempts ?? 0;
                       const color = verificationColor(normalized, l.email);
                       return (
                         <span style={{ color, fontSize: "0.78rem", fontWeight: 600 }}>
-                          {verificationLabel(normalized, l.email, attempts)}
+                          {verificationLabel(normalized, l.email)}
                         </span>
                       );
                     })()}

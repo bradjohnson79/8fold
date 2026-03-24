@@ -1,10 +1,23 @@
-import EmailValidator from "email-deep-validator";
-import pLimit from "p-limit";
-import { and, eq, inArray, sql } from "drizzle-orm";
+/**
+ * LGS Email Verification — instant format classifier.
+ *
+ * Old system: SMTP/DNS probing → queue → worker → retry loop → deadlock.
+ * New system: classify by format on write. No network. No retries. No queue.
+ *
+ * Three states:
+ *   valid   — email looks worth trying
+ *   invalid — obvious junk (bad format, noreply, bad domain)
+ *   pending — no email yet (enrichment in progress)
+ *
+ * Tabs:
+ *   Ready to Send  = email + valid
+ *   Processing     = no email yet (enrichment only)
+ *   Not Ready      = has email but invalid
+ */
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import {
   contractorLeads,
-  emailVerificationQueue,
   jobPosterLeads,
 } from "@/db/schema/directoryEngine";
 import {
@@ -13,141 +26,68 @@ import {
 } from "./priorityScoringService";
 
 type Pipeline = "contractor" | "jobs";
-type QueueStatus = "pending" | "processing" | "completed" | "failed";
 export type EmailVerificationStatus = "pending" | "valid" | "invalid";
 
-type VerificationResult = {
-  status: EmailVerificationStatus;
-  score: number;
-  provider: string;
-  checkedAt: Date;
-  metadata: Record<string, unknown>;
-};
+const INVALID_PATTERNS = [
+  "noreply",
+  "no-reply",
+  "donotreply",
+  "do-not-reply",
+  "unsubscribe",
+];
+const INVALID_DOMAIN_PATTERNS = [
+  "example.com",
+  "example.org",
+  "example.net",
+  "test.com",
+  "localhost",
+];
 
-type ValidatorResult = {
-  wellFormed?: boolean | null;
-  validDomain?: boolean | null;
-  validMailbox?: boolean | null;
-};
+// ─── Core classifier ──────────────────────────────────────────────────────────
 
-const BATCH_SIZE = 20;
-const VERIFY_CONCURRENCY = 5;
-const MAX_VERIFICATION_ATTEMPTS = 5;
-// 5 minutes — cron runs every 1 min so this gives ~5 attempts per lead before giving up
-const VERIFY_RETRY_INTERVAL_MS = 5 * 60 * 1000;
-const PROVIDER_NAME = "email-deep-validator";
-const DISABLED_WORKER_RESULT = {
-  scanned: 0,
-  retried: 0,
-  resolved: 0,
-  archived: 0,
-  fallbackEmails: 0,
-  enrichmentQueued: 0,
-  skipped: 0,
-};
-const validator = new EmailValidator({ timeout: 8000 });
+/**
+ * Instant email classification — no SMTP, no DNS, no network.
+ * Returns 'valid' if the email looks worth trying, 'invalid' if it's junk.
+ */
+export function classifyEmail(email: string | null | undefined): "valid" | "invalid" {
+  if (!email) return "invalid";
+  const lower = email.trim().toLowerCase();
+  if (!lower || !lower.includes("@")) return "invalid";
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
+  const atIdx = lower.indexOf("@");
+  const local = lower.slice(0, atIdx);
+  const domain = lower.slice(atIdx + 1);
+
+  if (!local || !domain || !domain.includes(".")) return "invalid";
+  if (domain.startsWith(".") || domain.endsWith(".") || domain.includes("..")) return "invalid";
+
+  for (const p of INVALID_PATTERNS) {
+    if (lower.includes(p)) return "invalid";
+  }
+  for (const d of INVALID_DOMAIN_PATTERNS) {
+    if (domain === d) return "invalid";
+  }
+
+  return "valid";
 }
 
 export function normalizeVerificationStatus(status: string | null | undefined): EmailVerificationStatus {
   const normalized = String(status ?? "").trim().toLowerCase();
-  if (!normalized) return "pending";
   if (normalized === "invalid") return "invalid";
   if (normalized === "valid" || normalized === "verified") return "valid";
-  if (normalized === "pending" || normalized === "risky" || normalized === "catch_all" || normalized === "unknown") {
-    return "pending";
-  }
   return "pending";
 }
 
-function createVerificationResult(
-  status: EmailVerificationStatus,
-  score: number,
-  metadata: Record<string, unknown>,
-  provider = PROVIDER_NAME
-): VerificationResult {
-  return {
-    status,
-    score,
-    provider,
-    checkedAt: new Date(),
-    metadata,
-  };
-}
-
+/** @deprecated — use classifyEmail() instead */
 export function isValidEmailCandidate(email: string | null | undefined): boolean {
-  const normalized = normalizeEmail(String(email ?? ""));
-  if (!normalized) return false;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return false;
-  if (/\.(svg|png|jpe?g|gif|webp|ico|pdf)$/i.test(normalized)) return false;
-
-  const [, domain = ""] = normalized.split("@");
-  if (!domain || !domain.includes(".")) return false;
-  if (domain.startsWith(".") || domain.endsWith(".")) return false;
-  if (domain.includes("..")) return false;
-
-  return true;
+  return classifyEmail(email) === "valid";
 }
 
-function createImmediateInvalidResult(email: string, reason: string): VerificationResult {
-  return createVerificationResult("invalid", 0, {
-    email,
-    reason,
-    immediate: true,
-  });
-}
+// ─── DB apply ─────────────────────────────────────────────────────────────────
 
-export async function verifyEmailAddress(email: string): Promise<VerificationResult> {
-  const normalized = normalizeEmail(email);
-  if (!isValidEmailCandidate(normalized)) {
-    return createImmediateInvalidResult(normalized, "invalid_email_format");
-  }
-
-  try {
-    const result = await validator.verify(normalized);
-    return classifyEmailVerification(normalized, result, {
-      checkedAt: new Date(),
-      provider: PROVIDER_NAME,
-    });
-  } catch (error) {
-    return createVerificationResult("pending", 50, {
-      email: normalized,
-      error: error instanceof Error ? error.message : "verification_pending_retry",
-    });
-  }
-}
-
-export function classifyEmailVerification(
-  email: string,
-  result: ValidatorResult,
-  opts: { catchAll?: boolean; checkedAt?: Date; provider?: string }
-): VerificationResult {
-  const checkedAt = opts.checkedAt ?? new Date();
-  const provider = opts.provider ?? PROVIDER_NAME;
-  const metadata: Record<string, unknown> = {
-    email,
-    wellFormed: result.wellFormed ?? null,
-    validDomain: result.validDomain ?? null,
-    validMailbox: result.validMailbox ?? null,
-  };
-
-  if (!result.wellFormed || !result.validDomain || result.validMailbox === false) {
-    return { status: "invalid", score: 0, provider, checkedAt, metadata };
-  }
-
-  if (result.validMailbox === true) {
-    return { status: "valid", score: 100, provider, checkedAt, metadata };
-  }
-
-  return { status: "pending", score: 50, provider, checkedAt, metadata };
-}
-
-async function applyVerificationResultToContractors(
+async function applyClassificationToContractors(
   normalizedEmail: string,
-  result: VerificationResult,
-  attemptCount = 1
+  status: "valid" | "invalid"
 ): Promise<string[]> {
   const leads = await db
     .select({ id: contractorLeads.id })
@@ -159,14 +99,10 @@ async function applyVerificationResultToContractors(
   await db
     .update(contractorLeads)
     .set({
-      emailVerificationStatus: result.status,
-      emailVerificationCheckedAt: result.checkedAt,
-      emailVerificationScore: result.score,
-      emailVerificationProvider: result.provider,
-      verificationAttempts: sql`least(coalesce(${contractorLeads.verificationAttempts}, 0) + 1, ${MAX_VERIFICATION_ATTEMPTS})`,
-      verificationStatus: result.status,
-      verificationScore: result.score,
-      verificationSource: result.provider,
+      verificationStatus: status,
+      emailVerificationStatus: status,
+      emailVerificationCheckedAt: new Date(),
+      emailVerificationProvider: "format-classifier",
       scoreDirty: true,
       updatedAt: new Date(),
     })
@@ -175,13 +111,12 @@ async function applyVerificationResultToContractors(
   for (const lead of leads) {
     await scoreAndSaveContractorLead(lead.id);
   }
-  return leads.map((lead) => lead.id);
+  return leads.map((l) => l.id);
 }
 
-async function applyVerificationResultToJobs(
+async function applyClassificationToJobs(
   normalizedEmail: string,
-  result: VerificationResult,
-  attemptCount = 1
+  status: "valid" | "invalid"
 ): Promise<string[]> {
   const leads = await db
     .select({ id: jobPosterLeads.id })
@@ -193,11 +128,9 @@ async function applyVerificationResultToJobs(
   await db
     .update(jobPosterLeads)
     .set({
-      emailVerificationStatus: result.status,
-      emailVerificationCheckedAt: result.checkedAt,
-      emailVerificationScore: result.score,
-      emailVerificationProvider: result.provider,
-      verificationAttempts: sql`least(coalesce(${jobPosterLeads.verificationAttempts}, 0) + 1, ${MAX_VERIFICATION_ATTEMPTS})`,
+      emailVerificationStatus: status,
+      emailVerificationCheckedAt: new Date(),
+      emailVerificationProvider: "format-classifier",
       scoreDirty: true,
       updatedAt: new Date(),
     })
@@ -206,128 +139,97 @@ async function applyVerificationResultToJobs(
   for (const lead of leads) {
     await scoreAndSaveJobPosterLead(lead.id);
   }
-  return leads.map((lead) => lead.id);
+  return leads.map((l) => l.id);
 }
 
-export async function applyVerificationResultToAllLeads(
-  normalizedEmail: string,
-  result: VerificationResult,
-  opts?: { attemptCount?: number }
-): Promise<{
-  contractorLeadIds: string[];
-  jobLeadIds: string[];
-}> {
-  const attemptCount = opts?.attemptCount ?? 1;
-  const contractorLeadIds = await applyVerificationResultToContractors(normalizedEmail, result, attemptCount);
-  const jobLeadIds = await applyVerificationResultToJobs(normalizedEmail, result, attemptCount);
-  return { contractorLeadIds, jobLeadIds };
+// ─── Batch classifier ─────────────────────────────────────────────────────────
+
+/**
+ * Classify a batch of leads by email format. Instant — no network.
+ * Safe to call on import, on email discovery, or as a one-time catch-up.
+ */
+export async function classifyLeadBatch(args: {
+  pipeline: Pipeline;
+  leadIds?: string[];
+  allUnclassified?: boolean;
+  limit?: number;
+}): Promise<{ classified: number; valid: number; invalid: number; skipped: number }> {
+  const { pipeline, leadIds = [], allUnclassified = false, limit } = args;
+  const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
+
+  const conditions = [
+    sql`${table.email} is not null`,
+    sql`trim(${table.email}) <> ''`,
+    eq(table.archived, false),
+  ];
+
+  if (leadIds.length > 0) {
+    conditions.push(sql`${table.id} = ANY(ARRAY[${sql.join(leadIds.map((id) => sql`${id}::uuid`), sql`, `)}])`);
+  } else if (allUnclassified) {
+    // Process leads not yet classified (pending) or needing re-check
+    conditions.push(
+      sql`coalesce(lower(trim(${table.verificationStatus})), 'pending') not in ('valid', 'invalid')`
+    );
+  }
+
+  const query = db
+    .select({ id: table.id, email: table.email })
+    .from(table)
+    .where(and(...conditions))
+    .orderBy(table.createdAt);
+
+  const rows = limit ? await query.limit(limit) : await query;
+
+  let valid = 0;
+  let invalid = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    if (!row.email) { skipped++; continue; }
+    const status = classifyEmail(row.email);
+    const normalized = row.email.trim().toLowerCase();
+    if (pipeline === "contractor") {
+      await applyClassificationToContractors(normalized, status);
+    } else {
+      await applyClassificationToJobs(normalized, status);
+    }
+    if (status === "valid") valid++;
+    else invalid++;
+  }
+
+  console.log("[Classify] Batch complete", { pipeline, total: rows.length, valid, invalid, skipped });
+  return { classified: valid + invalid, valid, invalid, skipped };
 }
 
-function toCachedResult(existing: {
-  resultStatus: string | null;
-  resultScore: number | null;
-  provider: string | null;
-  checkedAt: Date | null;
-  metadata: unknown;
-}): VerificationResult {
-  return {
-    status: normalizeVerificationStatus(existing.resultStatus),
-    score: existing.resultScore ?? 50,
-    provider: existing.provider ?? PROVIDER_NAME,
-    checkedAt: existing.checkedAt ?? new Date(),
-    metadata: (existing.metadata as Record<string, unknown> | null) ?? {},
-  };
-}
+// ─── Legacy shims (preserves callers in importLeadsService, verify route, etc.) ──
 
-function isPendingRetryEligible(existing: {
-  status: string;
-  resultStatus: string | null;
-  attempts: number | null;
-  checkedAt: Date | null;
-  updatedAt: Date | null;
-  createdAt: Date | null;
-}): boolean {
-  if (!["completed", "failed"].includes(existing.status)) return false;
-  if (normalizeVerificationStatus(existing.resultStatus) !== "pending") return false;
-  if ((existing.attempts ?? 0) >= MAX_VERIFICATION_ATTEMPTS) return false;
-  const lastTouched = existing.checkedAt ?? existing.updatedAt ?? existing.createdAt;
-  if (!lastTouched) return true;
-  return Date.now() - lastTouched.getTime() >= VERIFY_RETRY_INTERVAL_MS;
-}
-
+/**
+ * @deprecated — instant shim: classifies the email on the spot, no queue.
+ */
 export async function enqueueVerificationEmail(email: string): Promise<{
   action: "queued" | "cached" | "already_queued" | "invalid" | "skipped";
   normalizedEmail?: string;
-  result?: VerificationResult;
 }> {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) return { action: "skipped" };
-  if (!isValidEmailCandidate(normalizedEmail)) {
-    const result = createImmediateInvalidResult(normalizedEmail, "invalid_email_format");
-    await applyVerificationResultToAllLeads(normalizedEmail, result);
-    return { action: "invalid", normalizedEmail, result };
+  if (!email?.trim()) return { action: "skipped" };
+  const normalized = email.trim().toLowerCase();
+  const status = classifyEmail(email);
+  if (status === "invalid") {
+    await applyClassificationToContractors(normalized, "invalid");
+    await applyClassificationToJobs(normalized, "invalid");
+    return { action: "invalid", normalizedEmail: normalized };
   }
-
-  const [existing] = await db
-    .select()
-    .from(emailVerificationQueue)
-    .where(eq(emailVerificationQueue.normalizedEmail, normalizedEmail))
-    .limit(1);
-
-  if (!existing) {
-    await db.insert(emailVerificationQueue).values({
-      normalizedEmail,
-      originalEmail: email.trim(),
-      status: "pending",
-      attempts: 0,
-      updatedAt: new Date(),
-    });
-    return { action: "queued", normalizedEmail };
-  }
-
-  if (existing.status === "pending" || existing.status === "processing") {
-    return { action: "already_queued", normalizedEmail };
-  }
-
-  if (isPendingRetryEligible(existing)) {
-    await db
-      .update(emailVerificationQueue)
-      .set({
-        originalEmail: email.trim(),
-        status: "pending",
-        lastError: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(emailVerificationQueue.id, existing.id));
-    return { action: "queued", normalizedEmail };
-  }
-
-  if (existing.resultStatus) {
-    const result = toCachedResult(existing);
-    await applyVerificationResultToAllLeads(normalizedEmail, result, {
-      attemptCount: Math.max(existing.attempts ?? 0, 1),
-    });
-    return { action: "cached", normalizedEmail, result };
-  }
-
-  await db
-    .update(emailVerificationQueue)
-    .set({
-      originalEmail: email.trim(),
-      status: "pending",
-      lastError: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(emailVerificationQueue.id, existing.id));
-
-  return { action: "queued", normalizedEmail };
+  await applyClassificationToContractors(normalized, "valid");
+  await applyClassificationToJobs(normalized, "valid");
+  return { action: "queued", normalizedEmail: normalized };
 }
 
+/**
+ * @deprecated — instant shim: runs classifyLeadBatch, returns queue-compatible shape.
+ */
 export async function enqueueLeadVerificationBatch(args: {
   pipeline: Pipeline;
   leadIds?: string[];
   allPending?: boolean;
-  /** Max leads to enqueue per call. Prevents flooding the queue at scale. Default: unlimited. */
   limit?: number;
 }): Promise<{
   queued: number;
@@ -337,168 +239,42 @@ export async function enqueueLeadVerificationBatch(args: {
   skipped: number;
   total: number;
 }> {
-  const { pipeline, leadIds = [], allPending = false, limit } = args;
-  const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
-
-  // Pre-fetch emails already actively in the queue so we don't waste limit slots on them.
-  // "Active" = pending/processing OR completed-but-still-pending within the retry window.
-  const retryCutoff = new Date(Date.now() - VERIFY_RETRY_INTERVAL_MS);
-  const activeQueueRows = await db
-    .select({ normalizedEmail: emailVerificationQueue.normalizedEmail })
-    .from(emailVerificationQueue)
-    .where(sql`
-      ${emailVerificationQueue.status} IN ('pending', 'processing')
-      OR (
-        ${emailVerificationQueue.status} IN ('completed', 'failed')
-        AND coalesce(lower(trim(${emailVerificationQueue.resultStatus})), 'pending') = 'pending'
-        AND coalesce(${emailVerificationQueue.checkedAt}, ${emailVerificationQueue.updatedAt}, ${emailVerificationQueue.createdAt}) > ${retryCutoff}
-      )
-    `);
-  const activeEmailSet = new Set(activeQueueRows.map((r) => r.normalizedEmail));
-
-  const conditions = [
-    sql`${table.email} is not null`,
-    sql`trim(${table.email}) <> ''`,
-    eq(table.archived, false),
-  ];
-
-  if (leadIds.length > 0) {
-    conditions.push(inArray(table.id, leadIds));
-  } else if (allPending) {
-    conditions.push(sql`coalesce(lower(trim(${table.emailVerificationStatus})), 'pending') != 'valid'`);
-  }
-
-  // Exclude leads whose email is already actively queued — this ensures the limit
-  // is used for leads that haven't been processed yet rather than re-selecting the same set.
-  if (activeEmailSet.size > 0) {
-    const activeEmailList = Array.from(activeEmailSet);
-    conditions.push(
-      sql`lower(trim(${table.email})) NOT IN (${sql.join(activeEmailList.map((e) => sql`${e}`), sql`, `)})`
-    );
-  }
-
-  const query = db
-    .select({ id: table.id, email: table.email, verificationStatus: table.emailVerificationStatus })
-    .from(table)
-    .where(and(...conditions))
-    .orderBy(table.createdAt);
-
-  const rows = limit ? await query.limit(limit) : await query;
-
-  let queued = 0;
-  let cached = 0;
-  let alreadyQueued = 0;
-  let invalid = 0;
-  let skipped = 0;
-
-  for (const row of rows) {
-    const normalizedStatus = normalizeVerificationStatus(row.verificationStatus);
-    if (!row.email || normalizedStatus === "valid") {
-      skipped++;
-      continue;
-    }
-    const result = await enqueueVerificationEmail(row.email);
-    if (result.action === "queued") queued++;
-    else if (result.action === "cached") cached++;
-    else if (result.action === "already_queued") alreadyQueued++;
-    else if (result.action === "invalid") invalid++;
-    else skipped++;
-  }
-
-  console.log("[Verify] Queued batch summary", {
-    pipeline,
-    total: rows.length,
-    queued,
-    cached,
-    alreadyQueued,
-    invalid,
-    skipped,
+  const result = await classifyLeadBatch({
+    pipeline: args.pipeline,
+    leadIds: args.leadIds,
+    allUnclassified: args.allPending,
+    limit: args.limit,
   });
-
-  return { queued, cached, alreadyQueued, invalid, skipped, total: rows.length };
+  return {
+    queued: result.valid,
+    cached: 0,
+    alreadyQueued: 0,
+    invalid: result.invalid,
+    skipped: result.skipped,
+    total: result.classified + result.skipped,
+  };
 }
 
-async function fetchVerificationQueueBatch(limit: number) {
-  const retryCutoff = new Date(Date.now() - VERIFY_RETRY_INTERVAL_MS);
-  return db
-    .select()
-    .from(emailVerificationQueue)
-    .where(sql`(
-      ${emailVerificationQueue.status} = 'pending'
-      OR (
-        ${emailVerificationQueue.status} IN ('completed', 'failed')
-        AND coalesce(lower(trim(${emailVerificationQueue.resultStatus})), 'pending') = 'pending'
-        AND coalesce(${emailVerificationQueue.attempts}, 0) < ${MAX_VERIFICATION_ATTEMPTS}
-        AND coalesce(${emailVerificationQueue.checkedAt}, ${emailVerificationQueue.updatedAt}, ${emailVerificationQueue.createdAt}) <= ${retryCutoff}
-      )
-    )`)
-    .orderBy(emailVerificationQueue.createdAt)
-    .limit(limit);
+/**
+ * @deprecated — no-op: SMTP worker removed. Classification is instant on write.
+ */
+export async function runEmailVerificationWorker(): Promise<{
+  processed: number;
+  completed: number;
+  failed: number;
+}> {
+  console.log("[Verify] Worker disabled — classification is now instant on import.");
+  return { processed: 0, completed: 0, failed: 0 };
 }
 
-export async function runEmailVerificationWorker(limit = BATCH_SIZE): Promise<{ processed: number; completed: number; failed: number }> {
-  const rows = await fetchVerificationQueueBatch(limit);
-
-  if (rows.length === 0) {
-    return { processed: 0, completed: 0, failed: 0 };
-  }
-
-  let completed = 0;
-  let failed = 0;
-  const runWithLimit = pLimit(VERIFY_CONCURRENCY);
-
-  console.log("[Verify] Processing batch", { size: rows.length, concurrency: VERIFY_CONCURRENCY });
-
-  await Promise.all(rows.map((row) => runWithLimit(async () => {
-    const attemptCount = (row.attempts ?? 0) + 1;
-
-    await db
-      .update(emailVerificationQueue)
-      .set({
-        status: "processing" satisfies QueueStatus,
-        attempts: attemptCount,
-        updatedAt: new Date(),
-      })
-      .where(eq(emailVerificationQueue.id, row.id));
-
-    try {
-      const result = await verifyEmailAddress(row.normalizedEmail);
-      await applyVerificationResultToAllLeads(row.normalizedEmail, result, { attemptCount });
-      await db
-        .update(emailVerificationQueue)
-        .set({
-          status: "completed",
-          checkedAt: result.checkedAt,
-          provider: result.provider,
-          resultStatus: result.status,
-          resultScore: result.score,
-          metadata: result.metadata,
-          lastError: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(emailVerificationQueue.id, row.id));
-      completed++;
-    } catch (error) {
-      await db
-        .update(emailVerificationQueue)
-        .set({
-          status: "failed",
-          lastError: error instanceof Error ? error.message : "verification_failed",
-          updatedAt: new Date(),
-        })
-        .where(eq(emailVerificationQueue.id, row.id));
-      failed++;
-    }
-  })));
-
-  console.log("[Verify] Completed", { processed: rows.length, completed, failed });
-  return { processed: rows.length, completed, failed };
-}
-
+/**
+ * @deprecated — no-op: unknown resolution worker removed.
+ */
 export async function runUnknownResolutionWorker() {
-  console.log("[Verify] Legacy unknown-resolution worker disabled for simplicity reset");
-  return DISABLED_WORKER_RESULT;
+  return { scanned: 0, retried: 0, resolved: 0, archived: 0, fallbackEmails: 0, enrichmentQueued: 0, skipped: 0 };
 }
+
+// ─── Progress / status ────────────────────────────────────────────────────────
 
 export async function getVerificationProgress(args: {
   pipeline: Pipeline;
@@ -520,58 +296,30 @@ export async function getVerificationProgress(args: {
 }> {
   const { pipeline, leadIds = [], allPending = false } = args;
   const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
+
   const conditions = [
     sql`${table.email} is not null`,
     sql`trim(${table.email}) <> ''`,
     eq(table.archived, false),
   ];
-
   if (leadIds.length > 0) {
-    conditions.push(inArray(table.id, leadIds));
+    conditions.push(sql`${table.id} = ANY(ARRAY[${sql.join(leadIds.map((id) => sql`${id}::uuid`), sql`, `)}])`);
   } else if (allPending) {
-    conditions.push(sql`coalesce(lower(trim(${table.emailVerificationStatus})), 'pending') != 'valid'`);
+    conditions.push(sql`coalesce(lower(trim(${table.verificationStatus})), 'pending') != 'valid'`);
   }
 
   const rows = await db
-    .select({
-      email: table.email,
-      verificationStatus: table.emailVerificationStatus,
-    })
+    .select({ verificationStatus: table.verificationStatus })
     .from(table)
     .where(and(...conditions));
-
-  const validEmails = Array.from(
-    new Set(
-      rows
-        .map((row) => normalizeEmail(String(row.email ?? "")))
-        .filter((email) => isValidEmailCandidate(email))
-    )
-  );
-
-  let queuePending = 0;
-  let queueProcessing = 0;
-  if (validEmails.length > 0) {
-    const queueRows = await db
-      .select({
-        normalizedEmail: emailVerificationQueue.normalizedEmail,
-        status: emailVerificationQueue.status,
-      })
-      .from(emailVerificationQueue)
-      .where(inArray(emailVerificationQueue.normalizedEmail, validEmails));
-
-    for (const row of queueRows) {
-      if (row.status === "pending") queuePending++;
-      if (row.status === "processing") queueProcessing++;
-    }
-  }
 
   let valid = 0;
   let invalid = 0;
   let pending = 0;
   for (const row of rows) {
-    const status = normalizeVerificationStatus(row.verificationStatus);
-    if (status === "valid") valid++;
-    else if (status === "invalid") invalid++;
+    const s = normalizeVerificationStatus(row.verificationStatus);
+    if (s === "valid") valid++;
+    else if (s === "invalid") invalid++;
     else pending++;
   }
 
@@ -586,7 +334,7 @@ export async function getVerificationProgress(args: {
     catch_all: 0,
     unknown: pending,
     remaining: pending,
-    queue_pending: queuePending,
-    queue_processing: queueProcessing,
+    queue_pending: 0,
+    queue_processing: 0,
   };
 }

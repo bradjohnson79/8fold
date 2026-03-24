@@ -1,17 +1,21 @@
-import { enqueueLeadVerificationBatch, runEmailVerificationWorker } from "@/src/services/lgs/emailVerificationService";
+/**
+ * LGS Classification Cron — instant email format classification.
+ *
+ * Replaces the old SMTP verification worker. No queue. No retries.
+ * Classifies any contractor leads that still have unclassified emails.
+ * Safe to run every minute — idempotent, instant, zero network calls.
+ */
+import { classifyLeadBatch } from "@/src/services/lgs/emailVerificationService";
 import { db } from "@/db/drizzle";
 import { lgsWorkerHealth } from "@/db/schema/directoryEngine";
 
 export const dynamic = "force-dynamic";
 
 const WORKER_NAME = "verification_cron";
-// Max leads to enqueue per cron tick — prevents queue flooding at scale
-const ENQUEUE_LIMIT = 100;
 
 function isAuthorized(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) return true;
-
   const authHeader = req.headers.get("authorization");
   return authHeader === `Bearer ${cronSecret}`;
 }
@@ -40,50 +44,43 @@ async function writeHeartbeat(status: "ok" | "error", startedAt: Date, error?: s
     });
 }
 
-async function handleVerification(req: Request) {
+async function handleClassification(req: Request) {
   if (!isAuthorized(req)) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const startedAt = new Date();
-  console.log("[LGS Verification Cron] Triggered", { startedAt: startedAt.toISOString(), method: req.method });
+  console.log("[LGS Classify Cron] Triggered", { startedAt: startedAt.toISOString() });
 
   try {
-    // Step 1: auto-enqueue pending contractor leads that aren't in the queue yet.
-    // limit=ENQUEUE_LIMIT prevents flooding the queue at scale.
-    // The function already guards: email IS NOT NULL, archived = false, not already valid.
-    const enqueued = await enqueueLeadVerificationBatch({
+    // Classify any contractor leads with unclassified emails — instant, no network.
+    // allUnclassified=true skips leads already marked valid or invalid.
+    const result = await classifyLeadBatch({
       pipeline: "contractor",
-      allPending: true,
-      limit: ENQUEUE_LIMIT,
+      allUnclassified: true,
+      limit: 200,
     });
-    console.log("[LGS Verification Cron] Enqueue result", enqueued);
 
-    // Step 2: drain a batch from the queue (DNS/SMTP verification).
-    const result = await runEmailVerificationWorker();
-    console.log("[LGS Verification Cron] Worker result", result);
-
-    // Step 3: write real heartbeat so the System Monitor shows live status.
+    console.log("[LGS Classify Cron] Done", result);
     await writeHeartbeat("ok", startedAt);
 
     return Response.json({
       ok: true,
       started_at: startedAt.toISOString(),
-      enqueued,
       ...result,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[LGS Verification Cron] Failed", { startedAt: startedAt.toISOString(), message });
-    await writeHeartbeat("error", startedAt, message).catch(() => {/* don't mask original error */});
+    console.error("[LGS Classify Cron] Failed", { message });
+    await writeHeartbeat("error", startedAt, message).catch(() => {});
     return Response.json({ ok: false, error: message, started_at: startedAt.toISOString() }, { status: 500 });
   }
 }
 
 export async function GET(req: Request) {
-  return handleVerification(req);
+  return handleClassification(req);
 }
 
 export async function POST(req: Request) {
-  return handleVerification(req);
+  return handleClassification(req);
 }
