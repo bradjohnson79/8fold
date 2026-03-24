@@ -20,6 +20,7 @@ export type GenerateInput = {
   city?: string;
   state?: string;
   contactName?: string;
+  leadPriority?: string;
   followupCount?: number;
   lastMessageTypeSent?: string | null;
 };
