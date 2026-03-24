@@ -339,6 +339,7 @@ type RunContext = {
 
 export type DomainImportRow = {
   domain: string;
+  category?: string;
   city?: string;
   state?: string;
   country?: string;
@@ -718,7 +719,12 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
 
 export async function runBulkDomainDiscoveryAsync(
   rows: DomainImportRow[] | string[],
-  opts?: { autoImportSource?: string }
+  opts?: {
+    autoImportSource?: string;
+    campaignType?: "contractor" | "jobs";
+    targetCampaignId?: string;
+    targetCategory?: string;
+  }
 ): Promise<string> {
   const normalizedRows: DomainImportRow[] = rows.map((r) => {
     if (typeof r === "string") {

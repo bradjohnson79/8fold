@@ -15,9 +15,46 @@
 
 import { useEffect, useRef, useCallback } from "react";
 
+type GoogleLatLngLike = {
+  lat(): number;
+  lng(): number;
+};
+
+type GoogleMapMouseEvent = {
+  latLng?: GoogleLatLngLike | null;
+};
+
+type GoogleMapInstance = {
+  setCenter(center: LatLng): void;
+  setZoom(zoom: number): void;
+  addListener(eventName: string, handler: (event: GoogleMapMouseEvent) => void): void;
+};
+
+type GoogleCircleInstance = {
+  setRadius(radius: number): void;
+  setCenter(center: LatLng): void;
+};
+
+type GoogleMarkerInstance = {
+  setPosition(position: LatLng): void;
+  getPosition(): GoogleLatLngLike | null;
+  addListener(eventName: string, handler: () => void): void;
+};
+
+type GoogleMapsApi = {
+  maps: {
+    Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
+    Circle: new (options: Record<string, unknown>) => GoogleCircleInstance;
+    Marker: new (options: Record<string, unknown>) => GoogleMarkerInstance;
+    SymbolPath: {
+      CIRCLE: unknown;
+    };
+  };
+};
+
 declare global {
   interface Window {
-    google: typeof google;
+    google?: GoogleMapsApi;
     initLeadFinderMap?: () => void;
   }
 }
@@ -56,9 +93,9 @@ function loadMapsScript(onLoad: () => void) {
 
 export function LeadFinderMap({ center, radiusKm, onCenterChange, height = 320 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const circleRef = useRef<google.maps.Circle | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
+  const mapRef = useRef<GoogleMapInstance | null>(null);
+  const circleRef = useRef<GoogleCircleInstance | null>(null);
+  const markerRef = useRef<GoogleMarkerInstance | null>(null);
 
   const initMap = useCallback(() => {
     if (!containerRef.current || !window.google) return;
@@ -110,7 +147,7 @@ export function LeadFinderMap({ center, radiusKm, onCenterChange, height = 320 }
     });
 
     // Click on map sets new center
-    map.addListener("click", (e: google.maps.MapMouseEvent) => {
+    map.addListener("click", (e: GoogleMapMouseEvent) => {
       if (!e.latLng) return;
       const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       marker.setPosition(pos);

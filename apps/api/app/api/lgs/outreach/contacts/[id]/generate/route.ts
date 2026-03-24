@@ -40,10 +40,10 @@ export async function POST(
 
     const result = await generateOutreachEmail(
       {
-        tradeCategory: contact.tradeCategory ?? "skilled",
-        location: contact.location ?? "the area",
-        name: contact.name ?? undefined,
-        jobPosition: contact.jobPosition ?? undefined,
+        businessName: contact.name ?? "Local contractor",
+        trade: contact.tradeCategory ?? "skilled trade",
+        city: contact.location ?? "the area",
+        contactName: contact.name ?? undefined,
       },
       existingHashes
     );

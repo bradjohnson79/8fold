@@ -2,6 +2,10 @@
   "name": "8fold-local",
   "private": true,
   "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": "22.x",
+    "pnpm": "9.x"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

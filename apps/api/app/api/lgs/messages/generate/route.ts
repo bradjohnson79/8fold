@@ -140,7 +140,14 @@ async function loadLead(leadId: string): Promise<LeadRecord | null> {
     .where(eq(contractorLeads.id, leadId))
     .limit(1);
 
-  return lead ?? null;
+  if (!lead?.email?.trim()) {
+    return null;
+  }
+
+  return {
+    ...lead,
+    email: lead.email.trim(),
+  };
 }
 
 async function generateBodyForLead(lead: LeadRecord): Promise<string> {

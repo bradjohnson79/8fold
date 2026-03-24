@@ -130,6 +130,7 @@ async function pickNextPendingItem(): Promise<{
 
   const row = rows[0];
   if (!row) return null;
+  if (!row.contactEmail?.trim() || !row.subject || !row.body) return null;
 
   await db
     .update(emailQueue)
@@ -145,7 +146,7 @@ async function pickNextPendingItem(): Promise<{
     queueId: row.queueId,
     messageId: row.messageId,
     contactId: row.contactId,
-    contactEmail: row.contactEmail,
+    contactEmail: row.contactEmail.trim(),
     subject: row.subject,
     body: row.body,
     senderAccount,
