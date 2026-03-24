@@ -33,40 +33,56 @@ export type GenerateResult = {
   messageVersionHash: string;
 };
 
-const MESSAGE_VERSION = "v3-clean-single";
-const HTML_SIGNATURE = `<p>Best,<br>\n<strong>Brad Johnson</strong><br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
+const MESSAGE_VERSION = "v4-invitation";
+const HTML_SIGNATURE = `<p>Brad Johnson<br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
 
 // ─── Single clean prompt ──────────────────────────────────────────────────────
 
 function buildPrompt(input: GenerateInput): string {
-  const name = input.businessName || "your business";
-  const city = input.city || "your area";
-  const trade = input.trade || "your type of work";
+  const businessName = input.businessName ?? "their business";
+  const city = input.city ?? "their area";
+  const trade = input.trade ?? "their work";
 
-  return `Write a short, natural outreach email to a contractor.
-
-Business: ${name}
-Trade: ${trade}
-Location: ${city}
+  return `Write a short outreach email to a contractor business.
 
 Context:
-8Fold connects contractors with real jobs without bidding wars or lead fees.
+- Business name: ${businessName}
+- Trade: ${trade}
+- Location: ${city}
 
-Write like a real person:
-- no corporate tone
-- no fluff
-- no "hope you're doing well"
-- no "visit our website"
-- under 90 words
-- end with a simple question
+About us:
+8Fold connects contractors with real, vetted jobs.
+There are no bidding wars and no lead fees.
+Contractors receive qualified projects and a predictable workflow.
 
-Only return the email body.`;
+Goal:
+This is NOT a sales email.
+This is NOT a request for a call.
+This is an invitation to join the platform.
+
+Instructions:
+- Address them naturally (team or business name)
+- Introduce 8Fold clearly
+- Explain the benefit briefly
+- Direct them to visit https://8fold.app
+- Tell them they can create a free account
+- Keep tone professional, direct, and calm
+- DO NOT suggest a call, meeting, or chat
+- DO NOT ask for availability
+- DO NOT use sales language
+- Keep under 140 words
+
+Ending:
+Use a confident, non-pushy closing.
+
+Output:
+Return only the email body.`;
 }
 
 function buildSubject(input: GenerateInput): string {
   return input.businessName
-    ? `Quick question — ${input.businessName.trim()}`
-    : "Quick question about 8Fold";
+    ? `Join 8Fold — ${input.businessName.trim()}`
+    : "An invitation from 8Fold";
 }
 
 function textToHtml(text: string): string {
@@ -109,6 +125,18 @@ export async function generateOutreachEmail(
 
     if (!text?.trim()) {
       console.warn(`[generateOutreachEmail] empty output on attempt ${attempt + 1}`);
+      continue;
+    }
+
+    // Guard: reject messages containing sales/scheduling language
+    const cleaned = text.toLowerCase();
+    if (
+      cleaned.includes("call") ||
+      cleaned.includes("chat") ||
+      cleaned.includes("schedule") ||
+      cleaned.includes("meeting")
+    ) {
+      console.warn(`[generateOutreachEmail] rejected — call/chat/schedule/meeting detected on attempt ${attempt + 1}`);
       continue;
     }
 

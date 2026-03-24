@@ -21,7 +21,6 @@ export default function LgsLoginPage() {
         setError("Invalid password");
         return;
       }
-      // Hard redirect — ensures cookie is available before middleware runs
       window.location.href = "/dashboard";
     } catch {
       setError("Login failed — check your connection");

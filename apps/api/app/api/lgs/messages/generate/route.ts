@@ -13,12 +13,12 @@ import { getOpenAiClient } from "@/src/lib/openai";
 const MODEL = process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano";
 // gpt-5-nano is a reasoning model — ~1600 tokens consumed by internal reasoning
 // before any output is written. 4000 gives enough headroom for reasoning + output.
-// temperature is NOT supported by this model.
+// temperature is NOT supported by this model (throws 400 if passed).
 const MAX_OUTPUT_TOKENS = 4000;
 const MESSAGE_TYPE = "intro_standard";
-const MESSAGE_VERSION = "v3-clean-single";
+const MESSAGE_VERSION = "v4-invitation";
 
-const HTML_SIGNATURE = `<p>Best,<br>\n<strong>Brad Johnson</strong><br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
+const HTML_SIGNATURE = `<p>Brad Johnson<br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -32,28 +32,44 @@ type LeadRecord = {
 };
 
 function buildPrompt(lead: LeadRecord): string {
-  const name = lead.businessName || "your business";
-  const city = lead.city || "your area";
-  const trade = lead.trade || "your type of work";
+  const businessName = lead.businessName ?? "their business";
+  const city = lead.city ?? "their area";
+  const trade = lead.trade ?? "their work";
 
-  const prompt = `Write a short, natural outreach email to a contractor.
-
-Business: ${name}
-Trade: ${trade}
-Location: ${city}
+  const prompt = `Write a short outreach email to a contractor business.
 
 Context:
-8Fold connects contractors with real jobs without bidding wars or lead fees.
+- Business name: ${businessName}
+- Trade: ${trade}
+- Location: ${city}
 
-Write like a real person:
-- no corporate tone
-- no fluff
-- no "hope you're doing well"
-- no "visit our website"
-- under 90 words
-- end with a simple question
+About us:
+8Fold connects contractors with real, vetted jobs.
+There are no bidding wars and no lead fees.
+Contractors receive qualified projects and a predictable workflow.
 
-Only return the email body.`;
+Goal:
+This is NOT a sales email.
+This is NOT a request for a call.
+This is an invitation to join the platform.
+
+Instructions:
+- Address them naturally (team or business name)
+- Introduce 8Fold clearly
+- Explain the benefit briefly
+- Direct them to visit https://8fold.app
+- Tell them they can create a free account
+- Keep tone professional, direct, and calm
+- DO NOT suggest a call, meeting, or chat
+- DO NOT ask for availability
+- DO NOT use sales language
+- Keep under 140 words
+
+Ending:
+Use a confident, non-pushy closing.
+
+Output:
+Return only the email body.`;
 
   console.log("PROMPT:", prompt);
   return prompt;
@@ -61,8 +77,8 @@ Only return the email body.`;
 
 function buildSubject(lead: LeadRecord): string {
   return lead.businessName
-    ? `Quick question — ${lead.businessName.trim()}`
-    : "Quick question about 8Fold";
+    ? `Join 8Fold — ${lead.businessName.trim()}`
+    : "An invitation from 8Fold";
 }
 
 function textToHtml(text: string): string {
@@ -93,6 +109,17 @@ async function generateBodyForLead(lead: LeadRecord): Promise<string> {
   console.log("OUTPUT:", text);
 
   if (!text?.trim()) throw new Error("Empty GPT response");
+
+  // Guard: reject messages that contain sales/scheduling language
+  const cleaned = text.toLowerCase();
+  if (
+    cleaned.includes("call") ||
+    cleaned.includes("chat") ||
+    cleaned.includes("schedule") ||
+    cleaned.includes("meeting")
+  ) {
+    throw new Error("Invalid message content (call/chat/schedule/meeting detected)");
+  }
 
   return `${textToHtml(text)}\n${HTML_SIGNATURE}`;
 }
