@@ -2,7 +2,7 @@
 
 export function LogoutButton() {
   async function handleLogout() {
-    await fetch("/api/lgs/auth/logout", { method: "POST" }).catch(() => null);
+    await fetch("/api/logout", { method: "POST" }).catch(() => null);
     window.location.href = "/login";
   }
 
