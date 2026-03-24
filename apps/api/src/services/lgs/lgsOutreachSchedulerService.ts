@@ -74,13 +74,15 @@ const DOMAIN_RISK_WINDOW_HOURS = 24;
 // ── Brain settings cache (refreshed each scheduler run) ──────────────────────
 type BrainSettings = {
   minSenderHealthLevel: SenderHealthLevel;
+  domainCooldownDays: number;
 };
 
 const DEFAULT_SETTINGS: BrainSettings = {
   minSenderHealthLevel: "risk",
+  domainCooldownDays: 1,
 };
 
-async function loadBrainSettings(): Promise<BrainSettings> {
+export async function loadBrainSettings(): Promise<BrainSettings> {
   try {
     const [row] = await db.select().from(lgsOutreachSettings).limit(1);
     if (!row) return DEFAULT_SETTINGS;
@@ -88,6 +90,7 @@ async function loadBrainSettings(): Promise<BrainSettings> {
       minSenderHealthLevel: (SENDER_HEALTH_ORDER.includes(row.minSenderHealthLevel as SenderHealthLevel)
         ? row.minSenderHealthLevel
         : "risk") as SenderHealthLevel,
+      domainCooldownDays: 1,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -114,7 +117,7 @@ function isWithinSendWindow(): boolean {
 }
 
 /** Extract normalized domain from a website URL or email, for cooldown checks. */
-function getCompanyDomain(website: string | null, email: string): string | null {
+export function getCompanyDomain(website: string | null, email: string): string | null {
   if (website) {
     try {
       const url = website.startsWith("http") ? website : `https://${website}`;
@@ -153,6 +156,24 @@ async function isDomainTemporarilyRisky(companyDomain: string, excludeLeadId: st
   return Number(row?.cnt ?? 0) > 0;
 }
 
+export async function isDomainOnCooldown(
+  companyDomain: string,
+  _cooldownDaysOrExcludeLeadId: number | string,
+  excludeLeadId?: string,
+  pipeline: "contractor" | "jobs" = "contractor"
+): Promise<boolean> {
+  if (!companyDomain) return false;
+  const resolvedLeadId =
+    typeof _cooldownDaysOrExcludeLeadId === "string"
+      ? _cooldownDaysOrExcludeLeadId
+      : (excludeLeadId ?? "");
+  if (!resolvedLeadId) return false;
+  if (pipeline === "jobs") {
+    return isDomainTemporarilyRisky(companyDomain, resolvedLeadId);
+  }
+  return isDomainTemporarilyRisky(companyDomain, resolvedLeadId);
+}
+
 // ── Bounce detection ──────────────────────────────────────────────────────────
 
 async function checkBounceRate(senderEmail: string): Promise<{ exceeded: boolean; rate: number }> {
@@ -186,7 +207,7 @@ type EligibleSender = {
   remaining: number;
 };
 
-async function selectAvailableSender(
+export async function selectAvailableSender(
   settings: BrainSettings
 ): Promise<{ id: string; senderEmail: string } | null> {
   if (!isWithinSendWindow()) return null;
@@ -353,7 +374,16 @@ async function sendQueuedEmail(params: {
   return sendOutreachEmail(params);
 }
 
-async function incrementOutreachCounter(senderId: string): Promise<void> {
+export async function sendWithRetry(params: {
+  subject: string;
+  body: string;
+  contactEmail: string;
+  senderAccount: string;
+}): Promise<SendResult> {
+  return sendQueuedEmail(params);
+}
+
+export async function incrementOutreachCounter(senderId: string): Promise<void> {
   await db
     .update(senderPool)
     .set({
@@ -365,7 +395,7 @@ async function incrementOutreachCounter(senderId: string): Promise<void> {
     .where(eq(senderPool.id, senderId));
 }
 
-async function triggerBounceCooldown(
+export async function triggerBounceCooldown(
   senderId: string,
   senderEmail: string,
   bounceRate: number
@@ -380,7 +410,7 @@ async function triggerBounceCooldown(
   );
 }
 
-async function addRandomDelay(): Promise<void> {
+export async function addRandomDelay(): Promise<void> {
   const delayMs = randomBetween(MIN_SEND_DELAY_MS, MAX_SEND_DELAY_MS);
   await new Promise((r) => setTimeout(r, delayMs));
 }

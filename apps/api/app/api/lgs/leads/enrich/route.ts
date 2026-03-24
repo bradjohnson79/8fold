@@ -57,7 +57,15 @@ export async function POST(req: NextRequest) {
       .limit(batchSize * 4);
 
     const retryableLeads = leads
-      .filter((lead) => canRetryVerification(lead.verificationSource))
+      .filter(
+        (
+          lead
+        ): lead is {
+          id: string;
+          email: string;
+          verificationSource: string | null;
+        } => Boolean(lead.email?.trim()) && canRetryVerification(lead.verificationSource)
+      )
       .slice(0, batchSize);
 
     if (retryableLeads.length === 0) {

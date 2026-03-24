@@ -18,6 +18,15 @@ export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
 export type DomainFileRow = {
   domain: string;
+  email?: string;
+  company?: string;
+  address?: string;
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+  trade?: string;
+  category?: string;
+  campaignType?: "contractor" | "jobs";
   city?: string;
   state?: string;
   country?: string;
@@ -121,6 +130,17 @@ function getOptionalField(row: Record<string, unknown>, ...aliases: string[]): s
   return undefined;
 }
 
+function normalizeCampaignType(value: string | undefined): DomainFileRow["campaignType"] {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "jobs" || normalized === "job_poster" || normalized === "job-posters") {
+    return "jobs";
+  }
+  if (normalized === "contractor" || normalized === "contractors") {
+    return "contractor";
+  }
+  return undefined;
+}
+
 /** Normalize US state: "California" → "CA" (2-letter only if already abbrev) */
 function normalizeState(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -199,8 +219,31 @@ function parseRows(rawRows: Record<string, unknown>[]): { rows: DomainFileRow[];
     const state = normalizeState(stateRaw);
     const countryRaw = getOptionalField(row, "country");
     const country = normalizeCountry(countryRaw);
+    const email = getOptionalField(row, "email", "contact_email");
+    const company = getOptionalField(row, "company", "company_name", "business_name", "name");
+    const address = getOptionalField(row, "address", "street", "street_address");
+    const firstName = getOptionalField(row, "first_name", "firstname", "given_name");
+    const lastName = getOptionalField(row, "last_name", "lastname", "surname", "family_name");
+    const title = getOptionalField(row, "title", "job_title", "position");
+    const trade = getOptionalField(row, "trade", "service", "specialty");
+    const category = getOptionalField(row, "category");
+    const campaignType = normalizeCampaignType(getOptionalField(row, "campaign_type", "campaign", "lead_type"));
 
-    results.push({ domain, city, state, country });
+    results.push({
+      domain,
+      email,
+      company,
+      address,
+      firstName,
+      lastName,
+      title,
+      trade,
+      category,
+      campaignType,
+      city,
+      state,
+      country,
+    });
   }
 
   return {

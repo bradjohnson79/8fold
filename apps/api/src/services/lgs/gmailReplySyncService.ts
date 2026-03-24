@@ -50,7 +50,8 @@ export async function syncGmailReplies(): Promise<ReplySyncResult> {
 
   const leadsByEmail = new Map<string, Array<{ id: string; lastContactedAt: Date | null }>>();
   for (const lead of candidateLeads) {
-    const email = lead.email.trim().toLowerCase();
+            const email = lead.email?.trim().toLowerCase();
+            if (!email) continue;
     const group = leadsByEmail.get(email) ?? [];
     group.push({ id: lead.id, lastContactedAt: lead.lastContactedAt ?? null });
     leadsByEmail.set(email, group);

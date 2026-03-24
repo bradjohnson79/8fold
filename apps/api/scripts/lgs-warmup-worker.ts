@@ -424,7 +424,7 @@ async function updateHealthScores(): Promise<void> {
 
 // ─── Main Cycle ────────────────────────────────────────────────────────
 
-async function runWarmupCycle(): Promise<void> {
+export async function runWarmupCycle(): Promise<void> {
   try {
     await heartbeatStart();
   } catch (err) {
