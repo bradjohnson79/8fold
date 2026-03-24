@@ -156,6 +156,10 @@ export async function classifyLeadBatch(args: {
 }): Promise<{ classified: number; valid: number; invalid: number; skipped: number }> {
   const { pipeline, leadIds = [], allUnclassified = false, limit } = args;
   const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
+  // contractor_leads uses verification_status; job_poster_leads uses email_verification_status
+  const statusCol = pipeline === "contractor"
+    ? contractorLeads.verificationStatus
+    : jobPosterLeads.emailVerificationStatus;
 
   const conditions = [
     sql`${table.email} is not null`,
@@ -168,7 +172,7 @@ export async function classifyLeadBatch(args: {
   } else if (allUnclassified) {
     // Process leads not yet classified (pending) or needing re-check
     conditions.push(
-      sql`coalesce(lower(trim(${table.verificationStatus})), 'pending') not in ('valid', 'invalid')`
+      sql`coalesce(lower(trim(${statusCol})), 'pending') not in ('valid', 'invalid')`
     );
   }
 
@@ -296,6 +300,9 @@ export async function getVerificationProgress(args: {
 }> {
   const { pipeline, leadIds = [], allPending = false } = args;
   const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
+  const statusCol = pipeline === "contractor"
+    ? contractorLeads.verificationStatus
+    : jobPosterLeads.emailVerificationStatus;
 
   const conditions = [
     sql`${table.email} is not null`,
@@ -305,11 +312,11 @@ export async function getVerificationProgress(args: {
   if (leadIds.length > 0) {
     conditions.push(sql`${table.id} = ANY(ARRAY[${sql.join(leadIds.map((id) => sql`${id}::uuid`), sql`, `)}])`);
   } else if (allPending) {
-    conditions.push(sql`coalesce(lower(trim(${table.verificationStatus})), 'pending') != 'valid'`);
+    conditions.push(sql`coalesce(lower(trim(${statusCol})), 'pending') != 'valid'`);
   }
 
   const rows = await db
-    .select({ verificationStatus: table.verificationStatus })
+    .select({ verificationStatus: statusCol })
     .from(table)
     .where(and(...conditions));
 
