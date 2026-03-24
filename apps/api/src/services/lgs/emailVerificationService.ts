@@ -33,7 +33,8 @@ type ValidatorResult = {
 const BATCH_SIZE = 20;
 const VERIFY_CONCURRENCY = 5;
 const MAX_VERIFICATION_ATTEMPTS = 5;
-const VERIFY_RETRY_INTERVAL_MS = 60 * 60 * 1000;
+// 5 minutes — cron runs every 1 min so this gives ~5 attempts per lead before giving up
+const VERIFY_RETRY_INTERVAL_MS = 5 * 60 * 1000;
 const PROVIDER_NAME = "email-deep-validator";
 const DISABLED_WORKER_RESULT = {
   scanned: 0,
@@ -162,7 +163,7 @@ async function applyVerificationResultToContractors(
       emailVerificationCheckedAt: result.checkedAt,
       emailVerificationScore: result.score,
       emailVerificationProvider: result.provider,
-      verificationAttempts: sql`greatest(coalesce(${contractorLeads.verificationAttempts}, 0), ${attemptCount})`,
+      verificationAttempts: sql`least(coalesce(${contractorLeads.verificationAttempts}, 0) + 1, ${MAX_VERIFICATION_ATTEMPTS})`,
       verificationStatus: result.status,
       verificationScore: result.score,
       verificationSource: result.provider,
@@ -196,7 +197,7 @@ async function applyVerificationResultToJobs(
       emailVerificationCheckedAt: result.checkedAt,
       emailVerificationScore: result.score,
       emailVerificationProvider: result.provider,
-      verificationAttempts: sql`greatest(coalesce(${jobPosterLeads.verificationAttempts}, 0), ${attemptCount})`,
+      verificationAttempts: sql`least(coalesce(${jobPosterLeads.verificationAttempts}, 0) + 1, ${MAX_VERIFICATION_ATTEMPTS})`,
       scoreDirty: true,
       updatedAt: new Date(),
     })
@@ -339,6 +340,22 @@ export async function enqueueLeadVerificationBatch(args: {
   const { pipeline, leadIds = [], allPending = false, limit } = args;
   const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
 
+  // Pre-fetch emails already actively in the queue so we don't waste limit slots on them.
+  // "Active" = pending/processing OR completed-but-still-pending within the retry window.
+  const retryCutoff = new Date(Date.now() - VERIFY_RETRY_INTERVAL_MS);
+  const activeQueueRows = await db
+    .select({ normalizedEmail: emailVerificationQueue.normalizedEmail })
+    .from(emailVerificationQueue)
+    .where(sql`
+      ${emailVerificationQueue.status} IN ('pending', 'processing')
+      OR (
+        ${emailVerificationQueue.status} IN ('completed', 'failed')
+        AND coalesce(lower(trim(${emailVerificationQueue.resultStatus})), 'pending') = 'pending'
+        AND coalesce(${emailVerificationQueue.checkedAt}, ${emailVerificationQueue.updatedAt}, ${emailVerificationQueue.createdAt}) > ${retryCutoff}
+      )
+    `);
+  const activeEmailSet = new Set(activeQueueRows.map((r) => r.normalizedEmail));
+
   const conditions = [
     sql`${table.email} is not null`,
     sql`trim(${table.email}) <> ''`,
@@ -349,6 +366,15 @@ export async function enqueueLeadVerificationBatch(args: {
     conditions.push(inArray(table.id, leadIds));
   } else if (allPending) {
     conditions.push(sql`coalesce(lower(trim(${table.emailVerificationStatus})), 'pending') != 'valid'`);
+  }
+
+  // Exclude leads whose email is already actively queued — this ensures the limit
+  // is used for leads that haven't been processed yet rather than re-selecting the same set.
+  if (activeEmailSet.size > 0) {
+    const activeEmailList = Array.from(activeEmailSet);
+    conditions.push(
+      sql`lower(trim(${table.email})) NOT IN (${sql.join(activeEmailList.map((e) => sql`${e}`), sql`, `)})`
+    );
   }
 
   const query = db
