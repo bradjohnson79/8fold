@@ -12,7 +12,7 @@ export default function LgsLoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const resp = await fetch("/api/lgs/auth/login", {
+      const resp = await fetch("/api/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ password }),
@@ -21,7 +21,6 @@ export default function LgsLoginPage() {
         setError("Invalid password");
         return;
       }
-      // Hard redirect — ensures cookie is available before middleware runs
       window.location.href = "/dashboard";
     } catch {
       setError("Login failed — check your connection");
