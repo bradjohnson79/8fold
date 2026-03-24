@@ -10,22 +10,15 @@ const TEMPERATURE = Number.isFinite(Number(process.env.OPENAI_MESSAGE_TEMPERATUR
   : 0.7;
 const MAX_OUTPUT_TOKENS = Number.isFinite(Number(process.env.OPENAI_MESSAGE_MAX_TOKENS))
   ? Number(process.env.OPENAI_MESSAGE_MAX_TOKENS)
-  : 200;
+  : 180;
 const MESSAGE_TYPE = "intro_standard";
-const MESSAGE_VERSION = "post-reset-stabilized-v1";
-const ANGLES = [
-  "came across your work locally",
-  "reaching out to local crews",
-  "connecting with contractors in the area",
+const MESSAGE_VERSION = "v2-human-direct";
+const HOOKS = [
+  "came across your work while looking at contractors in the area",
+  "reaching out to a few local crews",
+  "connecting with contractors nearby",
   "talking with contractors in {{city}}",
-  "reviewing strong local service businesses",
-];
-const OPENING_STYLES = [
-  "Keep the opening direct and friendly.",
-  "Open like a real person making a local introduction.",
-  "Make the first sentence feel casual, not polished.",
-  "Use a simple local context opener, then get to the point.",
-  "Keep the tone warm and brief.",
+  "saw your business while looking around {{city}}",
 ];
 
 type LeadRecord = {
@@ -72,49 +65,51 @@ function toHtmlEmailBody(text: string): string {
 }
 
 function buildPrompt(lead: LeadRecord): string {
-  const businessName = lead.businessName ?? "your business";
-  const city = lead.city ?? "your area";
-  const trade = lead.trade ?? "your service";
-  const rawAngle = ANGLES[Math.floor(Math.random() * ANGLES.length)] ?? ANGLES[0];
-  const angle = rawAngle.replace("{{city}}", city);
-  const openingStyle =
-    OPENING_STYLES[Math.floor(Math.random() * OPENING_STYLES.length)] ?? OPENING_STYLES[0];
+  const businessName = lead.businessName || "their business";
+  const city = lead.city || "their area";
+  const trade = lead.trade || "their type of work";
+  const rawHook = HOOKS[Math.floor(Math.random() * HOOKS.length)] ?? HOOKS[0];
+  const hook = rawHook.replace("{{city}}", city);
 
-  return `
-Write a short, natural outreach email to a local contractor business.
+  const prompt = `You are reaching out to a local contractor business.
+
+Your goal is to start a real conversation — not to pitch, not to sell, not to sound corporate.
 
 Context:
-- Business name: ${businessName}
-- Location: ${city}
+- Business: ${businessName}
 - Trade: ${trade}
+- Location: ${city}
 
 About us:
-8Fold is a platform where contractors:
-- keep 80–85% of the job value
-- receive direct job opportunities
-- avoid bidding wars and lead fees
-- keep 100% of tips
+8Fold connects contractors with real jobs — no bidding wars, no lead fees, and they keep most of the job value.
 
-Goal:
-Start a conversation. Do NOT try to sell aggressively.
+Use this opening angle: "${hook}"
 
-Instructions:
-- Keep it under 120 words
-- Make it feel like a real human wrote it
-- Do NOT use generic phrases like "I hope you're doing well"
-- Do NOT say "visit our website to learn more"
-- Reference their trade or local presence naturally
-- Include a natural reason like: "${angle}"
-- ${openingStyle}
-- End with a simple, low-pressure question
-- Keep it conversational and slightly casual
+Write a short email that:
+- feels like a real human wrote it
+- references their trade or local presence
+- gives a clear reason for reaching out
+- avoids corporate or generic language
+- avoids "visit our website" phrasing
+- avoids sounding like marketing copy
+- ends with a simple question
 
-Tone:
-Friendly, confident, direct, human
+Style:
+- casual but respectful
+- direct, not fluffy
+- under 90 words
+
+DO NOT:
+- say "I hope you're doing well"
+- say "learn more on our website"
+- sound like a template
+- use "Hi there," as the opener — use a real opener like "Hey —" or just dive in
 
 Output:
-Return ONLY the email body. No subject line. No explanations.
-`.trim();
+Only the email body. No subject line. No signature. No explanations.`;
+
+  console.log("PROMPT USED:", prompt);
+  return prompt;
 }
 
 function buildSubject(lead: LeadRecord): string {
