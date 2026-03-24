@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { getValidatedApiOrigin } from "@/server/env";
 import { fetchWithLgsTimeout } from "@/server/upstreamFetch";
 
+const LGS_SESSION_COOKIE = "lgs_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
+
 export async function POST(req: Request) {
   try {
     const apiOrigin = getValidatedApiOrigin();
     const url = `${apiOrigin}/api/lgs/auth/login`;
     const body = await req.text();
+
     const resp = await fetchWithLgsTimeout(url, {
       method: "POST",
       headers: {
@@ -18,16 +22,42 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
 
-    const text = await resp.text();
-    const out = new NextResponse(text, { status: resp.status });
-    out.headers.set("content-type", resp.headers.get("content-type") ?? "application/json");
+    // Parse JSON response from API
+    let json: { ok: boolean; data?: { authenticated?: boolean; token?: string }; error?: unknown };
+    try {
+      json = await resp.json();
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: { code: "UPSTREAM_ERROR", message: "Login failed." } },
+        { status: 502 }
+      );
+    }
 
-    const setCookie = resp.headers.get("set-cookie");
-    if (setCookie) out.headers.set("set-cookie", setCookie);
+    if (!resp.ok || !json?.data?.token) {
+      return NextResponse.json(
+        { ok: false, error: json?.error ?? { code: "UNAUTHORIZED", message: "Invalid password" } },
+        { status: resp.status }
+      );
+    }
 
-    return out;
-  } catch (err: any) {
-    const status = typeof err?.status === "number" ? err.status : 500;
+    // Set the cookie from this LGS app using NextResponse.cookies.set()
+    // This is the reliable App Router method — manually setting set-cookie headers
+    // in a proxy response does not work consistently in Next.js.
+    const token = json.data.token;
+    const response = NextResponse.json({ ok: true, data: { authenticated: true } }, { status: 200 });
+    response.cookies.set(LGS_SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+
+    return response;
+  } catch (err: unknown) {
+    const status = typeof (err as { status?: number })?.status === "number"
+      ? (err as { status: number }).status
+      : 500;
     return NextResponse.json(
       {
         ok: false,

@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/server/db/drizzle";
 import { lgsWorkerHealth } from "@/db/schema/directoryEngine";
 import { eq } from "drizzle-orm";
-import { sessionCookieFor } from "@/src/lib/auth/adminSessionAuth";
 
 const LGS_SESSION_COOKIE = "lgs_session";
 const AUTH_WORKER_NAME = "lgs_auth";
@@ -105,8 +104,9 @@ export async function POST(req: Request) {
       algorithm: "HS256",
     });
 
-    const res = NextResponse.json({ ok: true, data: { authenticated: true } }, { status: 200 });
-    res.headers.set("set-cookie", sessionCookieFor(LGS_SESSION_COOKIE, token));
+    // Return token in JSON body so the LGS proxy can set the cookie correctly
+    // using NextResponse.cookies.set() (the reliable App Router method).
+    const res = NextResponse.json({ ok: true, data: { authenticated: true, token } }, { status: 200 });
     return res;
   } catch (error) {
     console.error("[LGS_AUTH_LOGIN_ERROR]", {

@@ -1,10 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LgsLoginPage() {
-  const router = useRouter();
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +21,8 @@ export default function LgsLoginPage() {
         setError("Invalid password");
         return;
       }
-      router.replace("/dashboard");
-      router.refresh();
+      // Hard redirect — ensures cookie is available before middleware runs
+      window.location.href = "/dashboard";
     } catch {
       setError("Login failed — check your connection");
     } finally {
