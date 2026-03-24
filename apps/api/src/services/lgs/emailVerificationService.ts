@@ -326,6 +326,8 @@ export async function enqueueLeadVerificationBatch(args: {
   pipeline: Pipeline;
   leadIds?: string[];
   allPending?: boolean;
+  /** Max leads to enqueue per call. Prevents flooding the queue at scale. Default: unlimited. */
+  limit?: number;
 }): Promise<{
   queued: number;
   cached: number;
@@ -334,7 +336,7 @@ export async function enqueueLeadVerificationBatch(args: {
   skipped: number;
   total: number;
 }> {
-  const { pipeline, leadIds = [], allPending = false } = args;
+  const { pipeline, leadIds = [], allPending = false, limit } = args;
   const table = pipeline === "contractor" ? contractorLeads : jobPosterLeads;
 
   const conditions = [
@@ -349,10 +351,13 @@ export async function enqueueLeadVerificationBatch(args: {
     conditions.push(sql`coalesce(lower(trim(${table.emailVerificationStatus})), 'pending') != 'valid'`);
   }
 
-  const rows = await db
+  const query = db
     .select({ id: table.id, email: table.email, verificationStatus: table.emailVerificationStatus })
     .from(table)
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .orderBy(table.createdAt);
+
+  const rows = limit ? await query.limit(limit) : await query;
 
   let queued = 0;
   let cached = 0;
