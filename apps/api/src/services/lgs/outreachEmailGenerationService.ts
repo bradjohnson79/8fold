@@ -205,7 +205,7 @@ No markdown. No code fences. Just the JSON.`;
 
 // ─── System-locked CTA and signature (never from GPT) ─────────────────────────
 
-const HTML_CTA = `<p>If you're interested, please feel free to visit our website at <a href="https://8fold.app" style="color:#3b82f6;">https://8fold.app</a> and create your free account to learn more about how it works.</p>`;
+const HTML_CTA = `<p>If that sounds like something worth exploring, you can create a free account at <a href="https://8fold.app" style="color:#3b82f6;">8fold.app</a> — takes a couple minutes.</p>`;
 
 const HTML_SIGNATURE = `<p>Best,<br>\n<strong>Brad Johnson</strong><br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
 
@@ -397,10 +397,10 @@ export async function generateOutreachEmail(
 
   for (let attempt = 0; attempt < MAX_REGENERATE_ATTEMPTS; attempt++) {
     const raw = (await openai.responses.create({
-      model: OPENAI_APPRAISAL_MODEL,
+      model: process.env.OPENAI_MESSAGE_MODEL?.trim() || OPENAI_APPRAISAL_MODEL,
       input: fullPrompt,
-      reasoning: { effort: "low" },
-      max_output_tokens: 700,
+      temperature: 0.7,
+      max_output_tokens: 300,
     })) as { output_text?: string };
 
     const rawAny = raw as Record<string, unknown>;
