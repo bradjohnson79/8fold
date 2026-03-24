@@ -1,3 +1,9 @@
+/**
+ * LGS: Generate outreach message for a contractor lead.
+ *
+ * Single prompt. No branches. No templates. No conditional logic.
+ * GPT writes the body. System appends CTA + signature.
+ */
 import crypto from "node:crypto";
 import OpenAI from "openai";
 import { eq } from "drizzle-orm";
@@ -5,21 +11,12 @@ import { db } from "@/db/drizzle";
 import { contractorLeads, outreachMessages } from "@/db/schema/directoryEngine";
 
 const MODEL = process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano";
-const TEMPERATURE = Number.isFinite(Number(process.env.OPENAI_MESSAGE_TEMPERATURE))
-  ? Number(process.env.OPENAI_MESSAGE_TEMPERATURE)
-  : 0.7;
-const MAX_OUTPUT_TOKENS = Number.isFinite(Number(process.env.OPENAI_MESSAGE_MAX_TOKENS))
-  ? Number(process.env.OPENAI_MESSAGE_MAX_TOKENS)
-  : 180;
+const TEMPERATURE = 0.7;
+const MAX_OUTPUT_TOKENS = 160;
 const MESSAGE_TYPE = "intro_standard";
-const MESSAGE_VERSION = "v2-human-direct";
-const HOOKS = [
-  "came across your work while looking at contractors in the area",
-  "reaching out to a few local crews",
-  "connecting with contractors nearby",
-  "talking with contractors in {{city}}",
-  "saw your business while looking around {{city}}",
-];
+const MESSAGE_VERSION = "v3-clean-single";
+
+const HTML_SIGNATURE = `<p>Best,<br>\n<strong>Brad Johnson</strong><br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
 
 type LeadRecord = {
   id: string;
@@ -28,96 +25,79 @@ type LeadRecord = {
   trade: string | null;
   city: string | null;
   state: string | null;
-  source: string | null;
 };
 
 function getOpenAiClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY missing in API runtime");
-  }
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
   return new OpenAI({ apiKey });
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function toHtmlEmailBody(text: string): string {
-  const paragraphs = text
-    .trim()
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .slice(0, 4)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`);
-
-  if (paragraphs.length === 0) {
-    throw new Error("Empty GPT response");
-  }
-
-  return paragraphs.join("\n");
-}
-
 function buildPrompt(lead: LeadRecord): string {
-  const businessName = lead.businessName || "their business";
-  const city = lead.city || "their area";
-  const trade = lead.trade || "their type of work";
-  const rawHook = HOOKS[Math.floor(Math.random() * HOOKS.length)] ?? HOOKS[0];
-  const hook = rawHook.replace("{{city}}", city);
+  const name = lead.businessName || "your business";
+  const city = lead.city || "your area";
+  const trade = lead.trade || "your type of work";
 
-  const prompt = `You are reaching out to a local contractor business.
+  const prompt = `Write a short, natural outreach email to a contractor.
 
-Your goal is to start a real conversation — not to pitch, not to sell, not to sound corporate.
+Business: ${name}
+Trade: ${trade}
+Location: ${city}
 
 Context:
-- Business: ${businessName}
-- Trade: ${trade}
-- Location: ${city}
+8Fold connects contractors with real jobs without bidding wars or lead fees.
 
-About us:
-8Fold connects contractors with real jobs — no bidding wars, no lead fees, and they keep most of the job value.
-
-Use this opening angle: "${hook}"
-
-Write a short email that:
-- feels like a real human wrote it
-- references their trade or local presence
-- gives a clear reason for reaching out
-- avoids corporate or generic language
-- avoids "visit our website" phrasing
-- avoids sounding like marketing copy
-- ends with a simple question
-
-Style:
-- casual but respectful
-- direct, not fluffy
+Write like a real person:
+- no corporate tone
+- no fluff
+- no "hope you're doing well"
+- no "visit our website"
 - under 90 words
+- end with a simple question
 
-DO NOT:
-- say "I hope you're doing well"
-- say "learn more on our website"
-- sound like a template
-- use "Hi there," as the opener — use a real opener like "Hey —" or just dive in
+Only return the email body.`;
 
-Output:
-Only the email body. No subject line. No signature. No explanations.`;
-
-  console.log("PROMPT USED:", prompt);
+  console.log("PROMPT:", prompt);
   return prompt;
 }
 
 function buildSubject(lead: LeadRecord): string {
-  const businessName = lead.businessName?.trim();
-  if (businessName) {
-    return `Quick question for ${businessName}`;
-  }
-  return "Quick question about 8Fold";
+  return lead.businessName
+    ? `Quick question — ${lead.businessName.trim()}`
+    : "Quick question about 8Fold";
+}
+
+function textToHtml(text: string): string {
+  return text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+}
+
+async function generateBodyForLead(lead: LeadRecord): Promise<string> {
+  const openai = getOpenAiClient();
+  const prompt = buildPrompt(lead);
+
+  const response = await openai.responses.create({
+    model: MODEL,
+    input: prompt,
+    temperature: TEMPERATURE,
+    max_output_tokens: MAX_OUTPUT_TOKENS,
+  });
+
+  const raw = response as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
+  const text =
+    raw.output_text ||
+    raw.output?.[0]?.content?.[0]?.text;
+
+  console.log("OUTPUT:", text);
+
+  if (!text?.trim()) throw new Error("Empty GPT response");
+
+  return `${textToHtml(text)}\n${HTML_SIGNATURE}`;
 }
 
 async function loadLead(leadId: string): Promise<LeadRecord | null> {
@@ -129,77 +109,40 @@ async function loadLead(leadId: string): Promise<LeadRecord | null> {
       trade: contractorLeads.trade,
       city: contractorLeads.city,
       state: contractorLeads.state,
-      source: contractorLeads.source,
     })
     .from(contractorLeads)
     .where(eq(contractorLeads.id, leadId))
     .limit(1);
 
-  if (!lead?.email?.trim()) {
-    return null;
-  }
-
-  return {
-    ...lead,
-    email: lead.email.trim(),
-  };
-}
-
-async function generateBodyForLead(lead: LeadRecord): Promise<string> {
-  const openai = getOpenAiClient();
-  const response = await openai.responses.create({
-    model: MODEL,
-    input: buildPrompt(lead),
-    temperature: TEMPERATURE,
-    max_output_tokens: MAX_OUTPUT_TOKENS,
-  });
-
-  const rawResponse = response as {
-    output_text?: string;
-    output?: Array<{ content?: Array<{ text?: string }> }>;
-  };
-  const text =
-    rawResponse.output_text ||
-    rawResponse.output?.[0]?.content?.[0]?.text;
-
-  if (!text?.trim()) {
-    throw new Error("Empty GPT response");
-  }
-
-  return toHtmlEmailBody(text);
+  if (!lead?.email?.trim()) return null;
+  return { ...lead, email: lead.email.trim() };
 }
 
 async function generateForLead(
   leadId: string,
-  existingHashes: Set<string>,
-  skipIfExists = true
+  skipIfCurrentVersion = true
 ): Promise<{ ok: boolean; id?: string; error?: string; skipped?: boolean }> {
   const lead = await loadLead(leadId);
-
   if (!lead) return { ok: false, error: "lead_not_found" };
-  if (!lead.email?.trim()) return { ok: false, error: "Missing email" };
+  if (!lead.email) return { ok: false, error: "Missing email" };
 
-  if (skipIfExists) {
+  if (skipIfCurrentVersion) {
     const [existing] = await db
-      .select({
-        id: outreachMessages.id,
-        messageVersionHash: outreachMessages.messageVersionHash,
-        status: outreachMessages.status,
-      })
+      .select({ id: outreachMessages.id, messageVersionHash: outreachMessages.messageVersionHash, status: outreachMessages.status })
       .from(outreachMessages)
       .where(eq(outreachMessages.leadId, leadId))
       .limit(1);
 
     if (existing) {
-      // Return as-is if the version matches current prompt — message is up to date
+      // Up-to-date version → skip
       if (existing.messageVersionHash === MESSAGE_VERSION) {
         return { ok: true, skipped: true, id: existing.id };
       }
-      // Stale version + still pending review → delete and regenerate with current prompt
+      // Stale pending_review → delete and regenerate
       if (existing.status === "pending_review") {
         await db.delete(outreachMessages).where(eq(outreachMessages.id, existing.id));
       } else {
-        // Approved or sent messages are human-verified — never silently overwrite them
+        // Approved/sent — never overwrite human decisions
         return { ok: true, skipped: true, id: existing.id };
       }
     }
@@ -208,15 +151,6 @@ async function generateForLead(
   const body = await generateBodyForLead(lead);
   const subject = buildSubject(lead);
   const messageHash = crypto.createHash("sha256").update(body).digest("hex");
-  existingHashes.add(messageHash);
-
-  const generationContext = {
-    business_name: lead.businessName ?? "your business",
-    trade: lead.trade ?? "your service",
-    city: lead.city ?? "your area",
-    state: lead.state ?? "",
-    source: lead.source ?? "",
-  };
 
   const [inserted] = await db
     .insert(outreachMessages)
@@ -225,7 +159,12 @@ async function generateForLead(
       subject,
       body,
       messageHash,
-      generationContext,
+      generationContext: {
+        business_name: lead.businessName ?? "",
+        trade: lead.trade ?? "",
+        city: lead.city ?? "",
+        state: lead.state ?? "",
+      },
       generatedBy: MODEL,
       status: "pending_review",
       messageType: MESSAGE_TYPE,
@@ -235,11 +174,7 @@ async function generateForLead(
 
   await db
     .update(contractorLeads)
-    .set({
-      outreachStage: "message_ready",
-      lastMessageTypeSent: MESSAGE_TYPE,
-      updatedAt: new Date(),
-    })
+    .set({ outreachStage: "message_ready", lastMessageTypeSent: MESSAGE_TYPE, updatedAt: new Date() })
     .where(eq(contractorLeads.id, leadId));
 
   return { ok: true, id: inserted.id };
@@ -253,69 +188,39 @@ export async function POST(req: Request) {
       force_regenerate?: boolean;
     };
 
-    const existingHashes = new Set(
-      (
-        await db
-          .select({ hash: outreachMessages.messageHash })
-          .from(outreachMessages)
-      )
-        .map((row) => row.hash ?? "")
-        .filter(Boolean)
-    );
-
+    // Bulk generation
     if (Array.isArray(body.lead_ids) && body.lead_ids.length > 0) {
-      const leadIds = body.lead_ids.filter(Boolean);
-      const skipIfExists = body.force_regenerate !== true;
-      let generated = 0;
-      let skipped = 0;
-      let failed = 0;
+      const skip = body.force_regenerate !== true;
+      let generated = 0, skipped = 0, failed = 0;
       const results: Array<{ lead_id: string; ok: boolean; message_id?: string; skipped?: boolean; error?: string }> = [];
 
-      for (const leadId of leadIds) {
+      for (const leadId of body.lead_ids.filter(Boolean)) {
         try {
-          const result = await generateForLead(leadId, existingHashes, skipIfExists);
-          results.push({
-            lead_id: leadId,
-            ok: result.ok,
-            message_id: result.id,
-            skipped: result.skipped,
-            error: result.error,
-          });
+          const result = await generateForLead(leadId, skip);
+          results.push({ lead_id: leadId, ok: result.ok, message_id: result.id, skipped: result.skipped, error: result.error });
           if (result.skipped) skipped++;
           else if (result.ok) generated++;
           else failed++;
         } catch (err) {
-          results.push({ lead_id: leadId, ok: false, error: err instanceof Error ? err.message : "Message generation failed" });
+          results.push({ lead_id: leadId, ok: false, error: err instanceof Error ? err.message : "failed" });
           failed++;
         }
       }
-
       return Response.json({ ok: true, data: { generated, skipped, failed, results } });
     }
 
+    // Single generation
     const leadId = body.lead_id;
-    if (!leadId) {
-      return Response.json({ ok: false, error: "lead_id_required" }, { status: 400 });
-    }
+    if (!leadId) return Response.json({ ok: false, error: "lead_id_required" }, { status: 400 });
 
     const lead = await loadLead(leadId);
-    if (!lead) {
-      return Response.json({ ok: false, error: "lead_not_found" }, { status: 404 });
-    }
-    if (!lead.email?.trim()) {
-      return Response.json({ ok: false, error: "Missing email" }, { status: 400 });
+    if (!lead) return Response.json({ ok: false, error: "lead_not_found" }, { status: 404 });
+
+    const result = await generateForLead(leadId, body.force_regenerate !== true);
+    if (!result.ok) {
+      return Response.json({ ok: false, error: result.error ?? "generation_failed" }, { status: result.error === "lead_not_found" ? 404 : 400 });
     }
 
-    const result = await generateForLead(leadId, existingHashes, body.force_regenerate !== true);
-    if (!result.ok) {
-      if (result.error === "Missing email") {
-        return Response.json({ ok: false, error: "Missing email" }, { status: 400 });
-      }
-      if (result.error === "lead_not_found") {
-        return Response.json({ ok: false, error: "lead_not_found" }, { status: 404 });
-      }
-      throw new Error(result.error ?? "Message generation failed");
-    }
     if (result.skipped) {
       return Response.json({ ok: true, data: { skipped: true, message_id: result.id } });
     }
@@ -329,7 +234,6 @@ export async function POST(req: Request) {
         messageHash: outreachMessages.messageHash,
         messageType: outreachMessages.messageType,
         messageVersionHash: outreachMessages.messageVersionHash,
-        generationContext: outreachMessages.generationContext,
         status: outreachMessages.status,
         createdAt: outreachMessages.createdAt,
       })
@@ -347,16 +251,12 @@ export async function POST(req: Request) {
         message_hash: inserted.messageHash,
         message_type: inserted.messageType,
         message_version_hash: inserted.messageVersionHash,
-        generation_context: inserted.generationContext,
         status: inserted.status,
         created_at: inserted.createdAt?.toISOString() ?? null,
       },
     });
   } catch (err) {
     console.error("GENERATION ERROR:", err);
-    return Response.json(
-      { ok: false, error: "Message generation failed" },
-      { status: 500 }
-    );
+    return Response.json({ ok: false, error: "Message generation failed" }, { status: 500 });
   }
 }
