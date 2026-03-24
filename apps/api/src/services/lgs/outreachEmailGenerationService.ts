@@ -93,11 +93,12 @@ export async function generateOutreachEmail(
 
   const MAX_ATTEMPTS = 3;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // gpt-5-nano is a reasoning model — needs ~1600 tokens for internal reasoning
+    // before output. 4000 gives enough headroom. temperature is not supported.
     const raw = (await openai.responses.create({
       model: process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano",
       input: prompt,
-      temperature: 0.7,
-      max_output_tokens: 160,
+      max_output_tokens: 4000,
     })) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
 
     const text =

@@ -5,18 +5,22 @@
  * GPT writes the body. System appends CTA + signature.
  */
 import crypto from "node:crypto";
-import OpenAI from "openai";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { contractorLeads, outreachMessages } from "@/db/schema/directoryEngine";
+import { getOpenAiClient } from "@/src/lib/openai";
 
 const MODEL = process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano";
-const TEMPERATURE = 0.7;
-const MAX_OUTPUT_TOKENS = 160;
+// gpt-5-nano is a reasoning model — ~1600 tokens consumed by internal reasoning
+// before any output is written. 4000 gives enough headroom for reasoning + output.
+// temperature is NOT supported by this model.
+const MAX_OUTPUT_TOKENS = 4000;
 const MESSAGE_TYPE = "intro_standard";
 const MESSAGE_VERSION = "v3-clean-single";
 
 const HTML_SIGNATURE = `<p>Best,<br>\n<strong>Brad Johnson</strong><br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type LeadRecord = {
   id: string;
@@ -26,12 +30,6 @@ type LeadRecord = {
   city: string | null;
   state: string | null;
 };
-
-function getOpenAiClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
-  return new OpenAI({ apiKey });
-}
 
 function buildPrompt(lead: LeadRecord): string {
   const name = lead.businessName || "your business";
@@ -84,7 +82,6 @@ async function generateBodyForLead(lead: LeadRecord): Promise<string> {
   const response = await openai.responses.create({
     model: MODEL,
     input: prompt,
-    temperature: TEMPERATURE,
     max_output_tokens: MAX_OUTPUT_TOKENS,
   });
 
