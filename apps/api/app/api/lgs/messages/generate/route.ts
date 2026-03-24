@@ -181,11 +181,28 @@ async function generateForLead(
 
   if (skipIfExists) {
     const [existing] = await db
-      .select({ id: outreachMessages.id })
+      .select({
+        id: outreachMessages.id,
+        messageVersionHash: outreachMessages.messageVersionHash,
+        status: outreachMessages.status,
+      })
       .from(outreachMessages)
       .where(eq(outreachMessages.leadId, leadId))
       .limit(1);
-    if (existing) return { ok: true, skipped: true, id: existing.id };
+
+    if (existing) {
+      // Return as-is if the version matches current prompt — message is up to date
+      if (existing.messageVersionHash === MESSAGE_VERSION) {
+        return { ok: true, skipped: true, id: existing.id };
+      }
+      // Stale version + still pending review → delete and regenerate with current prompt
+      if (existing.status === "pending_review") {
+        await db.delete(outreachMessages).where(eq(outreachMessages.id, existing.id));
+      } else {
+        // Approved or sent messages are human-verified — never silently overwrite them
+        return { ok: true, skipped: true, id: existing.id };
+      }
+    }
   }
 
   const body = await generateBodyForLead(lead);
