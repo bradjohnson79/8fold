@@ -33,8 +33,11 @@ export type GenerateResult = {
   messageVersionHash: string;
 };
 
-const MESSAGE_VERSION = "v4-invitation";
+const MESSAGE_VERSION = "v5-invitation";
 const HTML_SIGNATURE = `<p>Brad Johnson<br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
+const DEFAULT_OUTREACH_MODEL = "gpt-4.1-mini";
+const TEMPERATURE = 0.5;
+const MAX_OUTPUT_TOKENS = 220;
 
 // ─── Single clean prompt ──────────────────────────────────────────────────────
 
@@ -43,12 +46,13 @@ function buildPrompt(input: GenerateInput): string {
   const city = input.city ?? "their area";
   const trade = input.trade ?? "their work";
 
-  return `Write a short outreach email to a contractor business.
+  return `
+Write a short outreach email to a contractor business.
 
 Context:
-- Business name: ${businessName}
-- Trade: ${trade}
-- Location: ${city}
+- Business name: ${businessName || "their business"}
+- Trade: ${trade || "their work"}
+- Location: ${city || "their area"}
 
 About us:
 8Fold connects contractors with real, vetted jobs.
@@ -56,24 +60,22 @@ There are no bidding wars and no lead fees.
 Contractors receive qualified projects and a predictable workflow.
 
 Goal:
-This is NOT a sales email.
-This is NOT a request for a call.
-This is an invitation to join the platform.
+This is an invitation email, not a sales pitch.
+
+Structure (follow exactly):
+1. Start with a natural acknowledgment of their business or trade (mention their website or type of work)
+2. Introduce 8Fold briefly
+3. Explain how it helps contractors like them (simple, practical benefit)
+4. Direct them to https://8fold.app to create a free account
+5. Thank them for their time
 
 Instructions:
-- Address them naturally (team or business name)
-- Introduce 8Fold clearly
-- Explain the benefit briefly
-- Direct them to visit https://8fold.app
-- Tell them they can create a free account
-- Keep tone professional, direct, and calm
-- DO NOT suggest a call, meeting, or chat
-- DO NOT ask for availability
-- DO NOT use sales language
+- Sound human and observant (like you actually looked them up)
+- Keep tone professional, calm, and grounded
+- Do NOT ask for a call, meeting, or chat
+- Do NOT use generic phrases like "I hope you're doing well"
+- Do NOT sound like marketing copy
 - Keep under 140 words
-
-Ending:
-Use a confident, non-pushy closing.
 
 Output:
 Return only the email body.`;
@@ -104,17 +106,20 @@ export async function generateOutreachEmail(
   const openai = getOpenAiClient();
   const prompt = buildPrompt(input);
   const subject = buildSubject(input);
+  const configuredModel = process.env.OPENAI_MESSAGE_MODEL?.trim();
+  const model = configuredModel && configuredModel !== "gpt-5-nano"
+    ? configuredModel
+    : DEFAULT_OUTREACH_MODEL;
 
   console.log("PROMPT:", prompt);
 
   const MAX_ATTEMPTS = 3;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    // gpt-5-nano is a reasoning model — needs ~1600 tokens for internal reasoning
-    // before output. 4000 gives enough headroom. temperature is not supported.
     const raw = (await openai.responses.create({
-      model: process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano",
+      model,
       input: prompt,
-      max_output_tokens: 4000,
+      temperature: TEMPERATURE,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
     })) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
 
     const text =

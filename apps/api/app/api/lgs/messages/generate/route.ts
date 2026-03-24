@@ -10,13 +10,12 @@ import { db } from "@/db/drizzle";
 import { contractorLeads, outreachMessages } from "@/db/schema/directoryEngine";
 import { getOpenAiClient } from "@/src/lib/openai";
 
-const MODEL = process.env.OPENAI_MESSAGE_MODEL?.trim() || "gpt-5-nano";
-// gpt-5-nano is a reasoning model — ~1600 tokens consumed by internal reasoning
-// before any output is written. 4000 gives enough headroom for reasoning + output.
-// temperature is NOT supported by this model (throws 400 if passed).
-const MAX_OUTPUT_TOKENS = 4000;
+const MODEL = process.env.OPENAI_MESSAGE_MODEL?.trim();
+const OUTREACH_MODEL = MODEL && MODEL !== "gpt-5-nano" ? MODEL : "gpt-4.1-mini";
+const TEMPERATURE = 0.5;
+const MAX_OUTPUT_TOKENS = 220;
 const MESSAGE_TYPE = "intro_standard";
-const MESSAGE_VERSION = "v4-invitation";
+const MESSAGE_VERSION = "v5-invitation";
 
 const HTML_SIGNATURE = `<p>Brad Johnson<br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
 
@@ -36,12 +35,13 @@ function buildPrompt(lead: LeadRecord): string {
   const city = lead.city ?? "their area";
   const trade = lead.trade ?? "their work";
 
-  const prompt = `Write a short outreach email to a contractor business.
+  const prompt = `
+Write a short outreach email to a contractor business.
 
 Context:
-- Business name: ${businessName}
-- Trade: ${trade}
-- Location: ${city}
+- Business name: ${businessName || "their business"}
+- Trade: ${trade || "their work"}
+- Location: ${city || "their area"}
 
 About us:
 8Fold connects contractors with real, vetted jobs.
@@ -49,24 +49,22 @@ There are no bidding wars and no lead fees.
 Contractors receive qualified projects and a predictable workflow.
 
 Goal:
-This is NOT a sales email.
-This is NOT a request for a call.
-This is an invitation to join the platform.
+This is an invitation email, not a sales pitch.
+
+Structure (follow exactly):
+1. Start with a natural acknowledgment of their business or trade (mention their website or type of work)
+2. Introduce 8Fold briefly
+3. Explain how it helps contractors like them (simple, practical benefit)
+4. Direct them to https://8fold.app to create a free account
+5. Thank them for their time
 
 Instructions:
-- Address them naturally (team or business name)
-- Introduce 8Fold clearly
-- Explain the benefit briefly
-- Direct them to visit https://8fold.app
-- Tell them they can create a free account
-- Keep tone professional, direct, and calm
-- DO NOT suggest a call, meeting, or chat
-- DO NOT ask for availability
-- DO NOT use sales language
+- Sound human and observant (like you actually looked them up)
+- Keep tone professional, calm, and grounded
+- Do NOT ask for a call, meeting, or chat
+- Do NOT use generic phrases like "I hope you're doing well"
+- Do NOT sound like marketing copy
 - Keep under 140 words
-
-Ending:
-Use a confident, non-pushy closing.
 
 Output:
 Return only the email body.`;
@@ -96,8 +94,9 @@ async function generateBodyForLead(lead: LeadRecord): Promise<string> {
   const prompt = buildPrompt(lead);
 
   const response = await openai.responses.create({
-    model: MODEL,
+    model: OUTREACH_MODEL,
     input: prompt,
+    temperature: TEMPERATURE,
     max_output_tokens: MAX_OUTPUT_TOKENS,
   });
 
