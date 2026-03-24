@@ -68,6 +68,9 @@ export function NavBar() {
           <Link href="/leads" style={dropdownItemStyle}>
             Contractor Leads
           </Link>
+          <Link href="/leads/job-posters" style={dropdownItemStyle}>
+            Job Poster Leads
+          </Link>
           <Link href="/leads/import" style={dropdownItemStyle}>
             Import Contractor Websites
           </Link>

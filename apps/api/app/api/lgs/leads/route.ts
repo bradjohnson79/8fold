@@ -9,6 +9,11 @@
  *   filter_contact_status  unsent|sent|replied|converted
  *   filter_message_status  none|ready|approved|sent
  *   filter_archived        active (default) | archived | all
+ *   filter_actionability   sendable|needs_attention|unusable
+ *                          sendable:       archived=false, email present, verification_status='valid'
+ *                          needs_attention:archived=false, email present, verification_status='pending', age<48h
+ *                          unusable:       archived=false, no email OR invalid OR pending>48h
+ *                          When set, overrides filter_archived (all three imply archived=false).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
@@ -70,17 +75,46 @@ export async function GET(req: NextRequest) {
     const filterMessageStatus = sp.get("filter_message_status")?.trim() ?? null;
     // active (default) = hide archived; archived = show only archived; all = show everything
     const filterArchived = sp.get("filter_archived")?.trim() ?? "active";
+    // sendable | needs_attention | unusable — when set, overrides filterArchived (all imply archived=false)
+    const filterActionability = sp.get("filter_actionability")?.trim() ?? null;
 
     // Build WHERE conditions
     const conditions: ReturnType<typeof ilike>[] = [];
 
-    // Archive filter — always applied first
-    if (filterArchived === "active") {
-      conditions.push(eq(contractorLeads.archived, false) as ReturnType<typeof ilike>);
-    } else if (filterArchived === "archived") {
-      conditions.push(eq(contractorLeads.archived, true) as ReturnType<typeof ilike>);
+    if (filterActionability === "sendable") {
+      conditions.push(sql`
+        ${contractorLeads.archived} = false
+        AND ${contractorLeads.email} IS NOT NULL
+        AND ${contractorLeads.email} != ''
+        AND ${contractorLeads.verificationStatus} = 'valid'
+      ` as ReturnType<typeof ilike>);
+    } else if (filterActionability === "needs_attention") {
+      conditions.push(sql`
+        ${contractorLeads.archived} = false
+        AND ${contractorLeads.email} IS NOT NULL
+        AND ${contractorLeads.email} != ''
+        AND ${contractorLeads.verificationStatus} = 'pending'
+        AND ${contractorLeads.createdAt} > NOW() - interval '48 hours'
+      ` as ReturnType<typeof ilike>);
+    } else if (filterActionability === "unusable") {
+      conditions.push(sql`
+        ${contractorLeads.archived} = false
+        AND (
+          ${contractorLeads.email} IS NULL
+          OR ${contractorLeads.email} = ''
+          OR ${contractorLeads.verificationStatus} = 'invalid'
+          OR (${contractorLeads.verificationStatus} = 'pending' AND ${contractorLeads.createdAt} <= NOW() - interval '48 hours')
+        )
+      ` as ReturnType<typeof ilike>);
+    } else {
+      // No actionability filter — use archive filter
+      if (filterArchived === "active") {
+        conditions.push(eq(contractorLeads.archived, false) as ReturnType<typeof ilike>);
+      } else if (filterArchived === "archived") {
+        conditions.push(eq(contractorLeads.archived, true) as ReturnType<typeof ilike>);
+      }
+      // "all" → no archive filter
     }
-    // "all" → no archive filter
 
     if (search) {
       const terms = search.trim().split(/\s+/).filter(Boolean);
@@ -125,21 +159,35 @@ export async function GET(req: NextRequest) {
       .where(whereClause);
     const total = countRes[0]?.c ?? 0;
 
-    // Enrichment summary — always computed globally (ignores filters) for the status bar
+    // Actionability counts — same SQL fragments used for filtering, ensuring count/filter parity
     const enrichmentRes = await db.execute(sql`
       SELECT
-        count(*) FILTER (WHERE verification_status = 'pending' OR verification_status IS NULL) AS pending,
-        count(*) FILTER (WHERE verification_status IN ('valid', 'verified', 'qualified')) AS verified,
-        count(*) FILTER (WHERE archived = true) AS archived_count,
-        count(*) AS total_all
+        count(*) FILTER (
+          WHERE archived = false
+            AND email IS NOT NULL AND email != ''
+            AND verification_status = 'valid'
+        ) AS sendable,
+        count(*) FILTER (
+          WHERE archived = false
+            AND email IS NOT NULL AND email != ''
+            AND verification_status = 'pending'
+            AND created_at > NOW() - interval '48 hours'
+        ) AS needs_attention,
+        count(*) FILTER (
+          WHERE archived = false
+            AND (
+              email IS NULL OR email = ''
+              OR verification_status = 'invalid'
+              OR (verification_status = 'pending' AND created_at <= NOW() - interval '48 hours')
+            )
+        ) AS unusable
       FROM directory_engine.contractor_leads
     `);
     const eRow = (enrichmentRes.rows?.[0] ?? {}) as Record<string, string>;
     const enrichment = {
-      pending: Number(eRow.pending ?? 0),
-      verified: Number(eRow.verified ?? 0),
-      archived: Number(eRow.archived_count ?? 0),
-      total: Number(eRow.total_all ?? 0),
+      sendable: Number(eRow.sendable ?? 0),
+      needs_attention: Number(eRow.needs_attention ?? 0),
+      unusable: Number(eRow.unusable ?? 0),
     };
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;

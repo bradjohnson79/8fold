@@ -41,10 +41,9 @@ type Lead = {
 };
 
 type EnrichmentSummary = {
-  pending: number;
-  valid: number;
-  archived: number;
-  total: number;
+  sendable: number;
+  needs_attention: number;
+  unusable: number;
 };
 
 type ApiResponse = {
@@ -235,6 +234,7 @@ export default function LeadsPage() {
   const [filterContactStatus, setFilterContactStatus] = useState("");
   const [filterMessageStatus, setFilterMessageStatus] = useState("");
   const [filterArchived, setFilterArchived] = useState("active"); // active | archived | all
+  const [filterActionability, setFilterActionability] = useState<"sendable" | "needs_attention" | "unusable">("sendable");
   const [filterStage, setFilterStage] = useState("");
   const [filterNeedsFollowup, setFilterNeedsFollowup] = useState(false);
   const [followupSort, setFollowupSort] = useState<"asc" | "desc" | "">("");
@@ -289,7 +289,7 @@ export default function LeadsPage() {
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (filterContactStatus) params.set("filter_contact_status", filterContactStatus);
       if (filterMessageStatus) params.set("filter_message_status", filterMessageStatus);
-      params.set("filter_archived", filterArchived);
+      params.set("filter_actionability", filterActionability);
 
       const r = await lgsFetch<ApiResponse>(`/api/lgs/leads?${params.toString()}`);
       const res = r as unknown as ApiResponse;
@@ -306,11 +306,11 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, filterContactStatus, filterMessageStatus, filterArchived]);
+  }, [page, pageSize, debouncedSearch, filterContactStatus, filterMessageStatus, filterActionability]);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, filterContactStatus, filterMessageStatus, filterArchived]);
+  }, [debouncedSearch, filterContactStatus, filterMessageStatus, filterActionability]);
 
   useEffect(() => {
     void fetchLeads();
@@ -579,44 +579,53 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* Enrichment status bar */}
-      {enrichment && (enrichment.pending > 0 || enrichment.valid > 0) && (
-        <div style={{
-          display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap",
-          padding: "0.6rem 1rem", background: "#1e293b", borderRadius: 8,
-          marginBottom: "1rem", fontSize: "0.82rem", border: "1px solid #334155",
-        }}>
-          <span style={{ color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: "0.72rem" }}>
-            Email Verification
-          </span>
-          <span style={{ color: "#4ade80" }}>
-            <strong>{enrichment.valid}</strong> valid
-          </span>
-          {enrichment.pending > 0 && (
-            <span style={{ color: "#fbbf24" }}>
-              <strong>{enrichment.pending}</strong> pending
-            </span>
-          )}
-          <span style={{ color: "#94a3b8" }}>
-            <strong>{enrichment.archived}</strong> archived
-          </span>
-          <span style={{ color: "#475569" }}>
-            {enrichment.total} total
-          </span>
-          {enrichment.pending > 0 && enrichment.total > 0 && (
-            <div style={{ flex: 1, minWidth: 100, height: 6, background: "#0f172a", borderRadius: 3, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 3,
-                width: `${Math.round((enrichment.valid / enrichment.total) * 100)}%`,
-                background: "linear-gradient(90deg, #22c55e, #4ade80)",
-                transition: "width 0.4s ease",
-              }} />
-            </div>
-          )}
-        </div>
-      )}
+      {/* Actionability tabs */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        {(
+          [
+            { key: "sendable", label: "Ready to Send", color: "#22c55e", dimColor: "#16a34a33", borderColor: "#22c55e66" },
+            { key: "needs_attention", label: "Processing", color: "#f59e0b", dimColor: "#f59e0b22", borderColor: "#f59e0b66" },
+            { key: "unusable", label: "Not Ready", color: "#64748b", dimColor: "#1e293b", borderColor: "#334155" },
+          ] as const
+        ).map(({ key, label, color, dimColor, borderColor }) => {
+          const active = filterActionability === key;
+          const count = enrichment?.[key] ?? 0;
+          return (
+            <button
+              key={key}
+              onClick={() => setFilterActionability(key)}
+              style={{
+                padding: "0.55rem 1.1rem",
+                background: active ? dimColor : "transparent",
+                border: `1px solid ${active ? borderColor : "#334155"}`,
+                borderRadius: 8,
+                color: active ? color : "#64748b",
+                fontSize: "0.875rem",
+                fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                transition: "all 0.15s",
+              }}
+            >
+              {label}
+              <span style={{
+                fontSize: "0.75rem",
+                background: active ? `${color}33` : "#1e293b",
+                color: active ? color : "#475569",
+                borderRadius: 12,
+                padding: "0.1rem 0.45rem",
+                fontWeight: 600,
+              }}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Filters */}
+      {/* Secondary filters */}
       <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
         <input
           type="text"
@@ -625,19 +634,6 @@ export default function LeadsPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ padding: "0.5rem 0.75rem", background: "#1e293b", border: "1px solid #334155", borderRadius: 6, color: "#e2e8f0", fontSize: "0.875rem", width: 240 }}
         />
-        <select
-          value={filterArchived}
-          onChange={(e) => setFilterArchived(e.target.value)}
-          style={{
-            padding: "0.5rem 0.75rem", borderRadius: 6, color: "#e2e8f0", fontSize: "0.875rem",
-            background: filterArchived === "archived" ? "#2d1a0a" : "#1e293b",
-            border: filterArchived === "archived" ? "1px solid #f59e0b88" : "1px solid #334155",
-          }}
-        >
-          <option value="active">Active Leads</option>
-          <option value="archived">Archived Leads</option>
-          <option value="all">All Leads</option>
-        </select>
         <select
           value={filterContactStatus}
           onChange={(e) => setFilterContactStatus(e.target.value)}
@@ -690,9 +686,9 @@ export default function LeadsPage() {
         >
           Follow-up Due Today
         </button>
-        {(search || filterContactStatus || filterMessageStatus || filterArchived !== "active" || filterStage || filterNeedsFollowup) && (
+        {(search || filterContactStatus || filterMessageStatus || filterStage || filterNeedsFollowup) && (
           <button
-            onClick={() => { setSearch(""); setFilterContactStatus(""); setFilterMessageStatus(""); setFilterArchived("active"); setFilterStage(""); setFilterNeedsFollowup(false); }}
+            onClick={() => { setSearch(""); setFilterContactStatus(""); setFilterMessageStatus(""); setFilterStage(""); setFilterNeedsFollowup(false); }}
             style={{ padding: "0.5rem 0.75rem", background: "transparent", border: "1px solid #475569", borderRadius: 6, color: "#94a3b8", fontSize: "0.875rem", cursor: "pointer" }}
           >
             Clear
