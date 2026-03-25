@@ -21,6 +21,8 @@ export type OutreachDispatcherResult = {
   selectedPipeline: "contractor" | "jobs" | null;
   sent: number;
   failed: number;
+  blocked_reason?: "outside_send_window";
+  next_send_window?: Date;
 };
 
 function isOutreachEnabled() {
@@ -108,6 +110,8 @@ export async function runOutreachDispatcher(): Promise<OutreachDispatcherResult>
     selectedPipeline,
     sent: cycleResult.sent,
     failed: cycleResult.failed,
+    blocked_reason: cycleResult.blockedReason,
+    next_send_window: cycleResult.nextSendWindow,
   };
 }
 

@@ -44,6 +44,8 @@ type QueueResponse = {
   ok: boolean;
   summary: QueueSummary;
   data: QueueItem[];
+  blocked_reason?: "outside_send_window";
+  next_send_window?: string | null;
   error?: string;
 };
 
@@ -55,6 +57,7 @@ const QUEUE_REASON_LABELS: Record<string, string> = {
   blocked_archived: "Blocked: Archived",
   blocked_invalid_email: "Blocked: Invalid Email",
   deferred_pending_verification: "Deferred: Pending Verification",
+  blocked_outside_send_window: "Blocked: Outside Send Window",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -126,6 +129,8 @@ export default function QueuePage() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [summary, setSummary] = useState<QueueSummary | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
+  const [nextSendWindow, setNextSendWindow] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [blockedReasonFilter, setBlockedReasonFilter] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -138,6 +143,8 @@ export default function QueuePage() {
         if (res.ok) {
           setItems(res.data ?? []);
           setSummary(res.summary ?? null);
+          setBlockedReason(res.blocked_reason ?? null);
+          setNextSendWindow(res.next_send_window ?? null);
           setLastUpdated(new Date());
         } else {
           setErr(res.error ?? "Failed to load queue");
@@ -170,6 +177,14 @@ export default function QueuePage() {
   const capPct = summary && summary.capacity_total > 0
     ? Math.round((summary.capacity_used / summary.capacity_total) * 100)
     : 0;
+  const blockedUntilLabel = nextSendWindow
+    ? new Date(nextSendWindow).toLocaleString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "America/Los_Angeles",
+      })
+    : null;
 
   return (
     <div>
@@ -183,6 +198,21 @@ export default function QueuePage() {
           </p>
         </div>
       </div>
+
+      {blockedReason === "outside_send_window" && blockedUntilLabel && (
+        <div
+          style={{
+            background: "#eab3081a",
+            border: "1px solid #eab308",
+            color: "#facc15",
+            padding: "0.75rem 1rem",
+            borderRadius: 8,
+            marginBottom: "1rem",
+          }}
+        >
+          Sending paused — outside business hours. Next send starts at {blockedUntilLabel}.
+        </div>
+      )}
 
       {/* ── Queue Intelligence Summary Bar ────────────────────────────────── */}
       {summary && (
@@ -278,6 +308,7 @@ export default function QueuePage() {
           <option value="no_capacity">Blocked: Capacity</option>
           <option value="invalid_email">Blocked: Invalid Email</option>
           <option value="pending_verification">Deferred: Pending Verification</option>
+          <option value="outside_send_window">Blocked: Outside Send Window</option>
           <option value="archived">Blocked: Archived</option>
         </select>
 
@@ -363,6 +394,11 @@ export default function QueuePage() {
                   {item.next_send_at
                     ? `ETA ${formatDateTime(item.next_send_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
                     : "—"}
+                  {blockedReason === "outside_send_window" && (
+                    <div title="Waiting for send window (9 AM–5 PM PT)">
+                      Waiting for send window
+                    </div>
+                  )}
                   <div>
                     Queued: {formatDateTime(item.created_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   </div>
