@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 const BENEFITS = [
-  "Keep 80–85% of job value",
-  "No lead fees",
-  "No bidding wars",
+  "Contractors keep 80–85% of job value",
+  "No lead fees or bidding wars",
+  "Verified contractors matched to real projects",
+  "Fast routing between job posters and local pros",
 ];
 
 export default function ContractorLaunchCapture() {
@@ -20,16 +21,16 @@ export default function ContractorLaunchCapture() {
             </span>
 
             <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-              Join the California<br className="hidden sm:block" /> Contractor Network
+              Join the 8Fold<br className="hidden sm:block" /> Network
             </h2>
 
             <p className="mt-5 text-gray-300 leading-relaxed max-w-lg">
-              We are currently building the founding contractor network across
-              California before job posting opens statewide.
+              We are building a trusted network of contractors and job posters
+              across California before statewide job routing begins.
             </p>
             <p className="mt-2 text-gray-400 text-sm leading-relaxed max-w-lg">
-              Contractors who join early will be first to receive routed jobs
-              when Phase 2 launches.
+              Contractors and job posters who join early will be positioned
+              first as routing expands statewide.
             </p>
 
             {/* Primary CTA */}
@@ -40,8 +41,16 @@ export default function ContractorLaunchCapture() {
               >
                 Create Free Contractor Account →
               </Link>
+              <div className="mt-3">
+                <Link
+                  href="/join-jobposter-waitlist"
+                  className="inline-flex items-center justify-center w-full sm:w-auto px-8 py-3.5 rounded-xl border-2 border-8fold-green/40 text-8fold-green-light font-bold text-sm hover:border-8fold-green hover:bg-8fold-green/10 transition-colors"
+                >
+                  Join as a Job Poster
+                </Link>
+              </div>
               <p className="mt-2.5 text-xs text-gray-400 max-w-xs sm:max-w-none">
-                Secure your place in the contractor network and be ready when jobs begin routing.
+                Secure your place in the contractor and job network before statewide routing begins.
               </p>
             </div>
 
@@ -69,7 +78,7 @@ export default function ContractorLaunchCapture() {
           {/* ── Right: benefit card ── */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 lg:p-10">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-6">
-              Why contractors choose 8Fold
+              Why the 8Fold network works
             </p>
             <ul className="space-y-5">
               {BENEFITS.map((benefit) => (
@@ -92,8 +101,7 @@ export default function ContractorLaunchCapture() {
 
             <div className="mt-8 pt-6 border-t border-white/10">
               <p className="text-sm text-gray-400 leading-relaxed">
-                8Fold routes verified local jobs directly to qualified contractors —
-                no bidding, no lead fees, no race to the bottom on price.
+                8Fold routes verified local jobs between trusted job posters and qualified contractors without bidding wars or lead fees.
               </p>
             </div>
           </div>

@@ -46,10 +46,10 @@ export function TrustStrip() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           <Item>AI-Driven Competitive Pricing</Item>
           <Item>
-            Contractors Earn 80–85%
+            Contractors Earn Up to 80–85%
             <TipIcon text="85% payout for approved regional distance jobs." />
           </Item>
-          <Item>Routers Earn 10%</Item>
+          <Item>Routers Earn 8%</Item>
           <Item>Triple-Approval Release</Item>
           <Item>Weekly Payouts</Item>
         </div>

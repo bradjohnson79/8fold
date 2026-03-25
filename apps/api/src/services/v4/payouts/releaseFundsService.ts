@@ -16,6 +16,7 @@ import {
   type ReleaseJobFundsResult,
 } from "@/src/payouts/releaseJobFundsLegacyEngine";
 import { stripe } from "@/src/stripe/stripe";
+import { getPlatformFees } from "@/src/config/platformFees";
 
 export type ReleaseFundsForJobInput = {
   jobId: string;
@@ -181,10 +182,13 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
   const isRegional       = regionalFeeCents > 0;
   const splitType        = isRegional ? "regional" : "urban";
   const contractorShareLabel = isRegional ? "85%" : "80%";
+  const routerShareLabel = "8%";
+  const platformShareLabel = isRegional ? "7% + regional routing fee" : "12% urban";
+  const fees = getPlatformFees(isRegional);
 
   // Rounding order: contractor first → router second → platform absorbs remainder + $20 flat.
-  const contractorPayoutCents = Math.floor(baseSplitCents * (isRegional ? 0.85 : 0.80));
-  const routerPayoutCents     = Math.floor(baseSplitCents * 0.10);
+  const contractorPayoutCents = Math.floor(baseSplitCents * fees.contractor);
+  const routerPayoutCents     = Math.floor(baseSplitCents * fees.router);
   const platformRevenueCents  = baseSplitCents - contractorPayoutCents - routerPayoutCents + regionalFeeCents;
   const currency = normalizeCurrency(job.currency);
 
@@ -248,7 +252,7 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       meta: {
         actorRole: input.actorRole,
         actorId,
-        description: "Router payout (10%)",
+        description: `Router payout (${routerShareLabel})`,
         splitType,
       },
     });
@@ -267,7 +271,7 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       regionalFeeCents,
       actorRole: input.actorRole,
       actorId,
-      description: isRegional ? "Platform revenue (5% + regional routing fee)" : "Platform revenue (10% urban)",
+      description: `Platform revenue (${platformShareLabel})`,
       splitType,
     },
   });

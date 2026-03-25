@@ -10,6 +10,7 @@ import { appendSystemMessage } from "./v4MessageService";
 import { sendTransactionalEmail } from "@/src/mailer/sendTransactionalEmail";
 import { logDelivery } from "@/src/services/v4/notifications/notificationDeliveryLogService";
 import { stripe } from "@/src/payments/stripe";
+import { PLATFORM_FEES } from "@/src/config/platformFees";
 
 // Job must be ASSIGNED (not already in an appraisal review cycle) to submit.
 const ALLOWED_JOB_STATUSES = ["ASSIGNED"];
@@ -30,11 +31,6 @@ function computeDiff(adj: { requestedPriceCents: number; originalPriceCents: num
   return adj.requestedPriceCents - (adj.originalPriceCents ?? 0);
 }
 
-/** Fee split constants — Phase 1 model: 80% contractor, 10% router, 10% platform (urban baseline). */
-const CONTRACTOR_SHARE = 0.80;
-const ROUTER_SHARE = 0.10;
-const PLATFORM_SHARE = 0.10;
-
 /** Compute the full price breakdown for a given total (Job Poster price). */
 function computeBreakdown(totalCents: number): {
   jobPosterTotal: number;
@@ -42,8 +38,8 @@ function computeBreakdown(totalCents: number): {
   routerCommission: number;
   platformFee: number;
 } {
-  const contractorPayout = Math.floor(totalCents * CONTRACTOR_SHARE);
-  const routerCommission = Math.floor(totalCents * ROUTER_SHARE);
+  const contractorPayout = Math.floor(totalCents * PLATFORM_FEES.contractor);
+  const routerCommission = Math.floor(totalCents * PLATFORM_FEES.router);
   return {
     jobPosterTotal: totalCents,
     contractorPayout,

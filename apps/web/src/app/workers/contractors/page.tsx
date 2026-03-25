@@ -17,7 +17,7 @@ export default function ContractorsWorkerPage() {
         "Competing against other contractors to undercut price.",
         "Dealing with ambiguous payout math or hidden deductions.",
       ]}
-      paidSummary="Contractors receive 80% of labor on local jobs and 85% on regional jobs — plus 100% of tips. The split is shown upfront so you know what the job pays before you commit."
+      paidSummary="Contractors receive 80% of labor on standard jobs and 85% on regional jobs — plus 100% of tips. The split is shown upfront so you know what the job pays before you commit."
       payoutTiming={[
         "Stripe (Direct Bank Deposit) payouts are typically processed immediately or next business day once a job is completed.",
         "8Fold uses Stripe for secure escrow and payouts.",
@@ -25,7 +25,7 @@ export default function ContractorsWorkerPage() {
       ]}
       perks={[
         "No bidding wars and no lead marketplaces — jobs are routed with clear expectations.",
-        "Transparent economics: contractor 80% (85% regional), router 10%, platform 10%.",
+        "Transparent economics: contractor 80% (85% regional), router 8%, platform 12% on standard jobs.",
         "Parts & Materials handled via escrow with receipts and verification.",
         "Admin oversight and dispute handling when needed to keep jobs from falling through the cracks.",
       ]}

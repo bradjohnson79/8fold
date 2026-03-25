@@ -354,9 +354,9 @@ export default function AdminSupportV4TicketPage({ params }: { params: Promise<{
                     <span style={{ display: "block", fontSize: 10, fontWeight: 900, color: "rgba(251,191,36,0.7)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                       Requested Price Breakdown
                     </span>
-                    <BreakdownRow label="Contractor Payout (75%)" value={fmtCents(adjustment.requestedPriceBreakdown.contractorPayout)} highlight />
-                    <BreakdownRow label="Router Commission (15%)" value={fmtCents(adjustment.requestedPriceBreakdown.routerCommission)} />
-                    <BreakdownRow label="Platform Fee (10%)" value={fmtCents(adjustment.requestedPriceBreakdown.platformFee)} />
+                    <BreakdownRow label="Contractor Payout (80%)" value={fmtCents(adjustment.requestedPriceBreakdown.contractorPayout)} highlight />
+                    <BreakdownRow label="Router Commission (8%)" value={fmtCents(adjustment.requestedPriceBreakdown.routerCommission)} />
+                    <BreakdownRow label="Platform Fee (12%)" value={fmtCents(adjustment.requestedPriceBreakdown.platformFee)} />
                   </div>
                 )}
 

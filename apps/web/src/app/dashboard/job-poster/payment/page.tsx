@@ -231,8 +231,8 @@ export default function JobPosterPaymentPage() {
           <div className="mt-3 space-y-1 text-sm text-slate-700">
             <p><span className="font-medium">Base:</span> {formatMoney(breakdown.baseCents)}</p>
             <p><span className="font-medium">Contractor (80%):</span> {formatMoney(breakdown.contractorShareCents)}</p>
-            <p><span className="font-medium">Router (10%):</span> {formatMoney(breakdown.routerShareCents)}</p>
-            <p><span className="font-medium">Platform (10%):</span> {formatMoney(breakdown.platformShareCents)}</p>
+            <p><span className="font-medium">Router (8%):</span> {formatMoney(breakdown.routerShareCents)}</p>
+            <p><span className="font-medium">Platform (12%):</span> {formatMoney(breakdown.platformShareCents)}</p>
             <p><span className="font-medium">Stripe Fee:</span> {formatMoney(breakdown.stripeFeeCents)}</p>
             <p><span className="font-medium">Tax:</span> {formatMoney(breakdown.taxCents)}</p>
             <p className="pt-1 font-semibold text-slate-900"><span className="font-medium">Total:</span> {formatMoney(breakdown.totalCents)}</p>

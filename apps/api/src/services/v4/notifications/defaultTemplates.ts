@@ -100,7 +100,7 @@ export const DEFAULT_TEMPLATES: Record<string, DefaultTemplate> = {
       ${p("Hello {{router_name}},")}
       ${p("You have successfully routed a job to eligible contractors.")}
       ${jobBlock}
-      ${p("Once a contractor accepts the invitation, your 15% routing commission will be held in escrow and released after job completion.")}
+      ${p("Once a contractor accepts the invitation, your 8% routing commission will be held in escrow and released after job completion.")}
       ${p("Router payouts are processed every Friday.")}
       ${btn("{{dashboard_link}}", "View Routed Jobs")}
     `),

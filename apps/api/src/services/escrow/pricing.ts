@@ -1,4 +1,8 @@
 import { getTaxRateBps } from "@/src/services/escrow/taxRate";
+import {
+  getPlatformFees,
+  REGIONAL_PLATFORM_FLAT_FEE_CENTS,
+} from "@/src/config/platformFees";
 
 export type EscrowPricingInput = {
   appraisalSubtotalCents: number;
@@ -54,7 +58,7 @@ export async function computeEscrowPricing(input: EscrowPricingInput): Promise<E
   const country = toCountry(input.country);
   const province = toProvince(input.province);
   const appraisalSubtotalCents = toPositiveCents(input.appraisalSubtotalCents);
-  const regionalFeeCents = input.isRegional ? 2000 : 0;
+  const regionalFeeCents = input.isRegional ? REGIONAL_PLATFORM_FLAT_FEE_CENTS : 0;
   const splitBaseCents = appraisalSubtotalCents + regionalFeeCents;
 
   const taxRateBps = await getTaxRateBps({ country, province });
@@ -94,10 +98,11 @@ export function computeEscrowSplitAllocations(input: {
   // Percentages apply to appraisalSubtotalCents ONLY — the $20 regional fee goes flat to platform.
   const splitBaseCents = appraisalSubtotalCents + regionalFeeCents;
   const isRegional = regionalFeeCents > 0;
+  const fees = getPlatformFees(isRegional);
 
   // Rounding order: contractor first → router second → platform absorbs remainder (including $20 flat).
-  const contractorCents = Math.floor(appraisalSubtotalCents * (isRegional ? 0.85 : 0.80));
-  const routerCents     = Math.floor(appraisalSubtotalCents * 0.10);
+  const contractorCents = Math.floor(appraisalSubtotalCents * fees.contractor);
+  const routerCents = Math.floor(appraisalSubtotalCents * fees.router);
   const platformCents   = splitBaseCents - contractorCents - routerCents;
   const totalCents      = splitBaseCents + taxBucketCents;
 

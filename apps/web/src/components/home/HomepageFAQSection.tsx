@@ -71,9 +71,9 @@ const FAQ_ITEMS: FAQItem[] = [
   {
     question: "How much do contractors earn on 8Fold?",
     answer: [
-      "Contractors keep 80% of the job value on local urban jobs.",
+      "Contractors keep up to 80% of the job value on standard urban jobs.",
       "For regional jobs that require travel, contractors keep 85% of the job value.",
-      "Routers earn 10% for coordinating and assigning the job. The platform retains the remaining share.",
+      "Routers earn 8% for coordinating and assigning the job. The platform fee is 12% on standard jobs.",
       "All splits are shown upfront — no hidden fees, no surprises.",
     ],
   },
