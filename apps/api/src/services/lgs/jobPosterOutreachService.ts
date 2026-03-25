@@ -25,6 +25,36 @@ type QueueCycleResult = {
   failed: number;
 };
 
+function mergeOutboundMetadata(
+  current: unknown,
+  metadata: {
+    senderAccount: string;
+    gmailMessageId: string | null;
+    gmailThreadId: string | null;
+    rfcMessageId: string;
+    sentAt: string;
+  },
+): Record<string, unknown> {
+  const base = current && typeof current === "object" && !Array.isArray(current)
+    ? current as Record<string, unknown>
+    : {};
+  const existingOutbound = base.outbound && typeof base.outbound === "object" && !Array.isArray(base.outbound)
+    ? base.outbound as Record<string, unknown>
+    : {};
+
+  return {
+    ...base,
+    outbound: {
+      ...existingOutbound,
+      senderAccount: metadata.senderAccount,
+      gmailMessageId: metadata.gmailMessageId,
+      gmailThreadId: metadata.gmailThreadId,
+      rfcMessageId: metadata.rfcMessageId,
+      sentAt: metadata.sentAt,
+    },
+  };
+}
+
 async function fetchNextQueuedJobPosterMessage() {
   const settings = await loadBrainSettings();
   const sender = await selectAvailableSender(settings, "jobs");
@@ -40,6 +70,7 @@ async function fetchNextQueuedJobPosterMessage() {
       campaignId: jobPosterEmailMessages.campaignId,
       subject: jobPosterEmailMessages.subject,
       body: jobPosterEmailMessages.body,
+      generationContext: jobPosterEmailMessages.generationContext,
       messageStatus: jobPosterEmailMessages.status,
       email: jobPosterLeads.email,
       website: jobPosterLeads.website,
@@ -102,6 +133,7 @@ async function fetchNextQueuedJobPosterMessage() {
         campaignId: row.campaignId,
         subject: row.subject,
         body: row.body,
+        generationContext: row.generationContext,
         email: row.email.trim().toLowerCase(),
         website: row.website,
         senderId: sender.id,
@@ -144,7 +176,18 @@ export async function runJobPosterQueueCycle(): Promise<QueueCycleResult> {
 
     await db
       .update(jobPosterEmailMessages)
-      .set({ status: "sent", updatedAt: now, reviewedAt: now })
+      .set({
+        status: "sent",
+        updatedAt: now,
+        reviewedAt: now,
+        generationContext: mergeOutboundMetadata(item.generationContext, {
+          senderAccount: item.senderEmail,
+          gmailMessageId: result.gmailMessageId,
+          gmailThreadId: result.gmailThreadId,
+          rfcMessageId: result.rfcMessageId,
+          sentAt: now.toISOString(),
+        }),
+      })
       .where(eq(jobPosterEmailMessages.id, item.messageId));
 
     await db
@@ -196,7 +239,18 @@ export async function runJobPosterQueueCycle(): Promise<QueueCycleResult> {
 
   await db
     .update(jobPosterEmailMessages)
-    .set({ status: "failed", updatedAt: now, reviewedAt: now })
+    .set({
+      status: "failed",
+      updatedAt: now,
+      reviewedAt: now,
+      generationContext: mergeOutboundMetadata(item.generationContext, {
+        senderAccount: item.senderEmail,
+        gmailMessageId: null,
+        gmailThreadId: null,
+        rfcMessageId: "send_failed",
+        sentAt: now.toISOString(),
+      }),
+    })
     .where(eq(jobPosterEmailMessages.id, item.messageId));
 
   await db

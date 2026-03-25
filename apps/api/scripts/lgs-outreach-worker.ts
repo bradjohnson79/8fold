@@ -8,9 +8,8 @@
 import path from "node:path";
 import cron from "node-cron";
 import dotenv from "dotenv";
-import { runLgsOutreachScheduler } from "../src/services/lgs/lgsOutreachSchedulerService";
 import { runFollowupEngine } from "../src/services/lgs/lgsFollowupService";
-import { syncGmailReplies } from "../src/services/lgs/gmailReplySyncService";
+import { runOutreachDispatcher, runReplyProcessor } from "../src/services/lgs/outreachDispatchService";
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || path.join(process.cwd(), "apps/api/.env.local") });
 
@@ -21,10 +20,12 @@ let replySyncRunning = false;
 function runScheduler() {
   if (schedulerRunning) return;
   schedulerRunning = true;
-  runLgsOutreachScheduler()
-    .then(({ sent, failed }) => {
-      if (sent > 0 || failed > 0) {
-        console.log(`[LGS Outreach] sent=${sent} failed=${failed}`);
+  runOutreachDispatcher()
+    .then((result) => {
+      if (result.sent > 0 || result.failed > 0 || result.contractorQueued > 0 || result.jobsQueued > 0) {
+        console.log(
+          `[LGS Outreach] pipeline=${result.selectedPipeline ?? "none"} sent=${result.sent} failed=${result.failed} contractorQueued=${result.contractorQueued} jobsQueued=${result.jobsQueued}`
+        );
       }
     })
     .catch((err) => {
@@ -55,10 +56,12 @@ function runFollowups() {
 function runReplySync() {
   if (replySyncRunning) return;
   replySyncRunning = true;
-  syncGmailReplies()
+  runReplyProcessor()
     .then((r) => {
-      if (r.updated > 0 || r.errors > 0) {
-        console.log(`[LGS Replies] scanned=${r.scanned} matched=${r.matched} updated=${r.updated} errors=${r.errors}`);
+      if (r.totalRepliesPosted > 0 || r.totalBouncesPosted > 0 || r.totalDuplicatesSkipped > 0 || r.totalUnmatched > 0) {
+        console.log(
+          `[LGS Replies] candidates=${r.totalCandidates} replies=${r.totalRepliesPosted} bounces=${r.totalBouncesPosted} duplicates=${r.totalDuplicatesSkipped} unmatched=${r.totalUnmatched}`
+        );
       }
     })
     .catch((err) => {

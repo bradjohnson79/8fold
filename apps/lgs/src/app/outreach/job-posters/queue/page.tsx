@@ -7,11 +7,13 @@ type QueueItem = {
   id: string;
   campaign_id: string | null;
   sender_email: string;
+  display_sender_email: string | null;
   sent_at: string | null;
   status: string;
   retry_count: number;
   error_message: string | null;
   created_at: string | null;
+  next_send_at: string | null;
   subject: string | null;
   company_name: string | null;
   contact_name: string | null;
@@ -105,7 +107,7 @@ export default function JobPosterQueuePage() {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #334155", color: "#94a3b8" }}>
-              {["Lead", "Subject", "Status", "Sender", "Retries", "Queued", "Sent/Error"].map((label) => (
+              {["Lead", "Subject", "Status", "Sender", "Retries", "Next Send", "Sent/Error"].map((label) => (
                 <th key={label} style={{ padding: "0.65rem 0.75rem", textAlign: "left" }}>{label}</th>
               ))}
             </tr>
@@ -119,10 +121,11 @@ export default function JobPosterQueuePage() {
                 </td>
                 <td style={{ padding: "0.65rem 0.75rem", color: "#cbd5e1" }}>{item.subject ?? "—"}</td>
                 <td style={{ padding: "0.65rem 0.75rem" }}>{item.status}</td>
-                <td style={{ padding: "0.65rem 0.75rem", fontFamily: "monospace", fontSize: "0.78rem" }}>{item.sender_email}</td>
+                <td style={{ padding: "0.65rem 0.75rem", fontFamily: "monospace", fontSize: "0.78rem" }}>{item.display_sender_email ?? item.sender_email}</td>
                 <td style={{ padding: "0.65rem 0.75rem" }}>{item.retry_count}</td>
                 <td style={{ padding: "0.65rem 0.75rem", color: "#94a3b8" }}>
-                  {item.created_at ? new Date(item.created_at).toLocaleString() : "—"}
+                  {item.next_send_at ? `ETA ${new Date(item.next_send_at).toLocaleString()}` : "—"}
+                  <div>{item.created_at ? `Queued: ${new Date(item.created_at).toLocaleString()}` : ""}</div>
                 </td>
                 <td style={{ padding: "0.65rem 0.75rem", color: item.error_message ? "#f87171" : "#94a3b8" }}>
                   {item.sent_at ? new Date(item.sent_at).toLocaleString() : item.error_message ?? "—"}

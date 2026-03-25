@@ -21,6 +21,18 @@ function timeAgo(date: Date | null): string {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
+function getWorkerStatus(health: { lastHeartbeatAt: Date | null; lastRunStatus: string | null } | null) {
+  const heartbeatAge = health?.lastHeartbeatAt
+    ? (Date.now() - health.lastHeartbeatAt.getTime()) / 1000
+    : null;
+
+  if (health?.lastRunStatus === "error") return "error" as const;
+  if (heartbeatAge === null) return "stopped" as const;
+  if (heartbeatAge < 120) return "running" as const;
+  if (heartbeatAge < 3600) return "idle" as const;
+  return "stopped" as const;
+}
+
 export async function GET() {
   try {
     const [
@@ -29,6 +41,8 @@ export async function GET() {
       outreachSentToday,
       msgPendingCount,
       activeSenders,
+      outreachHealth,
+      repliesHealth,
       verificationHealth,
     ] = await Promise.all([
       db
@@ -72,6 +86,26 @@ export async function GET() {
           lastError: lgsWorkerHealth.lastError,
         })
         .from(lgsWorkerHealth)
+        .where(eq(lgsWorkerHealth.workerName, "outreach_cron"))
+        .limit(1),
+
+      db
+        .select({
+          lastHeartbeatAt: lgsWorkerHealth.lastHeartbeatAt,
+          lastRunStatus: lgsWorkerHealth.lastRunStatus,
+          lastError: lgsWorkerHealth.lastError,
+        })
+        .from(lgsWorkerHealth)
+        .where(eq(lgsWorkerHealth.workerName, "replies_cron"))
+        .limit(1),
+
+      db
+        .select({
+          lastHeartbeatAt: lgsWorkerHealth.lastHeartbeatAt,
+          lastRunStatus: lgsWorkerHealth.lastRunStatus,
+          lastError: lgsWorkerHealth.lastError,
+        })
+        .from(lgsWorkerHealth)
         .where(eq(lgsWorkerHealth.workerName, "verification_cron"))
         .limit(1),
     ]);
@@ -79,21 +113,12 @@ export async function GET() {
     const discovery = lastDiscovery[0] ?? null;
     const discoveryRunning = discovery?.status === "running";
 
+    const outreach = outreachHealth[0] ?? null;
+    const replies = repliesHealth[0] ?? null;
     const verifyHealth = verificationHealth[0] ?? null;
-    const verifyHeartbeatAge = verifyHealth?.lastHeartbeatAt
-      ? (Date.now() - verifyHealth.lastHeartbeatAt.getTime()) / 1000
-      : null;
-    // "running" = heartbeat within last 2 minutes; "idle" = within last hour; "stopped" = older or never
-    const verifyStatus: "running" | "idle" | "stopped" | "error" =
-      verifyHealth?.lastRunStatus === "error"
-        ? "error"
-        : verifyHeartbeatAge === null
-          ? "stopped"
-          : verifyHeartbeatAge < 120
-            ? "running"
-            : verifyHeartbeatAge < 3600
-              ? "idle"
-              : "stopped";
+    const outreachStatus = getWorkerStatus(outreach);
+    const repliesStatus = getWorkerStatus(replies);
+    const verifyStatus = getWorkerStatus(verifyHealth);
 
     const queueDepth = outreachPending[0]?.count ?? 0;
     const sentToday = outreachSentToday[0]?.count ?? 0;
@@ -114,11 +139,15 @@ export async function GET() {
       },
       {
         name: "Outreach Worker",
-        description: "Sends approved messages via sender pool rotation",
-        status: queueDepth > 0 ? "running" : "idle",
-        last_run: sentToday > 0 ? "Today" : "—",
+        description: "Queues approved messages and dispatches the next eligible outreach send",
+        status: outreachStatus,
+        last_run: timeAgo(outreach?.lastHeartbeatAt ?? null),
         jobs_processed: sentToday,
-        detail: `${queueDepth} queued · ${sentToday} sent today · ${senderCount} active senders`,
+        detail: outreach
+          ? outreach.lastRunStatus === "error"
+            ? `Last error: ${outreach.lastError ?? "unknown"}`
+            : `${queueDepth} queued · ${sentToday} sent today · ${senderCount} active senders`
+          : "Not yet run — will start on next cron tick",
         schedule: "Every 1 min",
       },
       {
@@ -144,13 +173,17 @@ export async function GET() {
         schedule: "Every 1 min",
       },
       {
-        name: "Bounce Monitor",
-        description: "Tracks bounces and updates lead contact status",
-        status: "future",
-        last_run: "—",
+        name: "Reply Processor",
+        description: "Scans tracked inboxes for replies and bounces across both outreach pipelines",
+        status: repliesStatus,
+        last_run: timeAgo(replies?.lastHeartbeatAt ?? null),
         jobs_processed: 0,
-        detail: "Coming soon",
-        schedule: "—",
+        detail: replies
+          ? replies.lastRunStatus === "error"
+            ? `Last error: ${replies.lastError ?? "unknown"}`
+            : "Inbound Gmail sync is healthy"
+          : "Not yet run — will start on next cron tick",
+        schedule: "Every 5 min",
       },
     ];
 

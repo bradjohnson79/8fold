@@ -71,6 +71,7 @@ const MIN_SEND_DELAY_MS = 60 * 1000;
 const MAX_SEND_DELAY_MS = 120 * 1000;
 const FOLLOWUP_DELAY_HOURS = 48;
 const DOMAIN_RISK_WINDOW_HOURS = 24;
+export const OUTREACH_ESTIMATED_DELAY_SECONDS = 90;
 
 // ── Brain settings cache (refreshed each scheduler run) ──────────────────────
 type BrainSettings = {
@@ -208,6 +209,36 @@ type EligibleSender = {
   remaining: number;
 };
 
+function mergeOutboundMetadata(
+  current: unknown,
+  metadata: {
+    senderAccount: string;
+    gmailMessageId: string | null;
+    gmailThreadId: string | null;
+    rfcMessageId: string;
+    sentAt: string;
+  },
+): Record<string, unknown> {
+  const base = current && typeof current === "object" && !Array.isArray(current)
+    ? current as Record<string, unknown>
+    : {};
+  const existingOutbound = base.outbound && typeof base.outbound === "object" && !Array.isArray(base.outbound)
+    ? base.outbound as Record<string, unknown>
+    : {};
+
+  return {
+    ...base,
+    outbound: {
+      ...existingOutbound,
+      senderAccount: metadata.senderAccount,
+      gmailMessageId: metadata.gmailMessageId,
+      gmailThreadId: metadata.gmailThreadId,
+      rfcMessageId: metadata.rfcMessageId,
+      sentAt: metadata.sentAt,
+    },
+  };
+}
+
 export async function selectAvailableSender(
   settings: BrainSettings,
   pipeline: "contractor" | "jobs" = "contractor",
@@ -293,6 +324,7 @@ async function fetchNextQueuedMessage(
   subject: string;
   body: string;
   messageType: string | null;
+  generationContext: unknown;
   senderEmail: string;
   senderId: string;
   website: string | null;
@@ -311,6 +343,7 @@ async function fetchNextQueuedMessage(
       body: outreachMessages.body,
       messageType: outreachMessages.messageType,
       messageStatus: outreachMessages.status,
+      generationContext: outreachMessages.generationContext,
       email: contractorLeads.email,
       website: contractorLeads.website,
       outreachStage: contractorLeads.outreachStage,
@@ -362,6 +395,7 @@ async function fetchNextQueuedMessage(
       subject: row.subject,
       body: row.body,
       messageType,
+      generationContext: row.generationContext,
       senderEmail: sender.senderEmail,
       senderId: sender.id,
       website: row.website,
@@ -498,7 +532,16 @@ export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed:
 
     await db
       .update(outreachMessages)
-      .set({ status: "sent" })
+      .set({
+        status: "sent",
+        generationContext: mergeOutboundMetadata(queued.generationContext, {
+          senderAccount: queued.senderEmail,
+          gmailMessageId: result.gmailMessageId,
+          gmailThreadId: result.gmailThreadId,
+          rfcMessageId: result.rfcMessageId,
+          sentAt: now.toISOString(),
+        }),
+      })
       .where(eq(outreachMessages.id, queued.messageId));
 
     await db
@@ -554,6 +597,19 @@ export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed:
       senderAccount: queued.senderEmail,
     })
     .where(eq(lgsOutreachQueue.id, queued.queueId));
+
+  await db
+    .update(outreachMessages)
+    .set({
+      generationContext: mergeOutboundMetadata(queued.generationContext, {
+        senderAccount: queued.senderEmail,
+        gmailMessageId: null,
+        gmailThreadId: null,
+        rfcMessageId: "send_failed",
+        sentAt: now.toISOString(),
+      }),
+    })
+    .where(eq(outreachMessages.id, queued.messageId));
 
   return { sent: 0, failed: 1 };
 }

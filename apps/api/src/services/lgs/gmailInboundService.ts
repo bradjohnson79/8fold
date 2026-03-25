@@ -180,6 +180,7 @@ async function classifyMessage(args: {
       contactEmail: failedRecipient,
       senderEmail: args.inbox,
       subject,
+      rawPayload: buildRawPayload(args.message),
     });
     if (!match) {
       return { kind: "ignore", reason: "bounce_unmatched" };
@@ -217,6 +218,7 @@ async function classifyMessage(args: {
     contactEmail: fromEmail,
     senderEmail: args.inbox,
     subject,
+    rawPayload: buildRawPayload(args.message),
   });
   if (!match) {
     return { kind: "ignore", reason: "reply_unmatched" };

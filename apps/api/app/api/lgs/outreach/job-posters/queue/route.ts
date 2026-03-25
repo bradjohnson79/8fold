@@ -7,6 +7,11 @@ import {
   jobPosterLeads,
 } from "@/db/schema/directoryEngine";
 import { queueApprovedJobPosterMessages } from "@/src/services/lgs/jobPosterOutreachService";
+import {
+  OUTREACH_ESTIMATED_DELAY_SECONDS,
+  loadBrainSettings,
+  selectAvailableSender,
+} from "@/src/services/lgs/lgsOutreachSchedulerService";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,6 +25,7 @@ export async function GET(req: NextRequest) {
         failed: sql<number>`count(*) filter (where ${jobPosterEmailQueue.status} = 'failed')::int`,
       })
       .from(jobPosterEmailQueue);
+    const predictedSender = await selectAvailableSender(await loadBrainSettings(), "jobs");
 
     const conditions = [];
     if (status) conditions.push(eq(jobPosterEmailQueue.status, status));
@@ -52,6 +58,7 @@ export async function GET(req: NextRequest) {
       .where(whereClause)
       .orderBy(asc(jobPosterEmailQueue.createdAt));
 
+    let readyIndex = 0;
     return NextResponse.json({
       ok: true,
       summary: summary[0] ?? { pending: 0, sent: 0, failed: 0 },
@@ -61,12 +68,18 @@ export async function GET(req: NextRequest) {
         campaign_id: row.campaignId,
         lead_id: row.leadId,
         sender_email: row.senderEmail,
+        display_sender_email: row.senderEmail === "pending_assignment"
+          ? predictedSender?.senderEmail ?? null
+          : row.senderEmail,
         scheduled_at: row.scheduledAt?.toISOString() ?? null,
         sent_at: row.sentAt?.toISOString() ?? null,
         status: row.status,
         retry_count: row.retryCount ?? 0,
         error_message: row.errorMessage,
         created_at: row.createdAt?.toISOString() ?? null,
+        next_send_at: row.status === "pending"
+          ? new Date(Date.now() + (++readyIndex) * OUTREACH_ESTIMATED_DELAY_SECONDS * 1000).toISOString()
+          : null,
         subject: row.subject,
         company_name: row.companyName,
         contact_name: row.contactName,

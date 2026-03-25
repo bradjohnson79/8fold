@@ -45,6 +45,7 @@ export type InboundMatchCandidate = {
   replyReceived: boolean;
   responseReceived: boolean;
   emailBounced: boolean;
+  generationContext?: unknown;
 };
 
 export function normalizeInboundEmail(value?: string | null): string | null {
@@ -63,13 +64,21 @@ export function normalizeInboundSubject(value?: string | null): string {
 
 export function chooseInboundCandidate(
   candidates: InboundMatchCandidate[],
-  input: { campaignType?: OutreachCampaignType; subject?: string | null }
+  input: { campaignType?: OutreachCampaignType; subject?: string | null; rawPayload?: unknown }
 ): InboundMatchCandidate | null {
   const scoped = input.campaignType
     ? candidates.filter((candidate) => candidate.campaignType === input.campaignType)
     : candidates;
 
   if (scoped.length === 0) return null;
+
+  const metadataMatches = scoped.filter((candidate) => matchesInboundMetadata(candidate, input.rawPayload));
+  if (metadataMatches.length === 1) return metadataMatches[0] ?? null;
+  if (metadataMatches.length > 1) {
+    return metadataMatches
+      .slice()
+      .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0))[0] ?? null;
+  }
 
   const normalizedSubject = normalizeInboundSubject(input.subject);
   if (normalizedSubject) {
@@ -81,6 +90,50 @@ export function chooseInboundCandidate(
   }
 
   return scoped.length === 1 ? scoped[0] ?? null : null;
+}
+
+function readRawPayloadHeader(rawPayload: unknown, name: string): string {
+  if (!rawPayload || typeof rawPayload !== "object") return "";
+  const headers = (rawPayload as { headers?: Array<{ name?: string; value?: string }> }).headers;
+  if (!Array.isArray(headers)) return "";
+  return headers.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value?.trim() ?? "";
+}
+
+function readOutboundMetadata(candidate: InboundMatchCandidate) {
+  if (!candidate.generationContext || typeof candidate.generationContext !== "object" || Array.isArray(candidate.generationContext)) {
+    return null;
+  }
+
+  const outbound = (candidate.generationContext as { outbound?: unknown }).outbound;
+  if (!outbound || typeof outbound !== "object" || Array.isArray(outbound)) {
+    return null;
+  }
+
+  return outbound as {
+    gmailMessageId?: string | null;
+    gmailThreadId?: string | null;
+    rfcMessageId?: string | null;
+  };
+}
+
+function matchesInboundMetadata(candidate: InboundMatchCandidate, rawPayload: unknown): boolean {
+  const outbound = readOutboundMetadata(candidate);
+  if (!outbound) return false;
+
+  const threadId = rawPayload && typeof rawPayload === "object"
+    ? ((rawPayload as { threadId?: string | null }).threadId ?? null)
+    : null;
+  const inReplyTo = readRawPayloadHeader(rawPayload, "In-Reply-To");
+  const references = readRawPayloadHeader(rawPayload, "References");
+
+  if (threadId && outbound.gmailThreadId && threadId === outbound.gmailThreadId) {
+    return true;
+  }
+
+  const replySignals = `${inReplyTo} ${references}`.toLowerCase();
+  return [outbound.rfcMessageId, outbound.gmailMessageId]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => replySignals.includes(value.toLowerCase()));
 }
 
 export function getReplyMutationPlan(candidate: Pick<InboundMatchCandidate, "replyReceived">) {
@@ -151,6 +204,7 @@ async function loadContractorCandidates(contactEmail: string, senderEmail: strin
       replyReceived: outreachMessages.replyReceived,
       responseReceived: contractorLeads.responseReceived,
       emailBounced: sql<boolean>`coalesce(${contractorLeads.emailBounced}, false)`,
+      generationContext: outreachMessages.generationContext,
     })
     .from(lgsOutreachQueue)
     .innerJoin(outreachMessages, eq(lgsOutreachQueue.outreachMessageId, outreachMessages.id))
@@ -179,6 +233,7 @@ async function loadJobPosterCandidates(contactEmail: string, senderEmail: string
       replyReceived: jobPosterEmailMessages.replyReceived,
       responseReceived: jobPosterLeads.responseReceived,
       emailBounced: sql<boolean>`coalesce(${jobPosterLeads.emailBounced}, false)`,
+      generationContext: jobPosterEmailMessages.generationContext,
     })
     .from(jobPosterEmailQueue)
     .innerJoin(jobPosterEmailMessages, eq(jobPosterEmailQueue.messageId, jobPosterEmailMessages.id))
@@ -224,6 +279,7 @@ export async function matchInboundOutreachCandidate(input: {
   contactEmail: string;
   senderEmail: string;
   subject?: string | null;
+  rawPayload?: unknown;
 }) {
   const contactEmail = normalizeInboundEmail(input.contactEmail);
   const senderEmail = normalizeInboundEmail(input.senderEmail);
@@ -241,6 +297,7 @@ export async function matchInboundOutreachCandidate(input: {
   return chooseInboundCandidate(candidates, {
     campaignType: input.campaignType,
     subject: input.subject,
+    rawPayload: input.rawPayload,
   });
 }
 
