@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
         failed: sql<number>`count(*) filter (where ${jobPosterEmailQueue.status} = 'failed')::int`,
       })
       .from(jobPosterEmailQueue);
-    const predictedSender = await selectAvailableSender(await loadBrainSettings(), "jobs");
+    const senderSelection = await selectAvailableSender(await loadBrainSettings(), "jobs");
+    const predictedSender = senderSelection && !("blocked" in senderSelection) ? senderSelection : null;
 
     const conditions = [];
     if (status) conditions.push(eq(jobPosterEmailQueue.status, status));
