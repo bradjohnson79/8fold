@@ -1,6 +1,14 @@
 {
   "crons": [
     {
+      "path": "/api/internal/lgs/process-outreach",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/internal/lgs/process-replies",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/internal/lgs/process-verification",
       "schedule": "*/1 * * * *"
     },

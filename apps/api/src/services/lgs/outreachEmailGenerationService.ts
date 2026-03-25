@@ -120,7 +120,7 @@ function textToHtml(text: string): string {
 
 // ─── Main generator ───────────────────────────────────────────────────────────
 
-export async function generateOutreachEmail(
+export async function generateLGSMessage(
   input: GenerateInput,
   existingHashes: Set<string>
 ): Promise<GenerateResult> {
@@ -171,6 +171,11 @@ export async function generateOutreachEmail(
       continue;
     }
 
+    if (!text.toLowerCase().includes("8fold.app")) {
+      console.warn(`[generateOutreachEmail] rejected — missing 8fold.app on attempt ${attempt + 1}`);
+      continue;
+    }
+
     const body = textToHtml(text);
     const hash = computeBodyHash(body);
 
@@ -190,6 +195,13 @@ export async function generateOutreachEmail(
   }
 
   throw new Error("Could not generate unique email after max attempts");
+}
+
+export async function generateOutreachEmail(
+  input: GenerateInput,
+  existingHashes: Set<string>
+): Promise<GenerateResult> {
+  return generateLGSMessage(input, existingHashes);
 }
 
 // ─── Legacy compat shims ──────────────────────────────────────────────────────

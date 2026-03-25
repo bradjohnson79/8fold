@@ -12,11 +12,13 @@ type QueueItem = {
   lead_id: string;
   outreach_message_id: string;
   sender_account: string | null;
+  display_sender_account: string | null;
   send_status: string;
   sent_at: string | null;
   attempts: number;
   error_message: string | null;
   created_at: string;
+  next_send_at: string | null;
   subject: string | null;
   message_type: string;
   lead_email: string;
@@ -305,7 +307,7 @@ export default function QueuePage() {
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Status</th>
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Sender</th>
               <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Reason</th>
-              <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Queued</th>
+              <th style={{ textAlign: "left", padding: "0.6rem 0.5rem" }}>Next Send</th>
             </tr>
           </thead>
           <tbody>
@@ -352,15 +354,18 @@ export default function QueuePage() {
                   )}
                 </td>
                 <td style={{ padding: "0.6rem 0.5rem", fontFamily: "monospace", fontSize: 11, color: "#64748b" }}>
-                  {item.sender_account
-                    ? item.sender_account.split("@")[0] + "@"
-                    : item.send_status === "pending" ? "Unassigned" : "—"}
+                  {item.display_sender_account ?? "—"}
                 </td>
                 <td style={{ padding: "0.6rem 0.5rem", minWidth: 140 }}>
                   <ReasonPills codes={item.reason_codes} />
                 </td>
                 <td style={{ padding: "0.6rem 0.5rem", color: "#475569", fontSize: 11, whiteSpace: "nowrap" }}>
-                  {formatDateTime(item.created_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  {item.next_send_at
+                    ? `ETA ${formatDateTime(item.next_send_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                    : "—"}
+                  <div>
+                    Queued: {formatDateTime(item.created_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </div>
                   {item.sent_at && (
                     <div>
                       Sent: {formatDateTime(item.sent_at, "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}

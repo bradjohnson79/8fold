@@ -7,6 +7,11 @@ import {
   outreachMessages,
   senderPool,
 } from "@/db/schema/directoryEngine";
+import {
+  OUTREACH_ESTIMATED_DELAY_SECONDS,
+  loadBrainSettings,
+  selectAvailableSender,
+} from "@/src/services/lgs/lgsOutreachSchedulerService";
 import { normalizeVerificationStatus } from "@/src/services/lgs/simpleEmailVerification";
 
 export async function GET(req: NextRequest) {
@@ -37,6 +42,9 @@ export async function GET(req: NextRequest) {
     const sysCapacityUsed = Number(capacityRow?.totalSent ?? 0);
     const sysCapacityTotal = Number(capacityRow?.totalLimit ?? 0);
     const sysCapacityRemaining = Math.max(0, sysCapacityTotal - sysCapacityUsed);
+    const predictedSender = sysCapacityRemaining > 0
+      ? await selectAvailableSender(await loadBrainSettings(), "contractor")
+      : null;
 
     const whereClause = status ? eq(lgsOutreachQueue.sendStatus, status) : undefined;
 
@@ -69,6 +77,7 @@ export async function GET(req: NextRequest) {
       .limit(limit)
       .offset(offset);
 
+    let readyIndex = 0;
     const data = rows.map((row) => {
       const reasonCodes: string[] = [];
       const verificationStatus = normalizeVerificationStatus(row.verificationStatus);
@@ -85,6 +94,12 @@ export async function GET(req: NextRequest) {
       }
 
       const ready = !isArchived && !isInvalid && !isPendingVerification && sysCapacityRemaining > 0;
+      const nextSendAt = ready && row.sendStatus === "pending"
+        ? new Date(Date.now() + (readyIndex + 1) * OUTREACH_ESTIMATED_DELAY_SECONDS * 1000).toISOString()
+        : null;
+      if (ready && row.sendStatus === "pending") {
+        readyIndex += 1;
+      }
 
       if (sysCapacityRemaining > 0 && ready) {
         reasonCodes.push("sender_capacity_ok");
@@ -97,11 +112,13 @@ export async function GET(req: NextRequest) {
         lead_id: row.leadId,
         outreach_message_id: row.outreachMessageId,
         sender_account: row.senderAccount,
+        display_sender_account: row.senderAccount ?? (row.sendStatus === "pending" ? predictedSender?.senderEmail ?? null : null),
         send_status: row.sendStatus,
         sent_at: row.sentAt?.toISOString() ?? null,
         attempts: row.attempts ?? 0,
         error_message: row.errorMessage,
         created_at: row.createdAt?.toISOString() ?? null,
+        next_send_at: nextSendAt,
         subject: row.subject,
         message_type: row.messageType ?? "intro_standard",
         lead_email: row.leadEmail,
