@@ -69,6 +69,7 @@ function getGenerateErrorMessage(status: number): string {
 const MSG_STATUS_LABEL: Record<string, string> = {
   pending_review: "Draft MSG",
   approved: "Approved",
+  queued: "Queued",
   rejected: "Rejected",
   sent: "Sent",
 };
@@ -76,6 +77,7 @@ const MSG_STATUS_LABEL: Record<string, string> = {
 const MSG_STATUS_COLOR: Record<string, string> = {
   pending_review: "#2563eb",
   approved: "#16a34a",
+  queued: "#f59e0b",
   rejected: "#dc2626",
   sent: "#7c3aed",
 };

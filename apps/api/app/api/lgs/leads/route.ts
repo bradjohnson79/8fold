@@ -64,6 +64,20 @@ function deriveContactStatus(row: {
   return "unsent";
 }
 
+function deriveMessageStatus(msg: {
+  message_status: string | null;
+  queue_send_status: string | null;
+  queue_sent_at: Date | null;
+} | undefined): string {
+  if (!msg) return "none";
+  if (msg.queue_sent_at) return "sent";
+  if (msg.queue_send_status === "pending") return "queued";
+  if (msg.message_status === "queued") return "queued";
+  if (msg.message_status === "approved") return "approved";
+  if (msg.message_status === "pending_review") return "ready";
+  return "none";
+}
+
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
@@ -281,14 +295,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    function deriveMessageStatus(msg: MsgRow | undefined): string {
-      if (!msg) return "none";
-      if (msg.queue_sent_at) return "sent";
-      if (msg.message_status === "approved") return "approved";
-      if (msg.message_status === "pending_review") return "ready";
-      return "none";
-    }
-
     const data = rows.map((r) => {
       const msg = msgMap.get(r.id);
       const contactStatus = deriveContactStatus({
@@ -325,6 +331,7 @@ export async function GET(req: NextRequest) {
         archived_at: r.archived_at?.toISOString() ?? null,
         contact_status: contactStatus,
         message_status: messageStatus,
+        message: msg?.latest_message_body ?? null,
         latest_message_id: msg?.message_id ?? null,
         latest_message_subject: msg?.latest_message_subject ?? null,
         latest_message_body: msg?.latest_message_body ?? null,

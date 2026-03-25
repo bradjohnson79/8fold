@@ -29,6 +29,7 @@ type Lead = {
   archived_at?: string | null;
   contact_status: string;
   message_status: string;
+  message: string | null;
   latest_message_id: string | null;
   latest_message_subject: string | null;
   latest_message_body: string | null;
@@ -59,10 +60,30 @@ type ApiResponse = {
   error?: string;
 };
 
+type BulkGenerateResponse = {
+  ok?: boolean;
+  success?: boolean;
+  completed?: number;
+  total?: number;
+  generated?: number;
+  skipped?: number;
+  failed?: number;
+  error?: string;
+};
+
+type BulkGenerateProgress = {
+  current: number;
+  total: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+};
+
 const MSG_LABELS: Record<string, string> = {
   none: "No MSG",
   ready: "Draft MSG",
   approved: "Approved",
+  queued: "Queued",
   sent: "Sent",
 };
 
@@ -70,7 +91,14 @@ const MSG_COLORS: Record<string, string> = {
   none: "#475569",
   ready: "#2563eb",
   approved: "#16a34a",
+  queued: "#f59e0b",
   sent: "#7c3aed",
+};
+
+const MSG_HINTS: Record<string, string> = {
+  ready: "Message generated, awaiting approval",
+  approved: "Approved, not yet queued",
+  queued: "Ready for sending",
 };
 
 const CONTACT_LABELS: Record<string, string> = {
@@ -127,9 +155,12 @@ function MsgCell({
 }) {
   const [generating, setGenerating] = useState(false);
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipPinned, setTooltipPinned] = useState(false);
   const status = lead.message_status;
   const label = MSG_LABELS[status] ?? status;
   const color = MSG_COLORS[status] ?? "#475569";
+  const hint = MSG_HINTS[status];
+  const previewBody = lead.message || lead.latest_message_body || "No message generated";
   const generateDisabled = !canGenerateForLead(lead);
 
   const handleGenerate = useCallback(async () => {
@@ -193,34 +224,36 @@ function MsgCell({
           whiteSpace: "nowrap",
           display: "inline-block",
         }}
+        title={hint}
+        onClick={() => setTooltipPinned((value) => !value)}
       >
         {label}
       </span>
-      {tooltipVisible && lead.latest_message_subject && (
+      {(tooltipVisible || tooltipPinned) && status !== "none" && (
         <div
           style={{
-            position: "fixed",
-            width: 340,
+            position: "absolute",
+            top: "calc(100% + 0.4rem)",
+            right: 0,
+            width: 380,
+            maxWidth: "min(380px, 75vw)",
+            maxHeight: 320,
+            overflowY: "auto",
             background: "#0f172a",
             border: "1px solid #334155",
             borderRadius: 8,
             padding: "0.85rem",
             zIndex: 9999,
             boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-            pointerEvents: "none",
-            transform: "translateY(-110%)",
           }}
         >
           <div style={{ fontWeight: 600, color: "#e2e8f0", marginBottom: "0.5rem", fontSize: "0.82rem" }}>
-            {lead.latest_message_subject}
+            {lead.latest_message_subject ?? label}
           </div>
           <div style={{ color: "#94a3b8", fontSize: "0.75rem", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
-            {(lead.latest_message_body ?? "").slice(0, 350)}
-            {(lead.latest_message_body?.length ?? 0) > 350 ? "…" : ""}
+            {previewBody.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n\n").replace(/<[^>]+>/g, "").trim() || "No message generated"}
           </div>
-          <div style={{ marginTop: "0.5rem", fontSize: "0.7rem", color: "#475569" }}>
-            Click lead name to view full message
-          </div>
+          {hint && <div style={{ marginTop: "0.5rem", fontSize: "0.7rem", color: "#475569" }}>{hint}</div>}
         </div>
       )}
     </span>
@@ -251,6 +284,7 @@ export default function LeadsPage() {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [bulkRemoving, setBulkRemoving] = useState(false);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<BulkGenerateProgress | null>(null);
 
   // Deduplicate state
   const [dedupeModal, setDedupeModal] = useState<{
@@ -369,23 +403,64 @@ export default function LeadsPage() {
       ? selectedIds
       : selectedWithNoMsg.map((l) => l.id);
     if (targetIds.length === 0) return;
+    if (targetIds.length > 100) {
+      setBulkMsg("You can generate up to 100 messages at a time");
+      return;
+    }
 
     setBulkGenerating(true);
     setBulkMsg(null);
+    setBulkProgress({
+      current: 0,
+      total: targetIds.length,
+      generated: 0,
+      skipped: 0,
+      failed: 0,
+    });
     setRegenModal(null);
     try {
-      const res = await fetch("/api/lgs/messages/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_ids: targetIds, force_regenerate: force }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: { generated?: number; skipped?: number } };
-      const generated = json.data?.generated ?? 0;
-      const skipped = json.data?.skipped ?? 0;
-      let msg = res.ok ? `Generated ${generated} message${generated !== 1 ? "s" : ""}` : getGenerateErrorMessage(res.status);
-      if (res.ok && skipped > 0) msg += ` (${skipped} already had messages — skipped)`;
+      let generated = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      for (let i = 0; i < targetIds.length; i++) {
+        const leadId = targetIds[i];
+
+        try {
+          const res = await fetch("/api/lgs/messages/bulk-generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ leadIds: [leadId], leadType: "contractor", force_regenerate: force }),
+          });
+          const json = (await res.json().catch(() => ({}))) as BulkGenerateResponse;
+
+          if (res.ok && (json.success ?? json.ok)) {
+            generated += json.generated ?? 0;
+            skipped += json.skipped ?? 0;
+            failed += json.failed ?? 0;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+
+        setBulkProgress({
+          current: i + 1,
+          total: targetIds.length,
+          generated,
+          skipped,
+          failed,
+        });
+      }
+
+      let msg = failed > 0 && generated === 0
+        ? "Generation failed, try again"
+        : `Generated ${generated} draft message${generated !== 1 ? "s" : ""}`;
+      if (skipped > 0) msg += ` (${skipped} protected or existing message${skipped !== 1 ? "s" : ""} skipped)`;
+      if (failed > 0) msg += ` (${failed} failed)`;
       setBulkMsg(msg);
-      if (res.ok) void fetchLeads();
+      void fetchLeads();
     } catch {
       setBulkMsg("Generation failed, try again");
     } finally {
@@ -728,10 +803,10 @@ export default function LeadsPage() {
           {selectedWithNoMsg.length > 0 && (
             <button
               onClick={() => void bulkGenerate()}
-              disabled={bulkGenerating}
-              style={{ padding: "0.4rem 0.875rem", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", fontSize: "0.875rem", cursor: bulkGenerating ? "not-allowed" : "pointer" }}
+              disabled={bulkGenerating || selectedWithNoMsg.length > 100}
+              style={{ padding: "0.4rem 0.875rem", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", fontSize: "0.875rem", cursor: bulkGenerating || selectedWithNoMsg.length > 100 ? "not-allowed" : "pointer", opacity: selectedWithNoMsg.length > 100 ? 0.6 : 1 }}
             >
-              {bulkGenerating ? "Generating…" : `Generate MSG (${selectedWithNoMsg.length})`}
+              {bulkGenerating ? "Generating…" : `Generate Messages (Bulk) (${selectedWithNoMsg.length})`}
             </button>
           )}
           {selectedWithReadyMsg.length > 0 && (
@@ -792,9 +867,31 @@ export default function LeadsPage() {
             Deselect
           </button>
           {bulkMsg && (
-            <span style={{ color: bulkMsg.toLowerCase().includes("fail") ? "#f87171" : "#4ade80", fontSize: "0.875rem" }}>
+            <span style={{ color: bulkMsg.toLowerCase().includes("fail") ? "#f87171" : bulkMsg.includes("up to 100") ? "#f59e0b" : "#4ade80", fontSize: "0.875rem" }}>
               {bulkMsg}
             </span>
+          )}
+          {selectedWithNoMsg.length > 100 && (
+            <span style={{ color: "#f59e0b", fontSize: "0.875rem" }}>
+              You can generate up to 100 messages at a time
+            </span>
+          )}
+          {bulkProgress && bulkProgress.total > 0 && (
+            <div style={{ minWidth: 220, marginLeft: "auto" }}>
+              <div style={{ color: "#cbd5e1", fontSize: "0.8rem", marginBottom: "0.35rem" }}>
+                Generating messages: {bulkProgress.current} / {bulkProgress.total}
+              </div>
+              <div style={{ width: "100%", height: 8, background: "#0f172a", borderRadius: 999, overflow: "hidden", border: "1px solid #334155" }}>
+                <div
+                  style={{
+                    width: `${bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0}%`,
+                    height: "100%",
+                    background: "#2563eb",
+                    transition: "width 0.2s ease",
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
       )}

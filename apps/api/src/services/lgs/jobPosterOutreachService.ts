@@ -27,7 +27,7 @@ type QueueCycleResult = {
 
 async function fetchNextQueuedJobPosterMessage() {
   const settings = await loadBrainSettings();
-  const sender = await selectAvailableSender(settings);
+  const sender = await selectAvailableSender(settings, "jobs");
   if (!sender) {
     return { settings, item: null };
   }
@@ -40,6 +40,7 @@ async function fetchNextQueuedJobPosterMessage() {
       campaignId: jobPosterEmailMessages.campaignId,
       subject: jobPosterEmailMessages.subject,
       body: jobPosterEmailMessages.body,
+      messageStatus: jobPosterEmailMessages.status,
       email: jobPosterLeads.email,
       website: jobPosterLeads.website,
       city: jobPosterLeads.city,
@@ -75,6 +76,7 @@ async function fetchNextQueuedJobPosterMessage() {
   const now = new Date();
   for (const row of rows) {
     if (!row.subject || !row.body || !row.email) continue;
+    if (row.messageStatus !== "approved" && row.messageStatus !== "queued") continue;
     if (row.emailBounced) continue;
     if (row.archived) continue;
     const verificationStatus = String(row.emailVerificationStatus ?? "").trim().toLowerCase();

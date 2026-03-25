@@ -37,8 +37,11 @@ export async function GET(
         status: outreachMessages.status,
         createdAt: outreachMessages.createdAt,
         reviewedAt: outreachMessages.reviewedAt,
+        queueStatus: lgsOutreachQueue.sendStatus,
+        queueSentAt: lgsOutreachQueue.sentAt,
       })
       .from(outreachMessages)
+      .leftJoin(lgsOutreachQueue, eq(lgsOutreachQueue.outreachMessageId, outreachMessages.id))
       .where(eq(outreachMessages.leadId, id))
       .orderBy(desc(outreachMessages.createdAt))
       .limit(1);
@@ -91,7 +94,11 @@ export async function GET(
               id: latestMsg.id,
               subject: latestMsg.subject,
               body: latestMsg.body,
-              status: latestMsg.status,
+              status: latestMsg.queueSentAt
+                ? "sent"
+                : latestMsg.queueStatus === "pending"
+                  ? "queued"
+                  : latestMsg.status,
               created_at: latestMsg.createdAt?.toISOString() ?? null,
               reviewed_at: latestMsg.reviewedAt?.toISOString() ?? null,
             }
