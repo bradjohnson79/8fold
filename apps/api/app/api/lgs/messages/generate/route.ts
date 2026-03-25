@@ -2,7 +2,7 @@
  * LGS: Generate outreach message for a contractor lead.
  *
  * Single prompt. No branches. No templates. No conditional logic.
- * GPT writes the body. System appends CTA + signature.
+ * GPT writes the full email body, including the closing/signature.
  */
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -15,15 +15,14 @@ const OUTREACH_MODEL = MODEL && MODEL !== "gpt-5-nano" ? MODEL : "gpt-4.1-mini";
 const TEMPERATURE = 0.5;
 const MAX_OUTPUT_TOKENS = 220;
 const MESSAGE_TYPE = "intro_standard";
-const MESSAGE_VERSION = "v5-invitation";
-
-const HTML_SIGNATURE = `<p>Brad Johnson<br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
+const MESSAGE_VERSION = "v6-invitation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 type LeadRecord = {
   id: string;
   email: string;
+  contactName: string | null;
   businessName: string | null;
   trade: string | null;
   city: string | null;
@@ -31,6 +30,8 @@ type LeadRecord = {
 };
 
 function buildPrompt(lead: LeadRecord): string {
+  const contactName = lead.contactName?.trim() || "";
+  const firstName = contactName.split(" ")[0] || "";
   const businessName = lead.businessName ?? "their business";
   const city = lead.city ?? "their area";
   const trade = lead.trade ?? "their work";
@@ -39,6 +40,7 @@ function buildPrompt(lead: LeadRecord): string {
 Write a short outreach email to a contractor business.
 
 Context:
+- Contact name: ${contactName || ""}
 - Business name: ${businessName || "their business"}
 - Trade: ${trade || "their work"}
 - Location: ${city || "their area"}
@@ -51,17 +53,36 @@ Contractors receive qualified projects and a predictable workflow.
 Goal:
 This is an invitation email, not a sales pitch.
 
+Greeting Rules:
+- If contact name exists:
+  -> "Hello ${firstName} & ${businessName} Team,"
+- If no contact name:
+  -> "Hello ${businessName} Team,"
+
+(Use only the FIRST name, never full name)
+
 Structure (follow exactly):
-1. Start with a natural acknowledgment of their business or trade (mention their website or type of work)
-2. Introduce 8Fold briefly
-3. Explain how it helps contractors like them (simple, practical benefit)
-4. Direct them to https://8fold.app to create a free account
-5. Thank them for their time
+1. Greeting (based on rules above)
+2. Acknowledge their business or trade naturally (reference their work or website)
+3. Introduce 8Fold briefly
+4. Explain the benefit in a practical way
+5. Direct them to https://8fold.app to create a free account
+6. Thank them for their time and their work
+7. Add: "Feel free to contact me if you have any questions."
+
+Closing:
+Best,
+
+Brad Johnson
+Chief Operations Officer
+8Fold.app
+info@8fold.app
 
 Instructions:
 - Sound human and observant (like you actually looked them up)
 - Keep tone professional, calm, and grounded
 - Do NOT ask for a call, meeting, or chat
+- Do NOT ask for availability
 - Do NOT use generic phrases like "I hope you're doing well"
 - Do NOT sound like marketing copy
 - Keep under 140 words
@@ -120,7 +141,11 @@ async function generateBodyForLead(lead: LeadRecord): Promise<string> {
     throw new Error("Invalid message content (call/chat/schedule/meeting detected)");
   }
 
-  return `${textToHtml(text)}\n${HTML_SIGNATURE}`;
+  if (text.includes("Hello  &")) {
+    throw new Error("Invalid greeting format");
+  }
+
+  return textToHtml(text);
 }
 
 async function loadLead(leadId: string): Promise<LeadRecord | null> {
@@ -128,6 +153,7 @@ async function loadLead(leadId: string): Promise<LeadRecord | null> {
     .select({
       id: contractorLeads.id,
       email: contractorLeads.email,
+      contactName: contractorLeads.leadName,
       businessName: contractorLeads.businessName,
       trade: contractorLeads.trade,
       city: contractorLeads.city,

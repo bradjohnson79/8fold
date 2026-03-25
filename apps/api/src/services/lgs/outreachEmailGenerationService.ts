@@ -4,7 +4,7 @@
  * Old system: SYSTEM_PROMPT + user prompt templates + JSON parsing + conditional
  * message types + enrichment-dependent fallbacks + CTA assembly = garbage output.
  *
- * New system: one prompt, plain text output, signature appended by system.
+ * New system: one prompt, plain text output, GPT returns the full email body.
  */
 import crypto from "crypto";
 import { getOpenAiClient } from "@/src/lib/openai";
@@ -33,8 +33,7 @@ export type GenerateResult = {
   messageVersionHash: string;
 };
 
-const MESSAGE_VERSION = "v5-invitation";
-const HTML_SIGNATURE = `<p>Brad Johnson<br>\nChief Operations Officer<br>\n8Fold.app<br>\ninfo@8fold.app</p>`;
+const MESSAGE_VERSION = "v6-invitation";
 const DEFAULT_OUTREACH_MODEL = "gpt-4.1-mini";
 const TEMPERATURE = 0.5;
 const MAX_OUTPUT_TOKENS = 220;
@@ -42,6 +41,8 @@ const MAX_OUTPUT_TOKENS = 220;
 // ─── Single clean prompt ──────────────────────────────────────────────────────
 
 function buildPrompt(input: GenerateInput): string {
+  const contactName = input.contactName?.trim() || "";
+  const firstName = contactName.split(" ")[0] || "";
   const businessName = input.businessName ?? "their business";
   const city = input.city ?? "their area";
   const trade = input.trade ?? "their work";
@@ -50,6 +51,7 @@ function buildPrompt(input: GenerateInput): string {
 Write a short outreach email to a contractor business.
 
 Context:
+- Contact name: ${contactName || ""}
 - Business name: ${businessName || "their business"}
 - Trade: ${trade || "their work"}
 - Location: ${city || "their area"}
@@ -62,17 +64,36 @@ Contractors receive qualified projects and a predictable workflow.
 Goal:
 This is an invitation email, not a sales pitch.
 
+Greeting Rules:
+- If contact name exists:
+  -> "Hello ${firstName} & ${businessName} Team,"
+- If no contact name:
+  -> "Hello ${businessName} Team,"
+
+(Use only the FIRST name, never full name)
+
 Structure (follow exactly):
-1. Start with a natural acknowledgment of their business or trade (mention their website or type of work)
-2. Introduce 8Fold briefly
-3. Explain how it helps contractors like them (simple, practical benefit)
-4. Direct them to https://8fold.app to create a free account
-5. Thank them for their time
+1. Greeting (based on rules above)
+2. Acknowledge their business or trade naturally (reference their work or website)
+3. Introduce 8Fold briefly
+4. Explain the benefit in a practical way
+5. Direct them to https://8fold.app to create a free account
+6. Thank them for their time and their work
+7. Add: "Feel free to contact me if you have any questions."
+
+Closing:
+Best,
+
+Brad Johnson
+Chief Operations Officer
+8Fold.app
+info@8fold.app
 
 Instructions:
 - Sound human and observant (like you actually looked them up)
 - Keep tone professional, calm, and grounded
 - Do NOT ask for a call, meeting, or chat
+- Do NOT ask for availability
 - Do NOT use generic phrases like "I hope you're doing well"
 - Do NOT sound like marketing copy
 - Keep under 140 words
@@ -145,7 +166,12 @@ export async function generateOutreachEmail(
       continue;
     }
 
-    const body = `${textToHtml(text)}\n${HTML_SIGNATURE}`;
+    if (text.includes("Hello  &")) {
+      console.warn(`[generateOutreachEmail] rejected — invalid greeting format on attempt ${attempt + 1}`);
+      continue;
+    }
+
+    const body = textToHtml(text);
     const hash = computeBodyHash(body);
 
     if (existingHashes.has(hash)) continue;
