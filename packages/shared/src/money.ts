@@ -60,7 +60,7 @@ export const MATERIALS_SPLIT = {
 
 /**
  * Transaction fees:
- * Marketplace integrity requires fixed, exact splits (75/15/10) on the job total.
+ * Marketplace integrity requires fixed, exact splits (80/8/12) on the job total.
  * Stripe/processing fees are absorbed by the platform, so no extra fee is added to the poster invoice here.
  */
 export const TRANSACTION_FEE_RATE = 0;
@@ -112,10 +112,9 @@ export function calculatePayoutBreakdown(
 
 /**
  * Repeat Contractor Discount (Router Fee):
- * - Discount equals the router's 15% labor share
- * - Router earnings become 0 (no router involved when contractor is requested directly)
- * - Contractor payout stays 75% of labor base (+ 100% materials)
- * - Platform fee stays 10% of labor base
+ * - Discount logic is currently disabled for the locked payout model
+ * - Router earnings become 0 when no router is involved
+ * - Contractor payout and platform fee continue to follow the current structured split
  * - Poster is charged (labor - discount) + materials + transaction fee
  */
 export function calculateRepeatContractorDiscountBreakdown(

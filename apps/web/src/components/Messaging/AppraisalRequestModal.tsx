@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { REVENUE_SPLIT } from "@8fold/shared";
 
 type Props = {
   threadId: string;
@@ -28,11 +29,13 @@ function formatPriceDisplay(raw: string): string {
 }
 
 function computeBreakdown(totalCents: number) {
+  const contractorPayout = Math.floor(totalCents * REVENUE_SPLIT.contractor);
+  const routerCommission = Math.floor(totalCents * REVENUE_SPLIT.router);
   return {
     posterTotal: totalCents,
-    contractorPayout: Math.floor(totalCents * 0.80),
-    routerCommission: Math.floor(totalCents * 0.10),
-    platformFee: Math.round(totalCents * 0.10),
+    contractorPayout,
+    routerCommission,
+    platformFee: totalCents - contractorPayout - routerCommission,
   };
 }
 
@@ -141,8 +144,8 @@ export function AppraisalRequestModal({
           <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
             <p className="text-xs font-semibold text-emerald-700 mb-1.5">Requested price breakdown</p>
             <BreakdownRow label="Your payout (80%)" value={submitted.contractorPayout} highlight />
-            <BreakdownRow label="Router commission (10%)" value={submitted.routerCommission} />
-            <BreakdownRow label="Platform fee (10%)" value={submitted.platformFee} />
+            <BreakdownRow label="Router commission (8%)" value={submitted.routerCommission} />
+            <BreakdownRow label="Platform fee (12%)" value={submitted.platformFee} />
           </div>
           <button
             type="button"
@@ -176,8 +179,8 @@ export function AppraisalRequestModal({
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Current Job Price Breakdown</p>
             <BreakdownRow label="Job Poster Total" value={currentBreakdown.posterTotal} highlight />
             <BreakdownRow label="Your payout (80%)" value={currentBreakdown.contractorPayout} />
-            <BreakdownRow label="Router commission (10%)" value={currentBreakdown.routerCommission} />
-            <BreakdownRow label="Platform fee (10%)" value={currentBreakdown.platformFee} />
+            <BreakdownRow label="Router commission (8%)" value={currentBreakdown.routerCommission} />
+            <BreakdownRow label="Platform fee (12%)" value={currentBreakdown.platformFee} />
           </div>
         </div>
 
@@ -245,8 +248,8 @@ export function AppraisalRequestModal({
               <p className="text-xs font-semibold text-blue-700 mb-1.5">Live Earnings Preview</p>
               <BreakdownRow label="Job Poster pays" value={newBreakdown.posterTotal} highlight />
               <BreakdownRow label="Your payout (80%)" value={newBreakdown.contractorPayout} highlight />
-              <BreakdownRow label="Router commission (10%)" value={newBreakdown.routerCommission} />
-              <BreakdownRow label="Platform fee (10%)" value={newBreakdown.platformFee} />
+              <BreakdownRow label="Router commission (8%)" value={newBreakdown.routerCommission} />
+              <BreakdownRow label="Platform fee (12%)" value={newBreakdown.platformFee} />
               <div className="mt-1.5 pt-1.5 border-t border-blue-200 flex justify-between text-xs">
                 <span className="text-blue-600 font-semibold">Additional payment required</span>
                 <span className="font-semibold text-blue-700">{formatMoney(enteredCents - currentPriceCents)}</span>

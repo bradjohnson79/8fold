@@ -928,11 +928,11 @@ export default function PostJobPage() {
                     <span>{formatMoney(paymentSummary.contractorPayoutCents, paymentSummary.currency)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Router Fee (10%)</span>
+                    <span>Router Fee (8%)</span>
                     <span>{formatMoney(paymentSummary.routerFeeCents, paymentSummary.currency)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Platform Fee (10%)</span>
+                    <span>Platform Fee (12%)</span>
                     <span>{formatMoney(paymentSummary.platformFeeCents, paymentSummary.currency)}</span>
                   </div>
                 </div>

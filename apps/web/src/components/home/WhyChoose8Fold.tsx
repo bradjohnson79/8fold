@@ -26,7 +26,7 @@ const FEATURES = [
   },
   {
     title: "Router Earnings",
-    description: "Earn 15% by routing jobs in your local community.",
+    description: "Earn 8% per completed job by routing work in your local community.",
     icon: (
       <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="3" />

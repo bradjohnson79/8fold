@@ -52,7 +52,7 @@ const TESTIMONIALS = [
     role: "Router",
     city: "Chicago, IL",
     quote:
-      "I earn 15% just by connecting people in my community. It's flexible and actually pays.",
+      "I earn 8% per completed job just by connecting people in my community. It's flexible and actually pays.",
   },
   {
     name: "Priya S.",

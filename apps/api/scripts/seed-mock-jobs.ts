@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import { REVENUE_SPLIT } from "@8fold/shared";
 import { assertNotProductionSeed } from "./_seedGuard";
 
 // Manual-only, deterministic seed. No cron, no auto-growth.
@@ -323,9 +324,9 @@ async function main() {
         const { title, scope } = titleForCategory(tradeCategory, city, seed);
         const laborTotalCents = moneyForCategory(tradeCategory, seed);
 
-        // Splits: router 15%, contractor 75%, platform remainder.
-        const routerEarningsCents = Math.round(laborTotalCents * 0.15);
-        const contractorPayoutCents = Math.round(laborTotalCents * 0.75);
+        // Splits: contractor 80%, router 8%, platform remainder.
+        const routerEarningsCents = Math.round(laborTotalCents * REVENUE_SPLIT.router);
+        const contractorPayoutCents = Math.round(laborTotalCents * REVENUE_SPLIT.contractor);
         const brokerFeeCents = Math.max(0, laborTotalCents - routerEarningsCents - contractorPayoutCents);
 
         const createdAt = randomRecentDate(seed, now);

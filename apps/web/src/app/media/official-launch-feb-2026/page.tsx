@@ -39,10 +39,10 @@ export default function OfficialLaunchFeb2026Page() {
               <strong>80%</strong> to the Contractor (85% for regional jobs)
             </li>
             <li>
-              <strong>10%</strong> to the Router (local coordinator)
+              <strong>8%</strong> to the Router (local coordinator)
             </li>
             <li>
-              <strong>10%</strong> to the Platform
+              <strong>12%</strong> to the Platform on standard jobs
             </li>
           </ul>
           <p className="mt-4 text-slate-700">

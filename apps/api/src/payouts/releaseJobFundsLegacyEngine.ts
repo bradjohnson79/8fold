@@ -17,6 +17,7 @@ import { getOrCreatePlatformUserId } from "@/src/system/platformUser";
 import { getStripeModeFromEnv } from "@/src/stripe/mode";
 import { isRefundInitiatedOrCompleteJobPayment } from "./releaseSafetyGuards";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { getPlatformFees } from "@/src/config/platformFees";
 
 type RoleLeg = "CONTRACTOR" | "ROUTER" | "PLATFORM";
 type Method = "STRIPE";
@@ -52,10 +53,10 @@ function splitCents(total: number, isRegional: boolean): { contractor: number; r
   const t = Number(total ?? 0);
   if (!Number.isInteger(t) || t <= 0) throw Object.assign(new Error("Invalid total cents"), { status: 400, code: "BAD_TOTAL" });
   // Rounding order: contractor first → router second → platform absorbs remainder.
-  const contractorRate = isRegional ? 0.85 : 0.80;
-  const contractor = Math.floor(t * contractorRate);
-  const router     = Math.floor(t * 0.10);
-  const platform   = t - contractor - router;
+  const fees = getPlatformFees(isRegional);
+  const contractor = Math.floor(t * fees.contractor);
+  const router = Math.floor(t * fees.router);
+  const platform = t - contractor - router;
   if (contractor < 0 || router < 0 || platform < 0) throw Object.assign(new Error("Invalid split"), { status: 500, code: "SPLIT_INVALID" });
   if (contractor + router + platform !== t) throw Object.assign(new Error("Split mismatch"), { status: 500, code: "SPLIT_MISMATCH" });
   return { contractor, router, platform };

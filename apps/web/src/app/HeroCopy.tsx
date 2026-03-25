@@ -9,19 +9,16 @@ export function HeroCopy() {
       </span>
       <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight tracking-tight">
         <span className="text-8fold-green-light">California</span>{" "}
-        Contractor Launch Phase
+        Trade Network Launch
       </h1>
       <p className="mt-5 text-xl font-semibold text-gray-200 max-w-xl leading-snug">
-        Join the 8Fold network early and secure your place in the future of
-        local trade work.
+        Connecting contractors with real local jobs without bidding, fees, or friction.
       </p>
       <p className="mt-4 text-base text-gray-400 max-w-xl leading-relaxed">
-        Contractors keep 80% of local jobs and up to 85% for regional jobs.
-        No lead fees. No bidding wars.
+        Contractors secure consistent work. Job posters get fast, reliable project fulfillment.
       </p>
       <p className="mt-3 text-sm text-gray-500 max-w-xl leading-relaxed">
-        We are currently building our California contractor network before
-        opening job posting statewide.
+        We are building a trusted local trade network across California before statewide routing expands.
       </p>
     </>
   );

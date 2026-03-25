@@ -119,14 +119,14 @@ export function Header() {
                   <DropdownItem
                     href="/workers/routers"
                     title="Routers"
-                    subtitle="Coordinate jobs and earn 10%"
+                    subtitle="Coordinate jobs and earn 8%"
                     active={active.workersRouters}
                     onClick={() => setWorkersOpen(false)}
                   />
                   <DropdownItem
                     href="/workers/contractors"
                     title="Contractors"
-                    subtitle="Get routed work, keep 80% + tips"
+                    subtitle="Get routed work, keep up to 80–85% + tips"
                     active={active.workersContractors}
                     onClick={() => setWorkersOpen(false)}
                   />
