@@ -24,6 +24,7 @@ import {
   discoveryDomainLogs,
   discoveryRunLeads,
   discoveryRuns,
+  jobPosterLeads,
 } from "@/db/schema/directoryEngine";
 import { rankEmailsForDomain } from "@/src/utils/scoreEmailPrefix";
 
@@ -329,37 +330,59 @@ export type DiscoveryRunLead = {
 };
 
 type DomainImportMetadata = Record<string, { city?: string; state?: string; country?: string }>;
+type CampaignType = "contractor" | "jobs";
 
 type RunContext = {
   importMeta: DomainImportMetadata;
   source: string;
-  existingDomains: Set<string>;
-  insertedDomains: Set<string>;
+  defaultCampaignType: CampaignType;
+  existingDomains: Record<CampaignType, Set<string>>;
+  insertedDomains: Record<CampaignType, Set<string>>;
 };
 
 export type DomainImportRow = {
   domain: string;
   category?: string;
+  campaignType?: CampaignType;
   city?: string;
   state?: string;
   country?: string;
+  targetLeadId?: string;
 };
 
 // ─── Lead Creation (FAST — no verification) ──────────────────────────────────
 
+async function nextContractorLeadNumber(): Promise<number> {
+  const seqResult = await db.execute(
+    sql`SELECT nextval('directory_engine.contractor_leads_lead_number_seq') AS n`
+  );
+  return Number(((seqResult.rows ?? seqResult) as Array<{ n: string }>)[0].n);
+}
+
+function resolveCampaignType(
+  domainRow: Pick<DomainImportRow, "campaignType">,
+  ctx: Pick<RunContext, "defaultCampaignType">
+): CampaignType {
+  return domainRow.campaignType ?? ctx.defaultCampaignType ?? "contractor";
+}
+
 async function createLeadForDomain(
-  domain: string,
+  domainRow: DomainImportRow,
   emails: string[],
   companyName: string,
   industry: string,
   contactName: string | null,
   ctx: RunContext
 ): Promise<{ inserted: boolean; duplicate: boolean }> {
-  if (ctx.existingDomains.has(domain)) {
+  const domain = domainRow.domain;
+  const campaignType = resolveCampaignType(domainRow, ctx);
+  const hasTargetLead = Boolean(domainRow.targetLeadId);
+
+  if (!hasTargetLead && ctx.existingDomains[campaignType].has(domain)) {
     console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
     return { inserted: false, duplicate: true };
   }
-  if (ctx.insertedDomains.has(domain)) {
+  if (!hasTargetLead && ctx.insertedDomains[campaignType].has(domain)) {
     console.log(`[LGS] Duplicate skipped (in-run): ${domain}`);
     return { inserted: false, duplicate: true };
   }
@@ -372,39 +395,131 @@ async function createLeadForDomain(
   const emailType = classifyEmailType(primary.email, domain);
   const locationMeta = ctx.importMeta[domain] ?? {};
 
-  const seqResult = await db.execute(
-    sql`SELECT nextval('directory_engine.contractor_leads_lead_number_seq') AS n`
-  );
-  const leadNumber = Number(((seqResult.rows ?? seqResult) as Array<{ n: string }>)[0].n);
+  if (campaignType === "jobs") {
+    if (domainRow.targetLeadId) {
+      await db
+        .update(jobPosterLeads)
+        .set({
+          email: primary.email,
+          companyName: companyName || undefined,
+          contactName: contactName && isValidPersonName(contactName) ? contactName : undefined,
+          trade: industry || undefined,
+          city: locationMeta.city ?? undefined,
+          state: locationMeta.state ?? undefined,
+          country: locationMeta.country ?? "US",
+          source: ctx.source,
+          needsEnrichment: false,
+          assignmentStatus: "ready",
+          emailVerificationStatus: "pending",
+          emailVerificationScore: null,
+          emailVerificationCheckedAt: null,
+          emailVerificationProvider: null,
+          status: "new",
+          archived: false,
+          archivedAt: null,
+          archiveReason: null,
+          scoreDirty: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(jobPosterLeads.id, domainRow.targetLeadId));
+    } else {
+      await db.insert(jobPosterLeads).values({
+        website: domain,
+        companyName: companyName || null,
+        contactName: contactName && isValidPersonName(contactName) ? contactName : null,
+        email: primary.email,
+        category: domainRow.category ?? "business",
+        trade: industry || null,
+        city: locationMeta.city ?? null,
+        state: locationMeta.state ?? null,
+        country: locationMeta.country ?? "US",
+        source: ctx.source,
+        needsEnrichment: false,
+        assignmentStatus: "ready",
+        emailVerificationStatus: "pending",
+        emailVerificationScore: null,
+        emailVerificationCheckedAt: null,
+        emailVerificationProvider: null,
+        status: "new",
+        archived: false,
+        archivedAt: null,
+        archiveReason: null,
+      });
+      ctx.insertedDomains[campaignType].add(domain);
+    }
+    return { inserted: true, duplicate: false };
+  }
 
-  await db.insert(contractorLeads).values({
-    leadNumber,
-    email: primary.email,
-    emailType,
-    primaryEmailScore: primary.score,
-    secondaryEmails:
-      secondaries.length > 0
-        ? secondaries.map((e) => ({ email: e.email, score: e.score }))
-        : null,
-    leadName: contactName && isValidPersonName(contactName) ? contactName : null,
-    businessName: companyName || null,
-    scrapedBusinessName: companyName || null,
-    website: domain || null,
-    trade: industry || null,
-    city: locationMeta.city ?? null,
-    state: locationMeta.state ?? null,
-    country: locationMeta.country ?? "US",
-    source: ctx.source,
-    leadSource: ctx.source,
-    discoveryMethod: "scraped_email",
-    verificationScore: 0,
-    verificationStatus: "pending",
-    verificationSource: null,
-    archived: false,
-    archivedAt: null,
-  });
+  if (domainRow.targetLeadId) {
+    await db
+      .update(contractorLeads)
+      .set({
+        email: primary.email,
+        emailType,
+        primaryEmailScore: primary.score,
+        secondaryEmails:
+          secondaries.length > 0
+            ? secondaries.map((e) => ({ email: e.email, score: e.score }))
+            : null,
+        leadName: contactName && isValidPersonName(contactName) ? contactName : undefined,
+        businessName: companyName || undefined,
+        scrapedBusinessName: companyName || undefined,
+        trade: industry || undefined,
+        city: locationMeta.city ?? undefined,
+        state: locationMeta.state ?? undefined,
+        country: locationMeta.country ?? "US",
+        source: ctx.source,
+        leadSource: ctx.source,
+        discoveryMethod: "scraped_email",
+        needsEnrichment: false,
+        assignmentStatus: "ready",
+        verificationScore: 0,
+        verificationStatus: "pending",
+        verificationSource: null,
+        emailVerificationStatus: "pending",
+        emailVerificationScore: null,
+        emailVerificationCheckedAt: null,
+        emailVerificationProvider: null,
+        archived: false,
+        archivedAt: null,
+        archiveReason: null,
+        scoreDirty: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(contractorLeads.id, domainRow.targetLeadId));
+  } else {
+    const leadNumber = await nextContractorLeadNumber();
 
-  ctx.insertedDomains.add(domain);
+    await db.insert(contractorLeads).values({
+      leadNumber,
+      email: primary.email,
+      emailType,
+      primaryEmailScore: primary.score,
+      secondaryEmails:
+        secondaries.length > 0
+          ? secondaries.map((e) => ({ email: e.email, score: e.score }))
+          : null,
+      leadName: contactName && isValidPersonName(contactName) ? contactName : null,
+      businessName: companyName || null,
+      scrapedBusinessName: companyName || null,
+      website: domain || null,
+      trade: industry || null,
+      city: locationMeta.city ?? null,
+      state: locationMeta.state ?? null,
+      country: locationMeta.country ?? "US",
+      source: ctx.source,
+      leadSource: ctx.source,
+      discoveryMethod: "scraped_email",
+      verificationScore: 0,
+      verificationStatus: "pending",
+      verificationSource: null,
+      archived: false,
+      archivedAt: null,
+    });
+
+    ctx.insertedDomains[campaignType].add(domain);
+  }
+
   return { inserted: true, duplicate: false };
 }
 
@@ -444,6 +559,7 @@ async function updateRunProgress(
   if (delta.emailsPatternGenerated != null) set.emailsPatternGenerated = sql`coalesce(${discoveryRuns.emailsPatternGenerated}, 0) + ${delta.emailsPatternGenerated}`;
   if (delta.emailsVerified != null) set.emailsVerified = sql`coalesce(${discoveryRuns.emailsVerified}, 0) + ${delta.emailsVerified}`;
   if (delta.contactsFound != null) set.contactsFound = sql`coalesce(${discoveryRuns.contactsFound}, 0) + ${delta.contactsFound}`;
+  set.status = sql`case when ${discoveryRuns.status} = 'stalled' then 'running' else ${discoveryRuns.status} end`;
   if (Object.keys(set).length > 0) {
     await db.update(discoveryRuns).set(set as Record<string, unknown>).where(eq(discoveryRuns.id, runId));
   }
@@ -539,7 +655,7 @@ async function processSingleDomain(
 
   try {
     ({ inserted, duplicate } = await createLeadForDomain(
-      baseDomain, validEmails, companyName, industry, bestContactName, ctx
+      { ...domainRow, domain: baseDomain }, validEmails, companyName, industry, bestContactName, ctx
     ));
   } catch (err) {
     console.error(`[LGS] createLeadForDomain failed (${baseDomain}):`, err instanceof Error ? err.message : err);
@@ -548,6 +664,7 @@ async function processSingleDomain(
   // ── 6. Log to history tables (non-fatal) ───────────────────────────────────
   const ranked = rankEmailsForDomain(validEmails);
   const primaryEmail = ranked[0]?.email ?? validEmails[0];
+  const campaignType = resolveCampaignType(domainRow, ctx);
 
   await Promise.allSettled(
     validEmails.map(async (email) => {
@@ -563,6 +680,7 @@ async function processSingleDomain(
           industry: industry || null,
           verificationScore: 0,
           discoveryMethod: scrapedCount > 0 ? "scraped_email" : "pattern_generated",
+          campaignType,
           imported: true,
           importStatus: duplicate ? "skipped_duplicate" : isPrimary ? "inserted" : "consolidated_secondary",
           skipReason: duplicate ? "duplicate_domain" : isPrimary ? null : "consolidated_secondary",
@@ -608,6 +726,7 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
   const [runRecord] = await db
     .select({
       autoImportSource: discoveryRuns.autoImportSource,
+      campaignType: discoveryRuns.campaignType,
       importDomainMetadata: discoveryRuns.importDomainMetadata,
     })
     .from(discoveryRuns)
@@ -616,28 +735,46 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
 
   const importMeta = ((runRecord?.importDomainMetadata ?? {}) as DomainImportMetadata);
   const source = runRecord?.autoImportSource ?? "website_import";
+  const defaultCampaignType = (runRecord?.campaignType === "jobs" ? "jobs" : "contractor") as CampaignType;
 
   // Pre-fetch existing domains once — no per-domain DB round-trips
   const domainList = domainRows.map((r) => r.domain.replace(/^www\./, "").toLowerCase());
-  const existingRows = domainList.length > 0
+  const existingContractorRows = domainList.length > 0
     ? await db
         .select({ website: contractorLeads.website })
         .from(contractorLeads)
         .where(inArray(contractorLeads.website, domainList))
     : [];
-  const existingDomains = new Set(
-    existingRows.map((r) => (r.website ?? "").toLowerCase()).filter(Boolean)
-  );
+  const existingJobPosterRows = domainList.length > 0
+    ? await db
+        .select({ website: jobPosterLeads.website })
+        .from(jobPosterLeads)
+        .where(inArray(jobPosterLeads.website, domainList))
+    : [];
+  const existingDomains = {
+    contractor: new Set(
+      existingContractorRows.map((r) => (r.website ?? "").toLowerCase()).filter(Boolean)
+    ),
+    jobs: new Set(
+      existingJobPosterRows.map((r) => (r.website ?? "").toLowerCase()).filter(Boolean)
+    ),
+  };
+  const existingCount =
+    existingDomains.contractor.size + existingDomains.jobs.size;
 
   console.log(
-    `[LGS] Run ${runId}: ${domainRows.length} domains to process, ${existingDomains.size} already in DB (will be skipped as duplicates)`
+    `[LGS] Run ${runId}: ${domainRows.length} domains to process, ${existingCount} already in DB (will be skipped as duplicates)`
   );
 
   const ctx: RunContext = {
     importMeta,
     source,
+    defaultCampaignType,
     existingDomains,
-    insertedDomains: new Set<string>(),
+    insertedDomains: {
+      contractor: new Set<string>(),
+      jobs: new Set<string>(),
+    },
   };
 
   let isCancelled = false;
@@ -721,7 +858,7 @@ export async function runBulkDomainDiscoveryAsync(
   rows: DomainImportRow[] | string[],
   opts?: {
     autoImportSource?: string;
-    campaignType?: "contractor" | "jobs";
+    campaignType?: CampaignType;
     targetCampaignId?: string;
     targetCategory?: string;
   }
@@ -766,6 +903,8 @@ export async function runBulkDomainDiscoveryAsync(
     }
   }
 
+  const defaultCampaignType = opts?.campaignType ?? uniqueRows[0]?.campaignType ?? "contractor";
+
   const [run] = await db
     .insert(discoveryRuns)
     .values({
@@ -785,6 +924,9 @@ export async function runBulkDomainDiscoveryAsync(
       emailsVerified: 0,
       emailsImported: 0,
       autoImportSource: opts?.autoImportSource ?? null,
+      campaignType: defaultCampaignType,
+      targetCampaignId: opts?.targetCampaignId ?? null,
+      targetCategory: opts?.targetCategory ?? null,
       importDomainMetadata: Object.keys(importDomainMetadata).length > 0 ? importDomainMetadata : null,
       status: "running",
     })
@@ -834,6 +976,7 @@ export async function importDiscoveryLeads(
 
   const [run] = await db.select().from(discoveryRuns).where(eq(discoveryRuns.id, runId)).limit(1);
   const importMeta = (run?.importDomainMetadata ?? {}) as DomainImportMetadata;
+  const defaultCampaignType = (run?.campaignType === "jobs" ? "jobs" : "contractor") as CampaignType;
 
   const rows = await db
     .select()
@@ -852,20 +995,33 @@ export async function importDiscoveryLeads(
   }
 
   const domainsToCheck = [...byDomain.keys()].filter(Boolean);
-  const existingDomainRows = domainsToCheck.length > 0
+  const existingContractorDomainRows = domainsToCheck.length > 0
     ? await db
         .select({ website: contractorLeads.website })
         .from(contractorLeads)
         .where(inArray(contractorLeads.website, domainsToCheck))
     : [];
-  const existingDomains = new Set(existingDomainRows.map((r) => (r.website ?? "").toLowerCase()));
-  const insertedDomains = new Set<string>();
+  const existingJobPosterDomainRows = domainsToCheck.length > 0
+    ? await db
+        .select({ website: jobPosterLeads.website })
+        .from(jobPosterLeads)
+        .where(inArray(jobPosterLeads.website, domainsToCheck))
+    : [];
+  const existingDomains = {
+    contractor: new Set(existingContractorDomainRows.map((r) => (r.website ?? "").toLowerCase())),
+    jobs: new Set(existingJobPosterDomainRows.map((r) => (r.website ?? "").toLowerCase())),
+  };
+  const insertedDomains = {
+    contractor: new Set<string>(),
+    jobs: new Set<string>(),
+  };
 
   let imported = 0;
   let duplicates = 0;
 
   for (const [domain, domainRows] of byDomain) {
-    if (existingDomains.has(domain) || insertedDomains.has(domain)) {
+    const campaignType = (domainRows[0]?.campaignType === "jobs" ? "jobs" : defaultCampaignType) as CampaignType;
+    if (existingDomains[campaignType].has(domain) || insertedDomains[campaignType].has(domain)) {
       for (const row of domainRows) {
         await db
           .update(discoveryRunLeads)
@@ -896,34 +1052,59 @@ export async function importDiscoveryLeads(
     const locationMeta = importMeta[domain] ?? {};
     const emailType = classifyEmailType(primaryEntry.email.toLowerCase(), domain || undefined);
 
-    const seqResult = await db.execute(
-      sql`SELECT nextval('directory_engine.contractor_leads_lead_number_seq') AS n`
-    );
-    const leadNumber = Number((seqResult.rows[0] as { n: string }).n);
+    if (campaignType === "jobs") {
+      await db.insert(jobPosterLeads).values({
+        website: domain,
+        companyName: primaryRow.businessName ?? null,
+        contactName:
+          primaryRow.contactName && isValidPersonName(primaryRow.contactName)
+            ? primaryRow.contactName
+            : null,
+        email: primaryEntry.email,
+        category: run?.targetCategory ?? "business",
+        trade: primaryRow.industry ?? null,
+        city: locationMeta.city ?? null,
+        state: locationMeta.state ?? null,
+        country: locationMeta.country ?? "US",
+        source,
+        needsEnrichment: false,
+        assignmentStatus: "ready",
+        emailVerificationStatus: "pending",
+        emailVerificationScore: null,
+        emailVerificationCheckedAt: null,
+        emailVerificationProvider: null,
+        status: "new",
+        archived: false,
+        archivedAt: null,
+        archiveReason: null,
+      });
+    } else {
+      const leadNumber = await nextContractorLeadNumber();
 
-    await db.insert(contractorLeads).values({
-      leadNumber,
-      email: primaryEntry.email,
-      emailType,
-      primaryEmailScore: primaryEntry.score,
-      secondaryEmails: secondaryEntries.length > 0
-        ? secondaryEntries.map((e) => ({ email: e.email, score: e.score }))
-        : null,
-      leadName: primaryRow.contactName && isValidPersonName(primaryRow.contactName) ? primaryRow.contactName : null,
-      businessName: primaryRow.businessName ?? null,
-      scrapedBusinessName: primaryRow.businessName ?? null,
-      website: domain || null,
-      trade: primaryRow.industry ?? null,
-      city: locationMeta.city ?? null,
-      state: locationMeta.state ?? null,
-      country: locationMeta.country ?? "US",
-      source,
-      leadSource: source,
-      discoveryMethod: primaryRow.discoveryMethod ?? "scraped_email",
-      verificationScore: 0,
-      verificationStatus: "pending",
-      verificationSource: null,
-    });
+      await db.insert(contractorLeads).values({
+        leadNumber,
+        email: primaryEntry.email,
+        emailType,
+        primaryEmailScore: primaryEntry.score,
+        secondaryEmails: secondaryEntries.length > 0
+          ? secondaryEntries.map((e) => ({ email: e.email, score: e.score }))
+          : null,
+        leadName: primaryRow.contactName && isValidPersonName(primaryRow.contactName) ? primaryRow.contactName : null,
+        businessName: primaryRow.businessName ?? null,
+        scrapedBusinessName: primaryRow.businessName ?? null,
+        website: domain || null,
+        trade: primaryRow.industry ?? null,
+        city: locationMeta.city ?? null,
+        state: locationMeta.state ?? null,
+        country: locationMeta.country ?? "US",
+        source,
+        leadSource: source,
+        discoveryMethod: primaryRow.discoveryMethod ?? "scraped_email",
+        verificationScore: 0,
+        verificationStatus: "pending",
+        verificationSource: null,
+      });
+    }
 
     await db
       .update(discoveryRunLeads)
@@ -940,7 +1121,7 @@ export async function importDiscoveryLeads(
       }
     }
 
-    insertedDomains.add(domain);
+    insertedDomains[campaignType].add(domain);
     imported++;
   }
 

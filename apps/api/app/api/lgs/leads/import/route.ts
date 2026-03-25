@@ -1,5 +1,5 @@
 /**
- * LGS: Import contractor websites from CSV/XLSX.
+ * LGS: Import leads from CSV/XLSX website lists.
  * Extracts domains (+ optional city/state/country), queues for discovery, auto-imports leads when complete.
  * Required column: website (or domain, url) — case-insensitive.
  * Optional columns: city, state, country — case-insensitive.
@@ -8,10 +8,16 @@ import { NextResponse } from "next/server";
 import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
 import { parseDomainFile } from "@/src/services/lgs/parseDomainFile";
 
+function normalizeLeadType(value: FormDataEntryValue | null): "contractor" | "job_poster" {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return normalized === "job_poster" ? "job_poster" : "contractor";
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const leadType = normalizeLeadType(formData.get("lead_type"));
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json({ ok: false, error: "file_required" }, { status: 400 });
     }
@@ -30,8 +36,12 @@ export async function POST(req: Request) {
     }
 
     const { rows, stats } = parsed;
+    const rowsWithLeadType = rows.map((row) => ({
+      ...row,
+      campaignType: row.campaignType ?? (leadType === "job_poster" ? "jobs" : "contractor"),
+    }));
 
-    if (rows.length === 0) {
+    if (rowsWithLeadType.length === 0) {
       return NextResponse.json(
         {
           ok: false,
@@ -42,15 +52,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const runId = await runBulkDomainDiscoveryAsync(rows, {
+    const runId = await runBulkDomainDiscoveryAsync(rowsWithLeadType, {
       autoImportSource: "website_import",
+      campaignType: leadType === "job_poster" ? "jobs" : "contractor",
     });
 
     return NextResponse.json({
       ok: true,
       data: {
         run_id: runId,
-        domains_total: rows.length,
+        domains_total: rowsWithLeadType.length,
+        lead_type: leadType,
         parse_stats: stats,
       },
     });

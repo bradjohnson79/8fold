@@ -20,11 +20,16 @@ type ParseStats = {
   skipped_duplicate: number;
 };
 
+type LeadType = "contractor" | "job_poster";
+
 type StatusData = {
   run_id: string;
   status: string;
+  raw_status?: string;
+  lead_type?: LeadType;
   domains_total: number;
   domains_processed: number;
+  progress_pct?: number;
   successful_domains: number;
   emails_found: number;
   qualified_emails: number;
@@ -32,6 +37,8 @@ type StatusData = {
   inserted_leads: number;
   duplicates_skipped: number;
   failed_domains: number;
+  heartbeat_at?: string | null;
+  stalled?: boolean;
   // Timing (populated after run completes)
   started_at: string | null;
   finished_at: string | null;
@@ -66,6 +73,7 @@ function ProgressBar({ pct, color = "#22c55e" }: { pct: number; color?: string }
 
 export default function ImportContractorWebsitesPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [leadType, setLeadType] = useState<LeadType>("contractor");
   const [loading, setLoading] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusData | null>(null);
@@ -76,6 +84,10 @@ export default function ImportContractorWebsitesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const pollFailsRef = useRef(0);
+  const lastMeaningfulUpdateRef = useRef<number>(Date.now());
+  const previousSnapshotRef = useRef<string>("");
+  const [pollFailures, setPollFailures] = useState(0);
+  const [nowTs, setNowTs] = useState(Date.now());
 
   const loadStatus = useCallback((id: string) => {
     fetch(`/api/lgs/discovery/runs/${id}/status`)
@@ -83,22 +95,38 @@ export default function ImportContractorWebsitesPage() {
       .then((json: { ok?: boolean; data?: StatusData }) => {
         if (json.ok && json.data) {
           pollFailsRef.current = 0;
+          setPollFailures(0);
+          const snapshot = [
+            json.data.status,
+            json.data.domains_processed,
+            json.data.inserted_leads,
+            json.data.failed_domains,
+            json.data.duplicates_skipped,
+            json.data.heartbeat_at ?? "",
+          ].join("|");
+          if (snapshot !== previousSnapshotRef.current) {
+            previousSnapshotRef.current = snapshot;
+            lastMeaningfulUpdateRef.current = Date.now();
+          }
           setStatus(json.data);
         } else {
           pollFailsRef.current++;
+          setPollFailures(pollFailsRef.current);
         }
       })
       .catch(() => {
         pollFailsRef.current++;
+        setPollFailures(pollFailsRef.current);
       });
   }, []);
 
   useEffect(() => {
-    if (!runId || !loading) return;
+    const done = ["complete", "complete_with_errors", "failed", "cancelled"];
+    if (!runId || (status?.status && done.includes(status.status))) return;
     loadStatus(runId);
     const interval = setInterval(() => loadStatus(runId), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [runId, loading, loadStatus]);
+  }, [runId, status?.status, loadStatus]);
 
   useEffect(() => {
     const done = ["complete", "complete_with_errors", "failed", "cancelled"];
@@ -106,6 +134,12 @@ export default function ImportContractorWebsitesPage() {
       setLoading(false);
     }
   }, [status?.status]);
+
+  useEffect(() => {
+    if (!runId) return;
+    const interval = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [runId]);
 
   function downloadTemplate() {
     const blob = new Blob([CSV_TEMPLATE], { type: "text/csv" });
@@ -125,9 +159,13 @@ export default function ImportContractorWebsitesPage() {
     setStatus(null);
     setParseStats(null);
     setRunId(null);
+    setPollFailures(0);
+    previousSnapshotRef.current = "";
+    lastMeaningfulUpdateRef.current = Date.now();
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("lead_type", leadType);
       const res = await fetch("/api/lgs/leads/import", {
         method: "POST",
         body: formData,
@@ -136,7 +174,7 @@ export default function ImportContractorWebsitesPage() {
         ok?: boolean;
         error?: string;
         stats?: ParseStats;
-        data?: { run_id: string; domains_total: number; parse_stats?: ParseStats };
+        data?: { run_id: string; domains_total: number; lead_type?: LeadType; parse_stats?: ParseStats };
       };
 
       if (res.ok && json.ok && json.data) {
@@ -145,8 +183,10 @@ export default function ImportContractorWebsitesPage() {
         setStatus({
           run_id: json.data.run_id,
           status: "running",
+          lead_type: json.data.lead_type ?? leadType,
           domains_total: json.data.domains_total ?? 0,
           domains_processed: 0,
+          progress_pct: 0,
           successful_domains: 0,
           emails_found: 0,
           qualified_emails: 0,
@@ -154,6 +194,8 @@ export default function ImportContractorWebsitesPage() {
           inserted_leads: 0,
           duplicates_skipped: 0,
           failed_domains: 0,
+          heartbeat_at: null,
+          stalled: false,
           started_at: null,
           finished_at: null,
           elapsed_ms: null,
@@ -189,22 +231,27 @@ export default function ImportContractorWebsitesPage() {
   const s = status;
   const domainsTotal = s?.domains_total ?? 0;
   const domainsProcessed = s?.domains_processed ?? 0;
-  const progressPct = domainsTotal > 0 ? Math.round((domainsProcessed / domainsTotal) * 100) : 0;
-  const isRunning = loading && (s?.status === "running" || s?.status === "cancel_requested");
+  const progressPct = s?.progress_pct ?? (domainsTotal > 0 ? Math.round((domainsProcessed / domainsTotal) * 100) : 0);
+  const isRunning = Boolean(runId) && (s?.status === "running" || s?.status === "cancel_requested" || s?.status === "stalled");
   const isComplete = s?.status === "complete" || s?.status === "complete_with_errors";
   const isCompleteWithErrors = s?.status === "complete_with_errors";
   const isFailed = s?.status === "failed";
   const isCancelled = s?.status === "cancelled";
   const isCancelRequested = s?.status === "cancel_requested";
+  const isStalled = s?.status === "stalled" || s?.stalled === true;
+  const activeLeadType = s?.lead_type ?? leadType;
+  const inactiveMs = nowTs - lastMeaningfulUpdateRef.current;
+  const showStillProcessing = isRunning && !isStalled && inactiveMs >= 15_000;
+  const leadTypeLabel = activeLeadType === "job_poster" ? "Job Poster Leads" : "Contractor Leads";
 
   return (
     <div style={{ maxWidth: 680 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-        <h1 style={{ margin: 0 }}>Import Contractor Websites</h1>
+        <h1 style={{ margin: 0 }}>Import Leads</h1>
         <HelpTooltip text={helpText.importContractorWebsites} />
       </div>
       <p style={{ color: "#64748b", marginBottom: "2rem", fontSize: "0.9rem" }}>
-        Upload a CSV or Excel file with contractor websites. The system will crawl each site, extract emails, and create lead records instantly. Email verification runs in the background afterward.
+        Upload a CSV or Excel file with websites. The system will crawl each site, extract emails, and create lead records in the correct pipeline. Email verification runs in the background afterward.
       </p>
 
       {/* Format documentation */}
@@ -220,8 +267,8 @@ export default function ImportContractorWebsitesPage() {
           </div>
           <div>
             <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: "0.4rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>Optional columns</div>
-            <code style={{ color: "#94a3b8", fontSize: "0.85rem" }}>city · state · country</code>
-            <div style={{ color: "#475569", fontSize: "0.78rem", marginTop: "0.2rem" }}>USA → US converted automatically</div>
+            <code style={{ color: "#94a3b8", fontSize: "0.85rem" }}>city · state · country · lead_type</code>
+            <div style={{ color: "#475569", fontSize: "0.78rem", marginTop: "0.2rem" }}>USA → US converted automatically · `lead_type` supports contractor or job_poster</div>
           </div>
         </div>
 
@@ -230,16 +277,16 @@ export default function ImportContractorWebsitesPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", fontFamily: "monospace" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
-                {["website", "city", "state", "country"].map((h) => (
+                {["website", "city", "state", "country", "lead_type"].map((h) => (
                   <th key={h} style={{ padding: "0.4rem 0.75rem", textAlign: "left", fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {[
-                ["proper-handyman.com", "San Jose", "CA", "US"],
-                ["torreshandymanservice.com", "San Jose", "CA", "US"],
-                ["https://abc.com/?utm_source=google", "San Jose", "CA", "USA"],
+                ["proper-handyman.com", "San Jose", "CA", "US", "contractor"],
+                ["torreshandymanservice.com", "San Jose", "CA", "US", "contractor"],
+                ["https://abc.com/?utm_source=google", "San Jose", "CA", "USA", "job_poster"],
               ].map((row, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid #0f172a" }}>
                   {row.map((cell, j) => (
@@ -288,9 +335,35 @@ export default function ImportContractorWebsitesPage() {
           />
         </div>
 
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={{ display: "block", fontSize: "0.78rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "0.4rem" }}>
+            Lead Type
+          </label>
+          <select
+            value={leadType}
+            onChange={(e) => setLeadType(e.target.value as LeadType)}
+            disabled={loading}
+            style={{
+              padding: "0.65rem 0.8rem",
+              background: "#0f172a",
+              border: "1px solid #334155",
+              borderRadius: 8,
+              color: "#e2e8f0",
+              fontSize: "0.9rem",
+              minWidth: 240,
+            }}
+          >
+            <option value="contractor">Contractor Leads</option>
+            <option value="job_poster">Job Poster Leads</option>
+          </select>
+        </div>
+
         {file && (
           <div style={{ fontSize: "0.82rem", color: "#64748b", marginBottom: "0.75rem" }}>
             Selected: <strong style={{ color: "#94a3b8" }}>{file.name}</strong> ({(file.size / 1024).toFixed(0)} KB)
+            <div style={{ marginTop: "0.25rem" }}>
+              Importing as: <strong style={{ color: "#f8fafc" }}>{leadTypeLabel}</strong>
+            </div>
           </div>
         )}
 
@@ -402,13 +475,25 @@ export default function ImportContractorWebsitesPage() {
                 background: isCompleteWithErrors ? "#2d1a00" : isComplete ? "#1e3a2f" : isFailed ? "#3b1a1a" : isCancelled ? "#450a0a" : "#1a2b3d",
                 color: isCompleteWithErrors ? "#fbbf24" : isComplete ? "#4ade80" : isFailed ? "#f87171" : isCancelled ? "#f87171" : "#60a5fa",
               }}>
-                {isCompleteWithErrors ? "⚠ With Errors" : isComplete ? "Complete" : isFailed ? "Failed" : isCancelled ? "Cancelled" : `${progressPct}%`}
+                {isCompleteWithErrors ? "⚠ With Errors" : isComplete ? "Complete" : isFailed ? "Failed" : isCancelled ? "Cancelled" : isStalled ? "Delayed" : `${progressPct}%`}
               </span>
             </div>
           </div>
 
           {isRunning && (
             <ProgressBar pct={progressPct} color={isCancelRequested ? "#ef4444" : progressPct === 100 ? "#22c55e" : "#3b82f6"} />
+          )}
+
+          {isRunning && (
+            <div style={{ marginTop: "0.5rem", padding: "0.75rem 0.9rem", background: isStalled ? "#3b2a12" : "#13263a", border: `1px solid ${isStalled ? "#92400e" : "#1d4ed8"}`, borderRadius: 8, color: isStalled ? "#fdba74" : "#93c5fd", fontSize: "0.84rem" }}>
+              <strong style={{ color: isStalled ? "#fed7aa" : "#dbeafe" }}>
+                {isStalled ? "Processing delayed — retrying..." : showStillProcessing ? "Still processing — scanning domains..." : "Scan in progress"}
+              </strong>
+              <div style={{ marginTop: "0.25rem", color: isStalled ? "#fdba74" : "#93c5fd" }}>
+                Importing as: {leadTypeLabel}
+                {pollFailures > 0 ? ` · reconnecting to progress updates (${pollFailures})` : ""}
+              </div>
+            </div>
           )}
 
           <div style={{ marginTop: "0.5rem" }}>
@@ -492,7 +577,7 @@ export default function ImportContractorWebsitesPage() {
                 )}
                 <button
                   type="button"
-                  onClick={() => { setStatus(null); setFile(null); setRunId(null); setParseStats(null); setErr(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  onClick={() => { setStatus(null); setFile(null); setRunId(null); setParseStats(null); setErr(null); setPollFailures(0); previousSnapshotRef.current = ""; lastMeaningfulUpdateRef.current = Date.now(); if (fileInputRef.current) fileInputRef.current.value = ""; }}
                   style={{ padding: "0.5rem 1rem", background: "transparent", border: "1px solid #475569", borderRadius: 7, color: "#94a3b8", cursor: "pointer", fontSize: "0.875rem" }}
                 >
                   Start New Scan
@@ -520,7 +605,7 @@ export default function ImportContractorWebsitesPage() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => { setStatus(null); setFile(null); setRunId(null); setParseStats(null); setErr(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  onClick={() => { setStatus(null); setFile(null); setRunId(null); setParseStats(null); setErr(null); setPollFailures(0); previousSnapshotRef.current = ""; lastMeaningfulUpdateRef.current = Date.now(); if (fileInputRef.current) fileInputRef.current.value = ""; }}
                   style={{ padding: "0.5rem 1rem", background: "transparent", border: "1px solid #475569", borderRadius: 7, color: "#94a3b8", cursor: "pointer", fontSize: "0.875rem" }}
                 >
                   Import Another File

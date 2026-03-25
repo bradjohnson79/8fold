@@ -4,10 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 
-type Role = "JOB_POSTER" | "ROUTER" | "CONTRACTOR";
+type StoredRole = "job_poster" | "router" | "contractor" | "JOB_POSTER" | "ROUTER" | "CONTRACTOR";
+type ApiRole = "JOB_POSTER" | "ROUTER" | "CONTRACTOR";
 
-function isRole(value: string | null): value is Role {
-  return value === "JOB_POSTER" || value === "ROUTER" || value === "CONTRACTOR";
+function isRole(value: string | null): value is StoredRole {
+  return value === "JOB_POSTER" || value === "ROUTER" || value === "CONTRACTOR" || value === "job_poster" || value === "router" || value === "contractor";
+}
+
+function toApiRole(value: StoredRole): ApiRole {
+  if (value === "job_poster" || value === "JOB_POSTER") return "JOB_POSTER";
+  if (value === "router" || value === "ROUTER") return "ROUTER";
+  return "CONTRACTOR";
 }
 
 export default function CompleteRegistrationPage() {
@@ -24,9 +31,10 @@ export default function CompleteRegistrationPage() {
 
     const selectedRoleRaw = localStorage.getItem("selectedRole");
     if (!isRole(selectedRoleRaw)) {
-      router.replace("/choose-role");
+      router.replace("/signup");
       return;
     }
+    const selectedRole = toApiRole(selectedRoleRaw);
 
     void (async () => {
       setError("");
@@ -34,7 +42,7 @@ export default function CompleteRegistrationPage() {
         const resp = await fetch("/api/users/complete-registration", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ role: selectedRoleRaw }),
+          body: JSON.stringify({ role: selectedRole }),
         });
         const json = (await resp.json().catch(() => null)) as any;
         if (!resp.ok || json?.ok !== true) {
