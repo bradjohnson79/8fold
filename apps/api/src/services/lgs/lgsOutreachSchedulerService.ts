@@ -23,6 +23,7 @@ import {
   sendOutreachEmail,
   type SendResult,
 } from "./outreachGmailSenderService";
+import { LGS_GMAIL_INBOUND_PIPELINES } from "./gmailInboundConfig";
 import { normalizeVerificationStatus } from "./simpleEmailVerification";
 
 // ── Shared constant: sender health severity order ─────────────────────────────
@@ -208,9 +209,15 @@ type EligibleSender = {
 };
 
 export async function selectAvailableSender(
-  settings: BrainSettings
+  settings: BrainSettings,
+  pipeline: "contractor" | "jobs" = "contractor",
 ): Promise<{ id: string; senderEmail: string } | null> {
   if (!isWithinSendWindow()) return null;
+  const allowedSenders = new Set(
+    (pipeline === "contractor"
+      ? LGS_GMAIL_INBOUND_PIPELINES.contractor
+      : LGS_GMAIL_INBOUND_PIPELINES.jobs).map((email) => email.trim().toLowerCase()),
+  );
 
   const senders = await db
     .select({
@@ -237,6 +244,7 @@ export async function selectAvailableSender(
 
   for (const s of senders) {
     if (!s.outreachEnabled) continue;
+    if (!allowedSenders.has((s.senderEmail ?? "").trim().toLowerCase())) continue;
     if (s.warmupStatus !== "warming" && s.warmupStatus !== "ready") continue;
     if (s.cooldownUntil && new Date(s.cooldownUntil) > now) continue;
 
@@ -291,7 +299,7 @@ async function fetchNextQueuedMessage(
   outreachStage: string | null;
   verificationStatus: string | null;
 } | null> {
-  const sender = await selectAvailableSender(settings);
+  const sender = await selectAvailableSender(settings, "contractor");
   if (!sender) return null;
 
   const rows = await db
@@ -302,6 +310,7 @@ async function fetchNextQueuedMessage(
       subject: outreachMessages.subject,
       body: outreachMessages.body,
       messageType: outreachMessages.messageType,
+      messageStatus: outreachMessages.status,
       email: contractorLeads.email,
       website: contractorLeads.website,
       outreachStage: contractorLeads.outreachStage,
@@ -325,6 +334,7 @@ async function fetchNextQueuedMessage(
 
   for (const row of rows) {
     if (!row.subject || !row.body || !row.email) continue;
+    if (row.messageStatus !== "approved" && row.messageStatus !== "queued") continue;
 
     const blockedStages = ["replied", "converted", "paused", "archived"];
     if (row.outreachStage && blockedStages.includes(row.outreachStage)) continue;
