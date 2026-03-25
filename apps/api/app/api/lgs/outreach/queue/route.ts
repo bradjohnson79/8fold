@@ -42,9 +42,12 @@ export async function GET(req: NextRequest) {
     const sysCapacityUsed = Number(capacityRow?.totalSent ?? 0);
     const sysCapacityTotal = Number(capacityRow?.totalLimit ?? 0);
     const sysCapacityRemaining = Math.max(0, sysCapacityTotal - sysCapacityUsed);
-    const predictedSender = sysCapacityRemaining > 0
+    const senderSelection = sysCapacityRemaining > 0
       ? await selectAvailableSender(await loadBrainSettings(), "contractor")
       : null;
+    const blockedReason = senderSelection && "blocked" in senderSelection ? senderSelection.reason : undefined;
+    const nextSendWindow = senderSelection && "blocked" in senderSelection ? senderSelection.nextSendWindow : undefined;
+    const predictedSender = senderSelection && !("blocked" in senderSelection) ? senderSelection : null;
 
     const whereClause = status ? eq(lgsOutreachQueue.sendStatus, status) : undefined;
 
@@ -106,6 +109,9 @@ export async function GET(req: NextRequest) {
       } else if (sysCapacityRemaining === 0) {
         reasonCodes.push("blocked_no_capacity");
       }
+      if (blockedReason === "outside_send_window" && row.sendStatus === "pending") {
+        reasonCodes.push("blocked_outside_send_window");
+      }
 
       return {
         id: row.id,
@@ -118,7 +124,9 @@ export async function GET(req: NextRequest) {
         attempts: row.attempts ?? 0,
         error_message: row.errorMessage,
         created_at: row.createdAt?.toISOString() ?? null,
-        next_send_at: nextSendAt,
+        next_send_at: blockedReason === "outside_send_window"
+          ? nextSendWindow?.toISOString() ?? null
+          : nextSendAt,
         subject: row.subject,
         message_type: row.messageType ?? "intro_standard",
         lead_email: row.leadEmail,
@@ -128,12 +136,14 @@ export async function GET(req: NextRequest) {
         verification_status: verificationStatus,
         archived: isArchived,
         reason_codes: reasonCodes,
-        is_ready: ready && row.sendStatus === "pending",
+        is_ready: ready && row.sendStatus === "pending" && blockedReason !== "outside_send_window",
       };
     });
 
     return NextResponse.json({
       ok: true,
+      blocked_reason: blockedReason,
+      next_send_window: nextSendWindow?.toISOString() ?? null,
       summary: {
         pending: Number(summary?.pending ?? 0),
         sent: Number(summary?.sent ?? 0),

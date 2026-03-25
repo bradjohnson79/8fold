@@ -23,6 +23,8 @@ type QueueCycleResult = {
   processed: number;
   sent: number;
   failed: number;
+  blockedReason?: "outside_send_window";
+  nextSendWindow?: Date;
 };
 
 function mergeOutboundMetadata(
@@ -60,6 +62,14 @@ async function fetchNextQueuedJobPosterMessage() {
   const sender = await selectAvailableSender(settings, "jobs");
   if (!sender) {
     return { settings, item: null };
+  }
+  if ("blocked" in sender) {
+    return {
+      settings,
+      item: null,
+      blockedReason: sender.reason,
+      nextSendWindow: sender.nextSendWindow,
+    };
   }
 
   const rows = await db
@@ -148,9 +158,9 @@ async function fetchNextQueuedJobPosterMessage() {
 export async function runJobPosterQueueCycle(): Promise<QueueCycleResult> {
   console.log("[Job Poster] Processing queue...");
 
-  const { item } = await fetchNextQueuedJobPosterMessage();
+  const { item, blockedReason, nextSendWindow } = await fetchNextQueuedJobPosterMessage();
   if (!item) {
-    return { processed: 0, sent: 0, failed: 0 };
+    return { processed: 0, sent: 0, failed: 0, blockedReason, nextSendWindow };
   }
 
   await addRandomDelay();

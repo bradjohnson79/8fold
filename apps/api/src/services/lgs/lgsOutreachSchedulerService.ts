@@ -79,6 +79,24 @@ type BrainSettings = {
   domainCooldownDays: number;
 };
 
+export type SendWindowBlock = {
+  blocked: true;
+  reason: "outside_send_window";
+  nextSendWindow: Date;
+};
+
+export type OutreachCycleResult = {
+  sent: number;
+  failed: number;
+  blockedReason?: "outside_send_window";
+  nextSendWindow?: Date;
+};
+
+export type SenderSelectionResult =
+  | { id: string; senderEmail: string }
+  | SendWindowBlock
+  | null;
+
 const DEFAULT_SETTINGS: BrainSettings = {
   minSenderHealthLevel: "risk",
   domainCooldownDays: 1,
@@ -116,6 +134,20 @@ function isWithinSendWindow(): boolean {
   const utcHour = now.getUTCHours();
   const ptHour = (utcHour + ptOffset + 24) % 24;
   return ptHour >= SEND_WINDOW_START_HOUR && ptHour < SEND_WINDOW_END_HOUR;
+}
+
+export function getNextSendWindow(): Date {
+  const ptOffset = -8;
+  const targetUtcHour = (SEND_WINDOW_START_HOUR - ptOffset + 24) % 24;
+  const now = new Date();
+  const next = new Date(now);
+  next.setUTCHours(targetUtcHour, 0, 0, 0);
+
+  if (now >= next) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+
+  return next;
 }
 
 /** Extract normalized domain from a website URL or email, for cooldown checks. */
@@ -242,8 +274,16 @@ function mergeOutboundMetadata(
 export async function selectAvailableSender(
   settings: BrainSettings,
   pipeline: "contractor" | "jobs" = "contractor",
-): Promise<{ id: string; senderEmail: string } | null> {
-  if (!isWithinSendWindow()) return null;
+): Promise<SenderSelectionResult> {
+  if (!isWithinSendWindow()) {
+    const nextSendWindow = getNextSendWindow();
+    console.log("[OUTREACH BLOCKED] Outside send window. Next:", nextSendWindow.toISOString());
+    return {
+      blocked: true,
+      reason: "outside_send_window",
+      nextSendWindow,
+    };
+  }
   const allowedSenders = new Set(
     (pipeline === "contractor"
       ? LGS_GMAIL_INBOUND_PIPELINES.contractor
@@ -316,23 +356,39 @@ export async function selectAvailableSender(
 
 async function fetchNextQueuedMessage(
   settings: BrainSettings
-): Promise<{
-  queueId: string;
-  messageId: string;
-  leadId: string;
-  email: string;
-  subject: string;
-  body: string;
-  messageType: string | null;
-  generationContext: unknown;
-  senderEmail: string;
-  senderId: string;
-  website: string | null;
-  outreachStage: string | null;
-  verificationStatus: string | null;
-} | null> {
+): Promise<
+  | {
+      kind: "ready";
+      queueId: string;
+      messageId: string;
+      leadId: string;
+      email: string;
+      subject: string;
+      body: string;
+      messageType: string | null;
+      generationContext: unknown;
+      senderEmail: string;
+      senderId: string;
+      website: string | null;
+      outreachStage: string | null;
+      verificationStatus: string | null;
+    }
+  | {
+      kind: "blocked";
+      blockedReason: "outside_send_window";
+      nextSendWindow: Date;
+    }
+  | null
+> {
   const sender = await selectAvailableSender(settings, "contractor");
   if (!sender) return null;
+  if ("blocked" in sender) {
+    return {
+      kind: "blocked",
+      blockedReason: sender.reason,
+      nextSendWindow: sender.nextSendWindow,
+    };
+  }
 
   const rows = await db
     .select({
@@ -388,6 +444,7 @@ async function fetchNextQueuedMessage(
     }
 
     return {
+      kind: "ready",
       queueId: row.queueId,
       messageId: row.messageId,
       leadId: row.leadId,
@@ -483,7 +540,7 @@ async function markDomainRisk(companyDomain: string | null, bounceReason: string
 
 // ── Main scheduler entry point ────────────────────────────────────────────────
 
-export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed: number }> {
+export async function runLgsOutreachScheduler(): Promise<OutreachCycleResult> {
   const settings = await loadBrainSettings();
 
   // Queue backpressure check
@@ -501,6 +558,14 @@ export async function runLgsOutreachScheduler(): Promise<{ sent: number; failed:
   // Process the lightweight queue only.
   const queued = await fetchNextQueuedMessage(settings);
   if (!queued) return { sent: 0, failed: 0 };
+  if (queued.kind === "blocked") {
+    return {
+      sent: 0,
+      failed: 0,
+      blockedReason: queued.blockedReason,
+      nextSendWindow: queued.nextSendWindow,
+    };
+  }
 
   await addRandomDelay();
 
