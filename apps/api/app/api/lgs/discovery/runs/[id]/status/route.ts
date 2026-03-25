@@ -3,9 +3,11 @@
  * Returns all counters used in the import progress dashboard.
  */
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { discoveryRuns } from "@/db/schema/directoryEngine";
+import { discoveryDomainLogs, discoveryRuns } from "@/db/schema/directoryEngine";
+
+const STALL_THRESHOLD_MS = 60_000;
 
 export async function GET(
   req: Request,
@@ -27,8 +29,36 @@ export async function GET(
       return NextResponse.json({ ok: false, error: "run_not_found" }, { status: 404 });
     }
 
+    const [lastActivityRow] = await db
+      .select({
+        lastActivityAt: sql<Date | null>`max(${discoveryDomainLogs.createdAt})`,
+      })
+      .from(discoveryDomainLogs)
+      .where(eq(discoveryDomainLogs.runId, runId));
+
+    const now = Date.now();
+    const lastActivityAt = lastActivityRow?.lastActivityAt ?? run.startedAt ?? run.createdAt ?? null;
+    const lastActivityMs = lastActivityAt ? now - lastActivityAt.getTime() : null;
+    const terminalStatuses = new Set(["complete", "complete_with_errors", "failed", "cancelled"]);
+    const rawStatus = run.status ?? "running";
+    const isStalled =
+      !terminalStatuses.has(rawStatus) &&
+      rawStatus !== "cancel_requested" &&
+      lastActivityMs !== null &&
+      lastActivityMs >= STALL_THRESHOLD_MS;
+    const effectiveStatus = isStalled ? "stalled" : rawStatus;
+
+    if (isStalled && rawStatus !== "stalled") {
+      await db
+        .update(discoveryRuns)
+        .set({ status: "stalled" })
+        .where(eq(discoveryRuns.id, runId));
+    }
+
     // Compute derived timing metrics
-    const elapsedMs = run.elapsedMs ?? null;
+    const elapsedMs =
+      run.elapsedMs ??
+      (run.startedAt ? now - run.startedAt.getTime() : null);
     const domainsProcessed = run.domainsProcessed ?? 0;
     const avgDomainsPerSecond =
       elapsedMs && elapsedMs > 0 && domainsProcessed > 0
@@ -47,10 +77,15 @@ export async function GET(
       ok: true,
       data: {
         run_id: run.id,
-        status: run.status ?? "running",
+        status: effectiveStatus,
+        raw_status: rawStatus,
+        lead_type: run.campaignType === "jobs" ? "job_poster" : "contractor",
         // Domain counters
         domains_total: run.domainsTotal ?? 0,
         domains_processed: domainsProcessed,
+        progress_pct: run.domainsTotal && run.domainsTotal > 0
+          ? Math.floor((domainsProcessed / run.domainsTotal) * 100)
+          : 0,
         successful_domains: run.successfulDomains ?? 0,
         failed_domains: run.failedDomains ?? 0,
         skipped_domains: run.skippedDomains ?? 0,
@@ -68,6 +103,8 @@ export async function GET(
         // Timing
         started_at: run.startedAt?.toISOString() ?? null,
         finished_at: run.finishedAt?.toISOString() ?? null,
+        heartbeat_at: lastActivityAt?.toISOString() ?? null,
+        stalled: isStalled,
         elapsed_ms: elapsedMs,
         elapsed_display: formatDuration(elapsedMs),
         avg_domains_per_second: avgDomainsPerSecond,
