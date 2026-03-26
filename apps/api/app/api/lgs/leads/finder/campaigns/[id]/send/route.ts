@@ -10,15 +10,17 @@ import {
   leadFinderDomains,
 } from "@/db/schema/directoryEngine";
 import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
+import { triggerDiscoveryRun } from "@/src/services/lgs/discoveryRunTriggerService";
 
 const BATCH_SIZE = 200;
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const origin = new URL(req.url).origin;
 
     const [campaign] = await db
       .select({ id: leadFinderCampaigns.id, status: leadFinderCampaigns.status, state: leadFinderCampaigns.state })
@@ -67,6 +69,12 @@ export async function POST(
         autoImportSource: "lead_finder",
       });
       runIds.push(runId);
+      console.log("[LGS] Lead finder discovery run queued", {
+        campaignId: id,
+        runId,
+        domains: domainRows.length,
+      });
+      triggerDiscoveryRun(origin, runId, "lead_finder_send");
 
       // Mark these domains as sent and record the discovery run id
       for (const domain of batch) {

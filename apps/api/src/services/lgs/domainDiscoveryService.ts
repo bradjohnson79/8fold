@@ -34,7 +34,10 @@ const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 
 const PAGES_TO_CRAWL = ["/", "/contact", "/contact-us", "/about"];
 const DOMAIN_CONCURRENCY = 10;
+const DISCOVERY_BATCH_SIZE = 25;
+const DISCOVERY_INVOCATION_BUDGET_MS = 20_000;
 const PAGE_TIMEOUT_MS = 5000;
+const PAGE_FETCH_MAX_ATTEMPTS = 2;
 const MAX_PATTERNS_PER_DOMAIN = 8;
 
 const COMMON_PREFIXES = [
@@ -189,7 +192,7 @@ function generateEmailCandidates(
   return Array.from(candidates).slice(0, MAX_PATTERNS_PER_DOMAIN);
 }
 
-async function fetchPage(url: string): Promise<string> {
+async function fetchPage(url: string, attempt = 1): Promise<string> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
@@ -201,6 +204,9 @@ async function fetchPage(url: string): Promise<string> {
     if (!res.ok) return "";
     return await res.text();
   } catch {
+    if (attempt < PAGE_FETCH_MAX_ATTEMPTS) {
+      return fetchPage(url, attempt + 1);
+    }
     return "";
   }
 }
@@ -333,6 +339,7 @@ type DomainImportMetadata = Record<string, { city?: string; state?: string; coun
 type CampaignType = "contractor" | "jobs";
 type StoredImportDomainMetadata = Record<string, unknown> & {
   __queued_rows?: DomainImportRow[];
+  __queue_cursor?: number;
 };
 
 type RunContext = {
@@ -397,6 +404,19 @@ function decodeQueuedRows(value: unknown): DomainImportRow[] {
       return candidate;
     })
     .filter((row): row is DomainImportRow => row !== null);
+}
+
+function readStoredImportMetadata(value: unknown): StoredImportDomainMetadata {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as StoredImportDomainMetadata;
+}
+
+function readQueueCursor(value: unknown): number {
+  const rawCursor = readStoredImportMetadata(value).__queue_cursor;
+  if (typeof rawCursor !== "number" || !Number.isFinite(rawCursor) || rawCursor < 0) {
+    return 0;
+  }
+  return Math.floor(rawCursor);
 }
 
 // ─── Lead Creation (FAST — no verification) ──────────────────────────────────
@@ -770,7 +790,7 @@ async function processSingleDomain(
 
 // ─── Run Orchestration ───────────────────────────────────────────────────────
 
-async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[]): Promise<void> {
+async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[]): Promise<boolean> {
   const limit = pLimit(DOMAIN_CONCURRENCY);
 
   const [runRecord] = await db
@@ -809,12 +829,13 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
       existingJobPosterRows.map((r) => (r.website ?? "").toLowerCase()).filter(Boolean)
     ),
   };
-  const existingCount =
-    existingDomains.contractor.size + existingDomains.jobs.size;
+  const existingCount = existingDomains.contractor.size + existingDomains.jobs.size;
 
-  console.log(
-    `[LGS] Run ${runId}: ${domainRows.length} domains to process, ${existingCount} already in DB (will be skipped as duplicates)`
-  );
+  console.log("[LGS] Discovery batch claimed", {
+    runId,
+    batchSize: domainRows.length,
+    existingCount,
+  });
 
   const ctx: RunContext = {
     importMeta,
@@ -861,19 +882,27 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
     )
   );
 
-  const finishedAt = new Date();
-
   if (isCancelled) {
+    const finishedAt = new Date();
     await db
       .update(discoveryRuns)
       .set({ status: "cancelled", finishedAt })
       .where(eq(discoveryRuns.id, runId));
     console.log(`[LGS] Discovery run ${runId} cancelled — leads created up to this point are kept.`);
-    return;
+    return true;
   }
 
+  return false;
+}
+
+async function finalizeDiscoveryRun(runId: string): Promise<void> {
+  const finishedAt = new Date();
   const [finalCounts] = await db
-    .select({ processed: discoveryRuns.domainsProcessed, failed: discoveryRuns.failedDomains, startedAt: discoveryRuns.startedAt })
+    .select({
+      processed: discoveryRuns.domainsProcessed,
+      failed: discoveryRuns.failedDomains,
+      startedAt: discoveryRuns.startedAt,
+    })
     .from(discoveryRuns)
     .where(eq(discoveryRuns.id, runId))
     .limit(1);
@@ -932,6 +961,7 @@ export async function processDiscoveryRunById(runId: string): Promise<{
   ok: boolean;
   status: "claimed" | "already_running" | "not_found" | "not_claimable";
   queuedDomains: number;
+  remainingDomains: number;
 }> {
   const [run] = await db
     .select({
@@ -943,17 +973,19 @@ export async function processDiscoveryRunById(runId: string): Promise<{
     .limit(1);
 
   if (!run) {
-    return { ok: false, status: "not_found", queuedDomains: 0 };
+    return { ok: false, status: "not_found", queuedDomains: 0, remainingDomains: 0 };
   }
 
-  const queuedRows = decodeQueuedRows(run.importDomainMetadata);
+  const storedImportMetadata = readStoredImportMetadata(run.importDomainMetadata);
+  const queuedRows = decodeQueuedRows(storedImportMetadata);
+  const queueCursor = readQueueCursor(storedImportMetadata);
   if (queuedRows.length === 0) {
     console.error("[LGS] Discovery run has no queued rows to process", { runId });
     await db
       .update(discoveryRuns)
       .set({ status: "failed", finishedAt: new Date() })
       .where(eq(discoveryRuns.id, runId));
-    return { ok: false, status: "not_claimable", queuedDomains: 0 };
+    return { ok: false, status: "not_claimable", queuedDomains: 0, remainingDomains: 0 };
   }
 
   const claimStatus = await claimDiscoveryRun(runId);
@@ -962,14 +994,71 @@ export async function processDiscoveryRunById(runId: string): Promise<{
       ok: claimStatus === "already_running",
       status: claimStatus,
       queuedDomains: queuedRows.length,
+      remainingDomains: Math.max(0, queuedRows.length - queueCursor),
     };
   }
 
-  console.log("[LGS] Scan job started", runId, { queuedDomains: queuedRows.length });
+  let nextCursor = queueCursor;
+  if (nextCursor >= queuedRows.length) {
+    await finalizeDiscoveryRun(runId);
+    return { ok: true, status: "claimed", queuedDomains: queuedRows.length, remainingDomains: 0 };
+  }
+
+  console.log("[LGS] Scan job started", runId, {
+    queuedDomains: queuedRows.length,
+    queueCursor,
+  });
 
   try {
-    await processDiscoveryRun(runId, queuedRows);
-    return { ok: true, status: "claimed", queuedDomains: queuedRows.length };
+    const invocationStartedAt = Date.now();
+    let wasCancelled = false;
+
+    while (nextCursor < queuedRows.length) {
+      const nextBatch = queuedRows.slice(nextCursor, nextCursor + DISCOVERY_BATCH_SIZE);
+      if (nextBatch.length === 0) break;
+
+      wasCancelled = await processDiscoveryRun(runId, nextBatch);
+      nextCursor += nextBatch.length;
+
+      if (wasCancelled) {
+        break;
+      }
+
+      if (Date.now() - invocationStartedAt >= DISCOVERY_INVOCATION_BUDGET_MS) {
+        break;
+      }
+    }
+
+    const remainingDomains = Math.max(0, queuedRows.length - nextCursor);
+
+    if (wasCancelled) {
+      return { ok: true, status: "claimed", queuedDomains: queuedRows.length, remainingDomains };
+    }
+
+    if (remainingDomains > 0) {
+      await db
+        .update(discoveryRuns)
+        .set({
+          status: "pending",
+          importDomainMetadata: {
+            ...storedImportMetadata,
+            __queued_rows: queuedRows,
+            __queue_cursor: nextCursor,
+          },
+        })
+        .where(eq(discoveryRuns.id, runId));
+
+      console.log("[LGS] Discovery run batch complete, re-queued remaining domains", {
+        runId,
+        nextCursor,
+        remainingDomains,
+      });
+
+      return { ok: true, status: "claimed", queuedDomains: queuedRows.length, remainingDomains };
+    }
+
+    await finalizeDiscoveryRun(runId);
+    return { ok: true, status: "claimed", queuedDomains: queuedRows.length, remainingDomains: 0 };
   } catch (err) {
     console.error("[LGS] Discovery run crashed:", err);
     try {
@@ -989,6 +1078,37 @@ export async function processDiscoveryRunById(runId: string): Promise<{
     }
     throw err;
   }
+}
+
+export async function processNextQueuedDiscoveryRun(): Promise<{
+  ok: boolean;
+  runId: string | null;
+  status: "claimed" | "already_running" | "not_found" | "not_claimable" | "empty";
+  queuedDomains: number;
+  remainingDomains: number;
+}> {
+  const [nextRun] = await db
+    .select({ id: discoveryRuns.id })
+    .from(discoveryRuns)
+    .where(inArray(discoveryRuns.status, ["pending", "stalled"]))
+    .orderBy(sql`${discoveryRuns.createdAt} asc`)
+    .limit(1);
+
+  if (!nextRun) {
+    return {
+      ok: true,
+      runId: null,
+      status: "empty",
+      queuedDomains: 0,
+      remainingDomains: 0,
+    };
+  }
+
+  const result = await processDiscoveryRunById(nextRun.id);
+  return {
+    ...result,
+    runId: nextRun.id,
+  };
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -1018,6 +1138,10 @@ export async function runBulkDomainDiscoveryAsync(
     }
   }
 
+  if (uniqueRows.length === 0) {
+    throw new Error("No valid domains were queued for discovery");
+  }
+
   const importDomainMetadata: DomainImportMetadata = {};
   for (const row of uniqueRows) {
     if (row.city || row.state || row.country) {
@@ -1032,6 +1156,7 @@ export async function runBulkDomainDiscoveryAsync(
   const storedImportMetadata: StoredImportDomainMetadata = {
     ...importDomainMetadata,
     __queued_rows: uniqueRows,
+    __queue_cursor: 0,
   };
 
   const defaultCampaignType = opts?.campaignType ?? uniqueRows[0]?.campaignType ?? "contractor";
