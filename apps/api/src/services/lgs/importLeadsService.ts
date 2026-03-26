@@ -278,8 +278,10 @@ export async function importStructuredLeadRows(
           patch.emailVerificationScore = null;
           patch.emailVerificationCheckedAt = null;
           patch.emailVerificationProvider = null;
+          patch.processingStatus = "processed";
         } else if (existing.needsEnrichment || needsRowEnrichment) {
           patch.emailVerificationStatus = "pending";
+          patch.processingStatus = "enriching";
         }
 
         const changedKeys = Object.keys(patch).filter((key) => key !== "updatedAt");
@@ -336,6 +338,7 @@ export async function importStructuredLeadRows(
           emailVerificationCheckedAt: null,
           emailVerificationProvider: null,
           status: "new",
+          processingStatus: needsRowEnrichment ? "enriching" : "processed",
           archived: false,
           archivedAt: null,
           archiveReason: null,

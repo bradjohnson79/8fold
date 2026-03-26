@@ -15,6 +15,7 @@
  *   Inserted Leads    = created (new rows in contractor_leads)
  *   Duplicates Skipped = domain already had a lead
  */
+import { lookup } from "node:dns/promises";
 import { eq, inArray, sql } from "drizzle-orm";
 import pLimit from "p-limit";
 import { db } from "@/db/drizzle";
@@ -33,18 +34,21 @@ import { rankEmailsForDomain } from "@/src/utils/scoreEmailPrefix";
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 
 const ROOT_PAGE_PATH = "/";
-const SECONDARY_PAGES_TO_CRAWL = ["/contact", "/contact-us", "/about"];
-const DOMAIN_CONCURRENCY = 10;
+const DEFAULT_PRIORITY_PATHS = ["/contact", "/about"];
+const DOMAIN_CONCURRENCY = 8;
 const DISCOVERY_BATCH_SIZE = 40;
 const DISCOVERY_INVOCATION_BUDGET_MS = 35_000;
 const DISCOVERY_STALE_THRESHOLD_MS = 60_000;
+const PREFILTER_TIMEOUT_MS = 1500;
+const PREFILTER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 3500;
 const PAGE_FETCH_MAX_ATTEMPTS = 2;
 const DOMAIN_MAX_ATTEMPTS = 2;
-const MAX_PATTERNS_PER_DOMAIN = 8;
+const MAX_EXTRA_INTERNAL_LINKS = 3;
+const MAX_PATTERNS_PER_DOMAIN = 4;
 
 const COMMON_PREFIXES = [
-  "info", "contact", "office", "admin", "sales", "service", "hello", "support",
+  "info", "contact", "hello", "admin",
 ];
 
 const TRADE_KEYWORDS: Array<{ pattern: RegExp; trade: string }> = [
@@ -174,22 +178,13 @@ function generateEmailCandidates(
   domain: string,
   names: Array<{ first: string; last: string }>
 ): string[] {
+  void names;
   const candidates = new Set<string>();
   const baseDomain = domain.replace(/^www\./, "");
 
   for (const prefix of COMMON_PREFIXES) {
     candidates.add(`${prefix}@${baseDomain}`);
     if (candidates.size >= MAX_PATTERNS_PER_DOMAIN) break;
-  }
-
-  for (const { first, last } of names) {
-    if (candidates.size >= MAX_PATTERNS_PER_DOMAIN) break;
-    const f = first.toLowerCase();
-    const l = last.toLowerCase();
-    const fi = f[0] ?? "";
-    candidates.add(`${f}@${baseDomain}`);
-    candidates.add(`${f}.${l}@${baseDomain}`);
-    candidates.add(`${fi}${l}@${baseDomain}`);
   }
 
   return Array.from(candidates).slice(0, MAX_PATTERNS_PER_DOMAIN);
@@ -214,43 +209,104 @@ async function fetchPage(url: string, attempt = 1): Promise<string> {
   }
 }
 
-async function fetchDomainHtml(baseDomain: string): Promise<{ html: string; emails: Set<string> }> {
+async function fetchDomainHtml(
+  baseDomain: string,
+  preferredOrigin?: string | null
+): Promise<{
+  html: string;
+  emails: Set<string>;
+  emailSources: Map<string, EmailConfidenceSource>;
+  structuredData: StructuredDataSummary;
+}> {
   const candidateOrigins = [
-    `https://${baseDomain}`,
-    `http://${baseDomain}`,
-    ...(baseDomain.startsWith("www.") ? [] : [`https://www.${baseDomain}`, `http://www.${baseDomain}`]),
+    ...(preferredOrigin ? [preferredOrigin] : []),
+    ...buildCandidateOrigins(baseDomain).filter((origin) => origin !== preferredOrigin),
   ];
 
   let originUsed = "";
+  let homepageHtml = "";
   let html = "";
   const emails = new Set<string>();
+  const emailSources = new Map<string, EmailConfidenceSource>();
+  let structuredData: StructuredDataSummary = {
+    companyName: null,
+    email: null,
+    phone: null,
+    city: null,
+    state: null,
+    country: null,
+  };
+
+  const addEmails = (sourceHtml: string, source: EmailConfidenceSource) => {
+    for (const email of extractEmails(sourceHtml)) {
+      emails.add(email);
+      if (!emailSources.has(email)) emailSources.set(email, source);
+    }
+  };
 
   for (const origin of candidateOrigins) {
     const rootHtml = await fetchPage(`${origin}${ROOT_PAGE_PATH}`);
     if (!rootHtml) continue;
     originUsed = origin;
+    homepageHtml = rootHtml;
     html += rootHtml;
-    extractEmails(rootHtml).forEach((email) => emails.add(email));
+    addEmails(rootHtml, "discovered");
+    for (const email of extractMailtoEmails(rootHtml)) {
+      emails.add(email);
+      emailSources.set(email, "discovered");
+    }
+    structuredData = extractStructuredDataSummary(rootHtml);
+    if (structuredData.email) {
+      emails.add(structuredData.email);
+      emailSources.set(structuredData.email, "discovered");
+    }
     break;
   }
 
   if (!originUsed) {
-    return { html: "", emails };
+    return { html: "", emails, emailSources, structuredData };
   }
 
-  if (emails.size === 0) {
+  const prioritizedUrls = prioritizeInternalLinks(originUsed, homepageHtml);
+  const shouldExpand =
+    emails.size === 0 ||
+    !hasText(structuredData.companyName) ||
+    !hasText(structuredData.city) ||
+    !hasText(structuredData.state);
+
+  if (shouldExpand) {
+    const secondaryUrls = prioritizedUrls.slice(0, DEFAULT_PRIORITY_PATHS.length + MAX_EXTRA_INTERNAL_LINKS);
     const secondaryResults = await Promise.allSettled(
-      SECONDARY_PAGES_TO_CRAWL.map((path) => fetchPage(`${originUsed}${path}`))
+      secondaryUrls.map(async (url) => ({ url, body: await fetchPage(url) }))
     );
     for (const result of secondaryResults) {
-      if (result.status === "fulfilled" && result.value) {
-        html += result.value;
-        extractEmails(result.value).forEach((email) => emails.add(email));
+      if (result.status !== "fulfilled" || !result.value.body) continue;
+      html += result.value.body;
+      addEmails(result.value.body, "discovered");
+      for (const email of extractMailtoEmails(result.value.body)) {
+        emails.add(email);
+        emailSources.set(email, "discovered");
+      }
+      const pageStructured = extractStructuredDataSummary(result.value.body);
+      structuredData = {
+        companyName: structuredData.companyName ?? pageStructured.companyName,
+        email: structuredData.email ?? pageStructured.email,
+        phone: structuredData.phone ?? pageStructured.phone,
+        city: structuredData.city ?? pageStructured.city,
+        state: structuredData.state ?? pageStructured.state,
+        country: structuredData.country ?? pageStructured.country,
+      };
+      if (pageStructured.email) {
+        emails.add(pageStructured.email);
+        emailSources.set(pageStructured.email, "discovered");
+      }
+      if (emails.size > 0 && hasText(structuredData.companyName) && (hasText(structuredData.city) || hasText(structuredData.state))) {
+        break;
       }
     }
   }
 
-  return { html, emails };
+  return { html, emails, emailSources, structuredData };
 }
 
 function cleanBusinessName(raw: string): string {
@@ -406,6 +462,38 @@ type ExistingJobPosterLead = {
   city: string | null;
   state: string | null;
   country: string | null;
+  processingStatus: string | null;
+};
+
+type DomainCacheRecord = {
+  domain: string;
+  lastDiscoveredAt: Date;
+  reachable: boolean | null;
+  lastStatusCode: number | null;
+  lastContentType: string | null;
+  lastResponseTimeMs: number | null;
+};
+
+type EmailConfidenceSource = "discovered" | "guessed";
+
+type StructuredDataSummary = {
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+};
+
+type DomainPrefilterOutcome = {
+  origin: string | null;
+  reachable: boolean;
+  statusCode: number | null;
+  contentType: string | null;
+  responseTimeMs: number | null;
+  skipReason: string | null;
+  skipBucket: "failed" | "skipped" | null;
+  fromCache: boolean;
 };
 
 type RunContext = {
@@ -417,6 +505,7 @@ type RunContext = {
     contractor: Map<string, ExistingContractorLead>;
     jobs: Map<string, ExistingJobPosterLead>;
   };
+  domainCacheRecords: Map<string, DomainCacheRecord>;
   insertedDomains: Record<CampaignType, Set<string>>;
 };
 
@@ -493,6 +582,407 @@ function hasText(value: string | null | undefined): value is string {
   return Boolean(value && value.trim());
 }
 
+function normalizeContentType(value: string | null | undefined): string | null {
+  if (!hasText(value)) return null;
+  return value.split(";")[0]?.trim().toLowerCase() ?? null;
+}
+
+function isLikelyHtmlContentType(value: string | null | undefined): boolean {
+  const normalized = normalizeContentType(value);
+  if (!normalized) return true;
+  return normalized.includes("text/html") || normalized.includes("application/xhtml+xml");
+}
+
+function buildCandidateOrigins(baseDomain: string): string[] {
+  return [
+    `https://${baseDomain}`,
+    `http://${baseDomain}`,
+    ...(baseDomain.startsWith("www.") ? [] : [`https://www.${baseDomain}`, `http://www.${baseDomain}`]),
+  ];
+}
+
+function toAbsoluteInternalUrl(origin: string, href: string): string | null {
+  if (!href || href.startsWith("#") || href.startsWith("javascript:")) return null;
+  try {
+    const parsed = new URL(href, origin);
+    if (!["http:", "https:"].includes(parsed.protocol)) return null;
+    if (normalizeDomain(parsed.hostname) !== normalizeDomain(new URL(origin).hostname)) return null;
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractMailtoEmails(html: string): string[] {
+  const matches = html.match(/mailto:([^"'?#\s>]+)/gi) ?? [];
+  return matches
+    .map((match) => match.replace(/^mailto:/i, "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function extractInternalLinks(origin: string, html: string): string[] {
+  const seen = new Set<string>();
+  const links: string[] = [];
+  const hrefRegex = /href=["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = hrefRegex.exec(html)) !== null) {
+    const absolute = toAbsoluteInternalUrl(origin, match[1] ?? "");
+    if (!absolute || seen.has(absolute)) continue;
+    seen.add(absolute);
+    links.push(absolute);
+  }
+
+  return links;
+}
+
+function prioritizeInternalLinks(origin: string, homepageHtml: string): string[] {
+  const priority = new Set<string>();
+  const ordered: string[] = [];
+  const push = (value: string | null) => {
+    if (!value || priority.has(value)) return;
+    priority.add(value);
+    ordered.push(value);
+  };
+
+  for (const path of DEFAULT_PRIORITY_PATHS) {
+    push(`${origin}${path}`);
+  }
+
+  const footerMatch = homepageHtml.match(/<footer[\s\S]*?<\/footer>/i);
+  if (footerMatch?.[0]) {
+    for (const link of extractInternalLinks(origin, footerMatch[0])) {
+      push(link);
+    }
+  }
+
+  for (const link of extractInternalLinks(origin, homepageHtml)) {
+    push(link);
+    if (ordered.length >= DEFAULT_PRIORITY_PATHS.length + MAX_EXTRA_INTERNAL_LINKS + 4) break;
+  }
+
+  return ordered.slice(0, DEFAULT_PRIORITY_PATHS.length + MAX_EXTRA_INTERNAL_LINKS + 4);
+}
+
+function extractStructuredDataSummary(html: string): StructuredDataSummary {
+  const summary: StructuredDataSummary = {
+    companyName: null,
+    email: null,
+    phone: null,
+    city: null,
+    state: null,
+    country: null,
+  };
+
+  const visit = (value: unknown): void => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value === "string") return;
+    if (typeof value !== "object") return;
+
+    const record = value as Record<string, unknown>;
+    if (!summary.companyName && hasText(typeof record.name === "string" ? record.name : null)) {
+      summary.companyName = cleanBusinessName(String(record.name));
+    }
+    if (!summary.email && hasText(typeof record.email === "string" ? record.email : null)) {
+      summary.email = String(record.email).replace(/^mailto:/i, "").trim().toLowerCase();
+    }
+    if (!summary.phone && hasText(typeof record.telephone === "string" ? record.telephone : null)) {
+      summary.phone = String(record.telephone).trim();
+    }
+
+    const address = record.address;
+    if (address && typeof address === "object" && !Array.isArray(address)) {
+      const structuredAddress = address as Record<string, unknown>;
+      if (!summary.city && hasText(typeof structuredAddress.addressLocality === "string" ? structuredAddress.addressLocality : null)) {
+        summary.city = String(structuredAddress.addressLocality).trim();
+      }
+      if (!summary.state && hasText(typeof structuredAddress.addressRegion === "string" ? structuredAddress.addressRegion : null)) {
+        summary.state = String(structuredAddress.addressRegion).trim();
+      }
+      if (!summary.country && hasText(typeof structuredAddress.addressCountry === "string" ? structuredAddress.addressCountry : null)) {
+        summary.country = String(structuredAddress.addressCountry).trim();
+      }
+    }
+
+    Object.values(record).forEach(visit);
+  };
+
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
+  for (const block of blocks) {
+    const jsonMatch = block.match(/>([\s\S]*?)<\/script>/i);
+    if (!jsonMatch?.[1]) continue;
+    try {
+      visit(JSON.parse(jsonMatch[1].trim()));
+    } catch {
+      // Ignore malformed JSON-LD blocks.
+    }
+  }
+
+  return summary;
+}
+
+function mergeLocation(
+  primary: { city?: string | null; state?: string | null; country?: string | null },
+  secondary: { city?: string | null; state?: string | null; country?: string | null }
+): { city?: string; state?: string; country?: string } {
+  return {
+    city: hasText(primary.city ?? null) ? primary.city ?? undefined : secondary.city ?? undefined,
+    state: hasText(primary.state ?? null) ? primary.state ?? undefined : secondary.state ?? undefined,
+    country: hasText(primary.country ?? null) ? primary.country ?? undefined : secondary.country ?? undefined,
+  };
+}
+
+function scoreLocation(location: { city?: string | null; state?: string | null; country?: string | null }): number {
+  return hasText(location.city ?? null) || hasText(location.state ?? null) || hasText(location.country ?? null) ? 2 : 0;
+}
+
+function emailConfidence(source: EmailConfidenceSource | null | undefined, email: string | null | undefined): number {
+  if (!hasText(email ?? null)) return 0;
+  return source === "guessed" ? 2 : 5;
+}
+
+function computeLeadScore(args: {
+  email: string | null | undefined;
+  emailSource?: EmailConfidenceSource | null;
+  contactName?: string | null;
+  trade?: string | null;
+  location?: { city?: string | null; state?: string | null; country?: string | null };
+}): number {
+  return (
+    emailConfidence(args.emailSource ?? "discovered", args.email) +
+    (hasText(args.contactName ?? null) ? 3 : 0) +
+    (hasText(args.trade ?? null) ? 2 : 0) +
+    scoreLocation(args.location ?? {})
+  );
+}
+
+function deriveProcessingStatus(score: number, email: string | null | undefined): "new" | "enriching" | "processed" {
+  if (score >= 7) return "processed";
+  if (hasText(email ?? null) || score > 0) return "enriching";
+  return "new";
+}
+
+async function upsertDomainCache(
+  domain: string,
+  update: Pick<DomainCacheRecord, "reachable" | "lastStatusCode" | "lastContentType" | "lastResponseTimeMs">
+) {
+  const lastDiscoveredAt = new Date();
+  await db
+    .insert(discoveryDomainCache)
+    .values({
+      domain,
+      lastDiscoveredAt,
+      reachable: update.reachable,
+      lastStatusCode: update.lastStatusCode,
+      lastContentType: update.lastContentType,
+      lastResponseTimeMs: update.lastResponseTimeMs,
+    })
+    .onConflictDoUpdate({
+      target: discoveryDomainCache.domain,
+      set: {
+        lastDiscoveredAt,
+        reachable: update.reachable,
+        lastStatusCode: update.lastStatusCode,
+        lastContentType: update.lastContentType,
+        lastResponseTimeMs: update.lastResponseTimeMs,
+      },
+    });
+}
+
+async function prefilterRequest(
+  origin: string,
+  method: "HEAD" | "GET"
+): Promise<{ statusCode: number | null; contentType: string | null; responseTimeMs: number | null; ok: boolean }> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PREFILTER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${origin}${ROOT_PAGE_PATH}`, {
+      method,
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { "User-Agent": "8Fold-LGS-Discovery/1.0", Connection: "keep-alive" },
+    });
+    clearTimeout(timeout);
+    const contentType = normalizeContentType(response.headers.get("content-type"));
+    const responseTimeMs = Date.now() - startedAt;
+    if (method === "GET") {
+      const cancelled = response.body?.cancel();
+      if (cancelled) {
+        await cancelled.catch(() => undefined);
+      }
+    }
+    return {
+      statusCode: response.status,
+      contentType,
+      responseTimeMs,
+      ok: response.ok && response.status < 500 && isLikelyHtmlContentType(contentType),
+    };
+  } catch {
+    clearTimeout(timeout);
+    return { statusCode: null, contentType: null, responseTimeMs: null, ok: false };
+  }
+}
+
+async function prefilterDomain(baseDomain: string, ctx: RunContext): Promise<DomainPrefilterOutcome> {
+  const cached = ctx.domainCacheRecords.get(baseDomain);
+  const cacheIsFresh =
+    cached?.lastDiscoveredAt instanceof Date &&
+    Date.now() - cached.lastDiscoveredAt.getTime() < PREFILTER_CACHE_TTL_MS;
+
+  if (cacheIsFresh && cached) {
+    const cachedHtmlOkay = cached.reachable === true && (cached.lastStatusCode ?? 200) < 500 && isLikelyHtmlContentType(cached.lastContentType);
+    if (cachedHtmlOkay) {
+      return {
+        origin: buildCandidateOrigins(baseDomain)[0] ?? null,
+        reachable: true,
+        statusCode: cached.lastStatusCode,
+        contentType: cached.lastContentType,
+        responseTimeMs: cached.lastResponseTimeMs,
+        skipReason: null,
+        skipBucket: null,
+        fromCache: true,
+      };
+    }
+
+    return {
+      origin: null,
+      reachable: Boolean(cached.reachable),
+      statusCode: cached.lastStatusCode,
+      contentType: cached.lastContentType,
+      responseTimeMs: cached.lastResponseTimeMs,
+      skipReason: cached.reachable === false ? "recent_dns_or_network_failure" : "recent_prefilter_skip",
+      skipBucket: cached.reachable === false ? "failed" : "skipped",
+      fromCache: true,
+    };
+  }
+
+  try {
+    await lookup(baseDomain);
+  } catch {
+    await upsertDomainCache(baseDomain, {
+      reachable: false,
+      lastStatusCode: null,
+      lastContentType: null,
+      lastResponseTimeMs: null,
+    });
+    return {
+      origin: null,
+      reachable: false,
+      statusCode: null,
+      contentType: null,
+      responseTimeMs: null,
+      skipReason: "dns_unresolved",
+      skipBucket: "failed",
+      fromCache: false,
+    };
+  }
+
+  let bestFailure: DomainPrefilterOutcome = {
+    origin: null,
+    reachable: false,
+    statusCode: null,
+    contentType: null,
+    responseTimeMs: null,
+    skipReason: "no_response",
+    skipBucket: "skipped",
+    fromCache: false,
+  };
+
+  for (const origin of buildCandidateOrigins(baseDomain)) {
+    const headResult = await prefilterRequest(origin, "HEAD");
+    if (headResult.ok) {
+      await upsertDomainCache(baseDomain, {
+        reachable: true,
+        lastStatusCode: headResult.statusCode,
+        lastContentType: headResult.contentType,
+        lastResponseTimeMs: headResult.responseTimeMs,
+      });
+      return {
+        origin,
+        reachable: true,
+        statusCode: headResult.statusCode,
+        contentType: headResult.contentType,
+        responseTimeMs: headResult.responseTimeMs,
+        skipReason: null,
+        skipBucket: null,
+        fromCache: false,
+      };
+    }
+
+    const needsRetryGet =
+      headResult.statusCode === null ||
+      headResult.statusCode >= 500 ||
+      !isLikelyHtmlContentType(headResult.contentType);
+
+    if (needsRetryGet) {
+      const getResult = await prefilterRequest(origin, "GET");
+      if (getResult.ok) {
+        await upsertDomainCache(baseDomain, {
+          reachable: true,
+          lastStatusCode: getResult.statusCode,
+          lastContentType: getResult.contentType,
+          lastResponseTimeMs: getResult.responseTimeMs,
+        });
+        return {
+          origin,
+          reachable: true,
+          statusCode: getResult.statusCode,
+          contentType: getResult.contentType,
+          responseTimeMs: getResult.responseTimeMs,
+          skipReason: null,
+          skipBucket: null,
+          fromCache: false,
+        };
+      }
+
+      bestFailure = {
+        origin: null,
+        reachable: getResult.statusCode !== null,
+        statusCode: getResult.statusCode,
+        contentType: getResult.contentType,
+        responseTimeMs: getResult.responseTimeMs,
+        skipReason:
+          getResult.statusCode === null
+            ? "no_response"
+            : getResult.statusCode >= 500
+              ? "upstream_5xx"
+              : "non_html_content",
+        skipBucket: getResult.statusCode === null ? "failed" : "skipped",
+        fromCache: false,
+      };
+      continue;
+    }
+
+    bestFailure = {
+      origin: null,
+      reachable: headResult.statusCode !== null,
+      statusCode: headResult.statusCode,
+      contentType: headResult.contentType,
+      responseTimeMs: headResult.responseTimeMs,
+      skipReason: headResult.statusCode && headResult.statusCode >= 400 ? `status_${headResult.statusCode}` : "prefilter_rejected",
+      skipBucket: headResult.statusCode && headResult.statusCode >= 500 ? "failed" : "skipped",
+      fromCache: false,
+    };
+  }
+
+  await upsertDomainCache(baseDomain, {
+    reachable: bestFailure.reachable,
+    lastStatusCode: bestFailure.statusCode,
+    lastContentType: bestFailure.contentType,
+    lastResponseTimeMs: bestFailure.responseTimeMs,
+  });
+
+  return bestFailure;
+}
+
 async function persistDiscoveryCheckpoint(
   runId: string,
   storedImportMetadata: StoredImportDomainMetadata,
@@ -533,15 +1023,17 @@ function resolveCampaignType(
 async function createLeadForDomain(
   domainRow: DomainImportRow,
   emails: string[],
+  emailSources: Map<string, EmailConfidenceSource>,
   companyName: string,
   industry: string,
   contactName: string | null,
+  extractedLocation: { city?: string | null; state?: string | null; country?: string | null },
   ctx: RunContext
 ): Promise<{ inserted: boolean; duplicate: boolean }> {
   const domain = domainRow.domain;
   const campaignType = resolveCampaignType(domainRow, ctx);
   const hasTargetLead = Boolean(domainRow.targetLeadId);
-  const locationMeta = ctx.importMeta[domain] ?? {};
+  const locationMeta = mergeLocation(ctx.importMeta[domain] ?? {}, extractedLocation);
 
   if (!hasTargetLead && ctx.insertedDomains[campaignType].has(domain)) {
     console.log(`[LGS] Duplicate skipped (in-run): ${domain}`);
@@ -554,11 +1046,26 @@ async function createLeadForDomain(
   const primary = ranked[0];
   const secondaries = ranked.slice(1);
   const emailType = classifyEmailType(primary.email, domain);
+  const primarySource = emailSources.get(primary.email) ?? "discovered";
+  const primaryScore = computeLeadScore({
+    email: primary.email,
+    emailSource: primarySource,
+    contactName,
+    trade: industry,
+    location: locationMeta,
+  });
   const existingLead = ctx.existingLeadRecords[campaignType].get(domain);
 
   if (!hasTargetLead && existingLead) {
     if (campaignType === "jobs") {
       const existingJobLead = existingLead as ExistingJobPosterLead;
+      const existingScore = computeLeadScore({
+        email: existingJobLead.email,
+        emailSource: "discovered",
+        contactName: existingJobLead.contactName,
+        trade: existingJobLead.trade,
+        location: existingJobLead,
+      });
       const patch: Partial<typeof jobPosterLeads.$inferInsert> = {
         updatedAt: new Date(),
         scoreDirty: true,
@@ -570,14 +1077,43 @@ async function createLeadForDomain(
       if (!hasText(existingJobLead.city) && hasText(locationMeta.city)) patch.city = locationMeta.city;
       if (!hasText(existingJobLead.state) && hasText(locationMeta.state)) patch.state = locationMeta.state;
       if (!hasText(existingJobLead.country) && hasText(locationMeta.country)) patch.country = locationMeta.country;
-      if (Object.keys(patch).length > 2) {
+      const nextScore = computeLeadScore({
+        email: patch.email ?? existingJobLead.email,
+        emailSource: hasText(existingJobLead.email) ? "discovered" : primarySource,
+        contactName: patch.contactName ?? existingJobLead.contactName,
+        trade: patch.trade ?? existingJobLead.trade,
+        location: {
+          city: patch.city ?? existingJobLead.city,
+          state: patch.state ?? existingJobLead.state,
+          country: patch.country ?? existingJobLead.country,
+        },
+      });
+      if (nextScore > existingScore) {
+        patch.processingStatus = deriveProcessingStatus(nextScore, patch.email ?? existingJobLead.email);
+        patch.needsEnrichment = nextScore < 7;
         await db.update(jobPosterLeads).set(patch).where(eq(jobPosterLeads.id, existingJobLead.id));
-        console.log(`[LGS] Refreshed existing job poster lead: ${domain}`);
+        console.log("[LGS] Refreshed existing job poster lead", {
+          domain,
+          existingScore,
+          nextScore,
+          primarySource,
+        });
       } else {
-        console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
+        console.log("[LGS] Duplicate skipped (pre-existing job lead)", {
+          domain,
+          existingScore,
+          nextScore,
+        });
       }
     } else {
       const existingContractorLead = existingLead as ExistingContractorLead;
+      const existingScore = computeLeadScore({
+        email: existingContractorLead.email,
+        emailSource: "discovered",
+        contactName: existingContractorLead.leadName,
+        trade: existingContractorLead.trade,
+        location: existingContractorLead,
+      });
       const patch: Partial<typeof contractorLeads.$inferInsert> = {
         updatedAt: new Date(),
         scoreDirty: true,
@@ -600,17 +1136,39 @@ async function createLeadForDomain(
       if (!hasText(existingContractorLead.city) && hasText(locationMeta.city)) patch.city = locationMeta.city;
       if (!hasText(existingContractorLead.state) && hasText(locationMeta.state)) patch.state = locationMeta.state;
       if (!hasText(existingContractorLead.country) && hasText(locationMeta.country)) patch.country = locationMeta.country;
-      if (Object.keys(patch).length > 2) {
+      const nextScore = computeLeadScore({
+        email: patch.email ?? existingContractorLead.email,
+        emailSource: hasText(existingContractorLead.email) ? "discovered" : primarySource,
+        contactName: patch.leadName ?? existingContractorLead.leadName,
+        trade: patch.trade ?? existingContractorLead.trade,
+        location: {
+          city: patch.city ?? existingContractorLead.city,
+          state: patch.state ?? existingContractorLead.state,
+          country: patch.country ?? existingContractorLead.country,
+        },
+      });
+      if (nextScore > existingScore) {
         await db.update(contractorLeads).set(patch).where(eq(contractorLeads.id, existingContractorLead.id));
-        console.log(`[LGS] Refreshed existing contractor lead: ${domain}`);
+        console.log("[LGS] Refreshed existing contractor lead", {
+          domain,
+          existingScore,
+          nextScore,
+          primarySource,
+        });
       } else {
-        console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
+        console.log("[LGS] Duplicate skipped (pre-existing contractor lead)", {
+          domain,
+          existingScore,
+          nextScore,
+        });
       }
     }
     return { inserted: false, duplicate: true };
   }
 
   if (campaignType === "jobs") {
+    const processingStatus = deriveProcessingStatus(primaryScore, primary.email);
+    const needsEnrichment = primaryScore < 7;
     if (domainRow.targetLeadId) {
       await db
         .update(jobPosterLeads)
@@ -623,13 +1181,14 @@ async function createLeadForDomain(
           state: locationMeta.state ?? undefined,
           country: locationMeta.country ?? "US",
           source: ctx.source,
-          needsEnrichment: false,
+          needsEnrichment,
           assignmentStatus: "ready",
           emailVerificationStatus: "pending",
           emailVerificationScore: null,
           emailVerificationCheckedAt: null,
           emailVerificationProvider: null,
           status: "new",
+          processingStatus,
           archived: false,
           archivedAt: null,
           archiveReason: null,
@@ -649,13 +1208,14 @@ async function createLeadForDomain(
         state: locationMeta.state ?? null,
         country: locationMeta.country ?? "US",
         source: ctx.source,
-        needsEnrichment: false,
+        needsEnrichment,
         assignmentStatus: "ready",
         emailVerificationStatus: "pending",
         emailVerificationScore: null,
         emailVerificationCheckedAt: null,
         emailVerificationProvider: null,
         status: "new",
+        processingStatus,
         archived: false,
         archivedAt: null,
         archiveReason: null,
@@ -685,7 +1245,7 @@ async function createLeadForDomain(
         country: locationMeta.country ?? "US",
         source: ctx.source,
         leadSource: ctx.source,
-        discoveryMethod: "scraped_email",
+        discoveryMethod: primarySource === "guessed" ? "pattern_generated" : "scraped_email",
         needsEnrichment: false,
         assignmentStatus: "ready",
         verificationScore: 0,
@@ -724,7 +1284,7 @@ async function createLeadForDomain(
       country: locationMeta.country ?? "US",
       source: ctx.source,
       leadSource: ctx.source,
-      discoveryMethod: "scraped_email",
+      discoveryMethod: primarySource === "guessed" ? "pattern_generated" : "scraped_email",
       verificationScore: 0,
       verificationStatus: "pending",
       verificationSource: null,
@@ -789,10 +1349,35 @@ async function processSingleDomain(
   attempt = 1
 ): Promise<void> {
   const baseDomain = domainRow.domain.replace(/^www\./, "");
-  console.log("[LGS] Processing domain:", baseDomain, { runId, campaignType: resolveCampaignType(domainRow, ctx) });
+  const startedAt = Date.now();
+  const campaignType = resolveCampaignType(domainRow, ctx);
+  console.log("[LGS] Processing domain", { runId, domain: baseDomain, campaignType, attempt });
 
-  // ── 1. Fetch homepage first, then only fall back to secondary pages if needed ─
-  const { html, emails: allEmails } = await fetchDomainHtml(baseDomain);
+  const prefilter = await prefilterDomain(baseDomain, ctx);
+  if (prefilter.skipReason) {
+    await Promise.allSettled([
+      db.insert(discoveryDomainLogs).values({
+        runId,
+        domain: baseDomain,
+        emailsFound: 0,
+        status: prefilter.skipBucket === "failed" ? "error" : "skipped",
+      }).catch(() => {}),
+      updateRunProgress(runId, {
+        domainsProcessed: 1,
+        failedDomains: prefilter.skipBucket === "failed" ? 1 : 0,
+        skippedDomains: prefilter.skipBucket === "skipped" ? 1 : 0,
+      }),
+    ]);
+    console.log("[LGS] Domain prefilter skipped", {
+      runId,
+      domain: baseDomain,
+      skipReason: prefilter.skipReason,
+      fromCache: prefilter.fromCache,
+    });
+    return;
+  }
+
+  const { html, emails: allEmails, emailSources, structuredData } = await fetchDomainHtml(baseDomain, prefilter.origin);
 
   if (!html) {
     if (attempt < DOMAIN_MAX_ATTEMPTS) {
@@ -810,27 +1395,32 @@ async function processSingleDomain(
     return;
   }
 
-  // ── 2. Extract metadata from HTML ──────────────────────────────────────────
   const scrapedCount = allEmails.size;
-  const { name: companyName } = extractCompanyName(baseDomain, html);
+  const { name: extractedCompanyName } = extractCompanyName(baseDomain, html);
+  const companyName = structuredData.companyName ?? extractedCompanyName;
   const industry = detectTradeIndustry(baseDomain, html);
+  const extractedLocation = {
+    city: structuredData.city,
+    state: structuredData.state,
+    country: structuredData.country,
+  };
   const contactsWithRoles = extractContactNamesWithRoles(html);
   const fallbackNames =
     contactsWithRoles.length > 0
       ? contactsWithRoles.map((c) => ({ first: c.first, last: c.last }))
       : extractNames(html);
 
-  // Pattern-generate emails if crawl found zero
   let emailsPatternGeneratedDelta = 0;
   if (allEmails.size === 0) {
     const candidates = generateEmailCandidates(baseDomain, fallbackNames);
-    for (const c of candidates) allEmails.add(c);
+    for (const candidate of candidates) {
+      allEmails.add(candidate);
+      if (!emailSources.has(candidate)) emailSources.set(candidate, "guessed");
+    }
     emailsPatternGeneratedDelta = candidates.length;
   }
 
   const emailsFoundCount = allEmails.size;
-
-  // ── 3. Basic rejection (regex only — NO DNS, NO SMTP) ─────────────────────
   const validEmails: string[] = [];
   let rejectedCount = 0;
 
@@ -842,7 +1432,10 @@ async function processSingleDomain(
     }
   }
 
-  if (validEmails.length === 0) {
+  const preferredEmails = validEmails.filter((email) => (emailSources.get(email) ?? "discovered") === "discovered");
+  const emailsForInsert = preferredEmails.length > 0 ? preferredEmails : validEmails;
+
+  if (emailsForInsert.length === 0) {
     await Promise.allSettled([
       db.insert(discoveryDomainLogs).values({ runId, domain: baseDomain, emailsFound: emailsFoundCount, status: "discarded" }).catch(() => {}),
       updateRunProgress(runId, {
@@ -852,36 +1445,50 @@ async function processSingleDomain(
         rejectedEmails: rejectedCount,
       }),
     ]);
+    console.log("[LGS] Domain discarded", {
+      runId,
+      domain: baseDomain,
+      skipReason: "no_usable_email",
+      emailsFoundCount,
+      rejectedCount,
+    });
     return;
   }
 
-  // ── 4. Match best contact name ─────────────────────────────────────────────
   let bestContactName: string | null = null;
-  for (const email of validEmails) {
+  for (const email of emailsForInsert) {
     const match = matchEmailToContact(email, contactsWithRoles);
-    if (match) { bestContactName = match; break; }
+    if (match) {
+      bestContactName = match;
+      break;
+    }
   }
 
-  // ── 5. Create lead immediately ─────────────────────────────────────────────
   let inserted = false;
   let duplicate = false;
 
   try {
     ({ inserted, duplicate } = await createLeadForDomain(
-      { ...domainRow, domain: baseDomain }, validEmails, companyName, industry, bestContactName, ctx
+      { ...domainRow, domain: baseDomain },
+      emailsForInsert,
+      emailSources,
+      companyName,
+      industry,
+      bestContactName,
+      extractedLocation,
+      ctx
     ));
   } catch (err) {
     console.error(`[LGS] createLeadForDomain failed (${baseDomain}):`, err instanceof Error ? err.message : err);
   }
 
-  // ── 6. Log to history tables (non-fatal) ───────────────────────────────────
-  const ranked = rankEmailsForDomain(validEmails);
-  const primaryEmail = ranked[0]?.email ?? validEmails[0];
-  const campaignType = resolveCampaignType(domainRow, ctx);
+  const ranked = rankEmailsForDomain(emailsForInsert);
+  const primaryEmail = ranked[0]?.email ?? emailsForInsert[0];
 
   await Promise.allSettled(
-    validEmails.map(async (email) => {
+    emailsForInsert.map(async (email) => {
       const isPrimary = email.toLowerCase() === primaryEmail.toLowerCase();
+      const source = emailSources.get(email) ?? "discovered";
       await db
         .insert(discoveryRunLeads)
         .values({
@@ -892,7 +1499,7 @@ async function processSingleDomain(
           contactName: bestContactName && isValidPersonName(bestContactName) ? bestContactName : null,
           industry: industry || null,
           verificationScore: 0,
-          discoveryMethod: scrapedCount > 0 ? "scraped_email" : "pattern_generated",
+          discoveryMethod: source === "guessed" ? "pattern_generated" : "scraped_email",
           campaignType,
           imported: true,
           importStatus: duplicate ? "skipped_duplicate" : isPrimary ? "inserted" : "consolidated_secondary",
@@ -902,39 +1509,56 @@ async function processSingleDomain(
     })
   );
 
-  const now = new Date();
   await Promise.allSettled([
-    db
-      .insert(discoveryDomainCache)
-      .values({ domain: baseDomain, lastDiscoveredAt: now })
-      .onConflictDoUpdate({ target: discoveryDomainCache.domain, set: { lastDiscoveredAt: now } }),
+    upsertDomainCache(baseDomain, {
+      reachable: true,
+      lastStatusCode: prefilter.statusCode,
+      lastContentType: prefilter.contentType,
+      lastResponseTimeMs: prefilter.responseTimeMs,
+    }),
     db.insert(discoveryDomainLogs).values({
-      runId, domain: baseDomain, emailsFound: validEmails.length, status: inserted ? "success" : "duplicate",
+      runId,
+      domain: baseDomain,
+      emailsFound: emailsForInsert.length,
+      status: inserted ? "success" : "duplicate",
     }),
   ]);
 
-  // ── 7. Update live counters ────────────────────────────────────────────────
   try {
     await updateRunProgress(runId, {
       domainsProcessed: 1,
       successfulDomains: 1,
       emailsFound: emailsFoundCount,
-      qualifiedEmails: validEmails.length,
+      qualifiedEmails: emailsForInsert.length,
       insertedLeads: inserted ? 1 : 0,
       duplicatesSkipped: duplicate ? 1 : 0,
       rejectedEmails: rejectedCount,
       emailsScraped: scrapedCount,
       emailsPatternGenerated: emailsPatternGeneratedDelta,
+      contactsFound: bestContactName ? 1 : 0,
     });
   } catch {
     // Counter write failure is never fatal
   }
+
+  console.log("[LGS] Domain processed", {
+    runId,
+    domain: baseDomain,
+    inserted,
+    duplicate,
+    emailsFound: emailsFoundCount,
+    usableEmails: emailsForInsert.length,
+    avgDomainMs: Date.now() - startedAt,
+    primarySource: emailSources.get(primaryEmail) ?? "discovered",
+    contactFound: Boolean(bestContactName),
+  });
 }
 
 // ─── Run Orchestration ───────────────────────────────────────────────────────
 
 async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[]): Promise<boolean> {
   const limit = pLimit(DOMAIN_CONCURRENCY);
+  const batchStartedAt = Date.now();
 
   const [runRecord] = await db
     .select({
@@ -980,9 +1604,23 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
           city: jobPosterLeads.city,
           state: jobPosterLeads.state,
           country: jobPosterLeads.country,
+          processingStatus: jobPosterLeads.processingStatus,
         })
         .from(jobPosterLeads)
         .where(inArray(jobPosterLeads.website, domainList))
+    : [];
+  const domainCacheRows = domainList.length > 0
+    ? await db
+        .select({
+          domain: discoveryDomainCache.domain,
+          lastDiscoveredAt: discoveryDomainCache.lastDiscoveredAt,
+          reachable: discoveryDomainCache.reachable,
+          lastStatusCode: discoveryDomainCache.lastStatusCode,
+          lastContentType: discoveryDomainCache.lastContentType,
+          lastResponseTimeMs: discoveryDomainCache.lastResponseTimeMs,
+        })
+        .from(discoveryDomainCache)
+        .where(inArray(discoveryDomainCache.domain, domainList))
     : [];
   const existingDomains = {
     contractor: new Set(
@@ -998,6 +1636,7 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
     runId,
     batchSize: domainRows.length,
     existingCount,
+    cachedDomains: domainCacheRows.length,
   });
 
   const ctx: RunContext = {
@@ -1017,6 +1656,11 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
           .filter(([domain]) => Boolean(domain))
       ),
     },
+    domainCacheRecords: new Map(
+      domainCacheRows
+        .filter((row) => row.domain && row.lastDiscoveredAt)
+        .map((row) => [row.domain.toLowerCase(), row] as const)
+    ),
     insertedDomains: {
       contractor: new Set<string>(),
       jobs: new Set<string>(),
@@ -1024,6 +1668,7 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
   };
 
   let isCancelled = false;
+  let completedCount = 0;
   const CHECK_EVERY = 10;
   const checkForCancellation = async (): Promise<boolean> => {
     if (isCancelled) return true;
@@ -1045,6 +1690,7 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
         }
         try {
           await processSingleDomain(runId, domainRow, ctx);
+          completedCount++;
         } catch (err) {
           console.error(`[LGS] Domain failed (${domainRow.domain}): ${err instanceof Error ? err.message : err}`);
           try {
@@ -1056,6 +1702,15 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
       })
     )
   );
+
+  const elapsedMs = Date.now() - batchStartedAt;
+  console.log("[LGS] Discovery batch finished", {
+    runId,
+    batchSize: domainRows.length,
+    completedCount,
+    avgDomainMs: domainRows.length > 0 ? Math.round(elapsedMs / domainRows.length) : 0,
+    throughputPerMinute: elapsedMs > 0 ? Math.round((completedCount / elapsedMs) * 60_000) : 0,
+  });
 
   if (isCancelled) {
     const finishedAt = new Date();

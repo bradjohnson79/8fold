@@ -27,38 +27,61 @@ export async function GET(req: NextRequest) {
     const search = sp.get("search")?.trim() ?? "";
     const archivedFilter = sp.get("filter_archived")?.trim() ?? "active";
     const filterVerificationStatus = sp.get("filter_verification_status")?.trim() ?? "";
-    // sendable | needs_attention | unusable — when set, overrides archivedFilter (all imply archived=false)
-    const filterActionability = sp.get("filter_actionability")?.trim() ?? null;
+    const filterActionability = sp.get("filter_actionability")?.trim() ?? "active";
 
-    const conditions: Array<ReturnType<typeof eq>> = [];
+    const conditions: Array<any> = [];
+    const verificationStatusNormalized = sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending')`;
+    const hasIdentitySql = sql`
+      (
+        (${jobPosterLeads.email} IS NOT NULL AND trim(${jobPosterLeads.email}) <> '')
+        OR (${jobPosterLeads.contactName} IS NOT NULL AND trim(${jobPosterLeads.contactName}) <> '')
+        OR (${jobPosterLeads.companyName} IS NOT NULL AND trim(${jobPosterLeads.companyName}) <> '')
+      )
+    `;
+    const sendableSql = sql`
+      ${jobPosterLeads.archived} = false
+      AND ${jobPosterLeads.email} IS NOT NULL
+      AND trim(${jobPosterLeads.email}) <> ''
+      AND ${verificationStatusNormalized} in ('valid', 'verified')
+    `;
+    const processingSql = sql`
+      ${jobPosterLeads.archived} = false
+      AND ${hasIdentitySql}
+      AND coalesce(lower(trim(${jobPosterLeads.processingStatus})), 'new') in ('new', 'enriching')
+    `;
+    const unusableSql = sql`
+      ${jobPosterLeads.archived} = false
+      AND ${hasIdentitySql}
+      AND (
+        ${verificationStatusNormalized} = 'invalid'
+        OR (
+          coalesce(lower(trim(${jobPosterLeads.processingStatus})), 'new') = 'processed'
+          AND (
+            ${jobPosterLeads.email} IS NULL
+            OR trim(${jobPosterLeads.email}) = ''
+            OR ${verificationStatusNormalized} not in ('valid', 'verified')
+          )
+        )
+      )
+    `;
+    const activeSql = sql`
+      ${jobPosterLeads.archived} = false
+      AND ${hasIdentitySql}
+    `;
 
-    if (filterActionability === "sendable") {
-      // Ready to Send: has a valid email (format-classified)
-      conditions.push(sql`
-        ${jobPosterLeads.archived} = false
-        AND ${jobPosterLeads.email} IS NOT NULL
-        AND ${jobPosterLeads.email} != ''
-        AND ${jobPosterLeads.emailVerificationStatus} = 'valid'
-      ` as ReturnType<typeof eq>);
+    if (filterActionability === "active") {
+      conditions.push(activeSql);
+    } else if (filterActionability === "sendable") {
+      conditions.push(sendableSql);
     } else if (filterActionability === "needs_attention") {
-      // Processing: no email yet — enrichment in progress
-      conditions.push(sql`
-        ${jobPosterLeads.archived} = false
-        AND (${jobPosterLeads.email} IS NULL OR ${jobPosterLeads.email} = '')
-      ` as ReturnType<typeof eq>);
+      conditions.push(processingSql);
     } else if (filterActionability === "unusable") {
-      // Not Ready: has an email but classified invalid
-      conditions.push(sql`
-        ${jobPosterLeads.archived} = false
-        AND ${jobPosterLeads.email} IS NOT NULL
-        AND ${jobPosterLeads.email} != ''
-        AND coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending') != 'valid'
-      ` as ReturnType<typeof eq>);
+      conditions.push(unusableSql);
     } else {
       if (archivedFilter === "active") {
-        conditions.push(eq(jobPosterLeads.archived, false) as ReturnType<typeof eq>);
+        conditions.push(eq(jobPosterLeads.archived, false));
       } else if (archivedFilter === "archived") {
-        conditions.push(eq(jobPosterLeads.archived, true) as ReturnType<typeof eq>);
+        conditions.push(eq(jobPosterLeads.archived, true));
       }
     }
 
@@ -72,16 +95,16 @@ export async function GET(req: NextRequest) {
           ilike(jobPosterLeads.category, `%${search}%`),
           ilike(jobPosterLeads.city, `%${search}%`),
           ilike(jobPosterLeads.state, `%${search}%`)
-        ) as ReturnType<typeof eq>
+        )
       );
     }
-    if (filterVerificationStatus && !filterActionability) {
+    if (filterVerificationStatus && !["active", "sendable", "needs_attention", "unusable"].includes(filterActionability)) {
       if (filterVerificationStatus === "valid") {
-        conditions.push(sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending') in ('valid', 'verified')` as ReturnType<typeof eq>);
+        conditions.push(sql`${verificationStatusNormalized} in ('valid', 'verified')`);
       } else if (filterVerificationStatus === "invalid") {
-        conditions.push(sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending') = 'invalid'` as ReturnType<typeof eq>);
+        conditions.push(sql`${verificationStatusNormalized} = 'invalid'`);
       } else {
-        conditions.push(sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending') not in ('valid', 'verified', 'invalid')` as ReturnType<typeof eq>);
+        conditions.push(sql`${verificationStatusNormalized} not in ('valid', 'verified', 'invalid')`);
       }
     }
 
@@ -92,22 +115,50 @@ export async function GET(req: NextRequest) {
       SELECT
         count(*) FILTER (
           WHERE archived = false
-            AND email IS NOT NULL AND email != ''
-            AND email_verification_status = 'valid'
+            AND (
+              (email IS NOT NULL AND btrim(email) <> '')
+              OR (contact_name IS NOT NULL AND btrim(contact_name) <> '')
+              OR (company_name IS NOT NULL AND btrim(company_name) <> '')
+            )
+        ) AS active,
+        count(*) FILTER (
+          WHERE archived = false
+            AND email IS NOT NULL AND btrim(email) <> ''
+            AND coalesce(lower(trim(email_verification_status)), 'pending') in ('valid', 'verified')
         ) AS sendable,
         count(*) FILTER (
           WHERE archived = false
-            AND (email IS NULL OR email = '')
+            AND (
+              (email IS NOT NULL AND btrim(email) <> '')
+              OR (contact_name IS NOT NULL AND btrim(contact_name) <> '')
+              OR (company_name IS NOT NULL AND btrim(company_name) <> '')
+            )
+            AND coalesce(lower(trim(processing_status)), 'new') in ('new', 'enriching')
         ) AS needs_attention,
         count(*) FILTER (
           WHERE archived = false
-            AND email IS NOT NULL AND email != ''
-            AND coalesce(lower(trim(email_verification_status)), 'pending') != 'valid'
+            AND (
+              (email IS NOT NULL AND btrim(email) <> '')
+              OR (contact_name IS NOT NULL AND btrim(contact_name) <> '')
+              OR (company_name IS NOT NULL AND btrim(company_name) <> '')
+            )
+            AND (
+              coalesce(lower(trim(email_verification_status)), 'pending') = 'invalid'
+              OR (
+                coalesce(lower(trim(processing_status)), 'new') = 'processed'
+                AND (
+                  email IS NULL
+                  OR btrim(email) = ''
+                  OR coalesce(lower(trim(email_verification_status)), 'pending') not in ('valid', 'verified')
+                )
+              )
+            )
         ) AS unusable
       FROM directory_engine.job_poster_leads
     `);
     const eRow = (enrichmentRes.rows?.[0] ?? {}) as Record<string, string>;
     const enrichment = {
+      active: Number(eRow.active ?? 0),
       sendable: Number(eRow.sendable ?? 0),
       needs_attention: Number(eRow.needs_attention ?? 0),
       unusable: Number(eRow.unusable ?? 0),
@@ -125,6 +176,16 @@ export async function GET(req: NextRequest) {
       .orderBy(desc(jobPosterLeads.createdAt))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
+
+    console.log("[LGS] Job poster leads list", {
+      filterActionability,
+      archivedFilter,
+      filterVerificationStatus,
+      search: search || null,
+      total: Number(count ?? 0),
+      page,
+      pageSize,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -171,6 +232,7 @@ export async function GET(req: NextRequest) {
           email_verification_checked_at: row.emailVerificationCheckedAt?.toISOString() ?? null,
           email_verification_score: row.emailVerificationScore,
           email_verification_provider: row.emailVerificationProvider,
+          processing_status: row.processingStatus,
           ui_verification_status: uiVerificationStatus,
           final_status: finalStatus,
           ready_for_outreach: finalStatus === "ready",
