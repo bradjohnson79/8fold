@@ -4,21 +4,8 @@
  */
 import { NextResponse } from "next/server";
 import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
+import { triggerDiscoveryRun } from "@/src/services/lgs/discoveryRunTriggerService";
 import { parseDomainFile } from "@/src/services/lgs/parseDomainFile";
-
-function triggerDiscoveryRun(origin: string, runId: string) {
-  const headers: HeadersInit = { "content-type": "application/json" };
-  if (process.env.CRON_SECRET) {
-    headers.authorization = `Bearer ${process.env.CRON_SECRET}`;
-  }
-  void fetch(`${origin}/api/internal/lgs/process-discovery-run`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ run_id: runId }),
-  }).catch((error) => {
-    console.error("[LGS] Failed to trigger discovery run", { runId, error: String(error) });
-  });
-}
 
 export async function POST(req: Request) {
   try {
@@ -55,7 +42,7 @@ export async function POST(req: Request) {
       }
 
       const runId = await runBulkDomainDiscoveryAsync(rows);
-      triggerDiscoveryRun(origin, runId);
+      triggerDiscoveryRun(origin, runId, "discovery_bulk_upload");
       return NextResponse.json({ ok: true, data: { run_id: runId, domains_total: rows.length, parse_stats: stats } });
     }
 
@@ -69,7 +56,7 @@ export async function POST(req: Request) {
     }
 
     const runId = await runBulkDomainDiscoveryAsync(domainInput as string[]);
-    triggerDiscoveryRun(origin, runId);
+    triggerDiscoveryRun(origin, runId, "discovery_bulk_json");
     return NextResponse.json({ ok: true, data: { run_id: runId, domains_total: domainInput.length } });
   } catch (err) {
     console.error("LGS discovery bulk error:", err);

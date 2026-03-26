@@ -6,25 +6,12 @@
  */
 import { NextResponse } from "next/server";
 import { runBulkDomainDiscoveryAsync } from "@/src/services/lgs/domainDiscoveryService";
+import { triggerDiscoveryRun } from "@/src/services/lgs/discoveryRunTriggerService";
 import { parseDomainFile } from "@/src/services/lgs/parseDomainFile";
 
 function normalizeLeadType(value: FormDataEntryValue | null): "contractor" | "job_poster" {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   return normalized === "job_poster" ? "job_poster" : "contractor";
-}
-
-function triggerDiscoveryRun(origin: string, runId: string) {
-  const headers: HeadersInit = { "content-type": "application/json" };
-  if (process.env.CRON_SECRET) {
-    headers.authorization = `Bearer ${process.env.CRON_SECRET}`;
-  }
-  void fetch(`${origin}/api/internal/lgs/process-discovery-run`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ run_id: runId }),
-  }).catch((error) => {
-    console.error("[LGS] Failed to trigger discovery run", { runId, error: String(error) });
-  });
 }
 
 export async function POST(req: Request) {
@@ -72,7 +59,7 @@ export async function POST(req: Request) {
       campaignType: leadType === "job_poster" ? "jobs" : "contractor",
     });
     console.log("[LGS] Discovery run queued", { runId, domains: rowsWithLeadType.length, leadType });
-    triggerDiscoveryRun(origin, runId);
+    triggerDiscoveryRun(origin, runId, "leads_import");
 
     return NextResponse.json({
       ok: true,
