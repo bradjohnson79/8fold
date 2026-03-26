@@ -331,6 +331,9 @@ export type DiscoveryRunLead = {
 
 type DomainImportMetadata = Record<string, { city?: string; state?: string; country?: string }>;
 type CampaignType = "contractor" | "jobs";
+type StoredImportDomainMetadata = Record<string, unknown> & {
+  __queued_rows?: DomainImportRow[];
+};
 
 type RunContext = {
   importMeta: DomainImportMetadata;
@@ -349,6 +352,52 @@ export type DomainImportRow = {
   country?: string;
   targetLeadId?: string;
 };
+
+function normalizeDomain(raw: string): string {
+  return raw
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./i, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isValidNormalizedDomain(domain: string): boolean {
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(domain) && !domain.includes("..");
+}
+
+function sanitizeDomainImportRow(row: DomainImportRow): DomainImportRow | null {
+  const domain = normalizeDomain(row.domain);
+  if (!domain || !isValidNormalizedDomain(domain)) {
+    console.warn("[LGS] Invalid domain skipped during queueing:", row.domain);
+    return null;
+  }
+  return {
+    ...row,
+    domain,
+  };
+}
+
+function decodeQueuedRows(value: unknown): DomainImportRow[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const queued = (value as StoredImportDomainMetadata).__queued_rows;
+  if (!Array.isArray(queued)) return [];
+  return queued
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const candidate = sanitizeDomainImportRow({
+        domain: String((row as DomainImportRow).domain ?? ""),
+        category: (row as DomainImportRow).category,
+        campaignType: (row as DomainImportRow).campaignType,
+        city: (row as DomainImportRow).city,
+        state: (row as DomainImportRow).state,
+        country: (row as DomainImportRow).country,
+        targetLeadId: (row as DomainImportRow).targetLeadId,
+      });
+      return candidate;
+    })
+    .filter((row): row is DomainImportRow => row !== null);
+}
 
 // ─── Lead Creation (FAST — no verification) ──────────────────────────────────
 
@@ -573,6 +622,7 @@ async function processSingleDomain(
   ctx: RunContext
 ): Promise<void> {
   const baseDomain = domainRow.domain.replace(/^www\./, "");
+  console.log("[LGS] Processing domain:", baseDomain, { runId, campaignType: resolveCampaignType(domainRow, ctx) });
 
   // ── 1. Fetch targeted pages in parallel ────────────────────────────────────
   const pageResults = await Promise.allSettled(
@@ -852,6 +902,95 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
   );
 }
 
+async function claimDiscoveryRun(runId: string): Promise<"claimed" | "already_running" | "not_found" | "not_claimable"> {
+  const result = await db.execute<{ id: string }>(sql`
+    UPDATE directory_engine.discovery_runs
+    SET
+      status = 'running',
+      started_at = COALESCE(started_at, NOW()),
+      finished_at = NULL
+    WHERE id = ${runId}
+      AND COALESCE(status, 'pending') IN ('pending', 'stalled')
+    RETURNING id
+  `);
+
+  const claimed = (result as { rows?: Array<{ id: string }> }).rows ?? [];
+  if (claimed.length > 0) return "claimed";
+
+  const [run] = await db
+    .select({ status: discoveryRuns.status })
+    .from(discoveryRuns)
+    .where(eq(discoveryRuns.id, runId))
+    .limit(1);
+
+  if (!run) return "not_found";
+  if (run.status === "running") return "already_running";
+  return "not_claimable";
+}
+
+export async function processDiscoveryRunById(runId: string): Promise<{
+  ok: boolean;
+  status: "claimed" | "already_running" | "not_found" | "not_claimable";
+  queuedDomains: number;
+}> {
+  const [run] = await db
+    .select({
+      importDomainMetadata: discoveryRuns.importDomainMetadata,
+      status: discoveryRuns.status,
+    })
+    .from(discoveryRuns)
+    .where(eq(discoveryRuns.id, runId))
+    .limit(1);
+
+  if (!run) {
+    return { ok: false, status: "not_found", queuedDomains: 0 };
+  }
+
+  const queuedRows = decodeQueuedRows(run.importDomainMetadata);
+  if (queuedRows.length === 0) {
+    console.error("[LGS] Discovery run has no queued rows to process", { runId });
+    await db
+      .update(discoveryRuns)
+      .set({ status: "failed", finishedAt: new Date() })
+      .where(eq(discoveryRuns.id, runId));
+    return { ok: false, status: "not_claimable", queuedDomains: 0 };
+  }
+
+  const claimStatus = await claimDiscoveryRun(runId);
+  if (claimStatus !== "claimed") {
+    return {
+      ok: claimStatus === "already_running",
+      status: claimStatus,
+      queuedDomains: queuedRows.length,
+    };
+  }
+
+  console.log("[LGS] Scan job started", runId, { queuedDomains: queuedRows.length });
+
+  try {
+    await processDiscoveryRun(runId, queuedRows);
+    return { ok: true, status: "claimed", queuedDomains: queuedRows.length };
+  } catch (err) {
+    console.error("[LGS] Discovery run crashed:", err);
+    try {
+      const [row] = await db
+        .select({ status: discoveryRuns.status })
+        .from(discoveryRuns)
+        .where(eq(discoveryRuns.id, runId))
+        .limit(1);
+      if (row && row.status === "running") {
+        await db
+          .update(discoveryRuns)
+          .set({ status: "failed", finishedAt: new Date() })
+          .where(eq(discoveryRuns.id, runId));
+      }
+    } catch (finalizeErr) {
+      console.error("[LGS] Could not finalize run:", finalizeErr);
+    }
+    throw err;
+  }
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export async function runBulkDomainDiscoveryAsync(
@@ -865,23 +1004,10 @@ export async function runBulkDomainDiscoveryAsync(
 ): Promise<string> {
   const normalizedRows: DomainImportRow[] = rows.map((r) => {
     if (typeof r === "string") {
-      return {
-        domain: r
-          .replace(/^https?:\/\//, "")
-          .replace(/\/.*$/, "")
-          .replace(/^www\./, "")
-          .toLowerCase(),
-      };
+      return { domain: r };
     }
-    return {
-      ...r,
-      domain: r.domain
-        .replace(/^https?:\/\//, "")
-        .replace(/\/.*$/, "")
-        .replace(/^www\./, "")
-        .toLowerCase(),
-    };
-  });
+    return { ...r };
+  }).map((row) => sanitizeDomainImportRow(row)).filter((row): row is DomainImportRow => row !== null);
 
   const seenDomains = new Set<string>();
   const uniqueRows: DomainImportRow[] = [];
@@ -902,6 +1028,11 @@ export async function runBulkDomainDiscoveryAsync(
       };
     }
   }
+
+  const storedImportMetadata: StoredImportDomainMetadata = {
+    ...importDomainMetadata,
+    __queued_rows: uniqueRows,
+  };
 
   const defaultCampaignType = opts?.campaignType ?? uniqueRows[0]?.campaignType ?? "contractor";
 
@@ -927,40 +1058,13 @@ export async function runBulkDomainDiscoveryAsync(
       campaignType: defaultCampaignType,
       targetCampaignId: opts?.targetCampaignId ?? null,
       targetCategory: opts?.targetCategory ?? null,
-      importDomainMetadata: Object.keys(importDomainMetadata).length > 0 ? importDomainMetadata : null,
-      status: "running",
+      importDomainMetadata: storedImportMetadata,
+      status: "pending",
     })
     .returning();
 
   if (!run) throw new Error("Failed to create discovery run");
   const runId = run.id;
-
-  await db.update(discoveryRuns).set({ startedAt: new Date() }).where(eq(discoveryRuns.id, runId));
-
-  setImmediate(async () => {
-    try {
-      await processDiscoveryRun(runId, uniqueRows);
-    } catch (err) {
-      console.error("[LGS] Discovery run crashed:", err);
-    } finally {
-      try {
-        const [row] = await db
-          .select({ status: discoveryRuns.status })
-          .from(discoveryRuns)
-          .where(eq(discoveryRuns.id, runId))
-          .limit(1);
-        if (row && row.status === "running") {
-          await db
-            .update(discoveryRuns)
-            .set({ status: "failed", finishedAt: new Date() })
-            .where(eq(discoveryRuns.id, runId));
-          console.log(`[LGS] Finalized stuck run ${runId} → failed`);
-        }
-      } catch (finalizeErr) {
-        console.error("[LGS] Could not finalize run:", finalizeErr);
-      }
-    }
-  });
 
   return runId;
 }

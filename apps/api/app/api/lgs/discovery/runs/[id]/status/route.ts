@@ -8,6 +8,21 @@ import { db } from "@/db/drizzle";
 import { discoveryDomainLogs, discoveryRuns } from "@/db/schema/directoryEngine";
 
 const STALL_THRESHOLD_MS = 60_000;
+const START_TRIGGER_THRESHOLD_MS = 5_000;
+
+function triggerDiscoveryRun(origin: string, runId: string) {
+  const headers: HeadersInit = { "content-type": "application/json" };
+  if (process.env.CRON_SECRET) {
+    headers.authorization = `Bearer ${process.env.CRON_SECRET}`;
+  }
+  void fetch(`${origin}/api/internal/lgs/process-discovery-run`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ run_id: runId }),
+  }).catch((error) => {
+    console.error("[LGS] Failed to re-trigger discovery run", { runId, error: String(error) });
+  });
+}
 
 export async function GET(
   req: Request,
@@ -37,16 +52,27 @@ export async function GET(
       .where(eq(discoveryDomainLogs.runId, runId));
 
     const now = Date.now();
+    const origin = new URL(req.url).origin;
     const lastActivityAt = lastActivityRow?.lastActivityAt ?? run.startedAt ?? run.createdAt ?? null;
     const lastActivityMs = lastActivityAt ? now - lastActivityAt.getTime() : null;
     const terminalStatuses = new Set(["complete", "complete_with_errors", "failed", "cancelled"]);
     const rawStatus = run.status ?? "running";
+    const shouldKickPendingRun =
+      rawStatus === "pending" &&
+      (run.startedAt === null || lastActivityRow?.lastActivityAt === null) &&
+      now - (run.createdAt?.getTime() ?? now) >= START_TRIGGER_THRESHOLD_MS;
+
+    if (shouldKickPendingRun) {
+      console.log("[LGS] Re-triggering pending discovery run", { runId });
+      triggerDiscoveryRun(origin, runId);
+    }
+
     const isStalled =
       !terminalStatuses.has(rawStatus) &&
       rawStatus !== "cancel_requested" &&
       lastActivityMs !== null &&
       lastActivityMs >= STALL_THRESHOLD_MS;
-    const effectiveStatus = isStalled ? "stalled" : rawStatus;
+    const effectiveStatus = isStalled ? "stalled" : rawStatus === "pending" ? "running" : rawStatus;
 
     if (isStalled && rawStatus !== "stalled") {
       await db
