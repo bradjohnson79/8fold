@@ -7,10 +7,10 @@ import {
   leadFinderCampaigns,
 } from "@/db/schema/directoryEngine";
 import {
-  addRandomDelay,
   getCompanyDomain,
   incrementOutreachCounter,
   isDomainOnCooldown,
+  isLeadMessageType,
   loadBrainSettings,
   selectAvailableSender,
   sendWithRetry,
@@ -57,7 +57,7 @@ function mergeOutboundMetadata(
   };
 }
 
-async function fetchNextQueuedJobPosterMessage() {
+async function fetchNextQueuedJobPosterMessage(allowRefill = true) {
   const settings = await loadBrainSettings();
   const sender = await selectAvailableSender(settings, "jobs");
   if (!sender) {
@@ -80,6 +80,7 @@ async function fetchNextQueuedJobPosterMessage() {
       campaignId: jobPosterEmailMessages.campaignId,
       subject: jobPosterEmailMessages.subject,
       body: jobPosterEmailMessages.body,
+      messageType: jobPosterEmailMessages.messageType,
       generationContext: jobPosterEmailMessages.generationContext,
       messageStatus: jobPosterEmailMessages.status,
       email: jobPosterLeads.email,
@@ -111,13 +112,14 @@ async function fetchNextQueuedJobPosterMessage() {
       asc(jobPosterLeads.createdAt),
       asc(jobPosterEmailQueue.createdAt)
     )
-    .limit(20)
+    .limit(100)
     .for("update", { skipLocked: true });
 
   const now = new Date();
   for (const row of rows) {
     if (!row.subject || !row.body || !row.email) continue;
     if (row.messageStatus !== "approved" && row.messageStatus !== "queued") continue;
+    if (!isLeadMessageType(row.messageType)) continue;
     if (row.emailBounced) continue;
     if (row.archived) continue;
     const verificationStatus = String(row.emailVerificationStatus ?? "").trim().toLowerCase();
@@ -152,6 +154,13 @@ async function fetchNextQueuedJobPosterMessage() {
     };
   }
 
+  if (allowRefill) {
+    const refill = await queueApprovedJobPosterMessagesForAutomation();
+    if (refill.queued > 0) {
+      return fetchNextQueuedJobPosterMessage(false);
+    }
+  }
+
   return { settings, item: null };
 }
 
@@ -163,7 +172,6 @@ export async function runJobPosterQueueCycle(): Promise<QueueCycleResult> {
     return { processed: 0, sent: 0, failed: 0, blockedReason, nextSendWindow };
   }
 
-  await addRandomDelay();
   const result = await sendWithRetry({
     subject: item.subject,
     body: item.body,

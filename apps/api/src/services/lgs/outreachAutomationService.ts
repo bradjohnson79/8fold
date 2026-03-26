@@ -29,6 +29,13 @@ function priorityForLead(priority: string | null | undefined): number {
   return 3;
 }
 
+function isLeadMessageType(messageType: string | null | undefined): boolean {
+  const normalized = String(messageType ?? "intro_standard").trim().toLowerCase();
+  if (!normalized) return true;
+  if (["warmup", "test", "internal", "seed"].some((marker) => normalized.includes(marker))) return false;
+  return normalized.startsWith("intro") || normalized.startsWith("followup");
+}
+
 function stageForOutreachStatus(status: OutreachStatus): string | undefined {
   if (status === "message_generated" || status === "approved") return "message_ready";
   if (status === "queued") return "queued";
@@ -365,6 +372,11 @@ export async function queueApprovedContractorMessages(limit = 200): Promise<{ qu
       id: outreachMessages.id,
       leadId: outreachMessages.leadId,
       leadPriority: contractorLeads.leadPriority,
+      messageType: outreachMessages.messageType,
+      verificationStatus: contractorLeads.verificationStatus,
+      archived: contractorLeads.archived,
+      emailBounced: contractorLeads.emailBounced,
+      email: contractorLeads.email,
     })
     .from(outreachMessages)
     .innerJoin(contractorLeads, eq(outreachMessages.leadId, contractorLeads.id))
@@ -387,7 +399,14 @@ export async function queueApprovedContractorMessages(limit = 200): Promise<{ qu
     .where(inArray(lgsOutreachQueue.outreachMessageId, approvedMessages.map((message) => message.id)));
 
   const queuedSet = new Set(existingQueueRows.map((row) => row.messageId));
-  const queueableMessages = approvedMessages.filter((message) => !queuedSet.has(message.id));
+  const queueableMessages = approvedMessages.filter((message) => {
+    if (queuedSet.has(message.id)) return false;
+    if (!isLeadMessageType(message.messageType)) return false;
+    if (message.archived || message.emailBounced) return false;
+    if (!message.email || !message.email.trim()) return false;
+    const verification = String(message.verificationStatus ?? "").trim().toLowerCase();
+    return verification === "valid" || verification === "verified";
+  });
 
   if (queueableMessages.length > 0) {
     await db.insert(lgsOutreachQueue).values(
@@ -435,8 +454,14 @@ export async function queueApprovedJobPosterMessages(campaignId?: string): Promi
       id: jobPosterEmailMessages.id,
       leadId: jobPosterEmailMessages.leadId,
       campaignId: jobPosterEmailMessages.campaignId,
+      messageType: jobPosterEmailMessages.messageType,
+      emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
+      archived: jobPosterLeads.archived,
+      emailBounced: jobPosterLeads.emailBounced,
+      email: jobPosterLeads.email,
     })
     .from(jobPosterEmailMessages)
+    .innerJoin(jobPosterLeads, eq(jobPosterEmailMessages.leadId, jobPosterLeads.id))
     .where(and(...conditions));
 
   if (approvedMessages.length === 0) {
@@ -448,7 +473,14 @@ export async function queueApprovedJobPosterMessages(campaignId?: string): Promi
     .from(jobPosterEmailQueue)
     .where(inArray(jobPosterEmailQueue.messageId, approvedMessages.map((message) => message.id)));
   const queuedSet = new Set(existingQueueRows.map((row) => row.messageId));
-  const queueableMessages = approvedMessages.filter((message) => !queuedSet.has(message.id));
+  const queueableMessages = approvedMessages.filter((message) => {
+    if (queuedSet.has(message.id)) return false;
+    if (!isLeadMessageType(message.messageType)) return false;
+    if (message.archived || message.emailBounced) return false;
+    if (!message.email || !message.email.trim()) return false;
+    const verification = String(message.emailVerificationStatus ?? "").trim().toLowerCase();
+    return verification === "valid" || verification === "verified";
+  });
 
   if (queueableMessages.length > 0) {
     await db.insert(jobPosterEmailQueue).values(
