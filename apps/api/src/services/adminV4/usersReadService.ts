@@ -564,16 +564,12 @@ function accountStatusFromUser(user: {
   };
 }
 
-async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId: string | null; payoutsEnabled: boolean; simulatedApproved: boolean } | null> {
+async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId: string | null; payoutsEnabled: boolean } | null> {
   const rows = await db
     .select({
       stripeAccountId: sql<string | null>`${payoutMethods.details} ->> 'stripeAccountId'`,
       payoutsEnabled: sql<boolean>`case
         when lower(coalesce(${payoutMethods.details} ->> 'stripePayoutsEnabled', 'false')) in ('true','t','1','yes') then true
-        else false
-      end`,
-      simulatedApproved: sql<boolean>`case
-        when lower(coalesce(${payoutMethods.details} ->> 'stripeSimulatedApproved', 'false')) in ('true','t','1','yes') then true
         else false
       end`,
     })
@@ -586,7 +582,6 @@ async function getLatestStripeMethod(userId: string): Promise<{ stripeAccountId:
   return {
     stripeAccountId: row.stripeAccountId ? String(row.stripeAccountId).trim() : null,
     payoutsEnabled: Boolean(row.payoutsEnabled),
-    simulatedApproved: Boolean(row.simulatedApproved),
   };
 }
 
@@ -875,7 +870,7 @@ export async function getRouterDetail(userId: string): Promise<AdminRoleDetail |
     null;
   const stripeMethod = await getLatestStripeMethod(userId);
   let stripeConnected = Boolean(stripeMethod?.stripeAccountId);
-  let stripeVerified = Boolean(stripeMethod?.payoutsEnabled) || Boolean(stripeMethod?.simulatedApproved);
+  let stripeVerified = Boolean(stripeMethod?.payoutsEnabled);
   if (!stripeConnected) {
     const caRows = await db
       .select({ stripeAccountId: contractorAccounts.stripeAccountId })

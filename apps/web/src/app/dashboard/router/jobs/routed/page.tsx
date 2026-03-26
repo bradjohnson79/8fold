@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 import AvailabilityBadge from "@/components/AvailabilityBadge";
+import { formatJobStatus } from "@/components/dashboard/formatDashboardStatus";
 import StatusBadge from "@/components/StatusBadge";
 import CertificationThumbnails from "@/components/contractors/CertificationThumbnails";
 
@@ -94,11 +95,13 @@ export default function RouterRoutedJobsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900">{job.title}</div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    {job.region} &middot; {job.routingStatus}
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                    <span>{job.region}</span>
+                    <span>&middot;</span>
+                    <StatusBadge status={formatJobStatus(job.routingStatus)} />
                   </div>
                 </div>
-                <StatusBadge status={job.status} />
+                <StatusBadge status={formatJobStatus(job.status)} />
               </div>
               {job.routedAt ? (
                 <div className="mt-2 text-xs text-slate-500">

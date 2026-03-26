@@ -73,7 +73,7 @@ export default function JobPosterJobsPage() {
 
       {jobs.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm">
-          No jobs yet. <Link href="/post-job" className="font-medium text-emerald-700 hover:underline">Post your first job</Link>.
+          No jobs yet. <Link href="/dashboard/job-poster/post-job" className="font-medium text-emerald-700 hover:underline">Post your first job</Link>.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

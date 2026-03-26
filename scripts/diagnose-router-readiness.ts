@@ -28,7 +28,7 @@ async function main() {
     }
   }
 
-  // 2. Readiness simulation
+  // 2. Payment gate state
   const activeStripe = payoutMethods.find(
     (pm: any) => pm.provider === "STRIPE" && pm.isActive
   );
@@ -36,14 +36,12 @@ async function main() {
     const d = activeStripe.details as any;
     const hasId = String(d?.stripeAccountId ?? "").trim().length > 0;
     const enabled = ["true", "t", "1", "yes"].includes(String(d?.stripePayoutsEnabled ?? "").toLowerCase());
-    const simulated = ["true", "t", "1", "yes"].includes(String(d?.stripeSimulatedApproved ?? "").toLowerCase());
-    console.log(`\n--- 2. Payment Gate Simulation ---`);
+    console.log(`\n--- 2. Payment Gate ---`);
     console.log(`  stripeAccountId: ${d?.stripeAccountId} (present: ${hasId})`);
     console.log(`  stripePayoutsEnabled: ${d?.stripePayoutsEnabled} (truthy: ${enabled})`);
-    console.log(`  stripeSimulatedApproved: ${d?.stripeSimulatedApproved} (truthy: ${simulated})`);
-    console.log(`  => PAYMENT GATE: ${hasId && (enabled || simulated) ? "PASS" : "FAIL"}`);
+    console.log(`  => PAYMENT GATE: ${hasId && enabled ? "PASS" : "FAIL"}`);
   } else {
-    console.log("\n--- 2. Payment Gate Simulation ---");
+    console.log("\n--- 2. Payment Gate ---");
     console.log("  No active STRIPE payout method found => PAYMENT GATE: FAIL");
   }
 

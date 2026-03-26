@@ -227,7 +227,7 @@ export async function getV4EligibleContractors(routerUserId: string, jobId: stri
     const details = (row.details as Record<string, unknown> | null) ?? null;
     payoutByUserId.set(row.userId, {
       stripeAccountId: String(details?.stripeAccountId ?? "").trim() || null,
-      stripePayoutsEnabled: toTruthy(details?.stripePayoutsEnabled) || toTruthy(details?.stripeSimulatedApproved),
+      stripePayoutsEnabled: toTruthy(details?.stripePayoutsEnabled),
     });
   }
 

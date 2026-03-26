@@ -12,7 +12,6 @@ export type PaymentStatus = {
   stripeStatus: "CONNECTED" | "NOT_CONNECTED";
   lastFour?: string;
   stripeUpdatedAt?: string | null;
-  simulationEnabled?: boolean;
 };
 
 function deriveConnection(input: {
@@ -33,13 +32,6 @@ function deriveConnection(input: {
 
 function setupCurrencyForCountry(country: string | null | undefined): "usd" | "cad" {
   return String(country ?? "").toUpperCase() === "CA" ? "cad" : "usd";
-}
-
-function isStripeSimulationEnabled(): boolean {
-  const explicit = String(process.env.STRIPE_SIMULATION_ENABLED ?? "").trim().toLowerCase();
-  if (explicit === "true") return true;
-  if (explicit === "false") return false;
-  return true;
 }
 
 async function createAndPersistStripeCustomer(userId: string): Promise<string> {
@@ -104,26 +96,7 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
     stripeStatus: derived.normalizedStripeStatus,
     lastFour,
     stripeUpdatedAt: u?.stripeUpdatedAt?.toISOString?.() ?? null,
-    simulationEnabled: isStripeSimulationEnabled(),
   };
-}
-
-export async function simulateJobPosterPaymentSuccess(userId: string): Promise<void> {
-  const now = new Date();
-  const safeUserId = userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20) || "user";
-  const simulatedPaymentMethod = `pm_sim_${safeUserId}`;
-  const simulatedCustomerId = `cus_sim_${safeUserId}`;
-
-  await db
-    .update(users)
-    .set({
-      stripeCustomerId: simulatedCustomerId,
-      stripeDefaultPaymentMethodId: simulatedPaymentMethod,
-      stripeStatus: "CONNECTED",
-      stripeUpdatedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(users.id, userId));
 }
 
 export async function ensureJobPosterStripeCustomer(userId: string): Promise<{ customerId: string }> {

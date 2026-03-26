@@ -4,24 +4,23 @@ import React from "react";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
 
-type NotificationItem = {
-  id: string;
-  title: string;
-  message?: string;
-  type?: string;
-  createdAt: string;
-  readAt?: string | null;
-};
-
 type PreferenceItem = {
   type: string;
   inApp: boolean;
   email: boolean;
 };
 
+function safePreferenceLabel(type: string): string {
+  const normalized = String(type ?? "").toUpperCase();
+  if (normalized.includes("MESSAGE")) return "New Message";
+  if (normalized.includes("ROUT")) return "Job Routed";
+  if (normalized.includes("ACCEPT")) return "Contractor Accepted";
+  if (normalized.includes("COMPLETE")) return "Job Completed";
+  return "In-app alerts";
+}
+
 export default function RouterNotificationsPage() {
   const { getToken } = useAuth();
-  const [items, setItems] = React.useState<NotificationItem[]>([]);
   const [prefs, setPrefs] = React.useState<PreferenceItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [savingPrefs, setSavingPrefs] = React.useState(false);
@@ -31,29 +30,19 @@ export default function RouterNotificationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [notifResp, prefsResp] = await Promise.all([
-        routerApiFetch("/api/web/v4/router/notifications?page=1&pageSize=50", getToken),
-        routerApiFetch("/api/web/v4/router/notification-preferences", getToken),
-      ]);
-      const notifJson = (await notifResp.json().catch(() => ({}))) as {
-        notifications?: NotificationItem[];
-        error?: { message?: string } | string;
-      };
+      const prefsResp = await routerApiFetch("/api/web/v4/router/notification-preferences", getToken);
       const prefsJson = (await prefsResp.json().catch(() => ({}))) as {
         items?: PreferenceItem[];
         data?: { items?: PreferenceItem[] };
       };
-      if (notifResp.status === 401) {
+      if (prefsResp.status === 401) {
         setError("Authentication lost — please refresh and sign in again.");
         return;
       }
-      if (!notifResp.ok) {
-        const message =
-          typeof notifJson.error === "string" ? notifJson.error : notifJson.error?.message ?? "Failed to load notifications";
-        setError(message);
+      if (!prefsResp.ok) {
+        setError("Failed to load alert preferences");
         return;
       }
-      setItems(Array.isArray(notifJson.notifications) ? notifJson.notifications : []);
       const prefItems = Array.isArray(prefsJson.items)
         ? prefsJson.items
         : Array.isArray(prefsJson.data?.items)
@@ -61,29 +50,15 @@ export default function RouterNotificationsPage() {
           : [];
       setPrefs(prefItems);
     } catch {
-      setError("Failed to load notifications");
+      setError("Failed to load alert preferences");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   React.useEffect(() => {
     void load();
   }, [load]);
-
-  async function markRead(id: string) {
-    await routerApiFetch(`/api/web/v4/router/notifications/${encodeURIComponent(id)}/read`, getToken, {
-      method: "POST",
-    });
-    await load();
-  }
-
-  async function markAllRead() {
-    await routerApiFetch("/api/web/v4/router/notifications/read-all", getToken, {
-      method: "POST",
-    });
-    await load();
-  }
 
   async function togglePreference(type: string, next: boolean) {
     setSavingPrefs(true);
@@ -96,7 +71,7 @@ export default function RouterNotificationsPage() {
         body: JSON.stringify({ items: [{ type, inApp: next }] }),
       });
     } catch {
-      setError("Failed to update notification preferences");
+      setError("Failed to update alert preferences");
       await load();
     } finally {
       setSavingPrefs(false);
@@ -105,14 +80,9 @@ export default function RouterNotificationsPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">Notifications</h1>
-        <button
-          onClick={() => void markAllRead()}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-        >
-          Mark all read
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Alert Preferences</h1>
+        <p className="mt-1 text-sm text-slate-600">Choose which high-level in-app alerts are enabled for your dashboard experience.</p>
       </div>
 
       {error ? (
@@ -120,58 +90,28 @@ export default function RouterNotificationsPage() {
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-slate-600">Loading notifications...</p>
-      ) : items.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
-          No notifications yet.
-        </div>
+        <p className="text-sm text-slate-600">Loading alert preferences...</p>
       ) : (
-        <div className="space-y-3">
-          {items.map((n) => (
-            <article key={n.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="font-semibold text-slate-900">{n.title}</h2>
-                  {n.message ? <p className="mt-1 text-sm text-slate-700">{n.message}</p> : null}
-                  <p className="mt-2 text-xs text-slate-500">{new Date(n.createdAt).toLocaleString()}</p>
-                </div>
-                {!n.readAt ? (
-                  <button
-                    onClick={() => void markRead(n.id)}
-                    className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Mark read
-                  </button>
-                ) : (
-                  <span className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                    Read
-                  </span>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">In-App Alert Preferences</h2>
+          <p className="mt-1 text-sm text-slate-600">Internal system notification feeds are hidden from user dashboards. These settings only control whether high-level alerts are enabled.</p>
+          <div className="mt-4 space-y-2">
+            {prefs.map((pref) => (
+              <label key={pref.type} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5">
+                <span className="text-sm font-medium text-slate-800">{safePreferenceLabel(pref.type)}</span>
+                <input
+                  type="checkbox"
+                  checked={pref.inApp}
+                  disabled={savingPrefs}
+                  onChange={(e) => void togglePreference(pref.type, e.target.checked)}
+                  className="h-4 w-4 accent-emerald-600"
+                />
+              </label>
+            ))}
+            {!prefs.length ? <p className="text-sm text-slate-500">No preference rows yet.</p> : null}
+          </div>
+        </section>
       )}
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Notification Preferences</h2>
-        <p className="mt-1 text-sm text-slate-600">Control which in-app notifications are active.</p>
-        <div className="mt-4 space-y-2">
-          {prefs.map((pref) => (
-            <label key={pref.type} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5">
-              <span className="text-sm font-medium text-slate-800">{pref.type}</span>
-              <input
-                type="checkbox"
-                checked={pref.inApp}
-                disabled={savingPrefs}
-                onChange={(e) => void togglePreference(pref.type, e.target.checked)}
-                className="h-4 w-4 accent-emerald-600"
-              />
-            </label>
-          ))}
-          {!prefs.length ? <p className="text-sm text-slate-500">No preference rows yet.</p> : null}
-        </div>
-      </section>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 import { useAuth } from "@clerk/nextjs";
 import { routerApiFetch } from "@/lib/routerApi";
+import { readJsonResponse } from "@/components/dashboard/loadSection";
 
 type DashboardRole = "JOB_POSTER" | "CONTRACTOR" | "ROUTER";
 type CompletionStep = "TERMS" | "PROFILE" | "PAYMENT";
@@ -25,6 +26,13 @@ type CardConfig = {
   description: string;
   ctaLabel: string;
   href: string;
+};
+
+type CompletionState = {
+  terms: boolean;
+  profile: boolean;
+  payment: boolean;
+  complete: boolean;
 };
 
 function cardConfigs(role: DashboardRole): CardConfig[] {
@@ -72,17 +80,27 @@ function cardConfigs(role: DashboardRole): CardConfig[] {
   ];
 }
 
-export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
+export function RoleCompletionPanel({
+  role,
+  completionState,
+  loadingOverride,
+}: {
+  role: DashboardRole;
+  completionState?: CompletionState | null;
+  loadingOverride?: boolean;
+}) {
   const { getToken } = useAuth();
-  const [loading, setLoading] = React.useState(true);
+  const controlled = completionState !== undefined || loadingOverride !== undefined;
+  const [loading, setLoading] = React.useState(!controlled);
   const [missing, setMissing] = React.useState<CompletionStep[]>([]);
 
   const fetchReadiness = React.useCallback(async () => {
+    if (controlled) return;
     try {
       const resp = role === "ROUTER"
         ? await routerApiFetch("/api/web/v4/readiness", getToken)
         : await fetch("/api/v4/readiness", { cache: "no-store", credentials: "include" });
-      const json = (await resp.json().catch(() => null)) as ReadinessPayload | null;
+      const json = await readJsonResponse<ReadinessPayload>(resp);
       const completion = json?.roleCompletion;
       if (!resp.ok || !completion || completion.complete) {
         setMissing([]);
@@ -95,13 +113,15 @@ export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
     } finally {
       setLoading(false);
     }
-  }, [role, getToken]);
+  }, [controlled, role, getToken]);
 
   React.useEffect(() => {
+    if (controlled) return;
     void fetchReadiness();
-  }, [fetchReadiness]);
+  }, [controlled, fetchReadiness]);
 
   React.useEffect(() => {
+    if (controlled) return;
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
         void fetchReadiness();
@@ -109,7 +129,23 @@ export function RoleCompletionPanel({ role }: { role: DashboardRole }) {
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [fetchReadiness]);
+  }, [controlled, fetchReadiness]);
+
+  React.useEffect(() => {
+    if (!controlled) return;
+    const effectiveLoading = loadingOverride ?? false;
+    setLoading(effectiveLoading);
+    if (effectiveLoading || !completionState || completionState.complete) {
+      setMissing([]);
+      return;
+    }
+
+    const nextMissing: CompletionStep[] = [];
+    if (!completionState.terms) nextMissing.push("TERMS");
+    if (!completionState.profile) nextMissing.push("PROFILE");
+    if (!completionState.payment) nextMissing.push("PAYMENT");
+    setMissing(nextMissing);
+  }, [completionState, controlled, loadingOverride]);
 
   if (loading || missing.length === 0) return null;
 

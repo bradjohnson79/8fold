@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import confetti from "canvas-confetti";
 import { apiFetch } from "@/lib/routerApi";
+import { DeadlineCountdown } from "@/components/dashboard/LiveCountdown";
+import { formatJobStatus } from "@/components/dashboard/formatDashboardStatus";
+import { loadSection, readJsonResponse } from "@/components/dashboard/loadSection";
 import { useJobPosterReadiness } from "@/hooks/useJobPosterReadiness";
 import StatusBadge from "@/components/StatusBadge";
 import { type LifecycleState } from "@/components/dashboard/LifecycleDebugPanel";
@@ -125,16 +127,6 @@ type ScoreAppraisalState = {
   };
 } | null;
 
-type AcceptNotif = {
-  id: string;
-  metadata?: {
-    jobId?: string;
-    contractorUserId?: string;
-    jobTitle?: string;
-    contractorName?: string;
-  };
-};
-
 type PendingAppraisal = {
   adjustmentId: string;
   jobId: string;
@@ -147,16 +139,6 @@ type PendingAppraisal = {
   expiresAt: string | null;
   expired: boolean;
 };
-
-function fmtCountdown(targetIso: string | null, nowMs: number): string {
-  if (!targetIso || nowMs <= 0) return "---";
-  const diff = new Date(targetIso).getTime() - nowMs;
-  if (diff <= 0) return "Expired — refresh to update";
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
-}
 
 function formatMoney(centsLike: number | null | undefined) {
   const cents = Math.max(0, Number(centsLike ?? 0) || 0);
@@ -218,13 +200,30 @@ function SummaryCard({ title, value, subtitle, href }: { title: string; value: s
   return content;
 }
 
-function derivePosterLifecycleState(summary: Summary | null, acceptNotifs: AcceptNotif[]): LifecycleState | null {
+function SummaryCardSkeleton({ title }: { title: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="text-sm font-medium uppercase tracking-wide text-slate-500">{title}</div>
+      <div className="mt-3 h-8 w-20 animate-pulse rounded bg-slate-200" />
+      <div className="mt-2 h-4 w-32 animate-pulse rounded bg-slate-100" />
+    </div>
+  );
+}
+
+function DegradedStateBanner() {
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      Some data failed to load. Please refresh.
+    </div>
+  );
+}
+
+function derivePosterLifecycleState(summary: Summary | null): LifecycleState | null {
   if (!summary) return null;
   const awaiting = summary.awaitingPosterReport ?? [];
   const completed = summary.fullyCompletedJobs ?? [];
   if (awaiting.length > 0) return "AWAITING_POSTER_COMPLETION";
   if (completed.length > 0) return "COMPLETED";
-  if (acceptNotifs.length > 0) return "ACCEPTED";
   return null;
 }
 
@@ -240,60 +239,75 @@ export default function JobPosterOverviewClient() {
   const [scoreAppraisal, setScoreAppraisal] = useState<ScoreAppraisalState>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
-  const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
   const [pendingAppraisals, setPendingAppraisals] = useState<PendingAppraisal[]>([]);
-  const confettiFired = useRef(false);
-  const [mounted, setMounted] = useState(false);
-  const [nowMs, setNowMs] = useState(0);
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
   const [reviewJobTitle, setReviewJobTitle] = useState<string | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [sectionFailures, setSectionFailures] = useState({
+    summary: false,
+    jobs: false,
+    assigned: false,
+    appraisal: false,
+    pendingAppraisals: false,
+  });
 
-  const realLifecycleState = derivePosterLifecycleState(summary, acceptNotifs);
-
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => {
-    if (!mounted) return;
-    setNowMs(Date.now());
-    const iv = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(iv);
-  }, [mounted]);
+  const realLifecycleState = derivePosterLifecycleState(summary);
 
   useEffect(() => {
     if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, jobsResp, assignedResp, appraisalResp, notifsResp, appraisalsResp] = await Promise.all([
-          apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null),
-          apiFetch("/api/web/v4/job-poster/jobs", getToken).catch(() => null),
-          apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken).catch(() => null),
-          apiFetch("/api/web/v4/score-appraisal/me", getToken).catch(() => null),
-          apiFetch("/api/web/v4/job-poster/notifications?unreadOnly=true&type=CONTRACTOR_ACCEPTED&page=1&pageSize=5", getToken).catch(() => null),
-          apiFetch("/api/web/v4/job-poster/appraisals/pending", getToken).catch(() => null),
+        const [summaryResult, jobsResult, assignedResult, appraisalResult, appraisalsResult] = await Promise.all([
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken);
+            if (!resp.ok) throw new Error(`Summary request failed with ${resp.status}`);
+            return await readJsonResponse<Summary>(resp);
+          }, { section: "job-poster-summary", route: "/api/web/v4/job-poster/dashboard/summary" }),
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/job-poster/jobs", getToken);
+            if (!resp.ok) throw new Error(`Jobs request failed with ${resp.status}`);
+            return await readJsonResponse<{ jobs?: JobItem[] }>(resp);
+          }, { section: "job-poster-jobs", route: "/api/web/v4/job-poster/jobs" }),
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken);
+            if (!resp.ok) throw new Error(`Assigned contractor request failed with ${resp.status}`);
+            return await readJsonResponse<{ assignment?: Thread | null }>(resp);
+          }, { section: "job-poster-assigned", route: "/api/web/v4/job-poster/assigned-contractor" }),
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/score-appraisal/me", getToken);
+            if (!resp.ok) throw new Error(`Score appraisal request failed with ${resp.status}`);
+            return await readJsonResponse<{ appraisal?: ScoreAppraisalState }>(resp);
+          }, { section: "job-poster-appraisal", route: "/api/web/v4/score-appraisal/me" }),
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/job-poster/appraisals/pending", getToken);
+            if (!resp.ok) throw new Error(`Pending appraisals request failed with ${resp.status}`);
+            return await readJsonResponse<{ pendingAppraisals?: PendingAppraisal[] }>(resp);
+          }, { section: "job-poster-pending-appraisals", route: "/api/web/v4/job-poster/appraisals/pending" }),
         ]);
         if (!alive) return;
 
-        const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
-        const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
-        const assignedJson = assignedResp ? await assignedResp.json().catch(() => null) : null;
-        const appraisalJson = appraisalResp ? await appraisalResp.json().catch(() => null) : null;
-        const notifsJson = notifsResp ? await notifsResp.json().catch(() => null) : null;
-        const appraisalsJson = appraisalsResp ? await appraisalsResp.json().catch(() => null) : null;
-        if (!alive) return;
+        const summaryJson = summaryResult.data;
+        const jobsJson = jobsResult.data;
+        const assignedJson = assignedResult.data;
+        const appraisalJson = appraisalResult.data;
+        const appraisalsJson = appraisalsResult.data;
+
+        setSectionFailures({
+          summary: summaryResult.failed,
+          jobs: jobsResult.failed,
+          assigned: assignedResult.failed,
+          appraisal: appraisalResult.failed,
+          pendingAppraisals: appraisalsResult.failed,
+        });
 
         setSummary(summaryJson ?? null);
         setJobs(Array.isArray(jobsJson?.jobs) ? jobsJson.jobs : []);
         setAssigned(assignedJson?.assignment ?? null);
-        setScoreAppraisal(appraisalJson?.appraisal ?? null);
-        setPendingAppraisals(Array.isArray(appraisalsJson?.pendingAppraisals) ? appraisalsJson.pendingAppraisals : []);
-
-        const notifs: AcceptNotif[] = Array.isArray(notifsJson?.notifications) ? notifsJson.notifications : [];
-        setAcceptNotifs(notifs);
-        if (notifs.length > 0 && !confettiFired.current) {
-          confettiFired.current = true;
-          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
-        }
+        setScoreAppraisal(appraisalResult.failed ? null : appraisalJson?.appraisal ?? null);
+        setPendingAppraisals(
+          appraisalsResult.failed ? [] : Array.isArray(appraisalsJson?.pendingAppraisals) ? appraisalsJson.pendingAppraisals : [],
+        );
       } catch {
         if (alive) setError("Failed to load dashboard data");
       } finally {
@@ -313,20 +327,26 @@ export default function JobPosterOverviewClient() {
         getToken,
         { method: "POST" },
       );
-      const payload = (await resp.json().catch(() => ({}))) as { error?: { message?: string } | string };
       if (!resp.ok) {
+        const payload = await readJsonResponse<{ error?: { message?: string } | string }>(resp);
         const message = typeof payload.error === "string" ? payload.error : payload.error?.message ?? "Failed to accept appointment";
         setActionError(message);
         return;
       }
-      const [sResp, aResp] = await Promise.all([
-        apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null),
-        apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken).catch(() => null),
+      const [summaryResult, assignedResult] = await Promise.all([
+        loadSection(async () => {
+          const summaryResp = await apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken);
+          if (!summaryResp.ok) throw new Error(`Summary refresh failed with ${summaryResp.status}`);
+          return await readJsonResponse<Summary>(summaryResp);
+        }, { section: "job-poster-summary-refresh", route: "/api/web/v4/job-poster/dashboard/summary" }),
+        loadSection(async () => {
+          const assignedResp = await apiFetch("/api/web/v4/job-poster/assigned-contractor", getToken);
+          if (!assignedResp.ok) throw new Error(`Assigned contractor refresh failed with ${assignedResp.status}`);
+          return await readJsonResponse<{ assignment?: Thread | null }>(assignedResp);
+        }, { section: "job-poster-assigned-refresh", route: "/api/web/v4/job-poster/assigned-contractor" }),
       ]);
-      const sJson = sResp ? await sResp.json().catch(() => null) : null;
-      const aJson = aResp ? await aResp.json().catch(() => null) : null;
-      if (sJson) setSummary(sJson);
-      setAssigned(aJson?.assignment ?? null);
+      if (summaryResult.data) setSummary(summaryResult.data);
+      setAssigned(assignedResult.data?.assignment ?? null);
     } catch {
       setActionError("Failed to accept appointment");
     } finally {
@@ -345,14 +365,17 @@ export default function JobPosterOverviewClient() {
         body: JSON.stringify({ jobId: reviewJobId, rating, comment }),
       });
       if (!resp.ok) {
-        const json = await resp.json().catch(() => ({}));
+        const json = await readJsonResponse<{ error?: string }>(resp);
         setActionError(typeof json?.error === "string" ? json.error : "Failed to submit review");
         return false;
       }
-      const sResp = await apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken).catch(() => null);
-      if (sResp) {
-        const sJson = await sResp.json().catch(() => null);
-        if (sJson) setSummary(sJson);
+      const summaryResult = await loadSection(async () => {
+        const summaryResp = await apiFetch("/api/web/v4/job-poster/dashboard/summary", getToken);
+        if (!summaryResp.ok) throw new Error(`Summary refresh failed with ${summaryResp.status}`);
+        return await readJsonResponse<Summary>(summaryResp);
+      }, { section: "job-poster-summary-refresh", route: "/api/web/v4/job-poster/dashboard/summary" });
+      if (summaryResult.data) {
+        setSummary(summaryResult.data);
       }
       return true;
     } catch {
@@ -369,6 +392,7 @@ export default function JobPosterOverviewClient() {
   const hasCompletionCards = beyondAcceptance || awaitingReport.length > 0 || completedJobs.length > 0;
   const showCompletionReminder = awaitingReport.length > 0;
   const showCompletedCard = completedJobs.length > 0;
+  const criticalSectionFailed = sectionFailures.summary || sectionFailures.jobs || sectionFailures.assigned;
 
   const loading = readinessLoading || dataLoading;
 
@@ -410,12 +434,14 @@ export default function JobPosterOverviewClient() {
           <p className="mt-1 text-sm text-slate-600">Manage posted jobs, assignments, payment setup, and messages.</p>
         </div>
         <Link
-          href="/post-job"
+          href="/dashboard/job-poster/post-job"
           className="inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
         >
           Post a Job
         </Link>
       </div>
+
+      {criticalSectionFailed ? <DegradedStateBanner /> : null}
 
       {allGatesComplete ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
@@ -440,40 +466,6 @@ export default function JobPosterOverviewClient() {
       )}
 
       {actionError ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p> : null}
-
-      {acceptNotifs.length > 0 && !hasCompletionCards && (
-        <ClosableCard storageKey="great-news" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-          <h2 className="pr-10 text-xl font-bold text-emerald-800">
-            Great news! Your job has been accepted.
-          </h2>
-          <div className="mt-3 space-y-2">
-            {acceptNotifs.map((n) => {
-              const meta = n.metadata ?? {};
-              return (
-                <div key={n.id} className="text-sm text-emerald-700">
-                  <span className="font-semibold">{meta.contractorName ?? "A contractor"}</span>
-                  {" has accepted your job: "}
-                  <span className="font-semibold">{meta.jobTitle ?? "a job"}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              href={`/dashboard/job-poster/messages${acceptNotifs[0]?.metadata?.jobId ? `?jobId=${encodeURIComponent(acceptNotifs[0].metadata.jobId)}` : ""}`}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            >
-              Open Messenger
-            </Link>
-            <Link
-              href="/dashboard/job-poster/jobs"
-              className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
-            >
-              View Job
-            </Link>
-          </div>
-        </ClosableCard>
-      )}
 
       {assignedBadge === "APPOINTMENT_BOOKED" && (
         <ClosableCard storageKey="appointment-booked" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
@@ -522,7 +514,7 @@ export default function JobPosterOverviewClient() {
                     </div>
                     {j.completionWindowExpiresAt && (
                       <div className="mt-1 text-xs font-medium text-amber-700">
-                        Auto-completes in: {mounted ? fmtCountdown(j.completionWindowExpiresAt, nowMs) : "---"}
+                        Auto-completes in: <DeadlineCountdown targetIso={j.completionWindowExpiresAt} />
                       </div>
                     )}
                   </div>
@@ -685,31 +677,48 @@ export default function JobPosterOverviewClient() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <SummaryCard title="Jobs Posted" value={summary ? String(summary.jobsPosted) : "—"} subtitle="Total non-draft jobs" href="/dashboard/job-poster/jobs" />
-        <SummaryCard title="Funds Secured" value={summary ? formatMoney(summary.fundsSecured) : "—"} subtitle="Captured job funds" />
-        <SummaryCard
-          title="Payment Status"
-          value={summary ? (summary.paymentStatus === "CONNECTED" ? "Connected" : "Not Connected") : "—"}
-          subtitle="Stripe setup"
-          href="/dashboard/job-poster/payment"
-        />
-        <SummaryCard title="Unread Messages" value={summary ? String(summary.unreadMessages) : "—"} subtitle="New messages in threads" href="/dashboard/job-poster/messages" />
-        <SummaryCard title="Active Assignments" value={summary ? String(summary.activeAssignments) : "—"} subtitle="Assigned or scheduled jobs" />
-        <SummaryCard
-          title="AI Score Appraisal"
-          value={
-            scoreAppraisal?.pending
-              ? `Pending (${scoreAppraisal.jobsEvaluated}/${scoreAppraisal.minimumRequired})`
-              : `${scoreAppraisal?.appraisal?.totalScore ?? "—"} / 10`
-          }
-          subtitle="Internal only"
-        />
+        {sectionFailures.summary ? (
+          <>
+            <SummaryCardSkeleton title="Jobs Posted" />
+            <SummaryCardSkeleton title="Funds Secured" />
+            <SummaryCardSkeleton title="Payment Status" />
+            <SummaryCardSkeleton title="Unread Messages" />
+            <SummaryCardSkeleton title="Active Assignments" />
+            <SummaryCardSkeleton title="AI Score Appraisal" />
+          </>
+        ) : (
+          <>
+            <SummaryCard title="Jobs Posted" value={summary ? String(summary.jobsPosted) : "—"} subtitle="Total non-draft jobs" href="/dashboard/job-poster/jobs" />
+            <SummaryCard title="Funds Secured" value={summary ? formatMoney(summary.fundsSecured) : "—"} subtitle="Captured job funds" />
+            <SummaryCard
+              title="Payment Status"
+              value={summary ? (summary.paymentStatus === "CONNECTED" ? "Connected" : "Not Connected") : "—"}
+              subtitle="Stripe setup"
+              href="/dashboard/job-poster/payment"
+            />
+            <SummaryCard title="Unread Messages" value={summary ? String(summary.unreadMessages) : "—"} subtitle="New messages in threads" href="/dashboard/job-poster/messages" />
+            <SummaryCard title="Active Assignments" value={summary ? String(summary.activeAssignments) : "—"} subtitle="Assigned or scheduled jobs" />
+            <SummaryCard
+              title="AI Score Appraisal"
+              value={
+                sectionFailures.appraisal
+                  ? "—"
+                  : scoreAppraisal?.pending
+                    ? `Pending (${scoreAppraisal.jobsEvaluated}/${scoreAppraisal.minimumRequired})`
+                    : `${scoreAppraisal?.appraisal?.totalScore ?? "—"} / 10`
+              }
+              subtitle={sectionFailures.appraisal ? "Temporarily unavailable" : "Internal only"}
+            />
+          </>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Posted Jobs</h2>
-          {jobs.length === 0 ? (
+          {sectionFailures.jobs ? (
+            <p className="mt-3 text-sm text-slate-500">Posted jobs are temporarily unavailable.</p>
+          ) : jobs.length === 0 ? (
             <p className="mt-3 text-sm text-slate-500">No posted jobs yet. Post your first job to start routing.</p>
           ) : (
             <div className="mt-4 space-y-3">
@@ -719,8 +728,8 @@ export default function JobPosterOverviewClient() {
                     <div>
                       <h3 className="font-semibold text-slate-900">{job.title ?? "Untitled"}</h3>
                       <div className="mt-1 flex flex-wrap gap-1.5">
-                        {job.status ? <StatusBadge status={job.status} /> : null}
-                        {job.routingStatus ? <StatusBadge status={job.routingStatus} /> : null}
+                        {job.status ? <StatusBadge status={formatJobStatus(job.status)} /> : null}
+                        {job.routingStatus ? <StatusBadge status={formatJobStatus(job.routingStatus)} /> : null}
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
                         Posted {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : "—"}
@@ -749,7 +758,9 @@ export default function JobPosterOverviewClient() {
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Assigned Contractor</h2>
-          {!assigned || !assignedBadge ? (
+          {sectionFailures.assigned ? (
+            <p className="mt-3 text-sm text-slate-500">Assigned contractor details are temporarily unavailable.</p>
+          ) : !assigned || !assignedBadge ? (
             <p className="mt-3 text-sm text-slate-500">No assigned contractor context is active right now.</p>
           ) : (
             <div className="mt-3 space-y-2 text-sm text-slate-700">
@@ -760,7 +771,7 @@ export default function JobPosterOverviewClient() {
                 <p><span className="font-medium">Appointment:</span> {new Date(assigned.appointmentAt).toLocaleString()}</p>
               ) : null}
               <div className="pt-1">
-                <StatusBadge status={assignedBadge} />
+                <StatusBadge status={formatJobStatus(assignedBadge)} />
               </div>
               {assigned.appointmentAt && !assigned.appointmentAcceptedAt ? (
                 <button
@@ -784,15 +795,8 @@ export default function JobPosterOverviewClient() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Link href="/dashboard/job-poster/notifications" className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-          <div>
-            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Notifications</div>
-            <div className="mt-1 text-sm text-slate-600">View and manage notifications</div>
-          </div>
-          <span className="text-slate-400">&rarr;</span>
-        </Link>
-        <Link href="/dashboard/job-poster/support" className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+      <div className="grid grid-cols-1 gap-4">
+        <Link href="/dashboard/job-poster/support/inbox" className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
           <div>
             <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Support</div>
             <div className="mt-1 text-sm text-slate-600">Submit or view support tickets</div>

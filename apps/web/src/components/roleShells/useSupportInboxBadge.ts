@@ -60,19 +60,25 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
   const { userId } = useAuth();
   const enabled = opts?.enabled ?? true;
   const inAppShell = pathname === "/app" || pathname.startsWith("/app/");
+  const inDashboardShell = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const inSupportedShell = inAppShell || inDashboardShell;
   const stoppedOnUnauthorized = useRef(false);
 
   const inboxHref = useMemo(() => {
-    if (role === "router") return "/app/router/support/inbox";
-    if (role === "job-poster") return "/app/job-poster/support/inbox";
-    return "/dashboard/contractor/support-inbox";
+    if (role === "router") return "/dashboard/router/support/inbox";
+    if (role === "job-poster") return "/dashboard/job-poster/support/inbox";
+    return "/dashboard/contractor/support/inbox";
   }, [role]);
 
-  const legacyRouterInboxHref = "/app/router/support-inbox";
+  const legacyInboxHrefs = {
+    router: ["/app/router/support-inbox", "/app/router/support/inbox", "/dashboard/router/support-inbox"],
+    "job-poster": ["/dashboard/job-poster/support-inbox", "/app/job-poster/support/inbox"],
+    contractor: ["/dashboard/contractor/support-inbox", "/app/contractor/support/inbox"],
+  } as const;
   const onInbox =
     pathname === inboxHref ||
     pathname.startsWith(inboxHref + "/") ||
-    (role === "router" && (pathname === legacyRouterInboxHref || pathname.startsWith(legacyRouterInboxHref + "/")));
+    legacyInboxHrefs[role].some((legacyHref) => pathname === legacyHref || pathname.startsWith(legacyHref + "/"));
 
   const [hasUnread, setHasUnread] = useState(false);
 
@@ -93,7 +99,7 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
       setHasUnread(false);
       return;
     }
-    if (!inAppShell) {
+    if (!inSupportedShell) {
       setHasUnread(false);
       return;
     }
@@ -130,7 +136,7 @@ export function useSupportInboxBadge(role: Role, opts?: { enabled?: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, inAppShell, onInbox, role, userId]);
+  }, [enabled, inSupportedShell, onInbox, role, userId]);
 
   return { inboxHref, hasUnread };
 }

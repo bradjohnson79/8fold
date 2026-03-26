@@ -35,7 +35,6 @@ type ContractorStripeIdentity = {
   contractorId: string | null;
   stripeAccountId: string | null;
   stripePayoutsEnabled: boolean;
-  stripeSimulatedApproved: boolean;
 };
 
 function normalizeCountry(raw: string | null | undefined): "CA" | "US" {
@@ -67,13 +66,6 @@ function toTruthyBool(raw: unknown): boolean {
   if (typeof raw === "boolean") return raw;
   const v = String(raw ?? "").trim().toLowerCase();
   return ["true", "t", "1", "yes", "on"].includes(v);
-}
-
-function isStripeSimulationEnabled(): boolean {
-  const explicit = String(process.env.STRIPE_SIMULATION_ENABLED ?? "").trim().toLowerCase();
-  if (explicit === "true") return true;
-  if (explicit === "false") return false;
-  return true;
 }
 
 async function resolveContractorStripeIdentity(userId: string): Promise<ContractorStripeIdentity> {
@@ -131,7 +123,6 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
   const payoutDetails = (payoutMethod?.details as Record<string, unknown> | null) ?? null;
   const payoutMethodStripeId = String(payoutDetails?.stripeAccountId ?? "").trim() || null;
   const payoutMethodPayoutsEnabled = toTruthyBool(payoutDetails?.stripePayoutsEnabled);
-  const payoutMethodSimulatedApproved = toTruthyBool(payoutDetails?.stripeSimulatedApproved);
   const accountPayoutVerified = ["ACTIVE", "VERIFIED", "READY"].includes(
     String(account?.payoutStatus ?? "").toUpperCase(),
   );
@@ -143,8 +134,7 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
   const resolvedPayoutsEnabled =
     Boolean(contractor?.stripePayoutsEnabled) ||
     accountPayoutVerified ||
-    payoutMethodPayoutsEnabled ||
-    payoutMethodSimulatedApproved;
+    payoutMethodPayoutsEnabled;
 
   return {
     userId,
@@ -154,7 +144,6 @@ async function resolveContractorStripeIdentity(userId: string): Promise<Contract
     contractorId: contractor?.id ?? null,
     stripeAccountId: resolvedStripeAccountId,
     stripePayoutsEnabled: resolvedPayoutsEnabled,
-    stripeSimulatedApproved: payoutMethodSimulatedApproved,
   };
 }
 
@@ -222,25 +211,6 @@ async function persistPayoutEnabled(args: {
 
 export async function getContractorStripeStatus(userId: string): Promise<ContractorStripeStatus> {
   const identity = await resolveContractorStripeIdentity(userId);
-  const simulatedApproved =
-    isStripeSimulationEnabled() &&
-    Boolean(identity.stripeAccountId) &&
-    (identity.stripeSimulatedApproved || String(identity.stripeAccountId ?? "").startsWith("sim_"));
-
-  if (simulatedApproved) {
-    return {
-      ok: true,
-      state: "VERIFIED",
-      stripeAccountId: identity.stripeAccountId,
-      chargesEnabled: true,
-      payoutsEnabled: true,
-      requirements: {
-        currentlyDue: [],
-        pastDue: [],
-      },
-    };
-  }
-
   if (!identity.stripeAccountId) {
     return {
       ok: true,
@@ -441,18 +411,6 @@ export async function getContractorPaymentSetupState(userId: string): Promise<Co
       paymentSetupComplete: Boolean(status.stripeAccountId && stripeOnboardingComplete && stripePayoutsEnabled),
     };
   } catch {
-    const simulatedApproved =
-      isStripeSimulationEnabled() &&
-      Boolean(stripeAccountId) &&
-      (identity.stripeSimulatedApproved || String(stripeAccountId ?? "").startsWith("sim_"));
-    if (simulatedApproved) {
-      return {
-        stripeAccountId,
-        stripeOnboardingComplete: true,
-        stripePayoutsEnabled: true,
-        paymentSetupComplete: true,
-      };
-    }
     return {
       stripeAccountId,
       stripeOnboardingComplete: false,

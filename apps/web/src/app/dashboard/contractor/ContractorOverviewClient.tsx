@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import confetti from "canvas-confetti";
 import { apiFetch } from "@/lib/routerApi";
+import { DeadlineCountdown, InviteCountdown } from "@/components/dashboard/LiveCountdown";
+import { loadSection, readJsonResponse } from "@/components/dashboard/loadSection";
 import { useContractorReadiness } from "@/hooks/useContractorReadiness";
-import { formatInviteCountdown, countdownColor } from "@/utils/formatInviteCountdown";
 type AwaitingCompletion = {
   jobId: string;
   title: string | null;
@@ -25,7 +26,6 @@ type SummaryData = {
   pendingInvites: number;
   assignedJobsCount: number;
   completedJobsCount: number;
-  availableEarnings: number;
   awaitingPosterCompletion?: AwaitingCompletion[];
   fullyCompletedJobs?: CompletedJob[];
 };
@@ -103,14 +103,22 @@ function SummaryCard({ title, value, subtitle, href }: { title: string; value: s
   return content;
 }
 
-function fmtCountdown(targetIso: string | null, nowMs: number): string {
-  if (!targetIso || nowMs <= 0) return "---";
-  const diff = new Date(targetIso).getTime() - nowMs;
-  if (diff <= 0) return "Expired — refresh to update";
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+function SummaryCardSkeleton({ title }: { title: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="text-sm font-medium uppercase tracking-wide text-slate-500">{title}</div>
+      <div className="mt-3 h-8 w-20 animate-pulse rounded bg-slate-200" />
+      <div className="mt-2 h-4 w-32 animate-pulse rounded bg-slate-100" />
+    </div>
+  );
+}
+
+function DegradedStateBanner() {
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      Some data failed to load. Please refresh.
+    </div>
+  );
 }
 
 const DEBUG = typeof window !== "undefined" && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === "true";
@@ -121,43 +129,51 @@ export default function ContractorOverviewClient() {
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
   const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
   const [invitePreviews, setInvitePreviews] = useState<InvitePreview[]>([]);
   const [debugData, setDebugData] = useState<Record<string, unknown> | null>(null);
   const confettiFired = useRef(false);
-  const [mounted, setMounted] = useState(false);
-  const [nowMs, setNowMs] = useState(0);
   const [zeroApprovedTrades, setZeroApprovedTrades] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => {
-    if (!mounted) return;
-    setNowMs(Date.now());
-    const iv = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(iv);
-  }, [mounted]);
+  const [sectionFailures, setSectionFailures] = useState({
+    summary: false,
+    invites: false,
+    trades: false,
+  });
 
   useEffect(() => {
     if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, notifResp, invitesResp, tradesResp] = await Promise.all([
-          apiFetch("/api/web/v4/contractor/dashboard/summary", getToken).catch(() => null),
-          apiFetch("/api/web/v4/contractor/notifications?page=1&pageSize=1", getToken).catch(() => null),
-          apiFetch("/api/web/v4/contractor/invites", getToken).catch(() => null),
-          apiFetch("/api/web/v4/contractor/trades", getToken).catch(() => null),
+        const [summaryResult, invitesResult, tradesResult] = await Promise.all([
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/contractor/dashboard/summary", getToken);
+            if (!resp.ok) throw new Error(`Summary request failed with ${resp.status}`);
+            return await readJsonResponse<SummaryData>(resp);
+          }, { section: "contractor-summary", route: "/api/web/v4/contractor/dashboard/summary" }),
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/contractor/invites", getToken);
+            if (!resp.ok) throw new Error(`Invites request failed with ${resp.status}`);
+            return await readJsonResponse<{ invites?: Array<any> }>(resp);
+          }, { section: "contractor-invites", route: "/api/web/v4/contractor/invites" }),
+          loadSection(async () => {
+            const resp = await apiFetch("/api/web/v4/contractor/trades", getToken);
+            if (!resp.ok) throw new Error(`Trades request failed with ${resp.status}`);
+            return await readJsonResponse<{ ok?: boolean; trades?: Array<{ approved: boolean }> }>(resp);
+          }, { section: "contractor-trades", route: "/api/web/v4/contractor/trades" }),
         ]);
         if (!alive) return;
 
-        const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
-        const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
-        const invitesJson = invitesResp ? await invitesResp.json().catch(() => null) : null;
-        const tradesJson = tradesResp ? await tradesResp.json().catch(() => null) : null;
-        if (!alive) return;
+        const summaryJson = summaryResult.data;
+        const invitesJson = invitesResult.data;
+        const tradesJson = tradesResult.data;
 
-        setSummary(summaryJson ?? null);
-        setUnreadNotifs(typeof notifJson?.unreadCount === "number" ? notifJson.unreadCount : 0);
+        setSectionFailures({
+          summary: summaryResult.failed,
+          invites: invitesResult.failed,
+          trades: tradesResult.failed,
+        });
+
+        setSummary(summaryJson);
 
         // Check if contractor has zero approved trades (suspended warning)
         if (tradesJson?.ok && Array.isArray(tradesJson.trades)) {
@@ -191,7 +207,6 @@ export default function ContractorOverviewClient() {
         if (DEBUG) {
           setDebugData({
             summaryKeys: summaryJson ? Object.keys(summaryJson) : [],
-            notifKeys: notifJson ? Object.keys(notifJson) : [],
             pendingInvites: summaryJson?.pendingInvites,
             assignedJobsCount: summaryJson?.assignedJobsCount,
             inviteCount: rawInvites.length,
@@ -239,7 +254,7 @@ export default function ContractorOverviewClient() {
   const pendingInvites = summary?.pendingInvites ?? 0;
   const assignedJobs = summary?.assignedJobsCount ?? 0;
   const completedJobsCount = summary?.completedJobsCount ?? 0;
-  const earnings = summary?.availableEarnings ?? 0;
+  const criticalSectionFailed = sectionFailures.summary;
 
   const showCompletedActions =
     (summary?.awaitingPosterCompletion ?? []).length > 0 || (summary?.fullyCompletedJobs ?? []).length > 0;
@@ -248,8 +263,10 @@ export default function ContractorOverviewClient() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Contractor Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-600">Track your jobs, invites, and earnings.</p>
+        <p className="mt-1 text-sm text-slate-600">Track your jobs, invites, and support activity.</p>
       </div>
+
+      {criticalSectionFailed ? <DegradedStateBanner /> : null}
 
       {zeroApprovedTrades ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4">
@@ -295,30 +312,38 @@ export default function ContractorOverviewClient() {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <SummaryCard
-          title="Available Earnings"
-          value={`$${(earnings / 100).toFixed(2)}`}
-          subtitle="Funds ready to release"
-        />
-        <SummaryCard
-          title="In Progress Jobs"
-          value={String(assignedJobs)}
-          subtitle="Active assigned jobs"
-          href="/dashboard/contractor/jobs"
-        />
-        <SummaryCard
-          title="Jobs Completed"
-          value={String(completedJobsCount)}
-          subtitle="Total completed jobs"
-          href="/dashboard/contractor/jobs"
-        />
+        {sectionFailures.summary ? (
+          <>
+            <SummaryCardSkeleton title="In Progress Jobs" />
+            <SummaryCardSkeleton title="Jobs Completed" />
+          </>
+        ) : (
+          <>
+            <SummaryCard
+              title="In Progress Jobs"
+              value={String(assignedJobs)}
+              subtitle="Active assigned jobs"
+              href="/dashboard/contractor/jobs"
+            />
+            <SummaryCard
+              title="Jobs Completed"
+              value={String(completedJobsCount)}
+              subtitle="Total completed jobs"
+              href="/dashboard/contractor/jobs"
+            />
+          </>
+        )}
         {invitePreviews.length === 0 ? (
-          <SummaryCard
-            title="Pending Invites"
-            value={String(pendingInvites)}
-            subtitle={pendingInvites > 0 ? "Job invitations waiting" : "No pending invites"}
-            href="/dashboard/contractor/invites"
-          />
+          sectionFailures.summary || sectionFailures.invites ? (
+            <SummaryCardSkeleton title="Pending Invites" />
+          ) : (
+            <SummaryCard
+              title="Pending Invites"
+              value={String(pendingInvites)}
+              subtitle={pendingInvites > 0 ? "Job invitations waiting" : "No pending invites"}
+              href="/dashboard/contractor/invites"
+            />
+          )
         ) : (
           <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
             <div className="flex items-start justify-between">
@@ -351,9 +376,7 @@ export default function ContractorOverviewClient() {
                       </span>
                     ) : null}
                     <span>&middot;</span>
-                    <span className={`font-medium ${countdownColor(inv.expiresAt)}`}>
-                      {formatInviteCountdown(inv.expiresAt)}
-                    </span>
+                    <InviteCountdown expiresAt={inv.expiresAt} />
                   </div>
                 </div>
               ))}
@@ -362,7 +385,12 @@ export default function ContractorOverviewClient() {
         )}
       </div>
 
-      {showCompletedActions && (
+      {sectionFailures.summary ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">Completed Job Actions</h3>
+          <p className="mt-1 text-sm text-slate-600">Completed job actions are temporarily unavailable.</p>
+        </section>
+      ) : showCompletedActions ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900">Completed Job Actions</h3>
           <p className="mt-1 text-sm text-slate-600">Track completion reports and fund releases.</p>
@@ -377,7 +405,7 @@ export default function ContractorOverviewClient() {
                     </div>
                     {j.completionWindowExpiresAt && (
                       <div className="mt-1.5 text-xs font-medium text-amber-700">
-                        Funds releasable in: {mounted ? fmtCountdown(j.completionWindowExpiresAt, nowMs) : "---"}
+                        Funds releasable in: <DeadlineCountdown targetIso={j.completionWindowExpiresAt} />
                       </div>
                     )}
                   </div>
@@ -385,12 +413,9 @@ export default function ContractorOverviewClient() {
                     <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
                       1/2
                     </span>
-                    <button
-                      disabled
-                      className="rounded-lg bg-slate-300 px-3 py-1.5 text-xs font-semibold text-white cursor-not-allowed"
-                    >
-                      Release Funds
-                    </button>
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                      Waiting for Job Poster
+                    </span>
                   </div>
                 </div>
               </div>
@@ -415,9 +440,9 @@ export default function ContractorOverviewClient() {
                         PAID
                       </span>
                     ) : (
-                      <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
-                        Release Funds
-                      </button>
+                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                        Pending Release
+                      </span>
                     )}
                   </div>
                 </div>
@@ -425,21 +450,11 @@ export default function ContractorOverviewClient() {
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4">
         <Link
-          href="/dashboard/contractor/notifications"
-          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
-        >
-          <div>
-            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Notifications</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{unreadNotifs} <span className="text-base font-normal text-slate-500">unread</span></div>
-          </div>
-          <span className="text-slate-400">&rarr;</span>
-        </Link>
-        <Link
-          href="/dashboard/contractor/support"
+          href="/dashboard/contractor/support/inbox"
           className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
         >
           <div>

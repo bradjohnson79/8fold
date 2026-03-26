@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/routerApi";
 
 type Appraisal = {
   id: string;
@@ -43,34 +45,85 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function getApiOrigin() {
-  const explicit = String(process.env.NEXT_PUBLIC_API_ORIGIN ?? "").trim();
-  if (explicit) return explicit.replace(/\/+$/, "");
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    return "http://localhost:3003";
+function getErrorMessage(input: unknown, fallback: string): string {
+  if (typeof input === "string" && input.trim()) return input;
+  if (input && typeof input === "object") {
+    const record = input as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) return record.message;
+    if (typeof record.error === "string" && record.error.trim()) return record.error;
+    if (record.error && typeof record.error === "object") {
+      const nested = record.error as Record<string, unknown>;
+      if (typeof nested.message === "string" && nested.message.trim()) return nested.message;
+    }
   }
-  return "https://api.8fold.app";
+  return fallback;
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return <div className="mt-6 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{message}</div>;
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="mt-8 rounded-xl border border-slate-200 bg-white p-8 text-center">
+      <p className="text-slate-500 text-sm">{message}</p>
+      <p className="mt-1 text-xs text-slate-400">
+        You can request a price revision from within a job&apos;s Messenger thread.
+      </p>
+    </div>
+  );
 }
 
 export default function ContractorAppraisalsPage() {
+  const { getToken } = useAuth();
   const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const apiOrigin = getApiOrigin();
-    fetch(`${apiOrigin}/api/web/v4/contractor/appraisals`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.ok && Array.isArray(data.appraisals)) {
-          setAppraisals(data.appraisals as Appraisal[]);
-        } else {
-          setError(data.error ?? "Failed to load appraisals");
+    let alive = true;
+
+    async function fetchAppraisals() {
+      try {
+        const res = await apiFetch("/api/web/v4/contractor/appraisals", getToken);
+        const payload = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          appraisals?: unknown;
+          error?: unknown;
+          message?: unknown;
+        };
+
+        if (res.status === 401) {
+          console.warn("[appraisals] 401 unauthorized");
+          return { data: null, error: "Session expired. Please refresh." };
         }
-      })
-      .catch(() => setError("Failed to load appraisals"))
-      .finally(() => setLoading(false));
-  }, []);
+
+        if (!res.ok) {
+          return { data: null, error: getErrorMessage(payload, "Unable to load appraisals") };
+        }
+
+        return {
+          data: Array.isArray(payload.appraisals) ? (payload.appraisals as Appraisal[]) : [],
+          error: "",
+        };
+      } catch {
+        return { data: null, error: "Unable to load appraisals" };
+      }
+    }
+
+    void (async () => {
+      setLoading(true);
+      const result = await fetchAppraisals();
+      if (!alive) return;
+      setAppraisals(Array.isArray(result.data) ? result.data : []);
+      setError(typeof result.error === "string" ? result.error : "Unable to load appraisals");
+      setLoading(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [getToken]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -83,18 +136,11 @@ export default function ContractorAppraisalsPage() {
         <p className="mt-8 text-sm text-slate-500">Loading appraisals…</p>
       )}
 
-      {error && (
-        <div className="mt-6 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-      )}
+      {error ? <ErrorBanner message={error || "Unable to load appraisals"} /> : null}
 
-      {!loading && !error && appraisals.length === 0 && (
-        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-500 text-sm">You have not submitted any 2nd appraisal requests yet.</p>
-          <p className="mt-1 text-xs text-slate-400">
-            You can request a price revision from within a job&apos;s Messenger thread.
-          </p>
-        </div>
-      )}
+      {!loading && !error && appraisals.length === 0 ? (
+        <EmptyState message="No appraisals yet" />
+      ) : null}
 
       {!loading && appraisals.length > 0 && (
         <div className="mt-6 space-y-3">
