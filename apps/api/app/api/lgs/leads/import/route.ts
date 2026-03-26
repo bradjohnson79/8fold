@@ -13,8 +13,23 @@ function normalizeLeadType(value: FormDataEntryValue | null): "contractor" | "jo
   return normalized === "job_poster" ? "job_poster" : "contractor";
 }
 
+function triggerDiscoveryRun(origin: string, runId: string) {
+  const headers: HeadersInit = { "content-type": "application/json" };
+  if (process.env.CRON_SECRET) {
+    headers.authorization = `Bearer ${process.env.CRON_SECRET}`;
+  }
+  void fetch(`${origin}/api/internal/lgs/process-discovery-run`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ run_id: runId }),
+  }).catch((error) => {
+    console.error("[LGS] Failed to trigger discovery run", { runId, error: String(error) });
+  });
+}
+
 export async function POST(req: Request) {
   try {
+    const origin = new URL(req.url).origin;
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const leadType = normalizeLeadType(formData.get("lead_type"));
@@ -56,6 +71,8 @@ export async function POST(req: Request) {
       autoImportSource: "website_import",
       campaignType: leadType === "job_poster" ? "jobs" : "contractor",
     });
+    console.log("[LGS] Discovery run queued", { runId, domains: rowsWithLeadType.length, leadType });
+    triggerDiscoveryRun(origin, runId);
 
     return NextResponse.json({
       ok: true,
