@@ -11,6 +11,7 @@ type JobPosterLead = {
   company_name: string | null;
   contact_name: string | null;
   email: string | null;
+  processing_status?: "new" | "enriching" | "processed" | null;
   needs_enrichment?: boolean;
   assignment_status?: string | null;
   outreach_status?: string | null;
@@ -35,6 +36,7 @@ type JobPosterLead = {
 };
 
 type EnrichmentSummary = {
+  active: number;
   sendable: number;
   needs_attention: number;
   unusable: number;
@@ -105,7 +107,7 @@ export default function JobPosterLeadsPage() {
   const [leads, setLeads] = useState<JobPosterLead[]>([]);
   const [enrichment, setEnrichment] = useState<EnrichmentSummary | null>(null);
   const [search, setSearch] = useState("");
-  const [filterActionability, setFilterActionability] = useState<"sendable" | "needs_attention" | "unusable">("sendable");
+  const [filterActionability, setFilterActionability] = useState<"active" | "sendable" | "needs_attention" | "unusable">("active");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -270,7 +272,7 @@ export default function JobPosterLeadsPage() {
         <div>
           <h1 style={{ margin: "0 0 0.35rem" }}>Job Poster Leads</h1>
           <p style={{ color: "#64748b", margin: 0, fontSize: "0.9rem" }}>
-            Isolated lead list for the jobs pipeline.
+            Active job poster leads with processing visibility for the jobs pipeline.
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -291,6 +293,7 @@ export default function JobPosterLeadsPage() {
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
         {(
           [
+            { key: "active", label: "Active", color: "#38bdf8", dimColor: "#0c4a6e33", borderColor: "#38bdf866" },
             { key: "sendable", label: "Ready to Send", color: "#22c55e", dimColor: "#16a34a33", borderColor: "#22c55e66" },
             { key: "needs_attention", label: "Processing", color: "#f59e0b", dimColor: "#f59e0b22", borderColor: "#f59e0b66" },
             { key: "unusable", label: "Not Ready", color: "#64748b", dimColor: "#1e293b", borderColor: "#334155" },
@@ -387,7 +390,7 @@ export default function JobPosterLeadsPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #334155", color: "#64748b" }}>
-                {["", "Website", "Company", "Contact", "Email", "Verify Status", "Category", "City", "Assignment", "Outreach", "Status", "Reply Count", "Replied", "Last Replied", "Created At"].map((label, index) => (
+                {["", "Website", "Company", "Contact", "Email", "Verify Status", "Processing", "Category", "City", "Assignment", "Outreach", "Status", "Reply Count", "Replied", "Last Replied", "Created At"].map((label, index) => (
                   <th key={label} style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontWeight: 600 }}>
                     {index === 0 ? <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ cursor: "pointer" }} /> : label}
                   </th>
@@ -432,6 +435,19 @@ export default function JobPosterLeadsPage() {
                   <td style={{ padding: "0.6rem 0.75rem" }}>
                     <span style={badgeStyle(VERIFY_STATUS_COLORS[normalizeVerificationStatus(lead.email_verification_status)] ?? "#94a3b8")}>
                       {verificationLabel(lead.email_verification_status)}
+                    </span>
+                  </td>
+                  <td style={{ padding: "0.6rem 0.75rem" }}>
+                    <span
+                      style={badgeStyle(
+                        lead.processing_status === "processed"
+                          ? "#22c55e"
+                          : lead.processing_status === "enriching"
+                            ? "#f59e0b"
+                            : "#38bdf8"
+                      )}
+                    >
+                      {(lead.processing_status ?? "new").replace(/_/g, " ")}
                     </span>
                   </td>
                   <td style={{ padding: "0.6rem 0.75rem", color: "#cbd5e1" }}>{lead.category}</td>

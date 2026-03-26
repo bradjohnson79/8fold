@@ -131,6 +131,7 @@ async function applyClassificationToJobs(
       emailVerificationStatus: status,
       emailVerificationCheckedAt: new Date(),
       emailVerificationProvider: "format-classifier",
+      processingStatus: "processed",
       scoreDirty: true,
       updatedAt: new Date(),
     })

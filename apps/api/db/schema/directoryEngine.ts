@@ -336,6 +336,10 @@ export const discoveryDomainLogs = directoryEngineSchema.table("discovery_domain
 export const discoveryDomainCache = directoryEngineSchema.table("discovery_domain_cache", {
   domain: text("domain").primaryKey(),
   lastDiscoveredAt: timestamp("last_discovered_at", { mode: "date" }).notNull(),
+  reachable: boolean("reachable"),
+  lastStatusCode: integer("last_status_code"),
+  lastContentType: text("last_content_type"),
+  lastResponseTimeMs: integer("last_response_time_ms"),
 });
 
 // LGS: discovery_run_leads (staging before import; one row per email)
@@ -525,6 +529,7 @@ export const jobPosterLeads = directoryEngineSchema.table("job_poster_leads", {
   country: text("country"),
   source: text("source"),
   status: text("status").notNull().default("new"),
+  processingStatus: text("processing_status").notNull().default("new"),
   contactAttempts: integer("contact_attempts").notNull().default(0),
   responseReceived: boolean("response_received").notNull().default(false),
   signedUp: boolean("signed_up").notNull().default(false),
