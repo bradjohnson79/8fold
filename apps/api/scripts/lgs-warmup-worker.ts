@@ -33,6 +33,7 @@ import {
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
 const WORKER_NAME = "warmup";
+const WARMUP_ENABLED = false;
 
 const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
   { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
@@ -425,6 +426,17 @@ async function updateHealthScores(): Promise<void> {
 // ─── Main Cycle ────────────────────────────────────────────────────────
 
 export async function runWarmupCycle(): Promise<void> {
+  if (!WARMUP_ENABLED) {
+    console.log("[LGS Warmup] Disabled. Skipping warmup cycle.");
+    try {
+      await heartbeatStart();
+      await heartbeatFinish("disabled");
+    } catch (err) {
+      console.error("[LGS Warmup] disabled heartbeat error:", err);
+    }
+    return;
+  }
+
   try {
     await heartbeatStart();
   } catch (err) {

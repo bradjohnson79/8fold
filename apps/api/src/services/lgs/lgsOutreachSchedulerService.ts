@@ -5,7 +5,7 @@
  *   - Only sends approved queue items
  *   - Sends only to active leads with valid email verification
  *   - Uses deterministic FIFO lead ordering
- *   - Applies per-sender warmup-day caps and 60-120 second spacing
+ *   - Applies per-sender outreach caps and sender-level spacing
  *   - Retries queue failures once, then marks failed
  *   - Marks bounce domains risky for 24 hours
  */
@@ -24,6 +24,7 @@ import {
   type SendResult,
 } from "./outreachGmailSenderService";
 import { LGS_GMAIL_INBOUND_PIPELINES } from "./gmailInboundConfig";
+import { queueApprovedContractorMessages } from "./outreachAutomationService";
 import { normalizeVerificationStatus } from "./simpleEmailVerification";
 
 // ── Shared constant: sender health severity order ─────────────────────────────
@@ -72,6 +73,8 @@ const MAX_SEND_DELAY_MS = 120 * 1000;
 const FOLLOWUP_DELAY_HOURS = 48;
 const DOMAIN_RISK_WINDOW_HOURS = 24;
 export const OUTREACH_ESTIMATED_DELAY_SECONDS = 90;
+const LEAD_MESSAGE_TYPE_PREFIXES = ["intro", "followup"] as const;
+const NON_LEAD_MESSAGE_TYPE_MARKERS = ["warmup", "test", "internal", "seed"] as const;
 
 // ── Brain settings cache (refreshed each scheduler run) ──────────────────────
 type BrainSettings = {
@@ -123,9 +126,9 @@ function randomBetween(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function minutesSince(date: Date | null): number {
+function millisecondsSince(date: Date | null): number {
   if (!date) return Infinity;
-  return (Date.now() - date.getTime()) / (60 * 1000);
+  return Date.now() - date.getTime();
 }
 
 function isWithinSendWindow(): boolean {
@@ -164,10 +167,15 @@ export function getCompanyDomain(website: string | null, email: string): string 
 }
 
 function computeSenderDailyCap(warmupDay: number | null | undefined, configuredLimit: number | null | undefined): number {
-  const day = warmupDay ?? 0;
-  const baseCap = day <= 2 ? 10 : day <= 4 ? 20 : 45;
-  const configured = configuredLimit ?? baseCap;
-  return Math.max(0, Math.min(baseCap, configured));
+  void warmupDay;
+  return Math.max(0, configuredLimit ?? 50);
+}
+
+export function isLeadMessageType(messageType: string | null | undefined): boolean {
+  const normalized = String(messageType ?? "intro_standard").trim().toLowerCase();
+  if (!normalized) return true;
+  if (NON_LEAD_MESSAGE_TYPE_MARKERS.some((marker) => normalized.includes(marker))) return false;
+  return LEAD_MESSAGE_TYPE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 async function isDomainTemporarilyRisky(companyDomain: string, excludeLeadId: string): Promise<boolean> {
@@ -316,15 +324,14 @@ export async function selectAvailableSender(
   for (const s of senders) {
     if (!s.outreachEnabled) continue;
     if (!allowedSenders.has((s.senderEmail ?? "").trim().toLowerCase())) continue;
-    if (s.warmupStatus !== "warming" && s.warmupStatus !== "ready") continue;
     if (s.cooldownUntil && new Date(s.cooldownUntil) > now) continue;
 
-    const totalSent = (s.warmupSentToday ?? 0) + (s.outreachSentToday ?? 0);
+    const totalSent = s.outreachSentToday ?? 0;
     const dailyCap = computeSenderDailyCap(s.warmupDay, s.dailyLimit);
     const remaining = dailyCap - totalSent;
     if (remaining <= 0) continue;
 
-    if (minutesSince(s.lastSentAt ?? null) < 1) continue;
+    if (millisecondsSince(s.lastSentAt ?? null) < MIN_SEND_DELAY_MS) continue;
     if (!hasGmailTokenForSender(s.senderEmail ?? "")) continue;
 
     const senderHealthIdx = SENDER_HEALTH_ORDER.indexOf((s.healthScore ?? "risk") as SenderHealthLevel);
@@ -355,7 +362,8 @@ export async function selectAvailableSender(
 // ── Queue fetch with FIFO ordering ─────────────────────────────────────────────
 
 async function fetchNextQueuedMessage(
-  settings: BrainSettings
+  settings: BrainSettings,
+  allowRefill = true,
 ): Promise<
   | {
       kind: "ready";
@@ -418,12 +426,13 @@ async function fetchNextQueuedMessage(
       asc(contractorLeads.createdAt),
       asc(lgsOutreachQueue.createdAt)
     )
-    .limit(50)
+    .limit(200)
     .for("update", { skipLocked: true });
 
   for (const row of rows) {
     if (!row.subject || !row.body || !row.email) continue;
     if (row.messageStatus !== "approved" && row.messageStatus !== "queued") continue;
+    if (!isLeadMessageType(row.messageType)) continue;
 
     const blockedStages = ["replied", "converted", "paused", "archived"];
     if (row.outreachStage && blockedStages.includes(row.outreachStage)) continue;
@@ -461,6 +470,13 @@ async function fetchNextQueuedMessage(
     };
   }
 
+  if (allowRefill) {
+    const refill = await queueApprovedContractorMessages(200);
+    if (refill.queued > 0) {
+      return fetchNextQueuedMessage(settings, false);
+    }
+  }
+
   return null;
 }
 
@@ -489,7 +505,7 @@ export async function incrementOutreachCounter(senderId: string): Promise<void> 
     .update(senderPool)
     .set({
       outreachSentToday: sql`${senderPool.outreachSentToday} + 1`,
-      sentToday: sql`${senderPool.warmupSentToday} + ${senderPool.outreachSentToday} + 1`,
+      sentToday: sql`${senderPool.outreachSentToday} + 1`,
       lastSentAt: new Date(),
       updatedAt: new Date(),
     })
@@ -512,8 +528,9 @@ export async function triggerBounceCooldown(
 }
 
 export async function addRandomDelay(): Promise<void> {
-  const delayMs = randomBetween(MIN_SEND_DELAY_MS, MAX_SEND_DELAY_MS);
-  await new Promise((r) => setTimeout(r, delayMs));
+  void randomBetween;
+  void MAX_SEND_DELAY_MS;
+  return Promise.resolve();
 }
 
 async function markDomainRisk(companyDomain: string | null, bounceReason: string | null, excludeLeadId: string): Promise<void> {
@@ -566,8 +583,6 @@ export async function runLgsOutreachScheduler(): Promise<OutreachCycleResult> {
       nextSendWindow: queued.nextSendWindow,
     };
   }
-
-  await addRandomDelay();
 
   const result = await sendQueuedEmail({
     subject: queued.subject,

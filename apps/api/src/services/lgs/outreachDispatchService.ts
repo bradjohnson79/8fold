@@ -25,6 +25,8 @@ export type OutreachDispatcherResult = {
   next_send_window?: Date;
 };
 
+const OUTREACH_BATCH_SIZE = 20;
+
 function isOutreachEnabled() {
   const value = process.env.OUTREACH_ENABLED?.trim().toLowerCase();
   if (!value) return true;
@@ -83,23 +85,48 @@ export async function runOutreachDispatcher(): Promise<OutreachDispatcherResult>
     };
   }
 
-  const selectedPipeline = await selectPipelineToProcess();
-  if (!selectedPipeline) {
+  const initialPipeline = await selectPipelineToProcess();
+  if (!initialPipeline) {
     return {
       enabled,
       contractorQueued: contractorQueueResult.queued,
       contractorQueueSkipped: contractorQueueResult.skipped,
       jobsQueued: jobsQueueResult.queued,
       jobsQueueSkipped: jobsQueueResult.skipped,
-      selectedPipeline,
+      selectedPipeline: null,
       sent: 0,
       failed: 0,
     };
   }
 
-  const cycleResult = selectedPipeline === "contractor"
-    ? await runLgsOutreachScheduler()
-    : await runJobPosterQueueCycle();
+  let selectedPipeline: "contractor" | "jobs" | null = initialPipeline;
+  let sent = 0;
+  let failed = 0;
+  let blocked_reason: "outside_send_window" | undefined;
+  let next_send_window: Date | undefined;
+
+  for (let processed = 0; processed < OUTREACH_BATCH_SIZE; processed++) {
+    const pipeline = processed === 0 ? initialPipeline : await selectPipelineToProcess();
+    if (!pipeline) break;
+
+    const cycleResult = pipeline === "contractor"
+      ? await runLgsOutreachScheduler()
+      : await runJobPosterQueueCycle();
+
+    selectedPipeline ??= pipeline;
+    sent += cycleResult.sent;
+    failed += cycleResult.failed;
+
+    if (cycleResult.blockedReason) {
+      blocked_reason = cycleResult.blockedReason;
+      next_send_window = cycleResult.nextSendWindow;
+      break;
+    }
+
+    if (cycleResult.sent === 0 && cycleResult.failed === 0) {
+      break;
+    }
+  }
 
   return {
     enabled,
@@ -108,10 +135,10 @@ export async function runOutreachDispatcher(): Promise<OutreachDispatcherResult>
     jobsQueued: jobsQueueResult.queued,
     jobsQueueSkipped: jobsQueueResult.skipped,
     selectedPipeline,
-    sent: cycleResult.sent,
-    failed: cycleResult.failed,
-    blocked_reason: cycleResult.blockedReason,
-    next_send_window: cycleResult.nextSendWindow,
+    sent,
+    failed,
+    blocked_reason,
+    next_send_window,
   };
 }
 
