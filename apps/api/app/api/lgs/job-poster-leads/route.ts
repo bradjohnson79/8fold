@@ -18,9 +18,14 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobPosterLeads } from "@/db/schema/directoryEngine";
 import { deriveLeadBinaryState, deriveLeadUiVerificationLabel } from "@/src/services/lgs/leadBinaryState";
+import {
+  deriveLegacyJobPosterProcessingStatus,
+  getLgsSchemaCapabilities,
+} from "@/src/services/lgs/lgsSchemaCapabilities";
 
 export async function GET(req: NextRequest) {
   try {
+    const schemaCapabilities = await getLgsSchemaCapabilities();
     const sp = req.nextUrl.searchParams;
     const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10));
     const pageSize = Math.min(200, Math.max(1, parseInt(sp.get("page_size") ?? "50", 10)));
@@ -31,6 +36,13 @@ export async function GET(req: NextRequest) {
 
     const conditions: Array<any> = [];
     const verificationStatusNormalized = sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending')`;
+    const processingStatusNormalized = schemaCapabilities.jobPosterProcessingStatus
+      ? sql<string>`coalesce(lower(trim(${jobPosterLeads.processingStatus})), 'new')`
+      : sql<string>`case
+          when coalesce(${jobPosterLeads.needsEnrichment}, false) = true then 'enriching'
+          when ${jobPosterLeads.email} is not null and trim(${jobPosterLeads.email}) <> '' then 'processed'
+          else 'new'
+        end`;
     const hasIdentitySql = sql`
       (
         (${jobPosterLeads.email} IS NOT NULL AND trim(${jobPosterLeads.email}) <> '')
@@ -47,7 +59,7 @@ export async function GET(req: NextRequest) {
     const processingSql = sql`
       ${jobPosterLeads.archived} = false
       AND ${hasIdentitySql}
-      AND coalesce(lower(trim(${jobPosterLeads.processingStatus})), 'new') in ('new', 'enriching')
+      AND ${processingStatusNormalized} in ('new', 'enriching')
     `;
     const unusableSql = sql`
       ${jobPosterLeads.archived} = false
@@ -55,7 +67,7 @@ export async function GET(req: NextRequest) {
       AND (
         ${verificationStatusNormalized} = 'invalid'
         OR (
-          coalesce(lower(trim(${jobPosterLeads.processingStatus})), 'new') = 'processed'
+          ${processingStatusNormalized} = 'processed'
           AND (
             ${jobPosterLeads.email} IS NULL
             OR trim(${jobPosterLeads.email}) = ''
@@ -113,48 +125,11 @@ export async function GET(req: NextRequest) {
     // Actionability counts — exact same SQL fragments as the filters above
     const enrichmentRes = await db.execute(sql`
       SELECT
-        count(*) FILTER (
-          WHERE archived = false
-            AND (
-              (email IS NOT NULL AND btrim(email) <> '')
-              OR (contact_name IS NOT NULL AND btrim(contact_name) <> '')
-              OR (company_name IS NOT NULL AND btrim(company_name) <> '')
-            )
-        ) AS active,
-        count(*) FILTER (
-          WHERE archived = false
-            AND email IS NOT NULL AND btrim(email) <> ''
-            AND coalesce(lower(trim(email_verification_status)), 'pending') in ('valid', 'verified')
-        ) AS sendable,
-        count(*) FILTER (
-          WHERE archived = false
-            AND (
-              (email IS NOT NULL AND btrim(email) <> '')
-              OR (contact_name IS NOT NULL AND btrim(contact_name) <> '')
-              OR (company_name IS NOT NULL AND btrim(company_name) <> '')
-            )
-            AND coalesce(lower(trim(processing_status)), 'new') in ('new', 'enriching')
-        ) AS needs_attention,
-        count(*) FILTER (
-          WHERE archived = false
-            AND (
-              (email IS NOT NULL AND btrim(email) <> '')
-              OR (contact_name IS NOT NULL AND btrim(contact_name) <> '')
-              OR (company_name IS NOT NULL AND btrim(company_name) <> '')
-            )
-            AND (
-              coalesce(lower(trim(email_verification_status)), 'pending') = 'invalid'
-              OR (
-                coalesce(lower(trim(processing_status)), 'new') = 'processed'
-                AND (
-                  email IS NULL
-                  OR btrim(email) = ''
-                  OR coalesce(lower(trim(email_verification_status)), 'pending') not in ('valid', 'verified')
-                )
-              )
-            )
-        ) AS unusable
-      FROM directory_engine.job_poster_leads
+        count(*) FILTER (WHERE ${activeSql}) AS active,
+        count(*) FILTER (WHERE ${sendableSql}) AS sendable,
+        count(*) FILTER (WHERE ${processingSql}) AS needs_attention,
+        count(*) FILTER (WHERE ${unusableSql}) AS unusable
+      FROM ${jobPosterLeads}
     `);
     const eRow = (enrichmentRes.rows?.[0] ?? {}) as Record<string, string>;
     const enrichment = {
@@ -170,7 +145,40 @@ export async function GET(req: NextRequest) {
       .where(whereClause);
 
     const rows = await db
-      .select()
+      .select({
+        id: jobPosterLeads.id,
+        campaignId: jobPosterLeads.campaignId,
+        website: jobPosterLeads.website,
+        companyName: jobPosterLeads.companyName,
+        contactName: jobPosterLeads.contactName,
+        email: jobPosterLeads.email,
+        phone: jobPosterLeads.phone,
+        category: jobPosterLeads.category,
+        city: jobPosterLeads.city,
+        state: jobPosterLeads.state,
+        country: jobPosterLeads.country,
+        source: jobPosterLeads.source,
+        needsEnrichment: jobPosterLeads.needsEnrichment,
+        assignmentStatus: jobPosterLeads.assignmentStatus,
+        outreachStatus: jobPosterLeads.outreachStatus,
+        emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
+        emailVerificationCheckedAt: jobPosterLeads.emailVerificationCheckedAt,
+        emailVerificationScore: jobPosterLeads.emailVerificationScore,
+        emailVerificationProvider: jobPosterLeads.emailVerificationProvider,
+        processingStatus: processingStatusNormalized,
+        status: jobPosterLeads.status,
+        replyCount: jobPosterLeads.replyCount,
+        archived: jobPosterLeads.archived,
+        archivedAt: jobPosterLeads.archivedAt,
+        archiveReason: jobPosterLeads.archiveReason,
+        priorityScore: jobPosterLeads.priorityScore,
+        leadScore: jobPosterLeads.leadScore,
+        leadPriority: jobPosterLeads.leadPriority,
+        responseReceived: jobPosterLeads.responseReceived,
+        lastRepliedAt: jobPosterLeads.lastRepliedAt,
+        createdAt: jobPosterLeads.createdAt,
+        updatedAt: jobPosterLeads.updatedAt,
+      })
       .from(jobPosterLeads)
       .where(whereClause)
       .orderBy(desc(jobPosterLeads.createdAt))
@@ -185,6 +193,7 @@ export async function GET(req: NextRequest) {
       total: Number(count ?? 0),
       page,
       pageSize,
+      schemaCapabilities,
     });
 
     return NextResponse.json({
@@ -232,7 +241,12 @@ export async function GET(req: NextRequest) {
           email_verification_checked_at: row.emailVerificationCheckedAt?.toISOString() ?? null,
           email_verification_score: row.emailVerificationScore,
           email_verification_provider: row.emailVerificationProvider,
-          processing_status: row.processingStatus,
+          processing_status: schemaCapabilities.jobPosterProcessingStatus
+            ? row.processingStatus
+            : deriveLegacyJobPosterProcessingStatus({
+                email: row.email,
+                needsEnrichment: row.needsEnrichment,
+              }),
           ui_verification_status: uiVerificationStatus,
           final_status: finalStatus,
           ready_for_outreach: finalStatus === "ready",

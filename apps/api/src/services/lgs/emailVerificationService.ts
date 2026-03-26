@@ -24,6 +24,7 @@ import {
   scoreAndSaveContractorLead,
   scoreAndSaveJobPosterLead,
 } from "./priorityScoringService";
+import { getLgsSchemaCapabilities } from "./lgsSchemaCapabilities";
 
 type Pipeline = "contractor" | "jobs";
 export type EmailVerificationStatus = "pending" | "valid" | "invalid";
@@ -118,6 +119,7 @@ async function applyClassificationToJobs(
   normalizedEmail: string,
   status: "valid" | "invalid"
 ): Promise<string[]> {
+  const schemaCapabilities = await getLgsSchemaCapabilities();
   const leads = await db
     .select({ id: jobPosterLeads.id })
     .from(jobPosterLeads)
@@ -125,16 +127,20 @@ async function applyClassificationToJobs(
 
   if (leads.length === 0) return [];
 
+  const patch: Partial<typeof jobPosterLeads.$inferInsert> = {
+    emailVerificationStatus: status,
+    emailVerificationCheckedAt: new Date(),
+    emailVerificationProvider: "format-classifier",
+    scoreDirty: true,
+    updatedAt: new Date(),
+  };
+  if (schemaCapabilities.jobPosterProcessingStatus) {
+    patch.processingStatus = "processed";
+  }
+
   await db
     .update(jobPosterLeads)
-    .set({
-      emailVerificationStatus: status,
-      emailVerificationCheckedAt: new Date(),
-      emailVerificationProvider: "format-classifier",
-      processingStatus: "processed",
-      scoreDirty: true,
-      updatedAt: new Date(),
-    })
+    .set(patch)
     .where(sql`lower(trim(${jobPosterLeads.email})) = ${normalizedEmail}`);
 
   for (const lead of leads) {
