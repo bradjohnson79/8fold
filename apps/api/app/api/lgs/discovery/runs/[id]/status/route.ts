@@ -11,6 +11,15 @@ import { triggerDiscoveryRun } from "@/src/services/lgs/discoveryRunTriggerServi
 const STALL_THRESHOLD_MS = 60_000;
 const START_TRIGGER_THRESHOLD_MS = 3_000;
 
+function asDate(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -40,7 +49,10 @@ export async function GET(
 
     const now = Date.now();
     const origin = new URL(req.url).origin;
-    const lastActivityAt = lastActivityRow?.lastActivityAt ?? run.startedAt ?? run.createdAt ?? null;
+    const startedAt = asDate(run.startedAt);
+    const createdAt = asDate(run.createdAt);
+    const finishedAt = asDate(run.finishedAt);
+    const lastActivityAt = asDate(lastActivityRow?.lastActivityAt) ?? startedAt ?? createdAt;
     const lastActivityMs = lastActivityAt ? now - lastActivityAt.getTime() : null;
     const terminalStatuses = new Set(["complete", "complete_with_errors", "failed", "cancelled"]);
     const rawStatus = run.status ?? "running";
@@ -77,7 +89,7 @@ export async function GET(
     // Compute derived timing metrics
     const elapsedMs =
       run.elapsedMs ??
-      (run.startedAt ? now - run.startedAt.getTime() : null);
+      (startedAt ? now - startedAt.getTime() : null);
     const domainsProcessed = run.domainsProcessed ?? 0;
     const avgDomainsPerSecond =
       elapsedMs && elapsedMs > 0 && domainsProcessed > 0
@@ -120,8 +132,8 @@ export async function GET(
         emails_verified: run.emailsVerified ?? 0,
         contacts_found: run.contactsFound ?? 0,
         // Timing
-        started_at: run.startedAt?.toISOString() ?? null,
-        finished_at: run.finishedAt?.toISOString() ?? null,
+        started_at: startedAt?.toISOString() ?? null,
+        finished_at: finishedAt?.toISOString() ?? null,
         heartbeat_at: lastActivityAt?.toISOString() ?? null,
         stalled: isStalled,
         elapsed_ms: elapsedMs,
