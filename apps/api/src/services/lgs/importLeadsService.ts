@@ -10,6 +10,7 @@ import {
   type DomainImportRow,
 } from "@/src/services/lgs/domainDiscoveryService";
 import { enqueueVerificationEmail } from "@/src/services/lgs/emailVerificationService";
+import { getLgsSchemaCapabilities } from "@/src/services/lgs/lgsSchemaCapabilities";
 import type { DomainFileRow } from "@/src/services/lgs/parseDomainFile";
 
 type CampaignType = "contractor" | "jobs";
@@ -238,6 +239,7 @@ export async function importStructuredLeadRows(
   rows: DomainFileRow[],
   opts: StructuredImportOptions = {}
 ): Promise<StructuredImportSummary> {
+  const schemaCapabilities = await getLgsSchemaCapabilities();
   let inserted = 0;
   let skipped = 0;
   let needsEnrichment = 0;
@@ -278,10 +280,10 @@ export async function importStructuredLeadRows(
           patch.emailVerificationScore = null;
           patch.emailVerificationCheckedAt = null;
           patch.emailVerificationProvider = null;
-          patch.processingStatus = "processed";
+          if (schemaCapabilities.jobPosterProcessingStatus) patch.processingStatus = "processed";
         } else if (existing.needsEnrichment || needsRowEnrichment) {
           patch.emailVerificationStatus = "pending";
-          patch.processingStatus = "enriching";
+          if (schemaCapabilities.jobPosterProcessingStatus) patch.processingStatus = "enriching";
         }
 
         const changedKeys = Object.keys(patch).filter((key) => key !== "updatedAt");
@@ -314,40 +316,44 @@ export async function importStructuredLeadRows(
         continue;
       }
 
+      const newJobLead: typeof jobPosterLeads.$inferInsert = {
+        website: row.domain,
+        companyName: row.company ?? null,
+        contactName: contactName ?? null,
+        firstName: row.firstName ?? null,
+        lastName: row.lastName ?? null,
+        title: row.title ?? null,
+        email: row.email ?? null,
+        category: row.category ?? "business",
+        trade: row.trade ?? null,
+        address: row.address ?? null,
+        city: row.city ?? null,
+        state: row.state ?? null,
+        country: row.country ?? "US",
+        source,
+        needsEnrichment: needsRowEnrichment,
+        assignmentStatus: needsRowEnrichment ? "waiting_enrichment" : "ready",
+        emailVerificationStatus: "pending",
+        emailVerificationScore: null,
+        emailVerificationCheckedAt: null,
+        emailVerificationProvider: null,
+        status: "new",
+        archived: false,
+        archivedAt: null,
+        archiveReason: null,
+        leadPriority: "medium",
+        prioritySource: "auto",
+        scoreDirty: true,
+        outreachStage: "not_contacted",
+        followupCount: 0,
+      };
+      if (schemaCapabilities.jobPosterProcessingStatus) {
+        newJobLead.processingStatus = needsRowEnrichment ? "enriching" : "processed";
+      }
+
       const [created] = await db
         .insert(jobPosterLeads)
-        .values({
-          website: row.domain,
-          companyName: row.company ?? null,
-          contactName: contactName ?? null,
-          firstName: row.firstName ?? null,
-          lastName: row.lastName ?? null,
-          title: row.title ?? null,
-          email: row.email ?? null,
-          category: row.category ?? "business",
-          trade: row.trade ?? null,
-          address: row.address ?? null,
-          city: row.city ?? null,
-          state: row.state ?? null,
-          country: row.country ?? "US",
-          source,
-          needsEnrichment: needsRowEnrichment,
-          assignmentStatus: needsRowEnrichment ? "waiting_enrichment" : "ready",
-          emailVerificationStatus: "pending",
-          emailVerificationScore: null,
-          emailVerificationCheckedAt: null,
-          emailVerificationProvider: null,
-          status: "new",
-          processingStatus: needsRowEnrichment ? "enriching" : "processed",
-          archived: false,
-          archivedAt: null,
-          archiveReason: null,
-          leadPriority: "medium",
-          prioritySource: "auto",
-          scoreDirty: true,
-          outreachStage: "not_contacted",
-          followupCount: 0,
-        })
+        .values(newJobLead)
         .returning({ id: jobPosterLeads.id });
 
       inserted++;
