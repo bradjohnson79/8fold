@@ -32,12 +32,13 @@ import { rankEmailsForDomain } from "@/src/utils/scoreEmailPrefix";
 
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 
-const PAGES_TO_CRAWL = ["/", "/contact", "/contact-us", "/about"];
+const ROOT_PAGE_PATH = "/";
+const SECONDARY_PAGES_TO_CRAWL = ["/contact", "/contact-us", "/about"];
 const DOMAIN_CONCURRENCY = 10;
-const DISCOVERY_BATCH_SIZE = 25;
-const DISCOVERY_INVOCATION_BUDGET_MS = 20_000;
+const DISCOVERY_BATCH_SIZE = 40;
+const DISCOVERY_INVOCATION_BUDGET_MS = 35_000;
 const DISCOVERY_STALE_THRESHOLD_MS = 60_000;
-const PAGE_TIMEOUT_MS = 5000;
+const PAGE_TIMEOUT_MS = 3500;
 const PAGE_FETCH_MAX_ATTEMPTS = 2;
 const DOMAIN_MAX_ATTEMPTS = 2;
 const MAX_PATTERNS_PER_DOMAIN = 8;
@@ -213,6 +214,45 @@ async function fetchPage(url: string, attempt = 1): Promise<string> {
   }
 }
 
+async function fetchDomainHtml(baseDomain: string): Promise<{ html: string; emails: Set<string> }> {
+  const candidateOrigins = [
+    `https://${baseDomain}`,
+    `http://${baseDomain}`,
+    ...(baseDomain.startsWith("www.") ? [] : [`https://www.${baseDomain}`, `http://www.${baseDomain}`]),
+  ];
+
+  let originUsed = "";
+  let html = "";
+  const emails = new Set<string>();
+
+  for (const origin of candidateOrigins) {
+    const rootHtml = await fetchPage(`${origin}${ROOT_PAGE_PATH}`);
+    if (!rootHtml) continue;
+    originUsed = origin;
+    html += rootHtml;
+    extractEmails(rootHtml).forEach((email) => emails.add(email));
+    break;
+  }
+
+  if (!originUsed) {
+    return { html: "", emails };
+  }
+
+  if (emails.size === 0) {
+    const secondaryResults = await Promise.allSettled(
+      SECONDARY_PAGES_TO_CRAWL.map((path) => fetchPage(`${originUsed}${path}`))
+    );
+    for (const result of secondaryResults) {
+      if (result.status === "fulfilled" && result.value) {
+        html += result.value;
+        extractEmails(result.value).forEach((email) => emails.add(email));
+      }
+    }
+  }
+
+  return { html, emails };
+}
+
 function cleanBusinessName(raw: string): string {
   const decoded = raw
     .replace(/&amp;/g, "&")
@@ -344,11 +384,39 @@ type StoredImportDomainMetadata = Record<string, unknown> & {
   __queue_cursor?: number;
 };
 
+type ExistingContractorLead = {
+  id: string;
+  website: string | null;
+  email: string | null;
+  leadName: string | null;
+  businessName: string | null;
+  trade: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+};
+
+type ExistingJobPosterLead = {
+  id: string;
+  website: string | null;
+  email: string | null;
+  companyName: string | null;
+  contactName: string | null;
+  trade: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+};
+
 type RunContext = {
   importMeta: DomainImportMetadata;
   source: string;
   defaultCampaignType: CampaignType;
   existingDomains: Record<CampaignType, Set<string>>;
+  existingLeadRecords: {
+    contractor: Map<string, ExistingContractorLead>;
+    jobs: Map<string, ExistingJobPosterLead>;
+  };
   insertedDomains: Record<CampaignType, Set<string>>;
 };
 
@@ -421,6 +489,10 @@ function readQueueCursor(value: unknown): number {
   return Math.floor(rawCursor);
 }
 
+function hasText(value: string | null | undefined): value is string {
+  return Boolean(value && value.trim());
+}
+
 async function persistDiscoveryCheckpoint(
   runId: string,
   storedImportMetadata: StoredImportDomainMetadata,
@@ -469,11 +541,8 @@ async function createLeadForDomain(
   const domain = domainRow.domain;
   const campaignType = resolveCampaignType(domainRow, ctx);
   const hasTargetLead = Boolean(domainRow.targetLeadId);
+  const locationMeta = ctx.importMeta[domain] ?? {};
 
-  if (!hasTargetLead && ctx.existingDomains[campaignType].has(domain)) {
-    console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
-    return { inserted: false, duplicate: true };
-  }
   if (!hasTargetLead && ctx.insertedDomains[campaignType].has(domain)) {
     console.log(`[LGS] Duplicate skipped (in-run): ${domain}`);
     return { inserted: false, duplicate: true };
@@ -485,7 +554,61 @@ async function createLeadForDomain(
   const primary = ranked[0];
   const secondaries = ranked.slice(1);
   const emailType = classifyEmailType(primary.email, domain);
-  const locationMeta = ctx.importMeta[domain] ?? {};
+  const existingLead = ctx.existingLeadRecords[campaignType].get(domain);
+
+  if (!hasTargetLead && existingLead) {
+    if (campaignType === "jobs") {
+      const existingJobLead = existingLead as ExistingJobPosterLead;
+      const patch: Partial<typeof jobPosterLeads.$inferInsert> = {
+        updatedAt: new Date(),
+        scoreDirty: true,
+      };
+      if (!hasText(existingJobLead.email)) patch.email = primary.email;
+      if (!hasText(existingJobLead.companyName) && hasText(companyName)) patch.companyName = companyName;
+      if (!hasText(existingJobLead.contactName) && contactName && isValidPersonName(contactName)) patch.contactName = contactName;
+      if (!hasText(existingJobLead.trade) && hasText(industry)) patch.trade = industry;
+      if (!hasText(existingJobLead.city) && hasText(locationMeta.city)) patch.city = locationMeta.city;
+      if (!hasText(existingJobLead.state) && hasText(locationMeta.state)) patch.state = locationMeta.state;
+      if (!hasText(existingJobLead.country) && hasText(locationMeta.country)) patch.country = locationMeta.country;
+      if (Object.keys(patch).length > 2) {
+        await db.update(jobPosterLeads).set(patch).where(eq(jobPosterLeads.id, existingJobLead.id));
+        console.log(`[LGS] Refreshed existing job poster lead: ${domain}`);
+      } else {
+        console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
+      }
+    } else {
+      const existingContractorLead = existingLead as ExistingContractorLead;
+      const patch: Partial<typeof contractorLeads.$inferInsert> = {
+        updatedAt: new Date(),
+        scoreDirty: true,
+      };
+      if (!hasText(existingContractorLead.email)) {
+        patch.email = primary.email;
+        patch.emailType = emailType;
+        patch.primaryEmailScore = primary.score;
+        patch.secondaryEmails =
+          secondaries.length > 0
+            ? secondaries.map((email) => ({ email: email.email, score: email.score }))
+            : null;
+      }
+      if (!hasText(existingContractorLead.businessName) && hasText(companyName)) {
+        patch.businessName = companyName;
+        patch.scrapedBusinessName = companyName;
+      }
+      if (!hasText(existingContractorLead.leadName) && contactName && isValidPersonName(contactName)) patch.leadName = contactName;
+      if (!hasText(existingContractorLead.trade) && hasText(industry)) patch.trade = industry;
+      if (!hasText(existingContractorLead.city) && hasText(locationMeta.city)) patch.city = locationMeta.city;
+      if (!hasText(existingContractorLead.state) && hasText(locationMeta.state)) patch.state = locationMeta.state;
+      if (!hasText(existingContractorLead.country) && hasText(locationMeta.country)) patch.country = locationMeta.country;
+      if (Object.keys(patch).length > 2) {
+        await db.update(contractorLeads).set(patch).where(eq(contractorLeads.id, existingContractorLead.id));
+        console.log(`[LGS] Refreshed existing contractor lead: ${domain}`);
+      } else {
+        console.log(`[LGS] Duplicate skipped (pre-existing): ${domain}`);
+      }
+    }
+    return { inserted: false, duplicate: true };
+  }
 
   if (campaignType === "jobs") {
     if (domainRow.targetLeadId) {
@@ -668,20 +791,8 @@ async function processSingleDomain(
   const baseDomain = domainRow.domain.replace(/^www\./, "");
   console.log("[LGS] Processing domain:", baseDomain, { runId, campaignType: resolveCampaignType(domainRow, ctx) });
 
-  // ── 1. Fetch targeted pages in parallel ────────────────────────────────────
-  const pageResults = await Promise.allSettled(
-    PAGES_TO_CRAWL.map((p) => fetchPage(`https://${baseDomain}${p}`))
-  );
-
-  let html = "";
-  const allEmails = new Set<string>();
-
-  for (const r of pageResults) {
-    if (r.status === "fulfilled" && r.value) {
-      html += r.value;
-      extractEmails(r.value).forEach((e) => allEmails.add(e));
-    }
-  }
+  // ── 1. Fetch homepage first, then only fall back to secondary pages if needed ─
+  const { html, emails: allEmails } = await fetchDomainHtml(baseDomain);
 
   if (!html) {
     if (attempt < DOMAIN_MAX_ATTEMPTS) {
@@ -843,13 +954,33 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
   const domainList = domainRows.map((r) => r.domain.replace(/^www\./, "").toLowerCase());
   const existingContractorRows = domainList.length > 0
     ? await db
-        .select({ website: contractorLeads.website })
+        .select({
+          id: contractorLeads.id,
+          website: contractorLeads.website,
+          email: contractorLeads.email,
+          leadName: contractorLeads.leadName,
+          businessName: contractorLeads.businessName,
+          trade: contractorLeads.trade,
+          city: contractorLeads.city,
+          state: contractorLeads.state,
+          country: contractorLeads.country,
+        })
         .from(contractorLeads)
         .where(inArray(contractorLeads.website, domainList))
     : [];
   const existingJobPosterRows = domainList.length > 0
     ? await db
-        .select({ website: jobPosterLeads.website })
+        .select({
+          id: jobPosterLeads.id,
+          website: jobPosterLeads.website,
+          email: jobPosterLeads.email,
+          companyName: jobPosterLeads.companyName,
+          contactName: jobPosterLeads.contactName,
+          trade: jobPosterLeads.trade,
+          city: jobPosterLeads.city,
+          state: jobPosterLeads.state,
+          country: jobPosterLeads.country,
+        })
         .from(jobPosterLeads)
         .where(inArray(jobPosterLeads.website, domainList))
     : [];
@@ -874,6 +1005,18 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
     source,
     defaultCampaignType,
     existingDomains,
+    existingLeadRecords: {
+      contractor: new Map(
+        existingContractorRows
+          .map((row) => [row.website?.toLowerCase() ?? "", row] as const)
+          .filter(([domain]) => Boolean(domain))
+      ),
+      jobs: new Map(
+        existingJobPosterRows
+          .map((row) => [row.website?.toLowerCase() ?? "", row] as const)
+          .filter(([domain]) => Boolean(domain))
+      ),
+    },
     insertedDomains: {
       contractor: new Set<string>(),
       jobs: new Set<string>(),
