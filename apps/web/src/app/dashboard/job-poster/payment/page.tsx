@@ -10,7 +10,6 @@ type PaymentStatus = {
   stripeStatus: "CONNECTED" | "NOT_CONNECTED";
   lastFour?: string;
   stripeUpdatedAt?: string | null;
-  simulationEnabled?: boolean;
 };
 
 type PaymentBreakdown = {
@@ -36,7 +35,6 @@ export default function JobPosterPaymentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [simulating, setSimulating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
   const [breakdown, setBreakdown] = useState<PaymentBreakdown | null>(null);
@@ -127,30 +125,6 @@ export default function JobPosterPaymentPage() {
     }
   };
 
-  const handleSimulateSuccess = async () => {
-    setSimulating(true);
-    setError(null);
-    try {
-      const resp = await apiFetch("/api/web/v4/job-poster/payment/simulate-success", getToken, { method: "POST" });
-      const data = await resp.json().catch(() => ({})) as { ok?: boolean; error?: string | { message?: string } };
-      if (!resp.ok) {
-        const message = typeof data.error === "string" ? data.error : data.error?.message;
-        throw new Error(message ?? "Failed to simulate payment setup success");
-      }
-      if (data?.ok === false && data?.error === "STRIPE_NOT_CONFIGURED") {
-        setError("Stripe is not configured in this environment.");
-        return;
-      }
-      setSuccess(true);
-      setCanceled(false);
-      await fetchStatus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to simulate payment setup success");
-    } finally {
-      setSimulating(false);
-    }
-  };
-
   if (loading && !status) {
     return (
       <div className="p-6">
@@ -191,11 +165,6 @@ export default function JobPosterPaymentPage() {
               <button type="button" onClick={handleConnect} disabled={actionLoading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
                 {actionLoading ? "Redirecting..." : "Update Payment Method"}
               </button>
-              {status?.simulationEnabled ? (
-                <button type="button" onClick={handleSimulateSuccess} disabled={simulating || actionLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {simulating ? "Simulating..." : "Stripe Simulation Success"}
-                </button>
-              ) : null}
             </div>
           </>
         ) : (
@@ -206,11 +175,6 @@ export default function JobPosterPaymentPage() {
               <button type="button" onClick={handleConnect} disabled={actionLoading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
                 {actionLoading ? "Redirecting..." : "Connect Payment Method"}
               </button>
-              {status?.simulationEnabled ? (
-                <button type="button" onClick={handleSimulateSuccess} disabled={simulating || actionLoading} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {simulating ? "Simulating..." : "Stripe Simulation Success"}
-                </button>
-              ) : null}
             </div>
           </>
         )}
@@ -218,7 +182,7 @@ export default function JobPosterPaymentPage() {
 
       <p className="text-sm text-slate-500">
         Payment is required before activating a job.{" "}
-        <Link href="/post-job" className="font-medium text-emerald-700 hover:underline">Post a Job</Link>
+        <Link href="/dashboard/job-poster/post-job" className="font-medium text-emerald-700 hover:underline">Post a Job</Link>
       </p>
 
       <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

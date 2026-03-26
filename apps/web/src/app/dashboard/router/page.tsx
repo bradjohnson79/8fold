@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import confetti from "canvas-confetti";
+import { RoleCompletionPanel } from "@/components/dashboard/RoleCompletionPanel";
+import { loadSection, readJsonResponse } from "@/components/dashboard/loadSection";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 import { useLifecycleDebug } from "@/hooks/useLifecycleDebug";
@@ -25,16 +26,6 @@ type SummaryData = {
     event: string;
     updatedAt: string | null;
   }>;
-};
-
-type AcceptNotif = {
-  id: string;
-  metadata?: {
-    jobId?: string;
-    contractorUserId?: string;
-    jobTitle?: string;
-    contractorName?: string;
-  };
 };
 
 function formatTimeAgo(iso: string | null): string {
@@ -102,6 +93,14 @@ function GateCard({
   );
 }
 
+function DegradedStateBanner() {
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      Some data failed to load. Please refresh.
+    </div>
+  );
+}
+
 export default function RouterOverviewPage() {
   const { getToken } = useAuth();
   const { readiness, loading: readinessLoading, error: readinessError } = useRouterReadiness();
@@ -111,43 +110,46 @@ export default function RouterOverviewPage() {
   const [error, setError] = useState("");
 
   const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [availableCount, setAvailableCount] = useState<number>(0);
-  const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
-  const [acceptNotifs, setAcceptNotifs] = useState<AcceptNotif[]>([]);
-  const confettiFired = useRef(false);
+  const [availableCount, setAvailableCount] = useState<number | null>(null);
+  const [sectionFailures, setSectionFailures] = useState({
+    summary: false,
+    availableJobs: false,
+  });
 
   useEffect(() => {
     if (readinessLoading) return;
     let alive = true;
     (async () => {
       try {
-        const [summaryResp, jobsResp, notifResp, acceptResp] =
+        const [summaryResult, jobsResult] =
           await Promise.all([
-            routerApiFetch("/api/web/v4/router/dashboard/summary", getToken).catch(() => null),
-            routerApiFetch("/api/web/v4/router/available-jobs", getToken).catch(() => null),
-            routerApiFetch("/api/web/v4/router/notifications?page=1&pageSize=1", getToken).catch(() => null),
-            routerApiFetch("/api/web/v4/router/notifications?unreadOnly=true&type=CONTRACTOR_ACCEPTED&page=1&pageSize=5", getToken).catch(() => null),
+            loadSection(async () => {
+              const resp = await routerApiFetch("/api/web/v4/router/dashboard/summary", getToken);
+              if (!resp.ok) throw new Error(`Router summary request failed with ${resp.status}`);
+              return await readJsonResponse<SummaryData>(resp);
+            }, { section: "router-summary", route: "/api/web/v4/router/dashboard/summary" }),
+            loadSection(async () => {
+              const resp = await routerApiFetch("/api/web/v4/router/available-jobs", getToken);
+              if (!resp.ok) throw new Error(`Available jobs request failed with ${resp.status}`);
+              const json = await readJsonResponse<{ jobs?: Array<unknown>; status?: "ok" | "error" }>(resp);
+              if (json.status === "error") {
+                throw new Error("Available jobs API returned error status");
+              }
+              return json;
+            }, { section: "router-available-jobs", route: "/api/web/v4/router/available-jobs" }),
           ]);
         if (!alive) return;
 
-        const summaryJson = summaryResp ? await summaryResp.json().catch(() => null) : null;
-        const jobsJson = jobsResp ? await jobsResp.json().catch(() => null) : null;
-        const notifJson = notifResp ? await notifResp.json().catch(() => null) : null;
-        const acceptJson = acceptResp ? await acceptResp.json().catch(() => null) : null;
-        if (!alive) return;
+        const summaryJson = summaryResult.data;
+        const jobsJson = jobsResult.data;
+
+        setSectionFailures({
+          summary: summaryResult.failed,
+          availableJobs: jobsResult.failed,
+        });
 
         setSummary(summaryJson ?? null);
-        setAvailableCount(
-          Array.isArray(jobsJson?.jobs) ? jobsJson.jobs.length : Array.isArray(jobsJson) ? jobsJson.length : 0,
-        );
-        setUnreadNotifs(typeof notifJson?.unreadCount === "number" ? notifJson.unreadCount : 0);
-
-        const notifs: AcceptNotif[] = Array.isArray(acceptJson?.notifications) ? acceptJson.notifications : [];
-        setAcceptNotifs(notifs);
-        if (notifs.length > 0 && !confettiFired.current) {
-          confettiFired.current = true;
-          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
-        }
+        setAvailableCount(jobsResult.failed ? null : Array.isArray(jobsJson?.jobs) ? jobsJson.jobs.length : 0);
       } catch {
         if (alive) setError("Failed to load dashboard data");
       } finally {
@@ -185,10 +187,8 @@ export default function RouterOverviewPage() {
     );
   }
 
-  const termsOk = readiness?.terms ?? false;
-  const profileOk = readiness?.profile ?? false;
-  const stripeOk = readiness?.payment ?? false;
   const allGatesComplete = readiness?.complete ?? false;
+  const criticalSectionFailed = sectionFailures.summary || sectionFailures.availableJobs;
 
   const routedToday = summary?.capacity?.routesUsedToday ?? 0;
   const openTickets = summary?.actionRequired?.supportTicketsRequiringInput ?? 0;
@@ -212,6 +212,8 @@ export default function RouterOverviewPage() {
         <JobLifecycleTimeline steps={stepsForLifecycleState(effectiveState)} />
       )}
 
+      {criticalSectionFailed ? <DegradedStateBanner /> : null}
+
       {/* Section 1: Setup Status */}
       {allGatesComplete ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
@@ -225,48 +227,11 @@ export default function RouterOverviewPage() {
           </div>
         </div>
       ) : (
-        <section>
-          <h2 className="mb-3 text-lg font-semibold text-slate-900">Setup Status</h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <GateCard label="Terms" done={termsOk} href="/dashboard/router/terms" compact={false} />
-            <GateCard label="Profile" done={profileOk} href="/dashboard/router/profile" compact={false} />
-            <GateCard
-              label="Stripe"
-              done={stripeOk}
-              href="/dashboard/router/payments"
-              compact={false}
-            />
-          </div>
-        </section>
-      )}
-
-      {/* Celebration Card */}
-      {acceptNotifs.length > 0 && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-emerald-800">
-            Routing Success
-          </h2>
-          <div className="mt-3 space-y-2">
-            {acceptNotifs.map((n) => {
-              const meta = n.metadata ?? {};
-              return (
-                <div key={n.id} className="text-sm text-emerald-700">
-                  <span className="font-semibold">{meta.jobTitle ?? "A job"}</span>
-                  {" has been accepted by "}
-                  <span className="font-semibold">{meta.contractorName ?? "a contractor"}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-4">
-            <Link
-              href="/dashboard/router/jobs/routed"
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            >
-              View Routed Jobs
-            </Link>
-          </div>
-        </section>
+        <RoleCompletionPanel
+          role="ROUTER"
+          completionState={readiness}
+          loadingOverride={readinessLoading}
+        />
       )}
 
       {/* Escrow Earnings */}
@@ -276,21 +241,21 @@ export default function RouterOverviewPage() {
           <div>
             <div className="text-xs font-medium uppercase text-slate-500">Pending Escrow</div>
             <div className="mt-1 text-2xl font-bold text-amber-700">
-              ${(pendingCents / 100).toFixed(2)}
+              {sectionFailures.summary ? "—" : `$${(pendingCents / 100).toFixed(2)}`}
             </div>
             <div className="text-xs text-slate-500">Awaiting release</div>
           </div>
           <div>
             <div className="text-xs font-medium uppercase text-slate-500">Available Earnings</div>
             <div className="mt-1 text-2xl font-bold text-slate-900">
-              ${((earnings.weekCents ?? 0) / 100).toFixed(2)}
+              {sectionFailures.summary ? "—" : `$${((earnings.weekCents ?? 0) / 100).toFixed(2)}`}
             </div>
             <div className="text-xs text-slate-500">This week</div>
           </div>
           <div>
             <div className="text-xs font-medium uppercase text-slate-500">Released Earnings</div>
             <div className="mt-1 text-2xl font-bold text-emerald-700">
-              ${(releasedCents / 100).toFixed(2)}
+              {sectionFailures.summary ? "—" : `$${(releasedCents / 100).toFixed(2)}`}
             </div>
             <div className="text-xs text-slate-500">Lifetime</div>
           </div>
@@ -302,10 +267,14 @@ export default function RouterOverviewPage() {
         <div className="text-sm font-medium uppercase tracking-wide text-slate-500">
           Available Jobs
         </div>
-        <div className="mt-1 flex items-baseline gap-3">
-          <span className="text-5xl font-bold text-slate-900">{availableCount}</span>
-          <span className="text-lg text-slate-600">jobs waiting for routing</span>
-        </div>
+        {sectionFailures.availableJobs ? (
+          <div className="mt-3 text-sm text-slate-500">Available jobs are temporarily unavailable.</div>
+        ) : (
+          <div className="mt-1 flex items-baseline gap-3">
+            <span className="text-5xl font-bold text-slate-900">{availableCount ?? "—"}</span>
+            <span className="text-lg text-slate-600">jobs waiting for routing</span>
+          </div>
+        )}
         <Link
           href="/dashboard/router/jobs/available"
           className="mt-4 inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -319,10 +288,12 @@ export default function RouterOverviewPage() {
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-900">Recent Routing Activity</h3>
           <div className="text-sm text-slate-600">
-            Routed Today: <span className="font-semibold text-slate-900">{routedToday}</span>
+            Routed Today: <span className="font-semibold text-slate-900">{sectionFailures.summary ? "—" : routedToday}</span>
           </div>
         </div>
-        {recentActivity.length === 0 ? (
+        {sectionFailures.summary ? (
+          <p className="mt-3 text-sm text-slate-500">Recent routing activity is temporarily unavailable.</p>
+        ) : recentActivity.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">No recent activity yet.</p>
         ) : (
           <ul className="mt-3 divide-y divide-slate-100">
@@ -349,27 +320,14 @@ export default function RouterOverviewPage() {
         </Link>
       </section>
 
-      {/* Section 4: Notifications */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4">
         <Link
-          href="/dashboard/router/notifications"
-          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
-        >
-          <div>
-            <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Notifications</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{unreadNotifs} <span className="text-base font-normal text-slate-500">unread</span></div>
-          </div>
-          <span className="text-slate-400">&rarr;</span>
-        </Link>
-
-        {/* Section 5: Support */}
-        <Link
-          href="/dashboard/router/support-inbox"
+          href="/dashboard/router/support/inbox"
           className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
         >
           <div>
             <div className="text-sm font-medium uppercase tracking-wide text-slate-500">Support</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{openTickets} <span className="text-base font-normal text-slate-500">open tickets</span></div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">{sectionFailures.summary ? "—" : openTickets} <span className="text-base font-normal text-slate-500">open tickets</span></div>
           </div>
           <span className="text-slate-400">&rarr;</span>
         </Link>

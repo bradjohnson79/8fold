@@ -183,7 +183,7 @@ export async function getRoleCompletionSnapshot(userId: string, roleHint?: strin
   const hasCompletedContractorPaymentSetup = contractorPaymentSetup.paymentSetupComplete;
   const hasCompletedRouterPaymentSetup = Boolean(
     String(stripeMethodDetails?.stripeAccountId ?? "").trim().length > 0 &&
-      (parseTruthy(stripeMethodDetails?.stripePayoutsEnabled) || parseTruthy(stripeMethodDetails?.stripeSimulatedApproved)),
+      parseTruthy(stripeMethodDetails?.stripePayoutsEnabled),
   );
 
   const roleCompletion =

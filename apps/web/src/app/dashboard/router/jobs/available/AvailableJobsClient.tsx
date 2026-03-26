@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { formatJobStatus } from "@/components/dashboard/formatDashboardStatus";
+import { readJsonResponse } from "@/components/dashboard/loadSection";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
 
@@ -125,6 +127,7 @@ export default function AvailableJobsClient() {
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [responseStatus, setResponseStatus] = useState<"idle" | "ok" | "error">("idle");
   const [responseMeta, setResponseMeta] = useState<Record<string, unknown> | null>(null);
 
   const setupBlocked = readiness !== null && !readiness.complete;
@@ -135,25 +138,32 @@ export default function AvailableJobsClient() {
 
     try {
       const resp = await routerApiFetch(ENDPOINT, getToken);
-      const json = await resp.json().catch(() => null);
+      const json = await readJsonResponse<{
+        jobs?: Job[];
+        status?: "ok" | "error";
+        _meta?: Record<string, unknown>;
+      }>(resp);
 
       if (json?._meta && typeof json._meta === "object") {
         setResponseMeta(json._meta as Record<string, unknown>);
       }
 
-      if (!resp.ok) {
+      if (!resp.ok || json.status === "error") {
+        setResponseStatus("error");
+        setJobs([]);
         setError("Failed to load jobs");
         return;
       }
 
       const list: Job[] = Array.isArray(json?.jobs)
         ? json.jobs
-        : Array.isArray(json)
-          ? json
-          : [];
+        : [];
 
+      setResponseStatus("ok");
       setJobs(list);
     } catch {
+      setResponseStatus("error");
+      setJobs([]);
       setError("Network error — failed to reach the API");
     } finally {
       setFetching(false);
@@ -261,10 +271,10 @@ export default function AvailableJobsClient() {
         </button>
       </div>
 
-      {error && (
+      {responseStatus === "error" && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-          <p className="text-sm font-medium text-red-800">Error loading jobs</p>
-          <p className="mt-1 text-sm text-red-700">{error}</p>
+          <p className="text-sm font-medium text-red-800">Failed to load jobs</p>
+          <p className="mt-1 text-sm text-red-700">{error ?? "Please refresh or try again in a moment."}</p>
           <button
             type="button"
             onClick={fetchJobs}
@@ -275,13 +285,13 @@ export default function AvailableJobsClient() {
         </div>
       )}
 
-      {!error && jobs.length === 0 && (
+      {responseStatus === "ok" && jobs.length === 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm">
-          No jobs available in your region.
+          No jobs available.
         </div>
       )}
 
-      {!error && jobs.length > 0 && (
+      {responseStatus === "ok" && jobs.length > 0 && (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {jobs.map((job) => (
             <li key={job.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -291,6 +301,11 @@ export default function AvailableJobsClient() {
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                   {job.tradeCategory || "General"}
                 </span>
+                {job.status ? (
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                    {formatJobStatus(job.status)}
+                  </span>
+                ) : null}
                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                   {job.urbanOrRegional || (job.jobType === "regional" ? "Regional" : "Urban")}
                 </span>

@@ -4,6 +4,15 @@ const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim() || "https://api.8
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@8fold/shared'],
+  async redirects() {
+    return [
+      {
+        source: '/post-job',
+        destination: '/dashboard/job-poster/post-job',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       // Proxy sitemap index — Google submits this URL to Search Console.

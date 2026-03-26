@@ -55,11 +55,17 @@ export async function GET(req: Request) {
       console.log(`[router-trace] response_shape={ jobs: [...] }`);
     }
 
-    return NextResponse.json(result, { status: 200 });
+    const serviceFailed = Boolean((result as { _meta?: { error?: string } } | null)?._meta?.error);
+    return NextResponse.json({
+      ...result,
+      ok: serviceFailed ? false : result.ok ?? true,
+      status: serviceFailed ? "error" : "ok",
+    }, { status: 200 });
   } catch (err) {
     console.error(`[available-jobs] route_error`, err instanceof Error ? err.message : err);
     return NextResponse.json({
-      ok: true,
+      ok: false,
+      status: "error",
       jobs: [],
       _meta: { routeError: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() },
     }, { status: 200 });

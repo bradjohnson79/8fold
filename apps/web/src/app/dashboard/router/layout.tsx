@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserState } from "@/lib/auth/getCurrentUserState";
-import { RoleCompletionPanel } from "@/components/dashboard/RoleCompletionPanel";
 import { RouterDashboardShell } from "@/components/roleShells/RouterDashboardShell";
 
 export default async function RouterDashboardLayout({ children }: { children: React.ReactNode }) {
@@ -10,7 +9,6 @@ export default async function RouterDashboardLayout({ children }: { children: Re
 
   return (
     <RouterDashboardShell>
-      <RoleCompletionPanel role="ROUTER" />
       {children}
     </RouterDashboardShell>
   );

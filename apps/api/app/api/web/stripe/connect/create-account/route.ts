@@ -7,13 +7,11 @@ import { users } from "../../../../../../db/schema/user";
 import { payoutMethods } from "../../../../../../db/schema/payoutMethod";
 import { getWebOrigin } from "../../../../../../src/server/bootConfig";
 import {
-  isStripeSimulationEnabled,
   expectedCurrencyForCountry,
-  getUserCountryForSim,
+  getUserStripeCountry,
   getExistingStripeAccountId,
   persistStripeAccountForUser,
-  markSimulatedApproval,
-} from "../../../../../../src/services/v4/stripeSimulationService";
+} from "../../../../../../src/services/v4/stripeAccountService";
 
 type UserCountry = "CA" | "US";
 type StripeAccountTypeChoice = "AUTO" | "INDIVIDUAL" | "COMPANY";
@@ -27,7 +25,7 @@ function expectedCurrencyForStripeCountry(country: string): "CAD" | "USD" | null
 
 // Alias for backward compatibility within this file
 const getUserCountry = (userId: string, role: "ROUTER" | "CONTRACTOR") =>
-  getUserCountryForSim(userId, role);
+  getUserStripeCountry(userId, role);
 
 function requestedCapabilitiesForCountry(country: UserCountry): {
   transfers: { requested: true };
@@ -62,11 +60,9 @@ async function getStripeMethodDetails(userId: string): Promise<Record<string, un
 
 
 async function buildStatus(args: { userId: string; role: "ROUTER" | "CONTRACTOR" }) {
-  const simulationEnabled = isStripeSimulationEnabled();
   const country = await getUserCountry(args.userId, args.role);
   const expectedCurrency = expectedCurrencyForCountry(country);
   const methodDetails = await getStripeMethodDetails(args.userId);
-  const simulatedApproved = Boolean((methodDetails as any)?.stripeSimulatedApproved);
   const stripeAccountId = await getExistingStripeAccountId(args.userId);
   if (!stripeAccountId) {
     return {
@@ -80,26 +76,6 @@ async function buildStatus(args: { userId: string; role: "ROUTER" | "CONTRACTOR"
       chargesEnabled: false,
       payoutsEnabled: false,
       onboardingComplete: false,
-      simulationEnabled,
-      simulatedApproved: false,
-    };
-  }
-  if (simulatedApproved) {
-    return {
-      ok: true,
-      state: "CONNECTED" as const,
-      stripeAccountId,
-      expectedCountry: country,
-      payoutCurrency: expectedCurrency,
-      accountCountry: country,
-      countryMismatch: false,
-      currencyMismatch: false,
-      chargesEnabled: true,
-      payoutsEnabled: true,
-      onboardingComplete: true,
-      role: args.role,
-      simulationEnabled,
-      simulatedApproved: true,
     };
   }
   if (!stripe) {
@@ -126,8 +102,6 @@ async function buildStatus(args: { userId: string; role: "ROUTER" | "CONTRACTOR"
       chargesEnabled: false,
       payoutsEnabled: false,
       onboardingComplete: false,
-      simulationEnabled,
-      simulatedApproved: false,
     };
   }
 
@@ -157,8 +131,6 @@ async function buildStatus(args: { userId: string; role: "ROUTER" | "CONTRACTOR"
     payoutsEnabled,
     onboardingComplete,
     role: args.role,
-    simulationEnabled,
-    simulatedApproved: false,
   };
 }
 
@@ -193,10 +165,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const simulationEnabled = isStripeSimulationEnabled();
-    const body = (await req.json().catch(() => ({}))) as { accountType?: string; simulateApproved?: boolean };
+    const body = (await req.json().catch(() => ({}))) as { accountType?: string };
     const accountTypeChoice = parseAccountTypeChoice(body?.accountType);
-    const simulateApproved = Boolean(body?.simulateApproved);
     const typedRole = role as "ROUTER" | "CONTRACTOR";
     const country = await getUserCountry(user.userId, typedRole);
     const expectedCurrency = expectedCurrencyForCountry(country);
@@ -209,31 +179,6 @@ export async function POST(req: Request) {
     const userEmail = String(userInfo?.email ?? "").trim() || null;
     const userPhone = String(userInfo?.phone ?? "").trim() || null;
     const existing = await getExistingStripeAccountId(user.userId);
-
-    if (simulateApproved) {
-      if (!simulationEnabled) {
-        return NextResponse.json({ error: "Simulation mode is disabled." }, { status: 403 });
-      }
-      const safeUserId = user.userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20) || "user";
-      const simulatedAccountId = existing || `sim_${typedRole.toLowerCase()}_${safeUserId}`;
-      await markSimulatedApproval({
-        userId: user.userId,
-        role: typedRole,
-        stripeAccountId: simulatedAccountId,
-        expectedCurrency,
-      });
-      return NextResponse.json({
-        ok: true,
-        state: "CONNECTED",
-        stripeAccountId: simulatedAccountId,
-        payoutCurrency: expectedCurrency,
-        chargesEnabled: true,
-        payoutsEnabled: true,
-        onboardingComplete: true,
-        simulationEnabled,
-        simulatedApproved: true,
-      });
-    }
 
     if (!stripe) {
       return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
@@ -319,8 +264,6 @@ export async function POST(req: Request) {
         payoutCurrency: expectedCurrency,
         chargesEnabled: Boolean(account.charges_enabled),
         payoutsEnabled: Boolean(account.payouts_enabled),
-        simulationEnabled,
-        simulatedApproved: false,
       });
     }
 
@@ -339,8 +282,6 @@ export async function POST(req: Request) {
       payoutCurrency: expectedCurrency,
       chargesEnabled: Boolean(account.charges_enabled),
       payoutsEnabled: Boolean(account.payouts_enabled),
-      simulationEnabled,
-      simulatedApproved: false,
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed" }, { status: 500 });

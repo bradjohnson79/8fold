@@ -2,8 +2,11 @@
 
 import React from "react";
 import { DashboardShell } from "../DashboardShell";
+import { useSupportInboxBadge } from "./useSupportInboxBadge";
 
 export function RouterDashboardShell({ children }: { children: React.ReactNode }) {
+  const { hasUnread, inboxHref } = useSupportInboxBadge("router");
+
   const items = [
     { href: "/dashboard/router", label: "Overview" },
     { href: "/dashboard/router/terms", label: "Terms" },
@@ -11,10 +14,9 @@ export function RouterDashboardShell({ children }: { children: React.ReactNode }
     { href: "/dashboard/router/payments", label: "Payments" },
     { href: "/dashboard/router/jobs/available", label: "Available Jobs" },
     { href: "/dashboard/router/jobs/routed", label: "Routed Jobs" },
-    { href: "/dashboard/router/notifications", label: "Notifications" },
     { href: "/dashboard/router/support", label: "Support" },
-    { href: "/dashboard/router/support-inbox", label: "Support Inbox" },
+    { href: inboxHref, label: "Support Inbox", badge: hasUnread ? ({ kind: "dot" as const } as const) : undefined },
   ];
 
-  return <DashboardShell title="Router Dashboard" items={items} navMode="sidebar">{children}</DashboardShell>;
+  return <DashboardShell title="Router Dashboard" items={items} navMode="sidebar" extraUnreadCount={hasUnread ? 1 : 0}>{children}</DashboardShell>;
 }

@@ -67,7 +67,6 @@ async function main() {
     `SELECT "userId",
             details->>'stripeAccountId' AS stripe_account_id,
             details->>'stripePayoutsEnabled' AS payouts_enabled,
-            details->>'stripeSimulatedApproved' AS simulated_approved,
             "isActive"
      FROM "PayoutMethod"
      WHERE "userId" = $1
@@ -81,7 +80,6 @@ async function main() {
     for (const row of pmRes.rows as any[]) {
       console.log(`  stripeAccountId     : ${row.stripe_account_id ?? "(null)"}`);
       console.log(`  payoutsEnabled      : ${row.payouts_enabled ?? "(null)"}`);
-      console.log(`  simulatedApproved   : ${row.simulated_approved ?? "(null)"}`);
       console.log(`  isActive            : ${row.isActive}`);
       console.log("");
     }
@@ -93,10 +91,9 @@ async function main() {
 
   const pmStripeId = String(pmRow?.stripe_account_id ?? "").trim();
   const pmPayoutsEnabled = String(pmRow?.payouts_enabled ?? "").toLowerCase() === "true";
-  const pmSimulated = String(pmRow?.simulated_approved ?? "").toLowerCase() === "true";
   const caStripeId = String(caRow?.stripeAccountId ?? "").trim();
 
-  const connectedViaPm = Boolean(pmStripeId && (pmPayoutsEnabled || pmSimulated));
+  const connectedViaPm = Boolean(pmStripeId && pmPayoutsEnabled);
   const connectedViaCa = Boolean(caStripeId);
 
   console.log("--- Derived State ---");

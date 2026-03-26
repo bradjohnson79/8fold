@@ -4,7 +4,6 @@ import React from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { apiFetch } from "@/lib/routerApi";
-import StripeSimulationButton from "@/components/testing/StripeSimulationButton";
 
 type ConnectStatus = {
   ok: true;
@@ -153,10 +152,6 @@ export function StripeExpressPayoutSetup() {
             </button>
           </div>
         </div>
-      ) : null}
-
-      {!loading && mode !== "VERIFIED" ? (
-        <StripeSimulationButton onSuccess={() => void load()} />
       ) : null}
     </div>
   );

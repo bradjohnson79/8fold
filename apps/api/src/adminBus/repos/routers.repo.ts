@@ -23,7 +23,6 @@ type StripeMethodFallback = {
   userId: string;
   stripeAccountId: string | null;
   stripePayoutsEnabled: boolean;
-  stripeSimulatedApproved: boolean;
 };
 
 function joinName(firstName: string | null | undefined, lastName: string | null | undefined): string | null {
@@ -97,10 +96,6 @@ async function loadStripeMethodFallbacks(
           when lower(coalesce(${payoutMethods.details} ->> 'stripePayoutsEnabled', 'false')) in ('true','t','1','yes') then true
           else false
         end`,
-        stripeSimulatedApproved: sql<boolean>`case
-          when lower(coalesce(${payoutMethods.details} ->> 'stripeSimulatedApproved', 'false')) in ('true','t','1','yes') then true
-          else false
-        end`,
         createdAt: payoutMethods.createdAt,
       })
       .from(payoutMethods)
@@ -119,7 +114,6 @@ async function loadStripeMethodFallbacks(
           userId: row.userId,
           stripeAccountId: row.stripeAccountId ? String(row.stripeAccountId).trim() : null,
           stripePayoutsEnabled: Boolean(row.stripePayoutsEnabled),
-          stripeSimulatedApproved: Boolean(row.stripeSimulatedApproved),
         });
       }
     }
@@ -139,7 +133,6 @@ async function loadStripeMethodFallbacks(
             userId: row.userId,
             stripeAccountId: acctId,
             stripePayoutsEnabled: false,
-            stripeSimulatedApproved: false,
           });
         }
       }
@@ -205,7 +198,7 @@ export async function list(params: RoleListParams) {
         const profile = profileMap.get(r.id);
         const stripe = stripeMap.get(r.id);
       const stripeConnected = Boolean(stripe?.stripeAccountId);
-      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled) || Boolean(stripe?.stripeSimulatedApproved);
+      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled);
       return {
         ...r,
         name: r.name ?? profile?.contactName ?? joinName(profile?.firstName, profile?.lastName) ?? null,
@@ -271,7 +264,7 @@ const [countRows, rows] = await Promise.all([
       const profile = profileMap.get(r.id);
       const stripe = stripeMap.get(r.id);
       const stripeConnected = Boolean(stripe?.stripeAccountId);
-      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled) || Boolean(stripe?.stripeSimulatedApproved);
+      const stripeVerified = Boolean(stripe?.stripePayoutsEnabled);
       return {
         ...r,
         name: r.name ?? profile?.contactName ?? joinName(profile?.firstName, profile?.lastName) ?? null,

@@ -59,7 +59,6 @@ export async function GET(req: Request) {
       pendingInvites,
       assignedJobsCount: Array.isArray(assignedJobs) ? assignedJobs.length : 0,
       completedJobsCount: fullyCompleted.length,
-      availableEarnings: 0,
       awaitingPosterCompletion: (awaitingPosterCompletion ?? []).map((j) => ({
         jobId: j.id,
         title: j.title,

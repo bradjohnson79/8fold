@@ -5,19 +5,18 @@ import { DashboardShell } from "../DashboardShell";
 import { useSupportInboxBadge } from "./useSupportInboxBadge";
 
 export function JobPosterDashboardShell({ children }: { children: React.ReactNode }) {
-  const { hasUnread } = useSupportInboxBadge("job-poster");
+  const { hasUnread, inboxHref } = useSupportInboxBadge("job-poster");
 
   const items = [
     { href: "/dashboard/job-poster", label: "Overview" },
     { href: "/dashboard/job-poster/terms", label: "Terms" },
     { href: "/dashboard/job-poster/jobs", label: "My jobs" },
-    { href: "/post-job", label: "Post a job" },
+    { href: "/dashboard/job-poster/post-job", label: "Post a job" },
     { href: "/dashboard/job-poster/messages", label: "Messenger" },
-    { href: "/dashboard/job-poster/notifications", label: "Notifications" },
     { href: "/dashboard/job-poster/profile", label: "Profile" },
     { href: "/dashboard/job-poster/payment", label: "Payment Setup" },
     { href: "/dashboard/job-poster/support", label: "Support" },
-    { href: "/dashboard/job-poster/support-inbox", label: "Support Inbox", badge: hasUnread ? ({ kind: "dot" as const } as const) : undefined },
+    { href: inboxHref, label: "Support Inbox", badge: hasUnread ? ({ kind: "dot" as const } as const) : undefined },
   ];
 
   return (
