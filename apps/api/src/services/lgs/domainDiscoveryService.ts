@@ -462,7 +462,7 @@ type ExistingJobPosterLead = {
   city: string | null;
   state: string | null;
   country: string | null;
-  processingStatus: string | null;
+  processingStatus?: string | null;
 };
 
 type DomainCacheRecord = {
@@ -496,10 +496,16 @@ type DomainPrefilterOutcome = {
   fromCache: boolean;
 };
 
+type SchemaCapabilities = {
+  jobPosterProcessingStatus: boolean;
+  extendedDiscoveryDomainCache: boolean;
+};
+
 type RunContext = {
   importMeta: DomainImportMetadata;
   source: string;
   defaultCampaignType: CampaignType;
+  schemaCapabilities: SchemaCapabilities;
   existingDomains: Record<CampaignType, Set<string>>;
   existingLeadRecords: {
     contractor: Map<string, ExistingContractorLead>;
@@ -768,31 +774,83 @@ function deriveProcessingStatus(score: number, email: string | null | undefined)
   return "new";
 }
 
+let cachedSchemaCapabilities: SchemaCapabilities | null = null;
+
+async function loadSchemaCapabilities(): Promise<SchemaCapabilities> {
+  if (cachedSchemaCapabilities) return cachedSchemaCapabilities;
+
+  try {
+    const result = await db.execute(sql`
+      select table_name, column_name
+      from information_schema.columns
+      where table_schema = 'directory_engine'
+        and (
+          (table_name = 'job_poster_leads' and column_name = 'processing_status')
+          or (
+            table_name = 'discovery_domain_cache'
+            and column_name in ('reachable', 'last_status_code', 'last_content_type', 'last_response_time_ms')
+          )
+        )
+    `);
+
+    const rows = (((result as unknown) as { rows?: Array<{ table_name: string; column_name: string }> }).rows ?? []) as Array<{
+      table_name: string;
+      column_name: string;
+    }>;
+    const columnSet = new Set(rows.map((row) => `${row.table_name}.${row.column_name}`));
+    cachedSchemaCapabilities = {
+      jobPosterProcessingStatus: columnSet.has("job_poster_leads.processing_status"),
+      extendedDiscoveryDomainCache:
+        columnSet.has("discovery_domain_cache.reachable") &&
+        columnSet.has("discovery_domain_cache.last_status_code") &&
+        columnSet.has("discovery_domain_cache.last_content_type") &&
+        columnSet.has("discovery_domain_cache.last_response_time_ms"),
+    };
+  } catch (error) {
+    console.warn("[LGS] Falling back to legacy discovery schema assumptions", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    cachedSchemaCapabilities = {
+      jobPosterProcessingStatus: false,
+      extendedDiscoveryDomainCache: false,
+    };
+  }
+
+  return cachedSchemaCapabilities;
+}
+
 async function upsertDomainCache(
   domain: string,
-  update: Pick<DomainCacheRecord, "reachable" | "lastStatusCode" | "lastContentType" | "lastResponseTimeMs">
+  update: Pick<DomainCacheRecord, "reachable" | "lastStatusCode" | "lastContentType" | "lastResponseTimeMs">,
+  schemaCapabilities: SchemaCapabilities
 ) {
+  void domain;
+  void update;
   const lastDiscoveredAt = new Date();
-  await db
-    .insert(discoveryDomainCache)
-    .values({
-      domain,
-      lastDiscoveredAt,
-      reachable: update.reachable,
-      lastStatusCode: update.lastStatusCode,
-      lastContentType: update.lastContentType,
-      lastResponseTimeMs: update.lastResponseTimeMs,
-    })
-    .onConflictDoUpdate({
-      target: discoveryDomainCache.domain,
-      set: {
+  if (schemaCapabilities.extendedDiscoveryDomainCache) {
+    await db
+      .insert(discoveryDomainCache)
+      .values({
+        domain,
         lastDiscoveredAt,
         reachable: update.reachable,
         lastStatusCode: update.lastStatusCode,
         lastContentType: update.lastContentType,
         lastResponseTimeMs: update.lastResponseTimeMs,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: discoveryDomainCache.domain,
+        set: {
+          lastDiscoveredAt,
+          reachable: update.reachable,
+          lastStatusCode: update.lastStatusCode,
+          lastContentType: update.lastContentType,
+          lastResponseTimeMs: update.lastResponseTimeMs,
+        },
+      });
+    return;
+  }
+  void lastDiscoveredAt;
 }
 
 async function prefilterRequest(
@@ -833,7 +891,12 @@ async function prefilterRequest(
 
 async function prefilterDomain(baseDomain: string, ctx: RunContext): Promise<DomainPrefilterOutcome> {
   const cached = ctx.domainCacheRecords.get(baseDomain);
+  const hasExtendedCachedPrefilter =
+    ctx.schemaCapabilities.extendedDiscoveryDomainCache &&
+    cached &&
+    (cached.reachable !== null || cached.lastStatusCode !== null || cached.lastContentType !== null);
   const cacheIsFresh =
+    hasExtendedCachedPrefilter &&
     cached?.lastDiscoveredAt instanceof Date &&
     Date.now() - cached.lastDiscoveredAt.getTime() < PREFILTER_CACHE_TTL_MS;
 
@@ -872,7 +935,7 @@ async function prefilterDomain(baseDomain: string, ctx: RunContext): Promise<Dom
       lastStatusCode: null,
       lastContentType: null,
       lastResponseTimeMs: null,
-    });
+    }, ctx.schemaCapabilities);
     return {
       origin: null,
       reachable: false,
@@ -904,7 +967,7 @@ async function prefilterDomain(baseDomain: string, ctx: RunContext): Promise<Dom
         lastStatusCode: headResult.statusCode,
         lastContentType: headResult.contentType,
         lastResponseTimeMs: headResult.responseTimeMs,
-      });
+      }, ctx.schemaCapabilities);
       return {
         origin,
         reachable: true,
@@ -930,7 +993,7 @@ async function prefilterDomain(baseDomain: string, ctx: RunContext): Promise<Dom
           lastStatusCode: getResult.statusCode,
           lastContentType: getResult.contentType,
           lastResponseTimeMs: getResult.responseTimeMs,
-        });
+        }, ctx.schemaCapabilities);
         return {
           origin,
           reachable: true,
@@ -978,7 +1041,7 @@ async function prefilterDomain(baseDomain: string, ctx: RunContext): Promise<Dom
     lastStatusCode: bestFailure.statusCode,
     lastContentType: bestFailure.contentType,
     lastResponseTimeMs: bestFailure.responseTimeMs,
-  });
+  }, ctx.schemaCapabilities);
 
   return bestFailure;
 }
@@ -1018,6 +1081,62 @@ function resolveCampaignType(
   ctx: Pick<RunContext, "defaultCampaignType">
 ): CampaignType {
   return domainRow.campaignType ?? ctx.defaultCampaignType ?? "contractor";
+}
+
+async function insertJobPosterLeadCompat(
+  values: typeof jobPosterLeads.$inferInsert,
+  schemaCapabilities: SchemaCapabilities
+) {
+  if (schemaCapabilities.jobPosterProcessingStatus) {
+    await db.insert(jobPosterLeads).values(values);
+    return;
+  }
+
+  await db.execute(sql`
+    insert into directory_engine.job_poster_leads (
+      website,
+      company_name,
+      contact_name,
+      email,
+      category,
+      trade,
+      city,
+      state,
+      country,
+      source,
+      needs_enrichment,
+      assignment_status,
+      email_verification_status,
+      email_verification_score,
+      email_verification_checked_at,
+      email_verification_provider,
+      status,
+      archived,
+      archived_at,
+      archive_reason
+    ) values (
+      ${values.website ?? null},
+      ${values.companyName ?? null},
+      ${values.contactName ?? null},
+      ${values.email ?? null},
+      ${values.category ?? "business"},
+      ${values.trade ?? null},
+      ${values.city ?? null},
+      ${values.state ?? null},
+      ${values.country ?? "US"},
+      ${values.source ?? null},
+      ${values.needsEnrichment ?? false},
+      ${values.assignmentStatus ?? "ready"},
+      ${values.emailVerificationStatus ?? "pending"},
+      ${values.emailVerificationScore ?? null},
+      ${values.emailVerificationCheckedAt ?? null},
+      ${values.emailVerificationProvider ?? null},
+      ${values.status ?? "new"},
+      ${values.archived ?? false},
+      ${values.archivedAt ?? null},
+      ${values.archiveReason ?? null}
+    )
+  `);
 }
 
 async function createLeadForDomain(
@@ -1089,8 +1208,15 @@ async function createLeadForDomain(
         },
       });
       if (nextScore > existingScore) {
-        patch.processingStatus = deriveProcessingStatus(nextScore, patch.email ?? existingJobLead.email);
+        if (ctx.schemaCapabilities.jobPosterProcessingStatus) {
+          patch.processingStatus = deriveProcessingStatus(nextScore, patch.email ?? existingJobLead.email);
+        }
         patch.needsEnrichment = nextScore < 7;
+        console.log("[LGS] Insert attempt/update existing job poster lead", {
+          runId: "n/a",
+          domain,
+          nextScore,
+        });
         await db.update(jobPosterLeads).set(patch).where(eq(jobPosterLeads.id, existingJobLead.id));
         console.log("[LGS] Refreshed existing job poster lead", {
           domain,
@@ -1170,34 +1296,38 @@ async function createLeadForDomain(
     const processingStatus = deriveProcessingStatus(primaryScore, primary.email);
     const needsEnrichment = primaryScore < 7;
     if (domainRow.targetLeadId) {
+      const jobLeadPatch: Partial<typeof jobPosterLeads.$inferInsert> = {
+        email: primary.email,
+        companyName: companyName || undefined,
+        contactName: contactName && isValidPersonName(contactName) ? contactName : undefined,
+        trade: industry || undefined,
+        city: locationMeta.city ?? undefined,
+        state: locationMeta.state ?? undefined,
+        country: locationMeta.country ?? "US",
+        source: ctx.source,
+        needsEnrichment,
+        assignmentStatus: "ready",
+        emailVerificationStatus: "pending",
+        emailVerificationScore: null,
+        emailVerificationCheckedAt: null,
+        emailVerificationProvider: null,
+        status: "new",
+        archived: false,
+        archivedAt: null,
+        archiveReason: null,
+        scoreDirty: true,
+        updatedAt: new Date(),
+      };
+      if (ctx.schemaCapabilities.jobPosterProcessingStatus) {
+        jobLeadPatch.processingStatus = processingStatus;
+      }
+      console.log("[LGS] Insert attempt/update targeted job poster lead", { domain, targetLeadId: domainRow.targetLeadId });
       await db
         .update(jobPosterLeads)
-        .set({
-          email: primary.email,
-          companyName: companyName || undefined,
-          contactName: contactName && isValidPersonName(contactName) ? contactName : undefined,
-          trade: industry || undefined,
-          city: locationMeta.city ?? undefined,
-          state: locationMeta.state ?? undefined,
-          country: locationMeta.country ?? "US",
-          source: ctx.source,
-          needsEnrichment,
-          assignmentStatus: "ready",
-          emailVerificationStatus: "pending",
-          emailVerificationScore: null,
-          emailVerificationCheckedAt: null,
-          emailVerificationProvider: null,
-          status: "new",
-          processingStatus,
-          archived: false,
-          archivedAt: null,
-          archiveReason: null,
-          scoreDirty: true,
-          updatedAt: new Date(),
-        })
+        .set(jobLeadPatch)
         .where(eq(jobPosterLeads.id, domainRow.targetLeadId));
     } else {
-      await db.insert(jobPosterLeads).values({
+      const newJobLead: typeof jobPosterLeads.$inferInsert = {
         website: domain,
         companyName: companyName || null,
         contactName: contactName && isValidPersonName(contactName) ? contactName : null,
@@ -1215,11 +1345,15 @@ async function createLeadForDomain(
         emailVerificationCheckedAt: null,
         emailVerificationProvider: null,
         status: "new",
-        processingStatus,
         archived: false,
         archivedAt: null,
         archiveReason: null,
-      });
+      };
+      if (ctx.schemaCapabilities.jobPosterProcessingStatus) {
+        newJobLead.processingStatus = processingStatus;
+      }
+      console.log("[LGS] Insert attempt/new job poster lead", { domain, processingStatusSupported: ctx.schemaCapabilities.jobPosterProcessingStatus });
+      await insertJobPosterLeadCompat(newJobLead, ctx.schemaCapabilities);
       ctx.insertedDomains[campaignType].add(domain);
     }
     return { inserted: true, duplicate: false };
@@ -1354,6 +1488,15 @@ async function processSingleDomain(
   console.log("[LGS] Processing domain", { runId, domain: baseDomain, campaignType, attempt });
 
   const prefilter = await prefilterDomain(baseDomain, ctx);
+  console.log("[LGS] Prefilter result", {
+    runId,
+    domain: baseDomain,
+    skipReason: prefilter.skipReason,
+    statusCode: prefilter.statusCode,
+    contentType: prefilter.contentType,
+    responseTimeMs: prefilter.responseTimeMs,
+    fromCache: prefilter.fromCache,
+  });
   if (prefilter.skipReason) {
     await Promise.allSettled([
       db.insert(discoveryDomainLogs).values({
@@ -1377,7 +1520,14 @@ async function processSingleDomain(
     return;
   }
 
+  console.log("[LGS] Crawl start", { runId, domain: baseDomain, origin: prefilter.origin });
   const { html, emails: allEmails, emailSources, structuredData } = await fetchDomainHtml(baseDomain, prefilter.origin);
+  console.log("[LGS] Crawl finish", {
+    runId,
+    domain: baseDomain,
+    htmlBytes: html.length,
+    discoveredEmails: allEmails.size,
+  });
 
   if (!html) {
     if (attempt < DOMAIN_MAX_ATTEMPTS) {
@@ -1515,7 +1665,7 @@ async function processSingleDomain(
       lastStatusCode: prefilter.statusCode,
       lastContentType: prefilter.contentType,
       lastResponseTimeMs: prefilter.responseTimeMs,
-    }),
+    }, ctx.schemaCapabilities),
     db.insert(discoveryDomainLogs).values({
       runId,
       domain: baseDomain,
@@ -1573,6 +1723,7 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
   const importMeta = ((runRecord?.importDomainMetadata ?? {}) as DomainImportMetadata);
   const source = runRecord?.autoImportSource ?? "website_import";
   const defaultCampaignType = (runRecord?.campaignType === "jobs" ? "jobs" : "contractor") as CampaignType;
+  const schemaCapabilities = await loadSchemaCapabilities();
 
   // Pre-fetch existing domains once — no per-domain DB round-trips
   const domainList = domainRows.map((r) => r.domain.replace(/^www\./, "").toLowerCase());
@@ -1604,23 +1755,37 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
           city: jobPosterLeads.city,
           state: jobPosterLeads.state,
           country: jobPosterLeads.country,
-          processingStatus: jobPosterLeads.processingStatus,
         })
         .from(jobPosterLeads)
         .where(inArray(jobPosterLeads.website, domainList))
     : [];
   const domainCacheRows = domainList.length > 0
-    ? await db
-        .select({
-          domain: discoveryDomainCache.domain,
-          lastDiscoveredAt: discoveryDomainCache.lastDiscoveredAt,
-          reachable: discoveryDomainCache.reachable,
-          lastStatusCode: discoveryDomainCache.lastStatusCode,
-          lastContentType: discoveryDomainCache.lastContentType,
-          lastResponseTimeMs: discoveryDomainCache.lastResponseTimeMs,
-        })
-        .from(discoveryDomainCache)
-        .where(inArray(discoveryDomainCache.domain, domainList))
+    ? schemaCapabilities.extendedDiscoveryDomainCache
+      ? await db
+          .select({
+            domain: discoveryDomainCache.domain,
+            lastDiscoveredAt: discoveryDomainCache.lastDiscoveredAt,
+            reachable: discoveryDomainCache.reachable,
+            lastStatusCode: discoveryDomainCache.lastStatusCode,
+            lastContentType: discoveryDomainCache.lastContentType,
+            lastResponseTimeMs: discoveryDomainCache.lastResponseTimeMs,
+          })
+          .from(discoveryDomainCache)
+          .where(inArray(discoveryDomainCache.domain, domainList))
+      : await db
+          .select({
+            domain: discoveryDomainCache.domain,
+            lastDiscoveredAt: discoveryDomainCache.lastDiscoveredAt,
+          })
+          .from(discoveryDomainCache)
+          .where(inArray(discoveryDomainCache.domain, domainList))
+          .then((rows) => rows.map((row) => ({
+            ...row,
+            reachable: null,
+            lastStatusCode: null,
+            lastContentType: null,
+            lastResponseTimeMs: null,
+          })))
     : [];
   const existingDomains = {
     contractor: new Set(
@@ -1637,12 +1802,14 @@ async function processDiscoveryRun(runId: string, domainRows: DomainImportRow[])
     batchSize: domainRows.length,
     existingCount,
     cachedDomains: domainCacheRows.length,
+    schemaCapabilities,
   });
 
   const ctx: RunContext = {
     importMeta,
     source,
     defaultCampaignType,
+    schemaCapabilities,
     existingDomains,
     existingLeadRecords: {
       contractor: new Map(
@@ -2055,6 +2222,7 @@ export async function importDiscoveryLeads(
   const [run] = await db.select().from(discoveryRuns).where(eq(discoveryRuns.id, runId)).limit(1);
   const importMeta = (run?.importDomainMetadata ?? {}) as DomainImportMetadata;
   const defaultCampaignType = (run?.campaignType === "jobs" ? "jobs" : "contractor") as CampaignType;
+  const schemaCapabilities = await loadSchemaCapabilities();
 
   const rows = await db
     .select()
@@ -2131,7 +2299,7 @@ export async function importDiscoveryLeads(
     const emailType = classifyEmailType(primaryEntry.email.toLowerCase(), domain || undefined);
 
     if (campaignType === "jobs") {
-      await db.insert(jobPosterLeads).values({
+      const jobLeadValues: typeof jobPosterLeads.$inferInsert = {
         website: domain,
         companyName: primaryRow.businessName ?? null,
         contactName:
@@ -2155,7 +2323,8 @@ export async function importDiscoveryLeads(
         archived: false,
         archivedAt: null,
         archiveReason: null,
-      });
+      };
+      await insertJobPosterLeadCompat(jobLeadValues, schemaCapabilities);
     } else {
       const leadNumber = await nextContractorLeadNumber();
 
