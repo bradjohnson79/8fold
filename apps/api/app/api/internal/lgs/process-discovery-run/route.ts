@@ -1,4 +1,5 @@
 import { processDiscoveryRunById } from "@/src/services/lgs/domainDiscoveryService";
+import { triggerDiscoveryRun } from "@/src/services/lgs/discoveryRunTriggerService";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,9 @@ async function handle(req: Request) {
 
   try {
     const result = await processDiscoveryRunById(runId);
+    if (result.ok && result.remainingDomains > 0) {
+      triggerDiscoveryRun(new URL(req.url).origin, runId, "continue_remaining_batches");
+    }
     return Response.json({ ok: true, data: result });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

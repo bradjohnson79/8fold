@@ -36,8 +36,10 @@ const PAGES_TO_CRAWL = ["/", "/contact", "/contact-us", "/about"];
 const DOMAIN_CONCURRENCY = 10;
 const DISCOVERY_BATCH_SIZE = 25;
 const DISCOVERY_INVOCATION_BUDGET_MS = 20_000;
+const DISCOVERY_STALE_THRESHOLD_MS = 60_000;
 const PAGE_TIMEOUT_MS = 5000;
 const PAGE_FETCH_MAX_ATTEMPTS = 2;
+const DOMAIN_MAX_ATTEMPTS = 2;
 const MAX_PATTERNS_PER_DOMAIN = 8;
 
 const COMMON_PREFIXES = [
@@ -419,6 +421,27 @@ function readQueueCursor(value: unknown): number {
   return Math.floor(rawCursor);
 }
 
+async function persistDiscoveryCheckpoint(
+  runId: string,
+  storedImportMetadata: StoredImportDomainMetadata,
+  queuedRows: DomainImportRow[],
+  nextCursor: number,
+  status: "running" | "pending"
+) {
+  await db
+    .update(discoveryRuns)
+    .set({
+      status,
+      finishedAt: null,
+      importDomainMetadata: {
+        ...storedImportMetadata,
+        __queued_rows: queuedRows,
+        __queue_cursor: nextCursor,
+      },
+    })
+    .where(eq(discoveryRuns.id, runId));
+}
+
 // ─── Lead Creation (FAST — no verification) ──────────────────────────────────
 
 async function nextContractorLeadNumber(): Promise<number> {
@@ -639,7 +662,8 @@ async function updateRunProgress(
 async function processSingleDomain(
   runId: string,
   domainRow: DomainImportRow,
-  ctx: RunContext
+  ctx: RunContext,
+  attempt = 1
 ): Promise<void> {
   const baseDomain = domainRow.domain.replace(/^www\./, "");
   console.log("[LGS] Processing domain:", baseDomain, { runId, campaignType: resolveCampaignType(domainRow, ctx) });
@@ -660,6 +684,14 @@ async function processSingleDomain(
   }
 
   if (!html) {
+    if (attempt < DOMAIN_MAX_ATTEMPTS) {
+      console.warn("[LGS] Retrying unreachable domain", {
+        runId,
+        domain: baseDomain,
+        attempt,
+      });
+      return processSingleDomain(runId, domainRow, ctx, attempt + 1);
+    }
     await Promise.allSettled([
       db.insert(discoveryDomainLogs).values({ runId, domain: baseDomain, emailsFound: 0, status: "error" }).catch(() => {}),
       updateRunProgress(runId, { domainsProcessed: 1, failedDomains: 1 }),
@@ -931,6 +963,33 @@ async function finalizeDiscoveryRun(runId: string): Promise<void> {
   );
 }
 
+async function requeueStaleRunningDiscoveryRuns(): Promise<string[]> {
+  const staleCutoff = new Date(Date.now() - DISCOVERY_STALE_THRESHOLD_MS);
+  const staleRuns = await db.execute<{ id: string }>(sql`
+    WITH last_activity AS (
+      SELECT
+        r.id,
+        GREATEST(
+          COALESCE(MAX(l.created_at), to_timestamp(0)),
+          COALESCE(r.started_at, r.created_at, to_timestamp(0))
+        ) AS last_activity_at
+      FROM directory_engine.discovery_runs r
+      LEFT JOIN directory_engine.discovery_domain_logs l
+        ON l.run_id = r.id
+      WHERE r.status = 'running'
+      GROUP BY r.id, r.started_at, r.created_at
+    )
+    UPDATE directory_engine.discovery_runs r
+    SET status = 'pending'
+    FROM last_activity a
+    WHERE r.id = a.id
+      AND a.last_activity_at < ${staleCutoff}
+    RETURNING r.id
+  `);
+
+  return ((staleRuns as { rows?: Array<{ id: string }> }).rows ?? []).map((row) => row.id);
+}
+
 async function claimDiscoveryRun(runId: string): Promise<"claimed" | "already_running" | "not_found" | "not_claimable"> {
   const result = await db.execute<{ id: string }>(sql`
     UPDATE directory_engine.discovery_runs
@@ -1020,6 +1079,8 @@ export async function processDiscoveryRunById(runId: string): Promise<{
       wasCancelled = await processDiscoveryRun(runId, nextBatch);
       nextCursor += nextBatch.length;
 
+      await persistDiscoveryCheckpoint(runId, storedImportMetadata, queuedRows, nextCursor, "running");
+
       if (wasCancelled) {
         break;
       }
@@ -1036,17 +1097,7 @@ export async function processDiscoveryRunById(runId: string): Promise<{
     }
 
     if (remainingDomains > 0) {
-      await db
-        .update(discoveryRuns)
-        .set({
-          status: "pending",
-          importDomainMetadata: {
-            ...storedImportMetadata,
-            __queued_rows: queuedRows,
-            __queue_cursor: nextCursor,
-          },
-        })
-        .where(eq(discoveryRuns.id, runId));
+      await persistDiscoveryCheckpoint(runId, storedImportMetadata, queuedRows, nextCursor, "pending");
 
       console.log("[LGS] Discovery run batch complete, re-queued remaining domains", {
         runId,
@@ -1062,17 +1113,12 @@ export async function processDiscoveryRunById(runId: string): Promise<{
   } catch (err) {
     console.error("[LGS] Discovery run crashed:", err);
     try {
-      const [row] = await db
-        .select({ status: discoveryRuns.status })
-        .from(discoveryRuns)
-        .where(eq(discoveryRuns.id, runId))
-        .limit(1);
-      if (row && row.status === "running") {
-        await db
-          .update(discoveryRuns)
-          .set({ status: "failed", finishedAt: new Date() })
-          .where(eq(discoveryRuns.id, runId));
-      }
+      await persistDiscoveryCheckpoint(runId, storedImportMetadata, queuedRows, nextCursor, "pending");
+      console.warn("[LGS] Discovery run re-queued after crash", {
+        runId,
+        nextCursor,
+        remainingDomains: Math.max(0, queuedRows.length - nextCursor),
+      });
     } catch (finalizeErr) {
       console.error("[LGS] Could not finalize run:", finalizeErr);
     }
@@ -1087,6 +1133,11 @@ export async function processNextQueuedDiscoveryRun(): Promise<{
   queuedDomains: number;
   remainingDomains: number;
 }> {
+  const reclaimedRunIds = await requeueStaleRunningDiscoveryRuns();
+  if (reclaimedRunIds.length > 0) {
+    console.log("[LGS] Re-queued stale running discovery runs", { runIds: reclaimedRunIds });
+  }
+
   const [nextRun] = await db
     .select({ id: discoveryRuns.id })
     .from(discoveryRuns)
