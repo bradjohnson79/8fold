@@ -8,6 +8,10 @@ type JobsByLocationPayload = {
   city?: string | null;
   limit?: number | string | null;
 };
+type HomepagePreviewPayload = {
+  city?: string | null;
+  limit?: number | string | null;
+};
 type CitiesWithJobsPayload = {
   country?: "US" | "CA" | string | null;
   regionCode?: string | null;
@@ -98,6 +102,15 @@ export function registerPublicDiscoveryHandlers() {
     const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
     const distinctServices = Array.isArray(data?.distinctServices) ? data.distinctServices : [];
     return { ok: true, jobs, distinctServices };
+  });
+
+  safeRegister("public.jobs.homepagePreview", async ({ payload }: { payload: HomepagePreviewPayload }) => {
+    const qs = new URLSearchParams();
+    if (payload?.city) qs.set("city", String(payload.city));
+    if (payload?.limit != null) qs.set("limit", String(payload.limit));
+    const data = await fetchJson(`/api/public/jobs/homepage-preview?${qs.toString()}`);
+    const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+    return { ok: true, jobs };
   });
 
   safeRegister("public.locations.regionsWithJobs", async () => {

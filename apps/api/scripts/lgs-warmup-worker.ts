@@ -29,11 +29,11 @@ import {
   pickWarmupTarget,
   computeHealthScore,
 } from "../src/services/lgs/warmupEngine";
+import { getWarmupEnabled } from "../src/services/lgs/warmupConfigService";
 
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
 const WORKER_NAME = "warmup";
-const WARMUP_ENABLED = false;
 
 const WARMUP_MESSAGES: Array<{ subject: string; body: string }> = [
   { subject: "Quick hello", body: "Hey, just wanted to say hi and make sure this inbox is set up correctly. All good here." },
@@ -426,13 +426,18 @@ async function updateHealthScores(): Promise<void> {
 // ─── Main Cycle ────────────────────────────────────────────────────────
 
 export async function runWarmupCycle(): Promise<void> {
-  if (!WARMUP_ENABLED) {
-    console.log("[LGS Warmup] Disabled. Skipping warmup cycle.");
+  const warmupEnabled = await getWarmupEnabled().catch((err) => {
+    console.error("[LGS Warmup] config read error:", err);
+    return true;
+  });
+
+  if (!warmupEnabled) {
+    console.log("[LGS Warmup] Paused by operator toggle. Skipping warmup cycle.");
     try {
       await heartbeatStart();
-      await heartbeatFinish("disabled");
+      await heartbeatFinish("paused");
     } catch (err) {
-      console.error("[LGS Warmup] disabled heartbeat error:", err);
+      console.error("[LGS Warmup] paused heartbeat error:", err);
     }
     return;
   }

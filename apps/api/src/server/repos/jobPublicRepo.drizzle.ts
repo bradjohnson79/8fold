@@ -325,6 +325,56 @@ export type PublicJobMinimalRow = {
   created_at: Date | string | null;
 };
 
+export type HomepagePreviewJobRow = {
+  id: string;
+  title: string | null;
+  trade_category: string | null;
+  city: string | null;
+  amount_cents: number | null;
+  currency: string | null;
+  ai_price_range_low: number | null;
+  ai_price_range_high: number | null;
+  status: string | null;
+  created_at: Date | string | null;
+};
+
+export async function listHomepagePreviewJobs(opts: {
+  city: string;
+  limit?: number;
+}): Promise<HomepagePreviewJobRow[]> {
+  const city = opts.city.trim();
+  if (!city) return [];
+
+  const take = Math.max(1, Math.min(6, Math.trunc(opts.limit ?? 6)));
+
+  const res = await db.execute<HomepagePreviewJobRow>(
+    sql`
+      SELECT
+        id,
+        title,
+        trade_category,
+        city,
+        amount_cents,
+        currency,
+        ai_price_range_low,
+        ai_price_range_high,
+        status,
+        created_at
+      FROM jobs
+      WHERE archived = false
+        AND is_mock = false
+        AND status = 'IN_PROGRESS'
+        AND country = 'US'
+        AND (region_code = 'CA' OR state_code = 'CA')
+        AND LOWER(TRIM(city)) = LOWER(TRIM(${city}))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${take}
+    `,
+  );
+
+  return (res as { rows?: HomepagePreviewJobRow[] })?.rows ?? [];
+}
+
 export async function listJobsByLocation(opts: {
   country: CountryCode2;
   regionCode: string;
