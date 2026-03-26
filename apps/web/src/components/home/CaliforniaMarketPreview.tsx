@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-
-function formatMoney(cents: number, currency: "USD" | "CAD") {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
+import { JobCard } from "@/components/JobCard";
 
 type CityKey =
   | "Los Angeles"
@@ -18,18 +11,21 @@ type CityKey =
   | "San Francisco"
   | "Sacramento";
 
-type PreviewJob = {
-  id?: string;
+type MarketplaceJob = {
+  id: string;
   title: string;
-  budget?: string;
-  amountCents?: number;
-  budgetLowCents?: number;
-  budgetHighCents?: number;
-  currency?: "USD" | "CAD";
-  category?: string | null;
+  region: string;
+  regionCode: "CA";
+  country: "US";
   city: CityKey;
-  status?: string;
-  createdAt?: string;
+  tradeCategory: string;
+  serviceType: string;
+  amountCents: number;
+  currency: "USD" | "CAD";
+  status: "IN_PROGRESS";
+  updatedAt: string;
+  imageUrl?: string;
+  photos?: Array<{ id?: string; kind?: string; url: string | null }>;
 };
 
 const ACTIVITY_MESSAGES = [
@@ -39,6 +35,14 @@ const ACTIVITY_MESSAGES = [
   "Reviewing job details...",
 ] as const;
 
+const CALIFORNIA_CITIES = new Set<CityKey>([
+  "Los Angeles",
+  "San Diego",
+  "San Jose",
+  "San Francisco",
+  "Sacramento",
+]);
+
 const CITY_OPTIONS: CityKey[] = [
   "Los Angeles",
   "San Diego",
@@ -47,72 +51,178 @@ const CITY_OPTIONS: CityKey[] = [
   "Sacramento",
 ];
 
-const JOBS_BY_CITY: Record<CityKey, PreviewJob[]> = {
+function minutesAgoIso(minutesAgo: number) {
+  return new Date(Date.now() - minutesAgo * 60_000).toISOString();
+}
+
+function makeFallbackJob(
+  city: CityKey,
+  id: string,
+  title: string,
+  tradeCategory: string,
+  amountCents: number,
+  updatedMinutesAgo: number,
+): MarketplaceJob {
+  return {
+    id,
+    title,
+    region: `${city}, CA`,
+    regionCode: "CA",
+    country: "US",
+    city,
+    tradeCategory,
+    serviceType: tradeCategory.toLowerCase().replace(/\s+/g, "_"),
+    amountCents,
+    currency: "USD",
+    status: "IN_PROGRESS",
+    updatedAt: minutesAgoIso(updatedMinutesAgo),
+  };
+}
+
+const FALLBACK_JOBS_BY_CITY: Record<CityKey, MarketplaceJob[]> = {
   "Los Angeles": [
-    { title: "Kitchen Sink Replacement", budget: "$450-$700", category: "Plumbing", city: "Los Angeles" },
-    { title: "Electrical Panel Tune-Up", budget: "$900-$1,400", category: "Electrical", city: "Los Angeles" },
-    { title: "Drywall Repair and Paint", budget: "$600-$950", category: "Drywall", city: "Los Angeles" },
+    makeFallbackJob("Los Angeles", "fallback-la-1", "Kitchen Sink Replacement", "Plumbing", 62000, 1),
+    makeFallbackJob("Los Angeles", "fallback-la-2", "Electrical Panel Tune-Up", "Electrical", 118000, 3),
+    makeFallbackJob("Los Angeles", "fallback-la-3", "Drywall Repair and Paint", "Drywall", 84000, 5),
   ],
   "San Diego": [
-    { title: "Fence Gate Rebuild", budget: "$700-$1,100", category: "Carpentry", city: "San Diego" },
-    { title: "Mini-Split Service Visit", budget: "$300-$520", category: "HVAC", city: "San Diego" },
-    { title: "Bathroom Tile Refresh", budget: "$1,200-$1,900", category: "Tile", city: "San Diego" },
+    makeFallbackJob("San Diego", "fallback-sd-1", "Fence Gate Rebuild", "Carpentry", 92000, 2),
+    makeFallbackJob("San Diego", "fallback-sd-2", "Mini-Split Service Visit", "HVAC", 44000, 4),
+    makeFallbackJob("San Diego", "fallback-sd-3", "Bathroom Tile Refresh", "Tile", 154000, 6),
   ],
   "San Jose": [
-    { title: "Exterior Paint Touch-Up", budget: "$850-$1,300", category: "Painting", city: "San Jose" },
-    { title: "Water Heater Swap", budget: "$1,100-$1,700", category: "Plumbing", city: "San Jose" },
-    { title: "Garage Door Sensor Repair", budget: "$250-$420", category: "Handyman", city: "San Jose" },
+    makeFallbackJob("San Jose", "fallback-sj-1", "Exterior Paint Touch-Up", "Painting", 106000, 1),
+    makeFallbackJob("San Jose", "fallback-sj-2", "Water Heater Swap", "Plumbing", 142000, 5),
+    makeFallbackJob("San Jose", "fallback-sj-3", "Garage Door Sensor Repair", "Handyman", 36000, 8),
   ],
   "San Francisco": [
-    { title: "Apartment Lighting Upgrade", budget: "$500-$880", category: "Electrical", city: "San Francisco" },
-    { title: "Deck Board Replacement", budget: "$1,400-$2,100", category: "Carpentry", city: "San Francisco" },
-    { title: "Window Trim Sealing", budget: "$350-$640", category: "Handyman", city: "San Francisco" },
+    makeFallbackJob("San Francisco", "fallback-sf-1", "Apartment Lighting Upgrade", "Electrical", 69000, 2),
+    makeFallbackJob("San Francisco", "fallback-sf-2", "Deck Board Replacement", "Carpentry", 176000, 4),
+    makeFallbackJob("San Francisco", "fallback-sf-3", "Window Trim Sealing", "Handyman", 51000, 7),
   ],
   Sacramento: [
-    { title: "Roof Leak Inspection", budget: "$650-$1,050", category: "Roofing", city: "Sacramento" },
-    { title: "Landscape Irrigation Repair", budget: "$400-$780", category: "Landscaping", city: "Sacramento" },
-    { title: "Interior Door Installation", budget: "$300-$560", category: "Carpentry", city: "Sacramento" },
+    makeFallbackJob("Sacramento", "fallback-sac-1", "Roof Leak Inspection", "Roofing", 87000, 3),
+    makeFallbackJob("Sacramento", "fallback-sac-2", "Landscape Irrigation Repair", "Landscaping", 59000, 4),
+    makeFallbackJob("Sacramento", "fallback-sac-3", "Interior Door Installation", "Carpentry", 43000, 6),
   ],
 };
 
+function formatMoney(cents: number, currency: "USD" | "CAD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+function relativeUpdatedLabel(updatedAt: string, nowTs: number): string {
+  const timestamp = new Date(updatedAt).getTime();
+  if (!Number.isFinite(timestamp)) return "Updated recently";
+  const secondsAgo = Math.max(0, Math.floor((nowTs - timestamp) / 1000));
+  if (secondsAgo < 60) return `Updated ${secondsAgo}s ago`;
+  const minutesAgo = Math.floor(secondsAgo / 60);
+  if (minutesAgo < 60) return `Updated ${minutesAgo}m ago`;
+  return "Updated recently";
+}
+
+function mapApiJobToMarketplaceJob(job: Record<string, unknown>): MarketplaceJob | null {
+  const city = String(job.city ?? "").trim() as CityKey;
+  const status = String(job.status ?? "").trim().toUpperCase();
+  const country = String(job.country ?? "US").trim().toUpperCase();
+  const regionCode = String(job.regionCode ?? "CA").trim().toUpperCase();
+
+  if (!CALIFORNIA_CITIES.has(city)) return null;
+  if (country !== "US" || regionCode !== "CA") return null;
+  if (status !== "IN_PROGRESS") return null;
+
+  return {
+    id: String(job.id ?? `${city}-${job.title ?? "job"}`),
+    title: String(job.title ?? "Untitled Job"),
+    region: String(job.regionName ?? job.region ?? `${city}, CA`),
+    regionCode: "CA",
+    country: "US",
+    city,
+    tradeCategory: String(job.tradeCategory ?? "Handyman"),
+    serviceType: String(job.serviceType ?? job.tradeCategory ?? "handyman"),
+    amountCents: Number(job.amountCents ?? 0),
+    currency: String(job.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
+    status: "IN_PROGRESS",
+    updatedAt: String(job.updatedAt ?? job.createdAt ?? new Date().toISOString()),
+    imageUrl: typeof job.imageUrl === "string" ? job.imageUrl : undefined,
+    photos: Array.isArray(job.photos)
+      ? job.photos
+          .map((photo, index) =>
+            photo && typeof photo === "object"
+              ? {
+                  id: String((photo as { id?: string }).id ?? `${String(job.id ?? city)}-photo-${index}`),
+                  kind: String((photo as { kind?: string }).kind ?? "image"),
+                  url: typeof (photo as { url?: unknown }).url === "string"
+                    ? (photo as { url: string }).url
+                    : null,
+                }
+              : null,
+          )
+          .filter((photo): photo is { id: string; kind: string; url: string | null } => photo !== null)
+      : [],
+  };
+}
+
 export function CaliforniaMarketPreview() {
   const [selectedCity, setSelectedCity] = useState<CityKey>("Los Angeles");
-  const [jobs, setJobs] = useState<PreviewJob[]>(JOBS_BY_CITY["Los Angeles"]);
+  const [jobs, setJobs] = useState<MarketplaceJob[]>(FALLBACK_JOBS_BY_CITY["Los Angeles"]);
   const [loading, setLoading] = useState(true);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [activityTick, setActivityTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadJobs() {
       setLoading(true);
-      setJobs([]);
+      setTransitioning(true);
       try {
         const resp = await fetch(
-          `/api/public/jobs/homepage-preview?city=${encodeURIComponent(selectedCity)}&limit=6`,
+          `/api/public/jobs/by-location?country=US&regionCode=CA&city=${encodeURIComponent(selectedCity)}&limit=6`,
           { cache: "no-store" },
         );
         const json = (await resp.json().catch(() => null)) as {
           ok?: boolean;
-          jobs?: PreviewJob[];
-          data?: { jobs?: PreviewJob[] };
+          jobs?: Array<Record<string, unknown>>;
+          data?: { jobs?: Array<Record<string, unknown>> };
         } | null;
 
-        const nextJobs = Array.isArray(json?.jobs)
+        const rawJobs = Array.isArray(json?.jobs)
           ? json.jobs
           : Array.isArray(json?.data?.jobs)
             ? json.data.jobs
             : [];
+        const nextJobs = rawJobs
+          .map(mapApiJobToMarketplaceJob)
+          .filter((job): job is MarketplaceJob => job !== null);
 
         if (cancelled) return;
-        setJobs(nextJobs.length > 0 ? nextJobs : JOBS_BY_CITY[selectedCity]);
+        if (nextJobs.length > 0) {
+          setJobs(nextJobs);
+          setUsingFallback(false);
+        } else {
+          setJobs(FALLBACK_JOBS_BY_CITY[selectedCity]);
+          setUsingFallback(true);
+        }
       } catch {
         if (!cancelled) {
-          setJobs(JOBS_BY_CITY[selectedCity]);
+          setJobs(FALLBACK_JOBS_BY_CITY[selectedCity]);
+          setUsingFallback(true);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          window.setTimeout(() => {
+            if (!cancelled) setTransitioning(false);
+          }, 120);
+        }
       }
     }
 
@@ -120,12 +230,12 @@ export function CaliforniaMarketPreview() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCity]);
+  }, [selectedCity, refreshTick]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNowTs(Date.now());
-    }, 60_000);
+    }, 30_000);
 
     return () => {
       window.clearInterval(timer);
@@ -135,48 +245,24 @@ export function CaliforniaMarketPreview() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       setActivityTick((tick) => tick + 1);
-    }, 4_000);
+    }, 5_000);
 
     return () => {
       window.clearInterval(timer);
     };
   }, []);
 
-  const renderedJobs = useMemo(
-    () => (jobs.length > 0 ? jobs : JOBS_BY_CITY[selectedCity]),
-    [jobs, selectedCity],
-  );
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRefreshTick((tick) => tick + 1);
+    }, 60_000);
 
-  function formatCategory(category?: string | null) {
-    if (!category) return null;
-    return category
-      .toLowerCase()
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-  }
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
 
-  function budgetLabel(job: PreviewJob): string {
-    const currency = job.currency ?? "USD";
-    if (job.budgetLowCents && job.budgetHighCents) {
-      return `${formatMoney(job.budgetLowCents, currency)} - ${formatMoney(job.budgetHighCents, currency)}`;
-    }
-    if (job.amountCents && job.amountCents > 0) {
-      return formatMoney(job.amountCents, currency);
-    }
-    return job.budget ?? "Budget TBD";
-  }
-
-  function relativeUpdatedLabel(job: PreviewJob): string {
-    if (!job.createdAt) return "Updated recently";
-    const timestamp = new Date(job.createdAt).getTime();
-    if (!Number.isFinite(timestamp)) return "Updated recently";
-
-    const minutesAgo = Math.floor((nowTs - timestamp) / 60_000);
-    if (minutesAgo < 1) return "Updated just now";
-    if (minutesAgo < 60) return `Updated ${minutesAgo} min ago`;
-    return "Updated recently";
-  }
+  const renderedJobs = useMemo(() => jobs.slice(0, 6), [jobs]);
 
   return (
     <section className="bg-gray-50 py-20">
@@ -191,6 +277,11 @@ export function CaliforniaMarketPreview() {
           <p className="mt-3 text-gray-500 max-w-2xl mx-auto">
             Preview the kinds of jobs 8Fold is organizing across California right now.
           </p>
+          {usingFallback ? (
+            <p className="mt-2 text-sm text-gray-400">
+              Live marketplace data is quiet in this region, so you are seeing the current fallback pipeline for {selectedCity}.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mb-10">
@@ -215,50 +306,51 @@ export function CaliforniaMarketPreview() {
         </div>
 
         {loading ? (
-          <div className="text-center text-sm text-gray-500 mb-8">Loading live jobs in progress...</div>
+          <div className="text-center text-sm text-gray-500 mb-8">Loading California jobs in progress...</div>
         ) : null}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-opacity duration-200 ${transitioning ? "opacity-70" : "opacity-100"}`}>
           {renderedJobs.map((job, index) => (
             <div
-              key={job.id ?? `${job.city}-${job.title}-${index}`}
-              className="market-card rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+              key={`${selectedCity}-${job.id}-${index}`}
+              className="market-card"
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div className="flex items-start justify-between gap-4">
-                {formatCategory(job.category) ? (
-                  <div className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-gray-600">
-                    {formatCategory(job.category)}
-                  </div>
-                ) : (
-                  <div />
-                )}
-                <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-8fold-green">
+              <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-8fold-green">
                   <span className="live-dot" aria-hidden="true" />
                   <span>Live</span>
                 </div>
+                <span className="text-sm text-gray-500">{relativeUpdatedLabel(job.updatedAt, nowTs)}</span>
               </div>
-              <h3 className="mt-4 text-xl font-bold text-gray-900">{job.title}</h3>
-              <p className="mt-2 text-sm text-gray-500">{relativeUpdatedLabel(job)}</p>
-              <p className="mt-3 text-sm text-gray-500">
-                Budget Range
-              </p>
-              <p className="text-lg font-bold text-8fold-green">{budgetLabel(job)}</p>
-              <div className="mt-6 flex items-center justify-between text-sm">
-                <span className="text-gray-500">City</span>
-                <span className="font-semibold text-gray-900">{job.city}</span>
-              </div>
-              <p className="mt-6 text-center text-sm font-medium text-gray-500">
+              <p className="mb-3 px-1 text-sm font-medium text-gray-500">
                 {ACTIVITY_MESSAGES[(activityTick + index) % ACTIVITY_MESSAGES.length]}
               </p>
-              <div className="mt-4 flex justify-center">
-                <button
-                  type="button"
-                  disabled
-                  className="button-glow inline-flex items-center justify-center rounded-xl border border-emerald-500/30 px-4 py-2.5 text-sm font-bold tracking-wide text-white opacity-100 cursor-not-allowed shadow-lg shadow-emerald-500/15"
-                >
-                  ROUTING IN PROGRESS
-                </button>
+              <JobCard
+                job={{
+                  id: job.id,
+                  title: job.title,
+                  region: job.region,
+                  serviceType: job.serviceType,
+                  tradeCategory: job.tradeCategory,
+                  country: job.country,
+                  currency: job.currency,
+                  amountCents: job.amountCents,
+                  routerEarningsCents: 0,
+                  brokerFeeCents: 0,
+                  contractorPayoutCents: 0,
+                  laborTotalCents: job.amountCents,
+                  materialsTotalCents: 0,
+                  transactionFeeCents: 0,
+                  status: job.status,
+                  imageUrl: job.imageUrl,
+                  updatedAt: job.updatedAt,
+                }}
+                isAuthenticated={false}
+                livePreview
+              />
+              <div className="mt-3 px-1 text-sm text-gray-500">
+                Budget {formatMoney(job.amountCents, job.currency)} • {job.city}
               </div>
             </div>
           ))}
@@ -277,13 +369,13 @@ export function CaliforniaMarketPreview() {
         .market-card {
           opacity: 0;
           transform: translateY(10px);
-          animation: fadeInUp 0.45s ease forwards;
+          animation: fadeInUp 0.3s ease forwards;
           transition: transform 180ms ease, box-shadow 180ms ease;
         }
 
         .market-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+          transform: scale(1.01) translateY(-2px);
+          box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
         }
 
         .live-dot {
@@ -293,12 +385,6 @@ export function CaliforniaMarketPreview() {
           background-color: #22c55e;
           box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
           animation: pulse 1.8s infinite;
-        }
-
-        .button-glow {
-          background: linear-gradient(90deg, #15803d, #22c55e, #15803d);
-          background-size: 200% 100%;
-          animation: shimmer 3s linear infinite;
         }
 
         @keyframes pulse {
@@ -313,15 +399,6 @@ export function CaliforniaMarketPreview() {
           100% {
             opacity: 0.45;
             transform: scale(1);
-          }
-        }
-
-        @keyframes shimmer {
-          0% {
-            background-position: 200% 0;
-          }
-          100% {
-            background-position: -200% 0;
           }
         }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatMoney, getRevenueSplit } from '@8fold/shared'
 import { FlagJobModal } from './jobs/FlagJobModal'
 
@@ -27,15 +27,18 @@ interface JobCardProps {
     status: string
     image?: string
     imageUrl?: string
+    updatedAt?: string
   }
   isAuthenticated?: boolean
+  livePreview?: boolean
 }
 
-export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
+export function JobCard({ job, isAuthenticated = false, livePreview = false }: JobCardProps) {
   const [imageError, setImageError] = useState(false)
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagSubmitting, setFlagSubmitting] = useState(false)
   const [flagToast, setFlagToast] = useState<string | null>(null)
+  const [nowTs, setNowTs] = useState(() => Date.now())
   const tradeBadge = job.tradeCategory ? job.tradeCategory.replace(/_/g, ' ') : null
   const currency = (job.currency ?? (job.country === 'CA' ? 'CAD' : 'USD')) as 'USD' | 'CAD'
 
@@ -179,13 +182,38 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
   const showTime = !job.isMock
   const estimatedTime = showTime ? (job.timeWindow || "1-2 hours") : ""
 
+  useEffect(() => {
+    if (!livePreview) return
+    const timer = window.setInterval(() => setNowTs(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [livePreview])
+
+  function relativeUpdatedLabel(): string | null {
+    if (!livePreview) return null
+    const source = job.updatedAt
+    if (!source) return "Updated recently"
+    const ts = new Date(source).getTime()
+    if (!Number.isFinite(ts)) return "Updated recently"
+    const secondsAgo = Math.max(0, Math.floor((nowTs - ts) / 1000))
+    if (secondsAgo < 60) return `Updated ${secondsAgo}s ago`
+    const minutesAgo = Math.floor(secondsAgo / 60)
+    if (minutesAgo < 60) return `Updated ${minutesAgo}m ago`
+    return "Updated recently"
+  }
+
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow duration-300">
+    <div className={`bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow duration-300 ${livePreview ? 'group' : ''}`}>
       {/* Header */}
       <div className="p-6 pb-4">
         <div className="flex items-start justify-between mb-2">
           <h3 className="text-xl font-bold text-gray-900 leading-tight">{job.title}</h3>
           <div className="flex items-center gap-2">
+            {livePreview ? (
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                <span className="live-preview-dot" aria-hidden="true" />
+                Live
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => setFlagOpen(true)}
@@ -213,6 +241,9 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
           {city}, {province}
           {showTime ? <span className="ml-2">• {estimatedTime}</span> : null}
         </div>
+        {relativeUpdatedLabel() ? (
+          <div className="mt-2 text-sm text-gray-500">{relativeUpdatedLabel()}</div>
+        ) : null}
       </div>
 
       <FlagJobModal
@@ -334,9 +365,9 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
               return (
                 <button
                   disabled
-                  className="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed tracking-wide opacity-90"
+                  className={`w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed tracking-wide opacity-90 ${livePreview ? 'live-preview-routing group-hover:opacity-100' : ''}`}
                 >
-                  ROUTING IN PROGRESS
+                  {livePreview ? 'Routing in Progress' : 'ROUTING IN PROGRESS'}
                 </button>
               )
             }
@@ -388,6 +419,54 @@ export function JobCard({ job, isAuthenticated = false }: JobCardProps) {
           })()}
         </div>
       </div>
+      {livePreview ? (
+        <style jsx>{`
+          .live-preview-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 9999px;
+            background-color: #22c55e;
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+            animation: live-preview-pulse 1.8s infinite;
+          }
+
+          .live-preview-routing {
+            background: linear-gradient(90deg, #f97316, #fb923c, #f97316);
+            background-size: 200% 100%;
+            animation: live-preview-shimmer 3s linear infinite;
+            box-shadow: 0 10px 24px rgba(249, 115, 22, 0.18);
+            transition: box-shadow 180ms ease, transform 180ms ease, opacity 180ms ease;
+          }
+
+          .group:hover :global(.live-preview-routing) {
+            box-shadow: 0 12px 28px rgba(249, 115, 22, 0.22);
+          }
+
+          @keyframes live-preview-pulse {
+            0% {
+              opacity: 0.6;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 1;
+              transform: scale(1.35);
+            }
+            100% {
+              opacity: 0.6;
+              transform: scale(1);
+            }
+          }
+
+          @keyframes live-preview-shimmer {
+            0% {
+              background-position: 200% 0;
+            }
+            100% {
+              background-position: -200% 0;
+            }
+          }
+        `}</style>
+      ) : null}
     </div>
   )
 }
