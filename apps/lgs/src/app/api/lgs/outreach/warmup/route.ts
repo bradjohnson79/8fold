@@ -6,3 +6,13 @@ export async function GET() {
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
 }
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const res = await proxyToApi("/api/lgs/outreach/warmup", {
+    method: "POST",
+    body,
+  });
+  const data = await res.json().catch(() => ({}));
+  return NextResponse.json(data, { status: res.status });
+}

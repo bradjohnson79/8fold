@@ -3,10 +3,12 @@ import { eq, or, desc } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { senderPool, lgsWorkerHealth, lgsWarmupActivity } from "@/db/schema/directoryEngine";
 import { hasGmailTokenForSender } from "@/src/services/lgs/outreachGmailSenderService";
+import { getWarmupEnabled } from "@/src/services/lgs/warmupConfigService";
 import { INTERNAL_SENDERS, EXTERNAL_TARGETS } from "@/src/services/lgs/warmupEngine";
 
 export async function GET() {
   try {
+    const warmupEnabled = await getWarmupEnabled();
     // Worker health
     const [workerRow] = await db
       .select()
@@ -62,6 +64,7 @@ export async function GET() {
 
     // Checks
     const checks = [
+      { name: "warmup_enabled", pass: warmupEnabled },
       { name: "active_senders", pass: activeSendersExist },
       { name: "gmail_tokens", pass: allTokensValid, detail: gmailTokens },
       { name: "worker_heartbeat", pass: heartbeatStatus !== "stale" && heartbeatStatus !== "unknown" },
@@ -93,6 +96,7 @@ export async function GET() {
               last_error: workerRow.lastError,
             }
           : null,
+        warmup_enabled: warmupEnabled,
         checks,
         pass_count: passCount,
         fail_count: failCount,

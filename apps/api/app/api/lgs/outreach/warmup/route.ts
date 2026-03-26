@@ -12,9 +12,11 @@ import {
   getNextDayLimit,
   isReadyForOutreach,
 } from "@/src/services/lgs/warmupSchedule";
+import { getWarmupEnabled, setWarmupEnabled } from "@/src/services/lgs/warmupConfigService";
 
 export async function GET() {
   try {
+    const warmupEnabled = await getWarmupEnabled();
     const rows = await db.select().from(senderPool).orderBy(senderPool.senderEmail);
 
     // Pending queue count
@@ -37,9 +39,13 @@ export async function GET() {
       const remaining = Math.max(0, (r.dailyLimit ?? 0) - totalSent);
 
       const warmupBudget =
-        r.outreachEnabled
-          ? Math.min(3, remaining)
-          : (status === "warming" || status === "ready") ? remaining : 0;
+        warmupEnabled
+          ? (
+              r.outreachEnabled
+                ? Math.min(3, remaining)
+                : (status === "warming" || status === "ready") ? remaining : 0
+            )
+          : 0;
       const outreachBudget = Math.max(0, remaining - warmupBudget);
 
       const nextRollover =
@@ -139,7 +145,7 @@ export async function GET() {
       .map((d) => d.next_warmup_send_at)
       .filter((t): t is string => t !== null)
       .sort();
-    const nextSystemWarmupSendAt = nextSendTimes[0] ?? null;
+    const nextSystemWarmupSendAt = warmupEnabled ? (nextSendTimes[0] ?? null) : null;
 
     return NextResponse.json({
       ok: true,
@@ -162,10 +168,32 @@ export async function GET() {
         worker_last_heartbeat: workerRow?.lastHeartbeatAt?.toISOString() ?? null,
         worker_last_run_status: workerRow?.lastRunStatus ?? null,
         next_system_warmup_send_at: nextSystemWarmupSendAt,
+        warmup_enabled: warmupEnabled,
       },
     });
   } catch (err) {
     console.error("LGS warmup list error:", err);
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json().catch(() => ({}))) as { warmup_enabled?: boolean };
+    if (typeof body.warmup_enabled !== "boolean") {
+      return NextResponse.json({ ok: false, error: "warmup_enabled_boolean_required" }, { status: 400 });
+    }
+
+    const enabled = await setWarmupEnabled(body.warmup_enabled);
+    return NextResponse.json({
+      ok: true,
+      data: {
+        warmup_enabled: enabled,
+        status_label: enabled ? "Enabled" : "Paused",
+      },
+    });
+  } catch (err) {
+    console.error("LGS warmup toggle error:", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

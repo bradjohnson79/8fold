@@ -56,6 +56,7 @@ type WarmupSummary = {
   worker_last_heartbeat: string | null;
   worker_last_run_status: string | null;
   next_system_warmup_send_at: string | null;
+  warmup_enabled: boolean;
 };
 
 type ActivityEntry = {
@@ -390,6 +391,7 @@ export default function WarmupPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [togglingWarmup, setTogglingWarmup] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -432,6 +434,20 @@ export default function WarmupPage() {
     await load();
   }
 
+  async function handleWarmupToggle(nextEnabled: boolean) {
+    setTogglingWarmup(true);
+    try {
+      await fetch("/api/lgs/outreach/warmup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ warmup_enabled: nextEnabled }),
+      });
+      await load();
+    } finally {
+      setTogglingWarmup(false);
+    }
+  }
+
   const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null);
 
   return (
@@ -444,19 +460,79 @@ export default function WarmupPage() {
             Gradually ramp sending volume so inbox providers trust your domain before cold outreach starts.
           </p>
         </div>
-        <Link href="/settings/senders" style={{ padding: "0.55rem 1rem", background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: "0.875rem", color: "#94a3b8", textDecoration: "none" }}>
-          Manage Senders →
-        </Link>
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => void handleWarmupToggle(!(summary?.warmup_enabled ?? true))}
+            disabled={togglingWarmup}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.55rem 0.9rem",
+              background: "#1e293b",
+              border: "1px solid #334155",
+              borderRadius: 999,
+              color: "#e2e8f0",
+              cursor: togglingWarmup ? "not-allowed" : "pointer",
+            }}
+          >
+            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Warmup Emails</span>
+            <span style={{
+              position: "relative",
+              width: 42,
+              height: 24,
+              borderRadius: 999,
+              background: summary?.warmup_enabled ? "#166534" : "#334155",
+              transition: "background 0.2s ease",
+              display: "inline-flex",
+              alignItems: "center",
+            }}>
+              <span style={{
+                position: "absolute",
+                left: summary?.warmup_enabled ? 22 : 3,
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                background: "#f8fafc",
+                transition: "left 0.2s ease",
+              }} />
+            </span>
+            <span style={{
+              fontSize: "0.8rem",
+              fontWeight: 700,
+              color: summary?.warmup_enabled ? "#4ade80" : "#94a3b8",
+              minWidth: 58,
+              textAlign: "left",
+            }}>
+              {summary?.warmup_enabled ? "Enabled" : "Paused"}
+            </span>
+          </button>
+          <Link href="/settings/senders" style={{ padding: "0.55rem 1rem", background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: "0.875rem", color: "#94a3b8", textDecoration: "none" }}>
+            Manage Senders →
+          </Link>
+        </div>
       </div>
 
       {err && <p style={{ color: "#f87171", marginBottom: "1rem" }}>{err}</p>}
+
+      {summary && !summary.warmup_enabled && (
+        <div style={{ background: "#1e293b", border: "1px solid #475569", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
+          <div style={{ fontWeight: 600, color: "#f8fafc", marginBottom: "0.25rem" }}>Warmup paused — no warmup emails are being sent</div>
+          <div style={{ color: "#94a3b8", fontSize: "0.875rem" }}>
+            Warmup reserved capacity is now 0 and all remaining capacity is freed for lead outreach.
+          </div>
+        </div>
+      )}
 
       {/* System-level header */}
       {summary && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
             <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Next System Warmup Send</div>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#f59e0b", fontVariantNumeric: "tabular-nums" }}>{systemCountdown}</div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: summary.warmup_enabled ? "#f59e0b" : "#94a3b8", fontVariantNumeric: "tabular-nums" }}>
+              {summary.warmup_enabled ? systemCountdown : "Paused"}
+            </div>
           </div>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
             <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Last Warmup Activity</div>
