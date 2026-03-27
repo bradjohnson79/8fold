@@ -18,8 +18,7 @@ export type JobPosterMessageOutput = {
 
 const MODEL = "gpt-5-nano";
 const MESSAGE_VERSION = "job-poster-v1";
-const MAX_OUTPUT_TOKENS = 220;
-const TEMPERATURE = 0.6;
+const MAX_OUTPUT_TOKENS = 420;
 
 function getGreetingName(input: JobPosterMessageInput): string {
   if (input.contactName?.trim()) return input.contactName.trim();
@@ -84,7 +83,8 @@ export async function generateJobPosterMessage(input: JobPosterMessageInput): Pr
   const raw = (await openai.responses.create({
     model: MODEL,
     input: buildPrompt(input),
-    temperature: TEMPERATURE,
+    reasoning: { effort: "minimal" },
+    text: { verbosity: "low", format: { type: "text" } },
     max_output_tokens: MAX_OUTPUT_TOKENS,
   })) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
 
