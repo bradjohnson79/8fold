@@ -2,8 +2,8 @@
  * LGS: Reset sender_pool.sent_today at midnight Pacific.
  * Run via cron at 0 0 * * * (midnight) or external scheduler.
  *
- * IMPORTANT: Only resets senders NOT managed by the warmup system.
- * Senders with warmup_status IN ('warming', 'ready') use rolling 24-hour
+ * IMPORTANT: Only resets senders NOT actively warming.
+ * Senders with warmup_status = 'warming' use rolling 24-hour
  * windows managed by the warmup worker — they must NOT be reset here.
  *
  *   DOTENV_CONFIG_PATH=apps/api/.env.local pnpm -C apps/api run lgs:reset-counters
@@ -27,13 +27,14 @@ async function main() {
     .where(
       or(
         eq(senderPool.warmupStatus, "not_started"),
+        eq(senderPool.warmupStatus, "complete"),
         eq(senderPool.warmupStatus, "disabled"),
         isNull(senderPool.warmupStatus)
       )
     );
 
-  console.log("[LGS Reset] Counters reset for non-warmup senders (not_started / disabled / null).");
-  console.log("[LGS Reset] Warmup-managed senders (warming / ready) untouched — rolling 24h applies.");
+  console.log("[LGS Reset] Counters reset for outreach-only senders (not_started / complete / disabled / null).");
+  console.log("[LGS Reset] Warmup-managed senders (warming) untouched — rolling 24h applies.");
 }
 
 main().catch((e) => {

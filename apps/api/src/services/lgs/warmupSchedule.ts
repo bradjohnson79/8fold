@@ -24,5 +24,5 @@ export function getNextDayLimit(day: number): number {
 }
 
 export function isReadyForOutreach(day: number, status: string): boolean {
-  return status === "ready" || (status === "warming" && getDailyLimit(day) >= 50);
+  return status === "complete" || status === "ready" || (status === "warming" && getDailyLimit(day) >= 50);
 }

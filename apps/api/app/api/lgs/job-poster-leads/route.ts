@@ -14,14 +14,67 @@
  *                          When set, overrides filter_archived (all three imply archived=false).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { jobPosterLeads } from "@/db/schema/directoryEngine";
+import { jobPosterEmailMessages, jobPosterEmailQueue, jobPosterLeads } from "@/db/schema/directoryEngine";
 import { deriveLeadBinaryState, deriveLeadUiVerificationLabel } from "@/src/services/lgs/leadBinaryState";
 import {
   deriveLegacyJobPosterProcessingStatus,
   getLgsSchemaCapabilities,
 } from "@/src/services/lgs/lgsSchemaCapabilities";
+
+function deriveContactStatus(row: {
+  contactAttempts: number;
+  responseReceived: boolean;
+  signedUp: boolean;
+}): string {
+  if (row.signedUp) return "converted";
+  if (row.responseReceived) return "replied";
+  if ((row.contactAttempts ?? 0) > 0) return "sent";
+  return "unsent";
+}
+
+function deriveMessageStatus(msg: {
+  message_status: string | null;
+  queue_send_status: string | null;
+  queue_sent_at: Date | null;
+} | undefined): "none" | "ready" | "approved" | "queued" | "sent" {
+  if (!msg) return "none";
+  if (msg.queue_sent_at || msg.queue_send_status === "sent" || msg.message_status === "sent") return "sent";
+  if (msg.queue_send_status === "pending" || msg.message_status === "queued") return "queued";
+  if (msg.message_status === "approved") return "approved";
+  if (msg.message_status === "pending_review" || msg.message_status === "draft") return "ready";
+  return "none";
+}
+
+function deriveWorkflowStatus(args: {
+  processingStatus: string | null;
+  messageStatus: "none" | "ready" | "approved" | "queued" | "sent";
+  email: string | null;
+  verificationStatus: string | null;
+  contactAttempts: number;
+  outreachStatus: string | null;
+}): "pending" | "processing" | "ready" | "sent" {
+  if (
+    args.messageStatus === "sent" ||
+    args.outreachStatus === "sent" ||
+    (args.contactAttempts ?? 0) > 0
+  ) {
+    return "sent";
+  }
+
+  if (args.messageStatus === "ready" || args.messageStatus === "approved" || args.messageStatus === "queued") {
+    return "ready";
+  }
+
+  const processing = String(args.processingStatus ?? "").trim().toLowerCase();
+  const verification = String(args.verificationStatus ?? "").trim().toLowerCase();
+  if (!args.email?.trim() || processing === "new" || processing === "enriching" || verification === "pending") {
+    return "processing";
+  }
+
+  return "pending";
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,6 +86,7 @@ export async function GET(req: NextRequest) {
     const archivedFilter = sp.get("filter_archived")?.trim() ?? "active";
     const filterVerificationStatus = sp.get("filter_verification_status")?.trim() ?? "";
     const filterActionability = sp.get("filter_actionability")?.trim() ?? "active";
+    const filterMessageStatus = sp.get("filter_message_status")?.trim() ?? "";
 
     const conditions: Array<any> = [];
     const verificationStatusNormalized = sql`coalesce(lower(trim(${jobPosterLeads.emailVerificationStatus})), 'pending')`;
@@ -161,12 +215,15 @@ export async function GET(req: NextRequest) {
         needsEnrichment: jobPosterLeads.needsEnrichment,
         assignmentStatus: jobPosterLeads.assignmentStatus,
         outreachStatus: jobPosterLeads.outreachStatus,
+        outreachStage: jobPosterLeads.outreachStage,
         emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
         emailVerificationCheckedAt: jobPosterLeads.emailVerificationCheckedAt,
         emailVerificationScore: jobPosterLeads.emailVerificationScore,
         emailVerificationProvider: jobPosterLeads.emailVerificationProvider,
         processingStatus: processingStatusNormalized,
         status: jobPosterLeads.status,
+        contactAttempts: jobPosterLeads.contactAttempts,
+        signedUp: jobPosterLeads.signedUp,
         replyCount: jobPosterLeads.replyCount,
         archived: jobPosterLeads.archived,
         archivedAt: jobPosterLeads.archivedAt,
@@ -175,6 +232,7 @@ export async function GET(req: NextRequest) {
         leadScore: jobPosterLeads.leadScore,
         leadPriority: jobPosterLeads.leadPriority,
         responseReceived: jobPosterLeads.responseReceived,
+        lastContactedAt: jobPosterLeads.lastContactedAt,
         lastRepliedAt: jobPosterLeads.lastRepliedAt,
         createdAt: jobPosterLeads.createdAt,
         updatedAt: jobPosterLeads.updatedAt,
@@ -184,6 +242,50 @@ export async function GET(req: NextRequest) {
       .orderBy(desc(jobPosterLeads.createdAt))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
+
+    const leadIds = rows.map((row) => row.id);
+    const allMessages = leadIds.length === 0
+      ? []
+      : await db
+          .select({
+            lead_id: jobPosterEmailMessages.leadId,
+            message_id: jobPosterEmailMessages.id,
+            latest_message_subject: jobPosterEmailMessages.subject,
+            latest_message_body: jobPosterEmailMessages.body,
+            message_status: jobPosterEmailMessages.status,
+            created_at: jobPosterEmailMessages.createdAt,
+            queue_send_status: jobPosterEmailQueue.status,
+            queue_sent_at: jobPosterEmailQueue.sentAt,
+          })
+          .from(jobPosterEmailMessages)
+          .leftJoin(jobPosterEmailQueue, eq(jobPosterEmailQueue.messageId, jobPosterEmailMessages.id))
+          .where(inArray(jobPosterEmailMessages.leadId, leadIds))
+          .orderBy(desc(jobPosterEmailMessages.createdAt));
+
+    type MsgRow = {
+      lead_id: string;
+      message_id: string;
+      latest_message_subject: string | null;
+      latest_message_body: string | null;
+      message_status: string | null;
+      queue_send_status: string | null;
+      queue_sent_at: Date | null;
+    };
+
+    const msgMap = new Map<string, MsgRow>();
+    for (const msg of allMessages) {
+      if (!msgMap.has(msg.lead_id)) {
+        msgMap.set(msg.lead_id, {
+          lead_id: msg.lead_id,
+          message_id: msg.message_id,
+          latest_message_subject: msg.latest_message_subject,
+          latest_message_body: msg.latest_message_body,
+          message_status: msg.message_status,
+          queue_send_status: msg.queue_send_status,
+          queue_sent_at: msg.queue_sent_at,
+        });
+      }
+    }
 
     console.log("[LGS] Job poster leads list", {
       filterActionability,
@@ -204,6 +306,16 @@ export async function GET(req: NextRequest) {
       total_pages: Math.ceil(Number(count ?? 0) / pageSize),
       enrichment,
       data: rows.map((row) => {
+        const msg = msgMap.get(row.id);
+        const messageStatus = deriveMessageStatus(msg);
+        const workflowStatus = deriveWorkflowStatus({
+          processingStatus: String(row.processingStatus ?? ""),
+          messageStatus,
+          email: row.email,
+          verificationStatus: row.emailVerificationStatus,
+          contactAttempts: row.contactAttempts ?? 0,
+          outreachStatus: row.outreachStatus,
+        });
         const finalStatus = deriveLeadBinaryState({
           archived: row.archived,
           emailVerificationStatus: row.emailVerificationStatus,
@@ -237,6 +349,7 @@ export async function GET(req: NextRequest) {
           needs_enrichment: row.needsEnrichment,
           assignment_status: row.assignmentStatus,
           outreach_status: row.outreachStatus,
+          outreach_stage: row.outreachStage,
           email_verification_status: row.emailVerificationStatus,
           email_verification_checked_at: row.emailVerificationCheckedAt?.toISOString() ?? null,
           email_verification_score: row.emailVerificationScore,
@@ -249,8 +362,22 @@ export async function GET(req: NextRequest) {
               }),
           ui_verification_status: uiVerificationStatus,
           final_status: finalStatus,
-          ready_for_outreach: finalStatus === "ready",
+          ready_for_outreach:
+            (messageStatus === "approved" || messageStatus === "queued") &&
+            !!row.email &&
+            ["valid", "verified"].includes(String(row.emailVerificationStatus ?? "").trim().toLowerCase()),
+          message_status: messageStatus,
+          workflow_status: workflowStatus,
+          latest_message_id: msg?.message_id ?? null,
+          latest_message_subject: msg?.latest_message_subject ?? null,
+          latest_message_body: msg?.latest_message_body ?? null,
           status: row.status,
+          contact_status: deriveContactStatus({
+            contactAttempts: row.contactAttempts,
+            responseReceived: row.responseReceived,
+            signedUp: row.signedUp,
+          }),
+          contact_attempts: row.contactAttempts ?? 0,
           reply_count: row.replyCount ?? 0,
           archived: row.archived,
           archived_at: row.archivedAt?.toISOString() ?? null,
@@ -259,11 +386,13 @@ export async function GET(req: NextRequest) {
           lead_score: row.leadScore ?? 0,
           lead_priority: row.leadPriority ?? "medium",
           response_received: row.responseReceived,
+          email_sent_at: row.lastContactedAt?.toISOString() ?? null,
+          last_contacted_at: row.lastContactedAt?.toISOString() ?? null,
           last_replied_at: row.lastRepliedAt?.toISOString() ?? null,
           created_at: row.createdAt?.toISOString() ?? null,
           updated_at: row.updatedAt?.toISOString() ?? null,
         };
-      }),
+      }).filter((row) => !filterMessageStatus || row.message_status === filterMessageStatus),
     });
   } catch (err) {
     console.error("LGS job poster leads error:", err);

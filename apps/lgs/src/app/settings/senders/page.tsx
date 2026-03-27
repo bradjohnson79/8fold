@@ -23,6 +23,7 @@ type Sender = {
 const WARMUP_STATUS_COLORS: Record<string, string> = {
   not_started: "#475569",
   warming: "#f59e0b",
+  complete: "#22c55e",
   ready: "#22c55e",
   paused: "#64748b",
 };
@@ -143,7 +144,7 @@ export default function SendersPage() {
                         background: `${WARMUP_STATUS_COLORS[s.warmup_status] ?? "#475569"}22`,
                         color: WARMUP_STATUS_COLORS[s.warmup_status] ?? "#475569",
                       }}>
-                        {s.warmup_status === "warming" ? `Day ${s.warmup_day}` : s.warmup_status === "ready" ? "✓ Ready" : s.warmup_status === "paused" ? "Paused" : "Not started"}
+                        {s.warmup_status === "warming" ? `Day ${s.warmup_day}` : s.warmup_status === "complete" || s.warmup_status === "ready" ? "Warmup complete" : s.warmup_status === "paused" ? "Paused" : "Not started"}
                       </span>
                     ) : "—"}
                   </td>

@@ -9,6 +9,7 @@ type LeadType = "contractor" | "job_poster";
 type BulkGenerateRequest = {
   leadIds?: string[];
   leadType?: LeadType;
+  force_regenerate?: boolean;
 };
 
 type BulkGenerateResult = {
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
     for (const leadId of leadIds) {
       try {
         const result = leadType === "job_poster"
-          ? await generateJobPosterMessageForLead(leadId)
+          ? await generateJobPosterMessageForLead(leadId, body.force_regenerate !== true)
           : await generateContractorMessageForLead(leadId, existingHashes, true);
 
         results.push({

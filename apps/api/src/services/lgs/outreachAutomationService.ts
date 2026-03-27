@@ -209,7 +209,8 @@ export async function generateContractorMessageForLead(
 }
 
 export async function generateJobPosterMessageForLead(
-  leadId: string
+  leadId: string,
+  skipIfExists = true,
 ): Promise<{ ok: boolean; skipped?: boolean; id?: string; error?: string; outreach_status?: OutreachStatus }> {
   const [lead] = await db
     .select({
@@ -236,12 +237,19 @@ export async function generateJobPosterMessageForLead(
     if (lead.outreachStatus !== synced) {
       await syncJobLeadOutreachStatus(leadId, synced);
     }
-    if (synced !== "pending") {
+    if (skipIfExists && synced !== "pending") {
       return { ok: true, skipped: true, id: existing.id, outreach_status: synced };
+    }
+    if (!skipIfExists) {
+      if (existing.queueStatus) {
+        await db.delete(jobPosterEmailQueue).where(eq(jobPosterEmailQueue.messageId, existing.id));
+      }
+      await db.delete(jobPosterEmailMessages).where(eq(jobPosterEmailMessages.id, existing.id));
+      await syncJobLeadOutreachStatus(leadId, "pending");
     }
   }
 
-  const generated = generateJobPosterMessage({
+  const generated = await generateJobPosterMessage({
     companyName: lead.companyName,
     contactName: lead.contactName,
     city: lead.city,
@@ -261,10 +269,10 @@ export async function generateJobPosterMessageForLead(
         city: lead.city,
         category: lead.category,
       },
-      generatedBy: "template",
-      status: "draft",
+      generatedBy: "gpt5-nano",
+      status: "pending_review",
       messageType: "intro_standard",
-      messageVersionHash: generated.hash.slice(0, 16),
+      messageVersionHash: generated.messageVersionHash,
       updatedAt: now(),
     })
     .returning({ id: jobPosterEmailMessages.id });
@@ -310,7 +318,7 @@ export async function approveJobPosterMessage(
     .limit(1);
 
   if (!message) return { ok: false, error: "message_not_found" };
-  if (message.status !== "draft") return { ok: false, error: "message_not_draft" };
+  if (message.status !== "pending_review") return { ok: false, error: "message_not_pending_review" };
 
   await db
     .update(jobPosterEmailMessages)

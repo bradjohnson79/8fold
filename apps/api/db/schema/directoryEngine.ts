@@ -141,7 +141,7 @@ export const senderPool = directoryEngineSchema.table("sender_pool", {
   lastSentAt: timestamp("last_sent_at", { mode: "date" }),
   status: text("status").notNull().default("active"),
   // Warmup tracking
-  // warmup_status: not_started | warming | ready | paused | disabled
+  // warmup_status: not_started | warming | complete | paused | disabled
   warmupStatus: text("warmup_status").notNull().default("not_started"),
   warmupStartedAt: timestamp("warmup_started_at", { mode: "date" }),
   warmupDay: integer("warmup_day").notNull().default(0),

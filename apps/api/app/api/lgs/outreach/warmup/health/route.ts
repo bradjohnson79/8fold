@@ -9,6 +9,40 @@ import { INTERNAL_SENDERS, EXTERNAL_TARGETS } from "@/src/services/lgs/warmupEng
 export async function GET() {
   try {
     const warmupEnabled = await getWarmupEnabled();
+    if (!warmupEnabled) {
+      const [workerRow] = await db
+        .select()
+        .from(lgsWorkerHealth)
+        .where(eq(lgsWorkerHealth.workerName, "warmup"))
+        .limit(1);
+
+      return NextResponse.json({
+        ok: true,
+        data: {
+          overall_status: "pass",
+          heartbeat_status: "disabled",
+          heartbeat_age_seconds: 0,
+          worker: workerRow
+            ? {
+                last_heartbeat_at: workerRow.lastHeartbeatAt?.toISOString() ?? null,
+                last_run_started_at: workerRow.lastRunStartedAt?.toISOString() ?? null,
+                last_run_finished_at: workerRow.lastRunFinishedAt?.toISOString() ?? null,
+                last_run_status: workerRow.lastRunStatus,
+                last_error: workerRow.lastError,
+              }
+            : null,
+          warmup_enabled: false,
+          checks: [
+            { name: "warmup_complete", pass: true },
+            { name: "warmup_scheduler_disabled", pass: true },
+            { name: "outreach_only_mode", pass: true },
+          ],
+          pass_count: 3,
+          fail_count: 0,
+        },
+      });
+    }
+
     // Worker health
     const [workerRow] = await db
       .select()
@@ -32,7 +66,7 @@ export async function GET() {
       .where(
         or(
           eq(senderPool.warmupStatus, "warming"),
-          eq(senderPool.warmupStatus, "ready")
+          eq(senderPool.warmupStatus, "complete")
         )
       );
 
