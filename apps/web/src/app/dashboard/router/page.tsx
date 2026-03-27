@@ -15,7 +15,9 @@ type SummaryData = {
     weekCents?: number;
     monthCents?: number;
     lifetimeCents?: number;
+    scheduledForFridayCents?: number;
     pendingReleaseCents?: number;
+    retainedCents?: number;
   };
   recentActivity?: Array<{
     id: number;
@@ -189,8 +191,9 @@ export default function RouterOverviewPage() {
   const openTickets = summary?.actionRequired?.supportTicketsRequiringInput ?? 0;
   const recentActivity = (summary?.recentActivity ?? []).slice(0, 5);
   const earnings = summary?.earnings ?? {};
-  const pendingCents = earnings.pendingReleaseCents ?? 0;
+  const scheduledCents = earnings.scheduledForFridayCents ?? earnings.pendingReleaseCents ?? 0;
   const releasedCents = earnings.lifetimeCents ?? 0;
+  const retainedCents = earnings.retainedCents ?? 0;
 
   return (
     <div className="space-y-6 p-6">
@@ -216,30 +219,37 @@ export default function RouterOverviewPage() {
         />
       )}
 
-      {/* Escrow Earnings */}
+      {/* Router Earnings */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Escrow Earnings</h3>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <h3 className="text-lg font-semibold text-slate-900">Router Earnings</h3>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div>
-            <div className="text-xs font-medium uppercase text-slate-500">Pending Escrow</div>
+            <div className="text-xs font-medium uppercase text-slate-500">Earned</div>
             <div className="mt-1 text-2xl font-bold text-amber-700">
-              {sectionFailures.summary ? "—" : `$${(pendingCents / 100).toFixed(2)}`}
+              {sectionFailures.summary ? "—" : `$${(scheduledCents / 100).toFixed(2)}`}
             </div>
-            <div className="text-xs text-slate-500">Awaiting release</div>
+            <div className="text-xs text-slate-500">Scheduled for Friday payout</div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase text-slate-500">Available Earnings</div>
+            <div className="text-xs font-medium uppercase text-slate-500">Paid This Week</div>
             <div className="mt-1 text-2xl font-bold text-slate-900">
               {sectionFailures.summary ? "—" : `$${((earnings.weekCents ?? 0) / 100).toFixed(2)}`}
             </div>
-            <div className="text-xs text-slate-500">This week</div>
+            <div className="text-xs text-slate-500">Weekly batch payouts sent</div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase text-slate-500">Released Earnings</div>
+            <div className="text-xs font-medium uppercase text-slate-500">Paid Out</div>
             <div className="mt-1 text-2xl font-bold text-emerald-700">
               {sectionFailures.summary ? "—" : `$${(releasedCents / 100).toFixed(2)}`}
             </div>
             <div className="text-xs text-slate-500">Lifetime</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase text-slate-500">Platform Retained</div>
+            <div className="mt-1 text-2xl font-bold text-slate-700">
+              {sectionFailures.summary ? "—" : `$${(retainedCents / 100).toFixed(2)}`}
+            </div>
+            <div className="text-xs text-slate-500">Admin-routed commission</div>
           </div>
         </div>
       </section>

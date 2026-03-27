@@ -224,10 +224,11 @@ export function RoutingWorkspace() {
     if (!resp.ok) return;
     const json = await safeJson<any>(resp);
     const e = json?.earnings ?? {};
+    const scheduledForFridayCents = Number(e.scheduledForFridayCents ?? e.pendingReleaseCents ?? 0);
     setEarnings({
-      projectedPendingCents: Number(e.pendingReleaseCents ?? 0),
+      projectedPendingCents: scheduledForFridayCents,
       totals: {
-        PENDING: Number(e.pendingReleaseCents ?? 0),
+        PENDING: scheduledForFridayCents,
         AVAILABLE: 0,
         PAID: Number(e.lifetimeCents ?? 0),
         HELD: 0,

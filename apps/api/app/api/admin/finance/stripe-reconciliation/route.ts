@@ -101,18 +101,26 @@ export async function GET(req: Request) {
         .select({
           totalCount: sql<number>`count(*)::int`,
           sentCount: sql<number>`sum(case when ${transferRecords.status} = 'SENT' then 1 else 0 end)::int`,
+          pendingCount: sql<number>`sum(case when ${transferRecords.status} = 'PENDING' then 1 else 0 end)::int`,
+          retainedCount: sql<number>`sum(case when ${transferRecords.status} = 'RETAINED' then 1 else 0 end)::int`,
           failedCount: sql<number>`sum(case when ${transferRecords.status} in ('FAILED','REVERSED') then 1 else 0 end)::int`,
           stripeSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'STRIPE' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
           platformRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'PLATFORM' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          routerEarnedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'PENDING' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          routerRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'RETAINED' then ${transferRecords.amountCents} else 0 end), 0)::int`,
         })
         .from(transferRecords),
       db
         .select({
           totalCount: sql<number>`count(*)::int`,
           sentCount: sql<number>`sum(case when ${transferRecords.status} = 'SENT' then 1 else 0 end)::int`,
+          pendingCount: sql<number>`sum(case when ${transferRecords.status} = 'PENDING' then 1 else 0 end)::int`,
+          retainedCount: sql<number>`sum(case when ${transferRecords.status} = 'RETAINED' then 1 else 0 end)::int`,
           failedCount: sql<number>`sum(case when ${transferRecords.status} in ('FAILED','REVERSED') then 1 else 0 end)::int`,
           stripeSentCents: sql<number>`coalesce(sum(case when ${transferRecords.method} = 'STRIPE' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
           platformRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'PLATFORM' and ${transferRecords.status} = 'SENT' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          routerEarnedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'PENDING' then ${transferRecords.amountCents} else 0 end), 0)::int`,
+          routerRetainedCents: sql<number>`coalesce(sum(case when ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'RETAINED' then ${transferRecords.amountCents} else 0 end), 0)::int`,
         })
         .from(transferRecords)
         .where(gte(transferRecords.createdAt, since)),

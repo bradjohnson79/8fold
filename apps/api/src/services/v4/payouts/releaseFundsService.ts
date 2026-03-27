@@ -9,6 +9,8 @@ import {
   FUNDS_RELEASED_FINAL,
   PAYOUT_RELEASE_INITIATED,
   PLATFORM_REVENUE_RECORDED,
+  ROUTER_COMMISSION_EARNED,
+  ROUTER_COMMISSION_PLATFORM_RETAINED,
   ROUTER_TRANSFER_CREATED,
   payoutDedupeKeys,
 } from "@/src/services/v4/payouts/payoutLedgerTypes";
@@ -19,6 +21,7 @@ import {
 import { stripe } from "@/src/stripe/stripe";
 import { getPlatformFees } from "@/src/config/platformFees";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { isStoredJobPaymentPaid } from "@/src/payments/paymentState";
 
 export type ReleaseFundsForJobInput = {
   jobId: string;
@@ -35,7 +38,7 @@ export type ReleaseFundsForJobResult = {
   legs?: Array<{
     role: "CONTRACTOR" | "ROUTER" | "PLATFORM";
     method: "STRIPE";
-    status: "SENT" | "FAILED";
+    status: "SENT" | "FAILED" | "PENDING" | "RETAINED";
     amountCents: number;
     currency: "USD" | "CAD";
     stripeTransferId?: string | null;
@@ -112,8 +115,7 @@ async function hasCapturedEvidence(job: JobSnapshot): Promise<boolean> {
     .limit(1);
   if (localEvidence.length > 0) return true;
 
-  const paymentStatus = String(job.paymentStatus ?? "").toUpperCase();
-  if (paymentStatus === "FUNDS_SECURED" || paymentStatus === "FUNDED") return true;
+  if (isStoredJobPaymentPaid(job.paymentStatus)) return true;
 
   const paymentIntentId = String(job.stripePaymentIntentId ?? "").trim();
   if (!paymentIntentId || !stripe) return false;
@@ -142,6 +144,8 @@ async function listRecentPayoutLedger(jobId: string) {
         inArray(v4FinancialLedger.type, [
           PAYOUT_RELEASE_INITIATED,
           CONTRACTOR_TRANSFER_CREATED,
+          ROUTER_COMMISSION_EARNED,
+          ROUTER_COMMISSION_PLATFORM_RETAINED,
           ROUTER_TRANSFER_CREATED,
           PLATFORM_REVENUE_RECORDED,
           FUNDS_RELEASED_FINAL,
@@ -271,6 +275,38 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
       },
     });
   }
+  if (routerLeg?.status === "PENDING") {
+    await appendLedgerEntry({
+      jobId,
+      type: ROUTER_COMMISSION_EARNED,
+      amountCents: routerPayoutCents,
+      currency,
+      dedupeKey: payoutDedupeKeys.routerCommissionEarned(jobId),
+      meta: {
+        actorRole: input.actorRole,
+        actorId,
+        description: `Router commission earned (${routerShareLabel})`,
+        splitType,
+        payoutTiming: "friday_batch",
+      },
+    });
+  }
+  if (routerLeg?.status === "RETAINED") {
+    await appendLedgerEntry({
+      jobId,
+      type: ROUTER_COMMISSION_PLATFORM_RETAINED,
+      amountCents: routerPayoutCents,
+      currency,
+      dedupeKey: payoutDedupeKeys.routerCommissionRetained(jobId),
+      meta: {
+        actorRole: input.actorRole,
+        actorId,
+        description: `Router commission retained by platform (${routerShareLabel})`,
+        splitType,
+        retentionReason: "admin_router",
+      },
+    });
+  }
 
   await appendLedgerEntry({
     jobId,
@@ -290,8 +326,11 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
     },
   });
 
-  const allSent = out.legs.every((leg) => leg.status === "SENT");
-  if (allSent) {
+  const releaseComplete =
+    contractorLeg?.status === "SENT" &&
+    out.legs.some((leg) => leg.role === "PLATFORM" && leg.status === "SENT") &&
+    Boolean(routerLeg && ["PENDING", "RETAINED", "SENT"].includes(routerLeg.status));
+  if (releaseComplete) {
     await appendLedgerEntry({
       jobId,
       type: FUNDS_RELEASED_FINAL,
@@ -303,6 +342,7 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
         actorId,
         contractorTransferId: contractorLeg?.status === "SENT" ? contractorLeg.stripeTransferId ?? null : null,
         routerTransferId: routerLeg?.status === "SENT" ? routerLeg.stripeTransferId ?? null : null,
+        routerCommissionStatus: routerLeg?.status ?? null,
       },
     });
   }

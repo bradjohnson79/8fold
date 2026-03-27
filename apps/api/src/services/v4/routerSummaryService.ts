@@ -4,6 +4,7 @@ import { jobs } from "@/db/schema/job";
 import { ROUTING_STATUS } from "@/src/router/routingStatus";
 import { routers } from "@/db/schema/router";
 import { v4SupportTickets } from "@/db/schema/v4SupportTicket";
+import { transferRecords } from "@/db/schema/transferRecord";
 import { promoteDuePublishedJobsForRouter } from "./jobExecutionService";
 
 export async function getV4RouterSummary(userId: string) {
@@ -14,7 +15,7 @@ export async function getV4RouterSummary(userId: string) {
   const weekStart = new Date(dayStart);
   weekStart.setDate(dayStart.getDate() - dayStart.getDay());
 
-  const [summaryRows, routerRows, supportRows, recentRows] = await Promise.all([
+  const [summaryRows, routerRows, supportRows, recentRows, transferRows] = await Promise.all([
     db
       .select({
         totalRouted: sql<number>`count(*)::int`,
@@ -22,10 +23,6 @@ export async function getV4RouterSummary(userId: string) {
         awaitingContractorAcceptance: sql<number>`count(*) filter (where ${jobs.routing_status} in ('INVITES_SENT', 'ROUTED_BY_ROUTER'))::int`,
         pendingCompletionApproval: sql<number>`count(*) filter (where ${jobs.contractor_completed_at} is not null and ${jobs.router_approved_at} is null)::int`,
         completedThisMonth: sql<number>`count(*) filter (where ${jobs.router_approved_at} >= ${monthStart})::int`,
-        earningsWeekCents: sql<number>`coalesce(sum(${jobs.router_earnings_cents}) filter (where ${jobs.released_at} >= ${weekStart}), 0)::int`,
-        earningsMonthCents: sql<number>`coalesce(sum(${jobs.router_earnings_cents}) filter (where ${jobs.released_at} >= ${monthStart}), 0)::int`,
-        earningsLifetimeCents: sql<number>`coalesce(sum(${jobs.router_earnings_cents}) filter (where ${jobs.released_at} is not null), 0)::int`,
-        earningsPendingReleaseCents: sql<number>`coalesce(sum(${jobs.router_earnings_cents}) filter (where ${jobs.router_approved_at} is not null and ${jobs.released_at} is null), 0)::int`,
         routesUsedToday: sql<number>`count(*) filter (where ${jobs.claimed_at} >= ${dayStart})::int`,
       })
       .from(jobs)
@@ -57,6 +54,16 @@ export async function getV4RouterSummary(userId: string) {
       .where(eq(jobs.claimed_by_user_id, userId))
       .orderBy(desc(jobs.updated_at), desc(jobs.id))
       .limit(8),
+    db
+      .select({
+        paidWeekCents: sql<number>`coalesce(sum(${transferRecords.amountCents}) filter (where ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'SENT' and ${transferRecords.releasedAt} >= ${weekStart}), 0)::int`,
+        paidMonthCents: sql<number>`coalesce(sum(${transferRecords.amountCents}) filter (where ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'SENT' and ${transferRecords.releasedAt} >= ${monthStart}), 0)::int`,
+        paidLifetimeCents: sql<number>`coalesce(sum(${transferRecords.amountCents}) filter (where ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'SENT'), 0)::int`,
+        scheduledForFridayCents: sql<number>`coalesce(sum(${transferRecords.amountCents}) filter (where ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'PENDING'), 0)::int`,
+        retainedCents: sql<number>`coalesce(sum(${transferRecords.amountCents}) filter (where ${transferRecords.role} = 'ROUTER' and ${transferRecords.status} = 'RETAINED'), 0)::int`,
+      })
+      .from(transferRecords)
+      .where(eq(transferRecords.userId, userId)),
   ]);
 
   const summary = summaryRows[0] ?? null;
@@ -111,10 +118,12 @@ export async function getV4RouterSummary(userId: string) {
       status: remainingCapacity === 0 ? "LIMIT_REACHED" : remainingCapacity <= 2 ? "NEAR_LIMIT" : "AVAILABLE",
     },
     earnings: {
-      weekCents: summary ? Number((summary as any).earningsWeekCents ?? 0) : 0,
-      monthCents: summary ? Number((summary as any).earningsMonthCents ?? 0) : 0,
-      lifetimeCents: summary ? Number((summary as any).earningsLifetimeCents ?? 0) : 0,
-      pendingReleaseCents: summary ? Number((summary as any).earningsPendingReleaseCents ?? 0) : 0,
+      weekCents: Number((transferRows[0] as any)?.paidWeekCents ?? 0),
+      monthCents: Number((transferRows[0] as any)?.paidMonthCents ?? 0),
+      lifetimeCents: Number((transferRows[0] as any)?.paidLifetimeCents ?? 0),
+      scheduledForFridayCents: Number((transferRows[0] as any)?.scheduledForFridayCents ?? 0),
+      pendingReleaseCents: Number((transferRows[0] as any)?.scheduledForFridayCents ?? 0),
+      retainedCents: Number((transferRows[0] as any)?.retainedCents ?? 0),
     },
     actionRequired,
     recentActivity: activity,

@@ -8,6 +8,7 @@ import { escrows } from "../../db/schema/escrow";
 import { auditLogs } from "../../db/schema/auditLog";
 import { logEvent } from "../server/observability/log";
 import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
+import { isStoredJobPaymentPaid, normalizeStripePaymentIntentStatus } from "@/src/payments/paymentState";
 
 type FinalizeOpts = {
   route: string;
@@ -117,7 +118,7 @@ export async function finalizeJobFundingFromPaymentIntent(
     const incomingCurrency = String(pi.currency ?? "").trim().toLowerCase();
 
     const verificationFailed =
-      pi.status !== "succeeded" ||
+      normalizeStripePaymentIntentStatus(pi.status) !== "succeeded" ||
       !Number.isInteger(expectedAmount) ||
       expectedAmount <= 0 ||
       expectedAmount !== incomingAmount ||
@@ -142,10 +143,7 @@ export async function finalizeJobFundingFromPaymentIntent(
       return fail("payment_row_mapped_to_different_payment_intent", meta.jobId);
     }
 
-    if (
-      ["FUNDED", "FUNDS_SECURED"].includes(String(job.paymentStatus ?? "").toUpperCase()) ||
-      String(payment?.status ?? "") === "CAPTURED"
-    ) {
+    if (isStoredJobPaymentPaid(job.paymentStatus) || String(payment?.status ?? "") === "CAPTURED") {
       return {
         ok: true,
         idempotent: true,

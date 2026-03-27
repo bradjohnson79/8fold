@@ -36,6 +36,7 @@ import type {
   AdminPartySummary,
   AdminTimelineEvent,
 } from "@/src/services/adminV4/types";
+import { isStoredJobPaymentPaid } from "@/src/payments/paymentState";
 
 type ListParams = {
   status: string | null;
@@ -94,8 +95,8 @@ function buildPaymentState(row: {
   stripe_refunded_at: Date | null;
   refunded_at: Date | null;
 }) {
+  const paid = Boolean(row.stripe_paid_at || isStoredJobPaymentPaid(row.payment_status));
   const paymentStatus = String(row.payment_status ?? "").toUpperCase();
-  const paid = Boolean(row.stripe_paid_at || paymentStatus === "FUNDS_SECURED" || paymentStatus === "FUNDED");
   const refunded = Boolean(row.stripe_refunded_at || row.refunded_at || paymentStatus === "REFUNDED");
   const label = refunded ? "REFUNDED" : paid ? "PAID" : "UNPAID";
 

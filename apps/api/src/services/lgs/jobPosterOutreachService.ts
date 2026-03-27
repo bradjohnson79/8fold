@@ -59,7 +59,16 @@ function mergeOutboundMetadata(
 
 async function fetchNextQueuedJobPosterMessage(allowRefill = true) {
   const settings = await loadBrainSettings();
-  const sender = await selectAvailableSender(settings, "jobs");
+  return fetchNextQueuedJobPosterMessageWithSenderPreference(undefined, allowRefill, settings);
+}
+
+async function fetchNextQueuedJobPosterMessageWithSenderPreference(
+  preferredSenderEmail?: string | null,
+  allowRefill = true,
+  settingsOverride?: Awaited<ReturnType<typeof loadBrainSettings>>,
+) {
+  const settings = settingsOverride ?? await loadBrainSettings();
+  const sender = await selectAvailableSender(settings, "jobs", preferredSenderEmail);
   if (!sender) {
     return { settings, item: null };
   }
@@ -165,9 +174,17 @@ async function fetchNextQueuedJobPosterMessage(allowRefill = true) {
 }
 
 export async function runJobPosterQueueCycle(): Promise<QueueCycleResult> {
+  return runJobPosterQueueCycleWithOptions();
+}
+
+export async function runJobPosterQueueCycleWithOptions(opts?: {
+  preferredSenderEmail?: string | null;
+}): Promise<QueueCycleResult> {
   console.log("[Job Poster] Processing queue...");
 
-  const { item, blockedReason, nextSendWindow } = await fetchNextQueuedJobPosterMessage();
+  const { item, blockedReason, nextSendWindow } = await fetchNextQueuedJobPosterMessageWithSenderPreference(
+    opts?.preferredSenderEmail,
+  );
   if (!item) {
     return { processed: 0, sent: 0, failed: 0, blockedReason, nextSendWindow };
   }
