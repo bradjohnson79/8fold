@@ -8,6 +8,7 @@ import { jobPayments } from "@/db/schema/jobPayment";
 import { v4JobUploads } from "@/db/schema/v4JobUpload";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 import { stripe } from "@/src/payments/stripe";
+import { isStripePaymentIntentPaid } from "@/src/payments/paymentState";
 import { writeChargeLedger } from "@/src/services/escrow/ledger";
 import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
@@ -84,8 +85,7 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
   }
 
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
-  const piStatus = String(pi.status ?? "").toLowerCase();
-  const isCapturedCharge = piStatus === "succeeded";
+  const isCapturedCharge = isStripePaymentIntentPaid(pi.status);
   if (!isCapturedCharge) {
     throw Object.assign(new Error("Payment not completed. Complete Stripe confirmation first."), { status: 409 });
   }

@@ -131,6 +131,22 @@ function hasLedgerEvidenceForLeg(ledgerEntries: LedgerEntryRow[], leg: TransferR
   return false;
 }
 
+function isReleasedCompatibleLegStatus(leg: TransferRecordRow) {
+  const role = normalizeUpper(leg.role);
+  const status = normalizeUpper(leg.status);
+  if (role === "ROUTER") {
+    return status === "SENT" || status === "PENDING" || status === "RETAINED";
+  }
+  return status === "SENT";
+}
+
+function shouldRequireLegacyLedgerEvidence(leg: TransferRecordRow) {
+  const role = normalizeUpper(leg.role);
+  const status = normalizeUpper(leg.status);
+  if (role === "ROUTER" && (status === "PENDING" || status === "RETAINED")) return false;
+  return true;
+}
+
 function hasEscrowLedgerFund(ledgerEntries: LedgerEntryRow[], escrow: EscrowRow) {
   for (const le of ledgerEntries) {
     if (String(le.jobId ?? "") !== String(escrow.jobId)) continue;
@@ -366,7 +382,7 @@ export function auditPayoutIntegrity(input: AuditInput): {
       });
     }
 
-    const notSent = legs.filter((l) => normalizeUpper(l.status) !== "SENT");
+    const notSent = legs.filter((l) => !isReleasedCompatibleLegStatus(l));
     if (notSent.length) {
       violations.push({
         type: "TRANSFER_LEG_STATUS_NOT_SENT",
@@ -381,6 +397,7 @@ export function auditPayoutIntegrity(input: AuditInput): {
 
     // Ledger evidence: ensure each leg has a matching entry (release engine requirement).
     for (const leg of legs) {
+      if (!shouldRequireLegacyLedgerEvidence(leg)) continue;
       if (!hasLedgerEvidenceForLeg(ledger, leg)) {
         const ref = normalizeUpper(leg.role) === "PLATFORM" ? null : leg.stripeTransferId;
         violations.push({

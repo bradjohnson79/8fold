@@ -61,8 +61,10 @@ export const QUEUE_REASON_LABELS: Record<QueueReasonCode, string> = {
 };
 
 // ── Safety constants ──────────────────────────────────────────────────────────
-const SEND_WINDOW_START_HOUR = 9;
-const SEND_WINDOW_END_HOUR = 17;
+const SEND_WINDOW_START_HOUR = 8;
+const SEND_WINDOW_START_MINUTE = 30;
+const SEND_WINDOW_END_HOUR = 18;
+const SEND_WINDOW_END_MINUTE = 30;
 const QUEUE_BACKPRESSURE_THRESHOLD = 500;
 const BOUNCE_COOLDOWN_HOURS = 6;
 const BOUNCE_RATE_THRESHOLD = 0.05;
@@ -131,26 +133,96 @@ function millisecondsSince(date: Date | null): number {
   return Date.now() - date.getTime();
 }
 
+function getPacificTimeParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    weekday: read("weekday"),
+    year: Number(read("year")),
+    month: Number(read("month")),
+    day: Number(read("day")),
+    hour: Number(read("hour")),
+    minute: Number(read("minute")),
+    second: Number(read("second")),
+  };
+}
+
+function pacificTimeToUtc(parts: {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}): Date {
+  const offsetName = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    timeZoneName: "shortOffset",
+  }).formatToParts(new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12, 0, 0)))
+    .find((part) => part.type === "timeZoneName")?.value ?? "GMT-8";
+  const match = offsetName.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+  const sign = match?.[1] === "-" ? -1 : 1;
+  const hours = Number(match?.[2] ?? 8);
+  const minutes = Number(match?.[3] ?? 0);
+  const offsetMinutes = sign * (hours * 60 + minutes);
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - offsetMinutes * 60 * 1000);
+}
+
 function isWithinSendWindow(): boolean {
-  const ptOffset = -8;
-  const now = new Date();
-  const utcHour = now.getUTCHours();
-  const ptHour = (utcHour + ptOffset + 24) % 24;
-  return ptHour >= SEND_WINDOW_START_HOUR && ptHour < SEND_WINDOW_END_HOUR;
+  const parts = getPacificTimeParts();
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
+  const minutes = parts.hour * 60 + parts.minute;
+  const startMinutes = SEND_WINDOW_START_HOUR * 60 + SEND_WINDOW_START_MINUTE;
+  const endMinutes = SEND_WINDOW_END_HOUR * 60 + SEND_WINDOW_END_MINUTE;
+  return minutes >= startMinutes && minutes < endMinutes;
 }
 
 export function getNextSendWindow(): Date {
-  const ptOffset = -8;
-  const targetUtcHour = (SEND_WINDOW_START_HOUR - ptOffset + 24) % 24;
   const now = new Date();
-  const next = new Date(now);
-  next.setUTCHours(targetUtcHour, 0, 0, 0);
+  let cursor = getPacificTimeParts(now);
+  let daysToAdd = 0;
+  const startMinutes = SEND_WINDOW_START_HOUR * 60 + SEND_WINDOW_START_MINUTE;
+  const currentMinutes = cursor.hour * 60 + cursor.minute;
 
-  if (now >= next) {
-    next.setUTCDate(next.getUTCDate() + 1);
+  if (cursor.weekday === "Sat") {
+    daysToAdd = 2;
+  } else if (cursor.weekday === "Sun") {
+    daysToAdd = 1;
+  } else if (currentMinutes >= SEND_WINDOW_END_HOUR * 60 + SEND_WINDOW_END_MINUTE) {
+    daysToAdd = 1;
+  } else if (currentMinutes < startMinutes) {
+    daysToAdd = 0;
   }
 
-  return next;
+  let candidate = new Date(now);
+  candidate.setUTCDate(candidate.getUTCDate() + daysToAdd);
+  let candidateParts = getPacificTimeParts(candidate);
+  while (candidateParts.weekday === "Sat" || candidateParts.weekday === "Sun") {
+    candidate.setUTCDate(candidate.getUTCDate() + 1);
+    candidateParts = getPacificTimeParts(candidate);
+  }
+
+  return pacificTimeToUtc({
+    year: candidateParts.year,
+    month: candidateParts.month,
+    day: candidateParts.day,
+    hour: SEND_WINDOW_START_HOUR,
+    minute: SEND_WINDOW_START_MINUTE,
+    second: 0,
+  });
 }
 
 /** Extract normalized domain from a website URL or email, for cooldown checks. */
@@ -282,6 +354,7 @@ function mergeOutboundMetadata(
 export async function selectAvailableSender(
   settings: BrainSettings,
   pipeline: "contractor" | "jobs" = "contractor",
+  preferredSenderEmail?: string | null,
 ): Promise<SenderSelectionResult> {
   if (!isWithinSendWindow()) {
     const nextSendWindow = getNextSendWindow();
@@ -347,7 +420,11 @@ export async function selectAvailableSender(
 
   if (eligible.length === 0) return null;
 
+  const normalizedPreferred = String(preferredSenderEmail ?? "").trim().toLowerCase();
   eligible.sort((a, b) => {
+    const aPreferred = normalizedPreferred && a.senderEmail.trim().toLowerCase() === normalizedPreferred ? 1 : 0;
+    const bPreferred = normalizedPreferred && b.senderEmail.trim().toLowerCase() === normalizedPreferred ? 1 : 0;
+    if (aPreferred !== bPreferred) return bPreferred - aPreferred;
     const aTime = a.lastSentAt?.getTime() ?? 0;
     const bTime = b.lastSentAt?.getTime() ?? 0;
     if (aTime !== bTime) return aTime - bTime;
@@ -364,6 +441,7 @@ export async function selectAvailableSender(
 async function fetchNextQueuedMessage(
   settings: BrainSettings,
   allowRefill = true,
+  preferredSenderEmail?: string | null,
 ): Promise<
   | {
       kind: "ready";
@@ -388,7 +466,7 @@ async function fetchNextQueuedMessage(
     }
   | null
 > {
-  const sender = await selectAvailableSender(settings, "contractor");
+  const sender = await selectAvailableSender(settings, "contractor", preferredSenderEmail);
   if (!sender) return null;
   if ("blocked" in sender) {
     return {
@@ -473,7 +551,7 @@ async function fetchNextQueuedMessage(
   if (allowRefill) {
     const refill = await queueApprovedContractorMessages(200);
     if (refill.queued > 0) {
-      return fetchNextQueuedMessage(settings, false);
+      return fetchNextQueuedMessage(settings, false, preferredSenderEmail);
     }
   }
 
@@ -497,6 +575,8 @@ export async function sendWithRetry(params: {
   contactEmail: string;
   senderAccount: string;
 }): Promise<SendResult> {
+  const first = await sendQueuedEmail(params);
+  if (first.ok || first.bounce) return first;
   return sendQueuedEmail(params);
 }
 
@@ -557,7 +637,9 @@ async function markDomainRisk(companyDomain: string | null, bounceReason: string
 
 // ── Main scheduler entry point ────────────────────────────────────────────────
 
-export async function runLgsOutreachScheduler(): Promise<OutreachCycleResult> {
+export async function runLgsOutreachScheduler(opts?: {
+  preferredSenderEmail?: string | null;
+}): Promise<OutreachCycleResult> {
   const settings = await loadBrainSettings();
 
   // Queue backpressure check
@@ -573,7 +655,7 @@ export async function runLgsOutreachScheduler(): Promise<OutreachCycleResult> {
   }
 
   // Process the lightweight queue only.
-  const queued = await fetchNextQueuedMessage(settings);
+  const queued = await fetchNextQueuedMessage(settings, true, opts?.preferredSenderEmail);
   if (!queued) return { sent: 0, failed: 0 };
   if (queued.kind === "blocked") {
     return {

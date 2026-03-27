@@ -1,3 +1,5 @@
+import { isStoredJobPaymentPaid } from "@/src/payments/paymentState";
+
 export type JobActiveLike = {
   paymentStatus: string | null | undefined;
   status: string | null | undefined;
@@ -15,8 +17,7 @@ const ACTIVE_STATUSES = ["OPEN_FOR_ROUTING", "ROUTED", "ACCEPTED", "ASSIGNED", "
  * lifecycle gating matches intended behavior.
  */
 export function isJobActive(job: JobActiveLike): boolean {
-  const paymentStatus = String(job.paymentStatus ?? "").trim().toUpperCase();
   const status = String(job.status ?? "").trim().toUpperCase();
-  return ["FUNDS_SECURED", "FUNDED"].includes(paymentStatus) && (ACTIVE_STATUSES as readonly string[]).includes(status);
+  return isStoredJobPaymentPaid(job.paymentStatus) && (ACTIVE_STATUSES as readonly string[]).includes(status);
 }
 

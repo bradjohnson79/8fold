@@ -21,10 +21,12 @@ import { getPlatformFees } from "@/src/config/platformFees";
 
 type RoleLeg = "CONTRACTOR" | "ROUTER" | "PLATFORM";
 type Method = "STRIPE";
-type Status = "PENDING" | "SENT" | "FAILED" | "REVERSED";
+type Status = "PENDING" | "SENT" | "FAILED" | "REVERSED" | "RETAINED";
 
 export type ReleaseLegResult =
   | { role: RoleLeg; method: Method; status: "SENT"; amountCents: number; currency: "USD" | "CAD"; stripeTransferId?: string | null; externalRef?: string | null }
+  | { role: RoleLeg; method: Method; status: "PENDING"; amountCents: number; currency: "USD" | "CAD"; externalRef?: string | null }
+  | { role: RoleLeg; method: Method; status: "RETAINED"; amountCents: number; currency: "USD" | "CAD"; externalRef?: string | null }
   | { role: RoleLeg; method: Method; status: "FAILED"; amountCents: number; currency: "USD" | "CAD"; failureReason: string };
 
 export type ReleaseJobFundsResult =
@@ -88,6 +90,35 @@ async function resolveContractorUserIdInTx(tx: any, jobId: string, current: stri
     .where(sql`lower(${users.email}) = lower(${email})`)
     .limit(1);
   return userRows[0]?.id ?? null;
+}
+
+async function resolveRouterCommissionModeInTx(
+  tx: any,
+  input: { claimedByUserId: string | null; adminRoutedById: string | null },
+): Promise<{ routerUserId: string; mode: "EARNED" | "RETAINED" } | null> {
+  const claimedByUserId = String(input.claimedByUserId ?? "").trim();
+  if (claimedByUserId) {
+    const rows = await tx
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, claimedByUserId))
+      .limit(1);
+    const role = String(rows[0]?.role ?? "").trim().toUpperCase();
+    return {
+      routerUserId: claimedByUserId,
+      mode: role === "ADMIN" ? "RETAINED" : "EARNED",
+    };
+  }
+
+  const adminRoutedById = String(input.adminRoutedById ?? "").trim();
+  if (adminRoutedById) {
+    return {
+      routerUserId: adminRoutedById,
+      mode: "RETAINED",
+    };
+  }
+
+  return null;
 }
 
 async function payoutMethodForUserInTx(
@@ -247,6 +278,7 @@ export async function releaseJobFundsLegacyEngine(input: {
         currency: jobs.currency,
         stripePaymentIntentId: jobs.stripe_payment_intent_id,
         claimedByUserId: jobs.claimed_by_user_id,
+        adminRoutedById: jobs.admin_routed_by_id,
         contractorUserId: jobs.contractor_user_id,
         jobPosterUserId: jobs.job_poster_user_id,
         contractorCompletedAt: jobs.contractor_completed_at,
@@ -292,8 +324,11 @@ export async function releaseJobFundsLegacyEngine(input: {
       .where(and(eq(jobHolds.jobId, jobId), eq(jobHolds.reason, "DISPUTE" as any), eq(jobHolds.status, "ACTIVE" as any)))
       .limit(1);
     if (activeHoldRows[0]?.id) return { kind: "disputed" as const };
-    const routerUserId = String(job.claimedByUserId ?? "").trim();
-    if (!routerUserId) return { kind: "missing_router" as const };
+    const routerCommission = await resolveRouterCommissionModeInTx(tx, {
+      claimedByUserId: job.claimedByUserId ?? null,
+      adminRoutedById: job.adminRoutedById ?? null,
+    });
+    if (!routerCommission?.routerUserId) return { kind: "missing_router" as const };
 
     const contractorUserId = await resolveContractorUserIdInTx(tx, jobId, job.contractorUserId ?? null);
     if (!contractorUserId) return { kind: "missing_contractor" as const };
@@ -370,7 +405,8 @@ export async function releaseJobFundsLegacyEngine(input: {
     return {
       kind: "ok" as const,
       job,
-      routerUserId,
+      routerUserId: routerCommission.routerUserId,
+      routerCommissionMode: routerCommission.mode,
       contractorUserId,
       platformUserId,
       currency,
@@ -442,6 +478,7 @@ export async function releaseJobFundsLegacyEngine(input: {
   const isRegionalJob = Number((snapshot as any).job?.regionalFeeCents ?? 0) > 0;
   const splitType = isRegionalJob ? "regional" : "urban";
   const contractorShareLabel = isRegionalJob ? "85%" : "80%";
+  const routerShareLabel = "8%";
 
   const roles: Array<{ role: RoleLeg; userId: string; amountCents: number; kind: "router" | "contractor" | "platform" }> = [
     { role: "CONTRACTOR", userId: snapshot.contractorUserId, amountCents: snapshot.split.contractor, kind: "contractor" },
@@ -456,7 +493,9 @@ export async function releaseJobFundsLegacyEngine(input: {
   const methodsByRole = new Map<RoleLeg, Method>();
   await db.transaction(async (tx: any) => {
     methodsByRole.set("PLATFORM", "STRIPE");
-    methodsByRole.set("ROUTER", await payoutMethodForUserInTx(tx, snapshot.routerUserId, currency, "router"));
+    if (snapshot.routerCommissionMode === "EARNED") {
+      methodsByRole.set("ROUTER", await payoutMethodForUserInTx(tx, snapshot.routerUserId, currency, "router"));
+    }
     methodsByRole.set("CONTRACTOR", await payoutMethodForUserInTx(tx, snapshot.contractorUserId, currency, "contractor"));
   });
 
@@ -468,8 +507,8 @@ export async function releaseJobFundsLegacyEngine(input: {
     const existing = existingByRole.get(leg.role) ?? null;
     const amountCents = leg.amountCents;
 
-    // If already SENT, surface as ok and ensure ledger evidence later.
-    if (existing && String(existing.status) === "SENT") {
+    const existingStatus = String(existing?.status ?? "").toUpperCase();
+    if (existing && existingStatus === "SENT") {
       legResults.push({
         role: leg.role,
         method: "STRIPE",
@@ -477,6 +516,28 @@ export async function releaseJobFundsLegacyEngine(input: {
         amountCents,
         currency,
         stripeTransferId: existing.stripeTransferId ?? null,
+        externalRef: existing.externalRef ?? null,
+      });
+      continue;
+    }
+    if (existing && existingStatus === "PENDING") {
+      legResults.push({
+        role: leg.role,
+        method: "STRIPE",
+        status: "PENDING",
+        amountCents,
+        currency,
+        externalRef: existing.externalRef ?? null,
+      });
+      continue;
+    }
+    if (existing && existingStatus === "RETAINED") {
+      legResults.push({
+        role: leg.role,
+        method: "STRIPE",
+        status: "RETAINED",
+        amountCents,
+        currency,
         externalRef: existing.externalRef ?? null,
       });
       continue;
@@ -492,6 +553,29 @@ export async function releaseJobFundsLegacyEngine(input: {
         currency,
         stripeTransferId: null,
       });
+      continue;
+    }
+
+    if (leg.role === "ROUTER") {
+      if (snapshot.routerCommissionMode === "RETAINED") {
+        legResults.push({
+          role: "ROUTER",
+          method: "STRIPE",
+          status: "RETAINED",
+          amountCents,
+          currency,
+          externalRef: "platform_retained:admin_router",
+        });
+      } else {
+        legResults.push({
+          role: "ROUTER",
+          method: "STRIPE",
+          status: "PENDING",
+          amountCents,
+          currency,
+          externalRef: `earned_for_friday_batch:${routerShareLabel}`,
+        });
+      }
       continue;
     }
 
@@ -628,7 +712,14 @@ export async function releaseJobFundsLegacyEngine(input: {
       const out = legResults.find((r) => r.role === leg.role);
       if (!out) continue;
 
-      const status: Status = out.status === "SENT" ? "SENT" : "FAILED";
+      const status: Status =
+        out.status === "SENT"
+          ? "SENT"
+          : out.status === "PENDING"
+            ? "PENDING"
+            : out.status === "RETAINED"
+              ? "RETAINED"
+              : "FAILED";
       const method: Method = out.method;
       const stripeTransferId = (out as any).stripeTransferId ?? null;
       const externalRef = (out as any).externalRef ?? null;
@@ -647,7 +738,7 @@ export async function releaseJobFundsLegacyEngine(input: {
           stripeTransferId,
           externalRef,
           status,
-          releasedAt: status === "SENT" ? now : null,
+          releasedAt: status === "SENT" || status === "RETAINED" ? now : null,
           failureReason,
         } as any)
         .onConflictDoUpdate({
@@ -657,7 +748,7 @@ export async function releaseJobFundsLegacyEngine(input: {
             stripeTransferId,
             externalRef,
             status,
-            releasedAt: status === "SENT" ? now : null,
+            releasedAt: status === "SENT" || status === "RETAINED" ? now : null,
             failureReason,
           } as any,
         });
@@ -688,23 +779,24 @@ export async function releaseJobFundsLegacyEngine(input: {
       }
     }
 
-    const allSent = legResults.every((r) => r.status === "SENT");
-
-    // Persist job-level transfer IDs (Stripe legs only).
     const contractorSent = legResults.find((r) => r.role === "CONTRACTOR" && r.status === "SENT" && r.method === "STRIPE") as any;
     const routerSent = legResults.find((r) => r.role === "ROUTER" && r.status === "SENT" && r.method === "STRIPE") as any;
+    const routerSettled = legResults.find((r) => r.role === "ROUTER" && (r.status === "PENDING" || r.status === "RETAINED" || r.status === "SENT")) as any;
+    const platformSettled = legResults.find((r) => r.role === "PLATFORM" && r.status === "SENT") as any;
+    const releaseComplete = Boolean(contractorSent && platformSettled && routerSettled);
 
+    // Persist job-level transfer IDs (Stripe legs only).
     await tx
       .update(jobs)
       .set({
         contractor_transfer_id: contractorSent?.stripeTransferId ?? (snapshot.job as any).contractorTransferId ?? null,
         router_transfer_id: routerSent?.stripeTransferId ?? (snapshot.job as any).routerTransferId ?? null,
-        released_at: allSent ? now : (snapshot.job as any).releasedAt ?? null,
-        payout_status: allSent ? ("RELEASED" as any) : ("FAILED" as any),
+        released_at: releaseComplete ? now : (snapshot.job as any).releasedAt ?? null,
+        payout_status: releaseComplete ? ("RELEASED" as any) : ("FAILED" as any),
       })
       .where(eq(jobs.id, jobId));
 
-    if (allSent && escrow?.id) {
+    if (releaseComplete && escrow?.id) {
       // Mark escrow released (best-effort) and record ledger debit from HELD.
       await tx
         .update(escrows)
@@ -745,13 +837,13 @@ export async function releaseJobFundsLegacyEngine(input: {
     }
   });
 
-  if (legResults.every((r) => r.status === "SENT")) {
+  if (legResults.some((r) => r.role === "CONTRACTOR" && r.status === "SENT")) {
     await emitDomainEvent({
       type: "FUNDS_RELEASED",
       payload: {
         jobId,
         contractorId: String((snapshot.job as any).contractorUserId ?? "").trim() || null,
-        routerId: String((snapshot.job as any).claimedByUserId ?? "").trim() || null,
+        routerId: String(snapshot.routerUserId ?? "").trim() || null,
         jobPosterId: String((snapshot.job as any).jobPosterUserId ?? "").trim() || null,
         dedupeKeyBase: `funds_released:${jobId}`,
       },

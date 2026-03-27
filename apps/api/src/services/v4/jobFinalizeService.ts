@@ -10,6 +10,7 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { tradeCategoryEnum } from "@/db/schema/enums";
 import { stripe } from "@/src/payments/stripe";
+import { isStripePaymentIntentPaid } from "@/src/payments/paymentState";
 import { writeChargeLedger } from "@/src/services/escrow/ledger";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
@@ -42,8 +43,7 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
 
   // A. Stripe validation
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
-  const piStatus = String(pi.status ?? "").toLowerCase();
-  if (piStatus !== "succeeded") {
+  if (!isStripePaymentIntentPaid(pi.status)) {
     throw Object.assign(new Error("Payment not completed. Complete Stripe confirmation first."), { status: 409 });
   }
 

@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
  * Flow:
  * - Create PaymentIntent: POST `/api/web/jobs/:id/payment-intent`
  * - Confirm payment client-side (Stripe Elements)
- * - Poll: GET `/api/web/jobs/:id/payment-status` until `paymentStatus=FUNDED`
+ * - Poll: GET `/api/web/jobs/:id/payment-status` until the API reports payment confirmed
  */
 export async function POST() {
   return NextResponse.json(
