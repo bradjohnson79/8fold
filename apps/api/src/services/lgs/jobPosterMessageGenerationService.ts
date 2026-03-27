@@ -19,6 +19,7 @@ export type JobPosterMessageOutput = {
 const MODEL = "gpt-5-nano";
 const MESSAGE_VERSION = "job-poster-v1";
 const MAX_OUTPUT_TOKENS = 220;
+const TEMPERATURE = 0.6;
 
 function getGreetingName(input: JobPosterMessageInput): string {
   if (input.contactName?.trim()) return input.contactName.trim();
@@ -47,6 +48,7 @@ About 8Fold:
 Goal:
 - Ask whether they ever need contractor help for upcoming work.
 - Keep it human, direct, and low-pressure.
+- Generate a fresh variation each time.
 
 Requirements:
 - Under 120 words
@@ -82,6 +84,7 @@ export async function generateJobPosterMessage(input: JobPosterMessageInput): Pr
   const raw = (await openai.responses.create({
     model: MODEL,
     input: buildPrompt(input),
+    temperature: TEMPERATURE,
     max_output_tokens: MAX_OUTPUT_TOKENS,
   })) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
 

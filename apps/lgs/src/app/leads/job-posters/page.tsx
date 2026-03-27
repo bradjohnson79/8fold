@@ -5,6 +5,10 @@ import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/formatters";
 import { VerificationProgressModal, type VerificationProgress } from "@/components/VerificationProgressModal";
+import {
+  getGenerateErrorMessage,
+  type MessageGenerationApiResponse,
+} from "@/lib/messageGeneration";
 
 type JobPosterLead = {
   id: string;
@@ -135,15 +139,7 @@ function badgeStyle(color: string) {
 }
 
 function canGenerateForLead(lead: JobPosterLead): boolean {
-  if (lead.archived || lead.status === "archived") return false;
-  if (!lead.email) return false;
-  return normalizeVerificationStatus(lead.email_verification_status) !== "invalid";
-}
-
-function getGenerateErrorMessage(status: number): string {
-  if (status === 400) return "Missing required data";
-  if (status >= 500) return "Generation failed, try again";
-  return "Generate failed";
+  return !lead.archived && lead.status !== "archived";
 }
 
 function MsgCell({
@@ -167,18 +163,25 @@ function MsgCell({
   const generateDisabled = !canGenerateForLead(lead);
 
   async function handleGenerate() {
-    if (!lead.email) return;
     setGenerating(true);
     try {
-      const res = await fetch("/api/lgs/messages/generate", {
+      const res = await fetch("/api/lgs/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: lead.id, pipeline: "jobs" }),
+        body: JSON.stringify({
+          leadId: lead.id,
+          email: lead.email,
+          category: lead.category,
+          city: lead.city,
+          persona: "job_poster",
+          force_regenerate: status !== "none",
+        }),
       });
-      if (res.ok) {
+      const json = (await res.json().catch(() => ({}))) as MessageGenerationApiResponse;
+      if (res.ok && json.ok !== false) {
         onGenerated(lead.id);
       } else {
-        onError(getGenerateErrorMessage(res.status));
+        onError(getGenerateErrorMessage(res.status, json));
       }
     } catch {
       onError("Generation failed, try again");
@@ -192,7 +195,7 @@ function MsgCell({
       <button
         onClick={() => void handleGenerate()}
         disabled={generating || generateDisabled}
-        title={generateDisabled ? (!lead.email ? "Email not found yet" : "Invalid email") : "Generate message"}
+        title={generateDisabled ? "Archived leads cannot generate messages" : "Generate message"}
         style={{
           padding: "0.2rem 0.5rem",
           background: "#1e293b",

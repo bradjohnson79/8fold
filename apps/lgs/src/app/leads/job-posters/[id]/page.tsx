@@ -5,6 +5,11 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/formatters";
+import {
+  getGenerateErrorMessage,
+  hasLimitedMessageContext,
+  type MessageGenerationApiResponse,
+} from "@/lib/messageGeneration";
 
 type Message = {
   id: string;
@@ -58,15 +63,7 @@ const MSG_STATUS_COLOR: Record<string, string> = {
 };
 
 function canGenerateForLead(lead: Lead | null): boolean {
-  if (!lead?.email) return false;
-  if (lead.status === "archived") return false;
-  return lead.verification_status !== "invalid";
-}
-
-function getGenerateErrorMessage(status: number): string {
-  if (status === 400) return "Missing required data";
-  if (status >= 500) return "Generation failed, try again";
-  return "Generate failed";
+  return !!lead && lead.status !== "archived";
 }
 
 async function fetchLead(leadId: string): Promise<Lead | null> {
@@ -226,22 +223,30 @@ export default function JobPosterLeadDetailPage() {
   }
 
   async function handleGenerate() {
-    if (!lead?.email) return;
+    if (!lead) return;
     setGenerating(true);
     setEditing(false);
     setShowRegenPrompt(false);
     setActionMsg(null);
     try {
-      const response = await fetch("/api/lgs/messages/generate", {
+      const response = await fetch("/api/lgs/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: leadId, pipeline: "jobs" }),
+        body: JSON.stringify({
+          leadId,
+          email: lead.email,
+          category: lead.category,
+          city: lead.city,
+          persona: "job_poster",
+          force_regenerate: !!lead.latest_message,
+        }),
       });
-      if (response.ok) {
-        setActionMsg({ text: "Message generated.", ok: true });
+      const json = (await response.json().catch(() => ({}))) as MessageGenerationApiResponse;
+      if (response.ok && json.ok !== false) {
+        setActionMsg({ text: json.data?.warning ?? "Message generated.", ok: true });
         await reloadLead();
       } else {
-        setActionMsg({ text: getGenerateErrorMessage(response.status), ok: false });
+        setActionMsg({ text: getGenerateErrorMessage(response.status, json), ok: false });
       }
     } catch {
       setActionMsg({ text: "Generation failed, try again", ok: false });
@@ -309,6 +314,13 @@ export default function JobPosterLeadDetailPage() {
   const msgColor = msgStatus ? (MSG_STATUS_COLOR[msgStatus] ?? "#475569") : "#475569";
   const location = [lead.city, lead.state, lead.country].filter(Boolean).join(", ");
   const generateDisabled = !canGenerateForLead(lead);
+  const limitedMessageContext = hasLimitedMessageContext({
+    email: lead.email,
+    category: lead.category,
+    city: lead.city,
+    company: lead.company_name,
+    contact: lead.contact_name,
+  });
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -364,6 +376,12 @@ export default function JobPosterLeadDetailPage() {
           </p>
         )}
       </div>
+
+      {limitedMessageContext && (
+        <div style={{ background: "#2a220f", border: "1px solid #a16207", color: "#fbbf24", borderRadius: 8, padding: "0.85rem 1rem", marginBottom: "1.5rem", fontSize: "0.875rem" }}>
+          Using limited data — message may be generic
+        </div>
+      )}
 
       {showRegenPrompt && (
         <div style={{ background: "#1e2d1e", border: "1px solid #166534", borderRadius: 8, padding: "1rem 1.25rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
