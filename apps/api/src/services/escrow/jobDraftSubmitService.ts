@@ -8,7 +8,7 @@ import { jobPayments } from "@/db/schema/jobPayment";
 import { v4JobUploads } from "@/db/schema/v4JobUpload";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 import { stripe } from "@/src/payments/stripe";
-import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
+import { writeChargeLedger } from "@/src/services/escrow/ledger";
 import { computeModelAPricing } from "@/src/services/v4/modelAPricingService";
 import { getFeeConfig } from "@/src/services/v4/paymentFeeConfigService";
 import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
@@ -85,9 +85,8 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
 
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
   const piStatus = String(pi.status ?? "").toLowerCase();
-  const isAuthorizedHold = piStatus === "requires_capture";
   const isCapturedCharge = piStatus === "succeeded";
-  if (!isAuthorizedHold && !isCapturedCharge) {
+  if (!isCapturedCharge) {
     throw Object.assign(new Error("Payment not completed. Complete Stripe confirmation first."), { status: 409 });
   }
 
@@ -193,13 +192,13 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
       stripe_payment_intent_id: paymentIntentId,
       stripe_payment_intent_status: String(pi.status ?? ""),
       stripe_charge_id: stripeChargeId,
-      payment_status: isCapturedCharge ? ("FUNDS_SECURED" as any) : ("AUTHORIZED" as any),
+      payment_status: "FUNDS_SECURED" as any,
       stripe_authorized_at: now,
-      stripe_paid_at: isCapturedCharge ? now : null,
-      escrow_locked_at: isCapturedCharge ? now : null,
-      funds_secured_at: isCapturedCharge ? now : null,
-      funded_at: isCapturedCharge ? now : null,
-      payment_captured_at: isCapturedCharge ? now : null,
+      stripe_paid_at: now,
+      escrow_locked_at: now,
+      funds_secured_at: now,
+      funded_at: now,
+      payment_captured_at: now,
       job_poster_user_id: userId,
       job_type: (isRegional ? "regional" : "urban") as any,
       trade_category: tradeCategory as any,
@@ -232,9 +231,9 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
           stripePaymentIntentStatus: String(pi.status ?? ""),
           stripeChargeId,
           amountCents: pricingResult.totalChargeCents,
-          status: isCapturedCharge ? "CAPTURED" : "PENDING",
-          escrowLockedAt: isCapturedCharge ? now : null,
-          paymentCapturedAt: isCapturedCharge ? now : null,
+          status: "CAPTURED",
+          escrowLockedAt: now,
+          paymentCapturedAt: now,
           updatedAt: now,
         } as any)
         .where(eq(jobPayments.id, existingPayment.id));
@@ -246,9 +245,9 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
         stripePaymentIntentStatus: String(pi.status ?? ""),
         stripeChargeId,
         amountCents: pricingResult.totalChargeCents,
-        status: isCapturedCharge ? "CAPTURED" : "PENDING",
-        escrowLockedAt: isCapturedCharge ? now : null,
-        paymentCapturedAt: isCapturedCharge ? now : null,
+        status: "CAPTURED",
+        escrowLockedAt: now,
+        paymentCapturedAt: now,
         createdAt: now,
         updatedAt: now,
       } as any);
@@ -280,21 +279,12 @@ export async function submitJobFromActiveDraft(userId: string): Promise<SubmitDr
         .where(and(inArray(v4JobUploads.id, uploadIds), eq(v4JobUploads.userId, userId)));
     }
 
-    if (isCapturedCharge) {
-      await writeChargeLedger(tx as any, {
-        jobId,
-        totalAmountCents: pricingResult.totalChargeCents,
-        currency: pricingResult.currency,
-        paymentIntentId,
-      });
-    } else {
-      await writeAuthHoldLedger(tx as any, {
-        jobId,
-        totalAmountCents: pricingResult.totalChargeCents,
-        currency: pricingResult.currency,
-        paymentIntentId,
-      });
-    }
+    await writeChargeLedger(tx as any, {
+      jobId,
+      totalAmountCents: pricingResult.totalChargeCents,
+      currency: pricingResult.currency,
+      paymentIntentId,
+    });
 
     await tx
       .update(jobDraft)

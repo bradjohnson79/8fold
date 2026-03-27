@@ -269,9 +269,40 @@ export const DEFAULT_TEMPLATES: Record<string, DefaultTemplate> = {
 
   JOB_REFUNDED: {
     category: "Financial",
-    supportsEmail: false,
+    supportsEmail: true,
     supportsInApp: true,
-    variables: ["job_title"],
+    variables: [
+      "job_title",
+      "job_title_or_payment",
+      "job_poster_name",
+      "greeting_name_suffix",
+      "refund_amount",
+      "refund_currency",
+      "card_last4",
+      "payment_method_reference",
+      "refund_reference",
+      "refund_timestamp",
+      "dashboard_link",
+      "platform_name",
+    ],
+    emailSubject: "{{platform_name}} refund confirmation for {{job_title_or_payment}}",
+    emailTemplate: emailWrap(`
+      ${h1("Your refund has been processed")}
+      ${p("Hello{{greeting_name_suffix}},")}
+      ${p("Your payment for {{job_title_or_payment}} has been successfully refunded.")}
+      ${p("Refund details")}
+      <ul style="margin:0 0 16px 20px; padding:0; color:#111827; font-size:14px; line-height:1.6;">
+        <li><strong>Amount:</strong> {{refund_amount}}</li>
+        <li><strong>Currency:</strong> {{refund_currency}}</li>
+        <li><strong>Payment method:</strong> {{payment_method_reference}}</li>
+        <li><strong>Refund reference:</strong> {{refund_reference}}</li>
+        <li><strong>Processed at:</strong> {{refund_timestamp}}</li>
+      </ul>
+      ${p("The funds will appear in your account within 5–10 business days.")}
+      ${btn("{{dashboard_link}}", "View Dashboard")}
+      ${p("Thank you,")}
+      ${p("{{platform_name}} Payments")}
+    `),
     inAppTemplate: "Your payment for \"{{job_title}}\" has been refunded.",
   },
 

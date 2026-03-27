@@ -41,6 +41,14 @@ export async function GET(req: Request) {
           title: jobs.title,
           completedAt: jobs.completed_at,
           payoutStatus: jobs.payout_status,
+          completionWindowExpiresAt: jobs.completion_window_expires_at,
+          hasActiveDisputeHold: sql<boolean>`exists(
+            select 1
+            from "JobHold" h
+            where h."jobId" = ${jobs.id}
+              and h."reason" = 'DISPUTE'
+              and h."status" = 'ACTIVE'
+          )`,
           contractorPayoutCents: jobs.contractor_payout_cents,
         })
         .from(jobs)
@@ -69,6 +77,8 @@ export async function GET(req: Request) {
         title: j.title,
         completedAt: j.completedAt?.toISOString() ?? null,
         payoutStatus: j.payoutStatus,
+        completionWindowExpiresAt: j.completionWindowExpiresAt?.toISOString() ?? null,
+        hasActiveDisputeHold: Boolean(j.hasActiveDisputeHold),
         contractorPayoutCents: j.contractorPayoutCents,
       })),
     });

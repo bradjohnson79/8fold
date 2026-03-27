@@ -19,6 +19,8 @@ type AppraisalResult = {
   median: number;
   high: number;
   confidence: "LOW" | "MEDIUM" | "HIGH";
+  confidenceScore?: number;
+  confidenceExplanation?: string;
   rationale: string;
   taxRate: number;
   currency: "USD" | "CAD";
@@ -175,11 +177,8 @@ function HoldConfirm(props: {
               if (status === "requires_action") {
                 throw new Error("Payment requires additional action before it can be confirmed.");
               }
-              if (status === "succeeded") {
-                throw new Error("Payment captured immediately. Expected requires_capture (manual capture mode).");
-              }
-              if (status !== "requires_capture") {
-                throw new Error(`Payment hold not secured. Unexpected status: ${status ?? "unknown"}.`);
+              if (status !== "processing" && status !== "succeeded") {
+                throw new Error(`Payment confirmation did not complete. Unexpected status: ${status ?? "unknown"}.`);
               }
               props.onConfirmed();
             } catch (e) {
@@ -244,6 +243,7 @@ export default function PostJobPage() {
   const [paymentSummary, setPaymentSummary] = useState<PaymentIntentResult | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [draftJobId, setDraftJobId] = useState<string | null>(null);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
 
   const [working, setWorking] = useState(false);
@@ -460,6 +460,12 @@ export default function PostJobPage() {
           : String(json.confidence ?? "LOW").toUpperCase() === "MEDIUM"
             ? "MEDIUM"
             : "LOW",
+        confidenceScore: Number.isFinite(Number((json as { confidenceScore?: unknown }).confidenceScore))
+          ? Number((json as { confidenceScore?: unknown }).confidenceScore)
+          : undefined,
+        confidenceExplanation: typeof (json as { confidenceExplanation?: unknown }).confidenceExplanation === "string"
+          ? String((json as { confidenceExplanation?: unknown }).confidenceExplanation)
+          : undefined,
         rationale: String(json.rationale ?? "").trim(),
         taxRate: Number(json.taxRate ?? 0),
         currency: String(json.currency ?? "USD").toUpperCase() === "CAD" ? "CAD" : "USD",
@@ -533,6 +539,7 @@ export default function PostJobPage() {
             lon: activeAddress.lon,
           },
           availability,
+          payment: draftJobId ? { modelAJobId: draftJobId } : undefined,
         }),
       });
       const json = (await resp.json().catch(() => ({}))) as PaymentIntentResult;
@@ -548,6 +555,7 @@ export default function PostJobPage() {
       setPaymentSummary(json);
       setClientSecret(json.clientSecret);
       setPaymentIntentId(json.paymentIntentId);
+      setDraftJobId(typeof json.modelAJobId === "string" && json.modelAJobId.trim() ? json.modelAJobId : draftJobId);
       setPaymentConfirmed(false);
     } catch (e) {
       setError(getErrorMessage(e, "Failed to prepare Stripe confirmation."));
@@ -589,6 +597,7 @@ export default function PostJobPage() {
           },
           payment: {
             paymentIntentId,
+            modelAJobId: draftJobId ?? paymentSummary?.modelAJobId,
           },
         }),
       });
@@ -855,7 +864,19 @@ export default function PostJobPage() {
                     rows={3}
                     className="w-full resize-none rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
                   />
-                  <p className="text-xs text-gray-500">Confidence: {appraisal.confidence}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <p>
+                      Confidence: {appraisal.confidence}
+                      {typeof appraisal.confidenceScore === "number" ? ` (${Math.round(appraisal.confidenceScore * 100)}%)` : ""}
+                    </p>
+                    <span
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500"
+                      title={appraisal.confidenceExplanation || "Confidence is based on job clarity, category familiarity, and pricing consistency."}
+                      aria-label="Confidence is based on job clarity, category familiarity, and pricing consistency."
+                    >
+                      i
+                    </span>
+                  </div>
                 </div>
 
                 <input
@@ -990,11 +1011,11 @@ export default function PostJobPage() {
               )}
             </div>
             <div className="mt-2 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-              <span className="text-gray-700">Payment Charge</span>
+              <span className="text-gray-700">Payment</span>
               {paymentConfirmed ? (
-                <span className="font-medium text-green-700">Charged</span>
+                <span className="font-medium text-green-700">Paid</span>
               ) : (
-                <span className="font-medium text-gray-600">Not charged</span>
+                <span className="font-medium text-gray-600">Pending confirmation</span>
               )}
             </div>
           </div>

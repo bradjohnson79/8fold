@@ -19,7 +19,7 @@ export function WizardV3() {
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900">Post Job</h1>
       <p className="text-sm text-gray-600 mt-2">
-        AI-powered pricing, autosave, escrow-first payment hold.
+        AI-powered pricing, autosave, and Stripe-confirmed payment.
       </p>
 
       <div className="mt-4 flex gap-2 flex-wrap">

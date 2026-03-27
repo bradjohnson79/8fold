@@ -7,9 +7,6 @@ import { RoleCompletionPanel } from "@/components/dashboard/RoleCompletionPanel"
 import { loadSection, readJsonResponse } from "@/components/dashboard/loadSection";
 import { routerApiFetch } from "@/lib/routerApi";
 import { useRouterReadiness } from "@/hooks/useRouterReadiness";
-import { useLifecycleDebug } from "@/hooks/useLifecycleDebug";
-import { LifecycleDebugPanel, type LifecycleState } from "@/components/dashboard/LifecycleDebugPanel";
-import { JobLifecycleTimeline, stepsForLifecycleState } from "@/components/dashboard/JobLifecycleTimeline";
 
 type SummaryData = {
   capacity?: { routesUsedToday?: number };
@@ -104,8 +101,6 @@ function DegradedStateBanner() {
 export default function RouterOverviewPage() {
   const { getToken } = useAuth();
   const { readiness, loading: readinessLoading, error: readinessError } = useRouterReadiness();
-  const showLifecycleDebug = useLifecycleDebug();
-  const [overrideState, setOverrideState] = useState<LifecycleState | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -194,24 +189,11 @@ export default function RouterOverviewPage() {
   const openTickets = summary?.actionRequired?.supportTicketsRequiringInput ?? 0;
   const recentActivity = (summary?.recentActivity ?? []).slice(0, 5);
   const earnings = summary?.earnings ?? {};
-  const pendingCents = overrideState === "PAYOUT_READY" ? 1500 : (earnings.pendingReleaseCents ?? 0);
-  const releasedCents = overrideState === "PAID" ? (earnings.lifetimeCents ?? 0) + 1500 : (earnings.lifetimeCents ?? 0);
-  const effectiveState = overrideState;
+  const pendingCents = earnings.pendingReleaseCents ?? 0;
+  const releasedCents = earnings.lifetimeCents ?? 0;
 
   return (
     <div className="space-y-6 p-6">
-      {showLifecycleDebug && (
-        <LifecycleDebugPanel
-          show={showLifecycleDebug}
-          currentState={overrideState}
-          onApply={setOverrideState}
-        />
-      )}
-
-      {showLifecycleDebug && effectiveState && (
-        <JobLifecycleTimeline steps={stepsForLifecycleState(effectiveState)} />
-      )}
-
       {criticalSectionFailed ? <DegradedStateBanner /> : null}
 
       {/* Section 1: Setup Status */}

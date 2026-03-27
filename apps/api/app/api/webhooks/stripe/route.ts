@@ -21,7 +21,7 @@ import { auditLogs } from "@/db/schema/auditLog";
 import { jobPayments } from "@/db/schema/jobPayment";
 import { escrows } from "@/db/schema/escrow";
 import { finalizeJobFundingFromPaymentIntent } from "@/src/payments/finalizeJobFundingFromPaymentIntent";
-import { createAdminNotifications, createNotification } from "@/src/services/notifications/notificationService";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import {
   finalizePmFundingFromPaymentIntent,
   requirePmEscrowMetadata,
@@ -54,6 +54,7 @@ const SUPPORTED_EVENTS = new Set<string>([
   "charge.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
+  "refund.created",
   "refund.updated",
   "transfer.created",
   "transfer.reversed",
@@ -455,48 +456,80 @@ async function handleWebhook(req: Request) {
               updatedAt: now,
             } as any)
             .where(eq(jobPayments.stripePaymentIntentId, paymentIntentId));
+          void refundedJobs;
+          return;
+        }
+        case "refund.created": {
+          const refund = event.data.object as Stripe.Refund;
+          const paymentIntentId =
+            typeof refund.payment_intent === "string"
+              ? refund.payment_intent
+              : (refund.payment_intent as Stripe.PaymentIntent | null)?.id ?? null;
+          const chargeId =
+            typeof refund.charge === "string" ? refund.charge : (refund.charge as Stripe.Charge | null)?.id ?? null;
+          const refundId = String(refund.id ?? "").trim();
+          if (!refundId) return;
+
+          testLog({ eventType: event.type });
+
+          const refundedJobs = await tx
+            .update(jobs)
+            .set({
+              payment_status: "REFUNDED" as any,
+              stripe_refunded_at: sql`coalesce(${jobs.stripe_refunded_at}, ${now})`,
+              refunded_at: sql`coalesce(${jobs.refunded_at}, ${now})`,
+              archived: true,
+              completion_flag_reason: sql`coalesce(${jobs.completion_flag_reason}, 'REFUNDED_UNASSIGNED_TIMEOUT')`,
+              updated_at: now,
+            } as any)
+            .where(
+              paymentIntentId
+                ? eq(jobs.stripe_payment_intent_id, paymentIntentId)
+                : chargeId
+                  ? eq(jobs.stripe_charge_id, chargeId)
+                  : sql`false`,
+            )
+            .returning({
+              id: jobs.id,
+              jobPosterUserId: jobs.job_poster_user_id,
+            });
+
+          if (paymentIntentId || chargeId) {
+            await tx
+              .update(jobPayments)
+              .set({
+                status: "REFUNDED" as any,
+                refundedAt: sql`coalesce(${jobPayments.refundedAt}, ${now})`,
+                refundIssuedAt: sql`coalesce(${jobPayments.refundIssuedAt}, ${now})`,
+                refundAmountCents: sql`coalesce(${jobPayments.refundAmountCents}, ${Number(refund.amount ?? 0)})`,
+                updatedAt: now,
+              } as any)
+              .where(
+                paymentIntentId
+                  ? eq(jobPayments.stripePaymentIntentId, paymentIntentId)
+                  : eq(jobPayments.stripeChargeId, chargeId!),
+              );
+          }
 
           for (const job of refundedJobs) {
-            if (job.jobPosterUserId) {
-              await createNotification(
-                {
-                  userId: String(job.jobPosterUserId),
-                  role: "JOB_POSTER",
-                  type: "JOB_AUTO_REFUNDED",
-                  title: "Automatic refund processed",
-                  message: "A Stripe refund was processed for your job payment.",
-                  entityType: "REFUND",
-                  entityId: job.id,
-                  priority: "HIGH",
+            await emitDomainEvent(
+              {
+                type: "REFUND_ISSUED",
+                payload: {
+                  jobId: job.id,
+                  refundId,
+                  jobPosterId: job.jobPosterUserId ? String(job.jobPosterUserId) : null,
+                  createdAt: now,
+                  dedupeKeyBase: `refund_issued:${refundId}`,
                   metadata: {
+                    source: "stripe_webhook",
                     stripeWebhookEventId: event.id,
                     stripePaymentIntentId: paymentIntentId,
-                    chargeId: charge.id,
-                    source: "stripe_webhook",
+                    chargeId,
                   },
-                  idempotencyKey: `job_auto_refunded:${event.id}:${job.id}:poster`,
                 },
-                tx,
-              );
-            }
-
-            await createAdminNotifications(
-              {
-                type: "JOB_AUTO_REFUNDED",
-                title: "Automatic refund processed",
-                message: `Stripe processed an automatic refund for job ${job.id}.`,
-                entityType: "REFUND",
-                entityId: job.id,
-                priority: "HIGH",
-                metadata: {
-                  stripeWebhookEventId: event.id,
-                  stripePaymentIntentId: paymentIntentId,
-                  chargeId: charge.id,
-                  source: "stripe_webhook",
-                },
-                idempotencyKey: `job_auto_refunded:${event.id}:${job.id}`,
               },
-              tx,
+              { tx },
             );
           }
           return;

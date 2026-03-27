@@ -61,6 +61,13 @@ function isMissingCustomerError(err: unknown): boolean {
   return code === "resource_missing" && param === "customer";
 }
 
+function isMissingPaymentMethodError(err: unknown): boolean {
+  const e = err as any;
+  const code = String(e?.code ?? e?.raw?.code ?? "");
+  const type = String(e?.type ?? e?.raw?.type ?? "");
+  return code === "resource_missing" || type === "StripeInvalidRequestError";
+}
+
 export async function getJobPosterPaymentStatus(userId: string): Promise<PaymentStatus> {
   const rows = await db
     .select({
@@ -78,22 +85,30 @@ export async function getJobPosterPaymentStatus(userId: string): Promise<Payment
     stripeDefaultPaymentMethodId: u?.stripeDefaultPaymentMethodId,
     stripeStatus: u?.stripeStatus,
   });
-  const connected = derived.connected;
+  let connected = derived.connected;
+  let stripeStatus: "CONNECTED" | "NOT_CONNECTED" = derived.normalizedStripeStatus;
   let lastFour: string | undefined;
 
   if (connected && derived.paymentMethodId && stripe) {
     try {
       const pm = await stripe.paymentMethods.retrieve(derived.paymentMethodId);
       lastFour = (pm as any).card?.last4 ?? undefined;
-    } catch {
-      /* ignore */
+      if (!lastFour) {
+        connected = false;
+        stripeStatus = "NOT_CONNECTED";
+      }
+    } catch (err) {
+      if (isMissingPaymentMethodError(err)) {
+        connected = false;
+        stripeStatus = "NOT_CONNECTED";
+      }
     }
   }
 
   return {
     connected,
     providerReady: Boolean(stripe),
-    stripeStatus: derived.normalizedStripeStatus,
+    stripeStatus,
     lastFour,
     stripeUpdatedAt: u?.stripeUpdatedAt?.toISOString?.() ?? null,
   };

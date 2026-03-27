@@ -121,21 +121,6 @@ export async function POST(req: Request) {
 
       // accept
       const platformAdminUserId = await getOrCreatePlatformUserId(tx as any);
-      const authorizationExpired =
-        dispatch.job_authorizationExpiresAt instanceof Date && dispatch.job_authorizationExpiresAt.getTime() < now.getTime();
-      if (authorizationExpired && String(dispatch.job_paymentStatus ?? "").toUpperCase() === "AUTHORIZED") {
-        await tx
-          .update(jobs)
-          .set({
-            payment_status: "EXPIRED_UNFUNDED" as any,
-            archived: true,
-            completion_flag_reason: "AUTHORIZATION_EXPIRED_NO_ACCEPTANCE",
-            updated_at: now,
-          })
-          .where(eq(jobs.id, dispatch.jobId));
-        return { kind: "authorization_expired" as const };
-      }
-
       const currentPayment = String(dispatch.job_paymentStatus ?? "").toUpperCase();
       let reconcilePaymentIntentId: string | null = null;
       if (currentPayment !== "FUNDS_SECURED") {
@@ -248,11 +233,8 @@ export async function POST(req: Request) {
     if (result.kind === "expired") return NextResponse.json({ error: "Expired" }, { status: 409 });
     if (result.kind === "job_not_owned") return NextResponse.json({ error: "Job not owned by router" }, { status: 409 });
     if (result.kind === "job_not_available") return NextResponse.json({ error: "Job not available" }, { status: 409 });
-    if (result.kind === "authorization_expired") {
-      return NextResponse.json({ error: "Authorization expired. Job closed without charge." }, { status: 409 });
-    }
     if (result.kind === "payment_not_authorized") {
-      return NextResponse.json({ error: "Payment hold is not capturable." }, { status: 409 });
+      return NextResponse.json({ error: "Payment is not confirmed in Stripe." }, { status: 409 });
     }
     if (result.kind === "ok_declined") return NextResponse.json({ ok: true, status: "DECLINED" });
 

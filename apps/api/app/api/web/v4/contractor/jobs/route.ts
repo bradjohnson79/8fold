@@ -101,6 +101,8 @@ export async function GET(req: Request) {
       contractorMarkedCompleteAt: toIsoOrNull(j?.contractor_marked_complete_at),
       posterMarkedCompleteAt: toIsoOrNull(j?.poster_marked_complete_at),
       payoutStatus: typeof j?.payout_status === "string" ? j.payout_status : "NOT_READY",
+      payoutReleaseAt: toIsoOrNull((j as any)?.completion_window_expires_at),
+      hasActiveDisputeHold: Boolean((j as any)?.has_active_dispute_hold),
       contractorPayoutCents: typeof j?.contractor_payout_cents === "number" ? j.contractor_payout_cents : 0,
     }));
 

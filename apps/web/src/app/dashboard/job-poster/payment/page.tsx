@@ -12,19 +12,6 @@ type PaymentStatus = {
   stripeUpdatedAt?: string | null;
 };
 
-type PaymentBreakdown = {
-  ok: true;
-  jobId: string;
-  currency: "USD" | "CAD";
-  baseCents: number;
-  contractorShareCents: number;
-  routerShareCents: number;
-  platformShareCents: number;
-  stripeFeeCents: number;
-  taxCents: number;
-  totalCents: number;
-};
-
 function formatMoney(cents: number) {
   return `$${(Math.max(0, Number(cents) || 0) / 100).toFixed(2)}`;
 }
@@ -37,8 +24,6 @@ export default function JobPosterPaymentPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
-  const [breakdown, setBreakdown] = useState<PaymentBreakdown | null>(null);
-  const [breakdownError, setBreakdownError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -68,44 +53,6 @@ export default function JobPosterPaymentPage() {
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setBreakdownError(null);
-        const jobsResp = await apiFetch("/api/web/v4/job-poster/jobs", getToken);
-        const jobsJson = (await jobsResp.json().catch(() => ({}))) as { jobs?: Array<{ id: string }> };
-        const firstJobId = Array.isArray(jobsJson.jobs) ? String(jobsJson.jobs[0]?.id ?? "") : "";
-        if (!alive || !firstJobId) {
-          setBreakdown(null);
-          return;
-        }
-
-        const confirmResp = await apiFetch("/api/web/v4/job-poster/payment/confirm", getToken, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ jobId: firstJobId }),
-        });
-        const confirmJson = (await confirmResp.json().catch(() => ({}))) as PaymentBreakdown & { error?: { message?: string } | string };
-        if (!alive) return;
-        if (!confirmResp.ok) {
-          const message =
-            typeof confirmJson.error === "string" ? confirmJson.error : confirmJson.error?.message ?? "Failed to load payment breakdown";
-          setBreakdownError(message);
-          setBreakdown(null);
-          return;
-        }
-        setBreakdown(confirmJson);
-      } catch {
-        if (alive) {
-          setBreakdownError("Failed to load payment breakdown");
-          setBreakdown(null);
-        }
-      }
-    })();
-    return () => { alive = false; };
-  }, [success, getToken]);
 
   const handleConnect = async () => {
     setActionLoading(true);
@@ -137,6 +84,8 @@ export default function JobPosterPaymentPage() {
   const lastUpdated = status?.stripeUpdatedAt
     ? new Date(status.stripeUpdatedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
     : null;
+  const showVerifiedSuccess = success && status?.connected === true;
+  const showPendingReturn = success && status?.connected !== true && !loading;
 
   return (
     <div className="space-y-5 p-6">
@@ -148,8 +97,13 @@ export default function JobPosterPaymentPage() {
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}
-      {success ? (
+      {showVerifiedSuccess ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">Payment method connected successfully.</div>
+      ) : null}
+      {showPendingReturn ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          Returned from Stripe. If your payment method is still not connected, please refresh.
+        </div>
       ) : null}
       {canceled ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">Setup was canceled. You can try again when ready.</div>
@@ -186,22 +140,11 @@ export default function JobPosterPaymentPage() {
       </p>
 
       <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Server Payment Breakdown</h2>
-        {breakdownError ? <p className="mt-2 text-sm text-red-700">{breakdownError}</p> : null}
-        {!breakdown && !breakdownError ? (
-          <p className="mt-2 text-sm text-slate-600">No jobs available to calculate payment breakdown.</p>
-        ) : null}
-        {breakdown ? (
-          <div className="mt-3 space-y-1 text-sm text-slate-700">
-            <p><span className="font-medium">Base:</span> {formatMoney(breakdown.baseCents)}</p>
-            <p><span className="font-medium">Contractor (80%):</span> {formatMoney(breakdown.contractorShareCents)}</p>
-            <p><span className="font-medium">Router (8%):</span> {formatMoney(breakdown.routerShareCents)}</p>
-            <p><span className="font-medium">Platform (12%):</span> {formatMoney(breakdown.platformShareCents)}</p>
-            <p><span className="font-medium">Stripe Fee:</span> {formatMoney(breakdown.stripeFeeCents)}</p>
-            <p><span className="font-medium">Tax:</span> {formatMoney(breakdown.taxCents)}</p>
-            <p className="pt-1 font-semibold text-slate-900"><span className="font-medium">Total:</span> {formatMoney(breakdown.totalCents)}</p>
-          </div>
-        ) : null}
+        <h2 className="text-lg font-semibold text-slate-900">Billing Notes</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Job pricing, platform fees, taxes, and Stripe processing totals are confirmed during the job posting flow.
+          This page only reflects your saved payment method status.
+        </p>
       </div>
     </div>
   );

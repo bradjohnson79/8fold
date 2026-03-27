@@ -1,6 +1,7 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
+import { jobHolds } from "@/db/schema/jobHold";
 import { v4FinancialLedger } from "@/db/schema/v4FinancialLedger";
 import { existsByDedupeKey, appendLedgerEntry } from "@/src/services/v4/financialLedgerService";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/src/payouts/releaseJobFundsLegacyEngine";
 import { stripe } from "@/src/stripe/stripe";
 import { getPlatformFees } from "@/src/config/platformFees";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 
 export type ReleaseFundsForJobInput = {
   jobId: string;
@@ -45,7 +47,7 @@ export type ReleaseFundsForJobResult = {
 type JobSnapshot = {
   id: string;
   status: string;
-  routerApprovedAt: Date | null;
+  completionWindowExpiresAt: Date | null;
   paymentStatus: string;
   stripePaymentIntentId: string | null;
   currency: string | null;
@@ -74,7 +76,7 @@ async function loadJob(jobId: string): Promise<JobSnapshot | null> {
     .select({
       id: jobs.id,
       status: jobs.status,
-      routerApprovedAt: jobs.router_approved_at,
+      completionWindowExpiresAt: jobs.completion_window_expires_at,
       paymentStatus: jobs.payment_status,
       stripePaymentIntentId: jobs.stripe_payment_intent_id,
       currency: jobs.currency,
@@ -86,6 +88,15 @@ async function loadJob(jobId: string): Promise<JobSnapshot | null> {
     .where(eq(jobs.id, jobId))
     .limit(1);
   return rows[0] ?? null;
+}
+
+async function hasActiveDisputeHold(jobId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: jobHolds.id })
+    .from(jobHolds)
+    .where(and(eq(jobHolds.jobId, jobId), eq(jobHolds.reason, "DISPUTE" as any), eq(jobHolds.status, "ACTIVE" as any)))
+    .limit(1);
+  return Boolean(rows[0]?.id);
 }
 
 async function hasCapturedEvidence(job: JobSnapshot): Promise<boolean> {
@@ -163,7 +174,10 @@ export async function releaseFundsForJob(input: ReleaseFundsForJobInput): Promis
 
   const reasons: string[] = [];
   if (String(job.status ?? "") !== "COMPLETED") reasons.push("JOB_NOT_COMPLETED");
-  if (!job.routerApprovedAt) reasons.push("ROUTER_APPROVAL_MISSING");
+  if (job.completionWindowExpiresAt instanceof Date && job.completionWindowExpiresAt.getTime() > Date.now()) {
+    reasons.push("REVIEW_WINDOW_ACTIVE");
+  }
+  if (await hasActiveDisputeHold(jobId)) reasons.push("DISPUTE_HOLD_ACTIVE");
 
   const captured = await hasCapturedEvidence(job);
   if (!captured) reasons.push("CAPTURE_EVIDENCE_MISSING");
@@ -318,7 +332,10 @@ export async function getPayoutStatusByJobId(jobId: string) {
 
   const reasons: string[] = [];
   if (String(job.status ?? "") !== "COMPLETED") reasons.push("JOB_NOT_COMPLETED");
-  if (!job.routerApprovedAt) reasons.push("ROUTER_APPROVAL_MISSING");
+  if (job.completionWindowExpiresAt instanceof Date && job.completionWindowExpiresAt.getTime() > Date.now()) {
+    reasons.push("REVIEW_WINDOW_ACTIVE");
+  }
+  if (await hasActiveDisputeHold(jobId)) reasons.push("DISPUTE_HOLD_ACTIVE");
   if (!(await hasCapturedEvidence(job))) reasons.push("CAPTURE_EVIDENCE_MISSING");
 
   const finalDedupePresent = await existsByDedupeKey(payoutDedupeKeys.fundsReleased(jobId));
@@ -336,5 +353,98 @@ export async function getPayoutStatusByJobId(jobId: string) {
     routerTransferId: routerTransfer,
     ledgerSummary,
     releasabilityReasons: reasons,
+  };
+}
+
+export async function runDelayedPayoutReleaseCycle(now = new Date()): Promise<{
+  scanned: number;
+  released: number;
+  alreadyReleased: number;
+  failed: Array<{ jobId: string; code: string; error: string }>;
+}> {
+  const candidates = await db
+    .select({
+      id: jobs.id,
+      payoutStatus: jobs.payout_status,
+      contractorUserId: jobs.contractor_user_id,
+      jobPosterUserId: jobs.job_poster_user_id,
+      routerUserId: jobs.claimed_by_user_id,
+    })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.status, "COMPLETED" as any),
+        inArray(jobs.payment_status, ["FUNDED", "FUNDS_SECURED"] as any),
+        inArray(jobs.payout_status, ["NOT_READY", "READY", "FAILED"] as any),
+        isNull(jobs.released_at),
+        eq(jobs.archived, false),
+        sql`${jobs.completion_window_expires_at} is not null`,
+        sql`${jobs.completion_window_expires_at} <= ${now}`,
+        sql`not exists (
+          select 1
+          from "JobHold" h
+          where h."jobId" = ${jobs.id}
+            and h."reason" = 'DISPUTE'
+            and h."status" = 'ACTIVE'
+        )`,
+      ),
+    );
+
+  let released = 0;
+  let alreadyReleased = 0;
+  const failed: Array<{ jobId: string; code: string; error: string }> = [];
+
+  for (const candidate of candidates) {
+    if (String(candidate.payoutStatus ?? "").toUpperCase() !== "READY") {
+      await db
+        .update(jobs)
+        .set({ payout_status: "READY" as any, updated_at: now } as any)
+        .where(eq(jobs.id, candidate.id));
+    }
+
+    await emitDomainEvent({
+      type: "FUNDS_RELEASE_ELIGIBLE",
+      payload: {
+        jobId: candidate.id,
+        contractorId: candidate.contractorUserId ? String(candidate.contractorUserId) : null,
+        jobPosterId: candidate.jobPosterUserId ? String(candidate.jobPosterUserId) : null,
+        routerId: candidate.routerUserId ? String(candidate.routerUserId) : null,
+        createdAt: now,
+        dedupeKeyBase: `funds_release_eligible:${candidate.id}`,
+      },
+    }).catch(() => undefined);
+
+    const out = await releaseFundsForJob({
+      jobId: candidate.id,
+      actorRole: "SYSTEM",
+      actorId: "system:delayed-payout-scheduler",
+    });
+
+    if (out.ok && out.alreadyReleased) {
+      alreadyReleased += 1;
+      continue;
+    }
+    if (out.ok) {
+      released += 1;
+      continue;
+    }
+
+    console.error("[DELAYED_PAYOUT_RELEASE_FAILED]", {
+      jobId: candidate.id,
+      code: out.code,
+      error: out.error,
+    });
+    failed.push({
+      jobId: candidate.id,
+      code: String(out.code ?? "RELEASE_FAILED"),
+      error: String(out.error ?? "Release failed"),
+    });
+  }
+
+  return {
+    scanned: candidates.length,
+    released,
+    alreadyReleased,
+    failed,
   };
 }

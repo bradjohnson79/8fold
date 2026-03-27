@@ -77,7 +77,7 @@ describe("post-job payment intent stripe mode behavior", () => {
       createPaymentIntent: vi.fn(async () => ({
         clientSecret: "pi_client_secret",
         paymentIntentId: "pi_123",
-        status: "requires_capture",
+        status: "succeeded",
         currency: "cad",
         amountCents: 10700,
       })),

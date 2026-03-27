@@ -7,9 +7,9 @@ import type { useJobDraftV3 } from "../useJobDraftV3";
 
 type DraftHook = ReturnType<typeof useJobDraftV3>;
 
-function HoldConfirm(props: {
+function PaymentConfirm(props: {
   clientSecret: string;
-  onHeld: () => void;
+  onConfirmed: () => void;
   onError: (message: string) => void;
 }) {
   const stripe = useStripe();
@@ -30,10 +30,11 @@ function HoldConfirm(props: {
                 redirect: "if_required",
               });
               if (result.error) throw new Error(result.error.message || "Payment confirmation failed.");
-              if (result.paymentIntent?.status !== "requires_capture") {
-                throw new Error("Payment hold not secured. Status is not requires_capture.");
+              const status = result.paymentIntent?.status ?? null;
+              if (status !== "processing" && status !== "succeeded") {
+                throw new Error(`Payment confirmation did not complete. Unexpected status: ${status ?? "unknown"}.`);
               }
-              props.onHeld();
+              props.onConfirmed();
             } catch (e) {
               props.onError(e instanceof Error ? e.message : "Payment confirmation failed.");
             } finally {
@@ -43,7 +44,7 @@ function HoldConfirm(props: {
         }}
         className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg disabled:bg-gray-200 disabled:text-gray-500"
       >
-        {submitting ? "Confirming..." : "Confirm payment hold"}
+        {submitting ? "Confirming..." : "Confirm payment"}
       </button>
     </div>
   );
@@ -61,7 +62,7 @@ export function StepPayment({ draft }: { draft: DraftHook }) {
   const totalLabel = `$${(totalCents / 100).toFixed(2)} ${currency}`;
 
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [holdSecured, setHoldSecured] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [localError, setLocalError] = useState("");
   const stripePromise = useMemo(() => {
     const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -72,14 +73,10 @@ export function StepPayment({ draft }: { draft: DraftHook }) {
     <div className="space-y-4">
       <h2 className="text-lg font-bold text-gray-900">Payment</h2>
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <div className="font-semibold text-gray-900">🔒 Secure Payment Authorization</div>
+        <div className="font-semibold text-gray-900">Secure Stripe Payment</div>
         <div className="text-sm text-gray-700 mt-2">
-          Your card will be authorized for this job amount today.
-          This is a temporary hold — you will not be charged unless a contractor accepts your job.
-        </div>
-        <div className="text-sm text-gray-700 mt-2">
-          If no contractor is assigned within 5 days,
-          the authorization will automatically expire and no charge will be made.
+          Your card will be charged when you confirm payment for this job.
+          Stripe processes the payment immediately and 8Fold only uses Stripe-confirmed status as the source of truth.
         </div>
         <div className="text-xs text-gray-500 mt-3">
           Funds are securely processed through Stripe.
@@ -111,13 +108,13 @@ export function StepPayment({ draft }: { draft: DraftHook }) {
           disabled={draft.saving || selectedPriceCents <= 0}
           className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg disabled:bg-gray-200 disabled:text-gray-500"
         >
-          {draft.saving ? "Preparing..." : "Prepare payment hold"}
+          {draft.saving ? "Preparing..." : "Prepare payment"}
         </button>
       ) : stripePromise ? (
         <Elements stripe={stripePromise} options={{ clientSecret }}>
-          <HoldConfirm
+          <PaymentConfirm
             clientSecret={clientSecret}
-            onHeld={() => setHoldSecured(true)}
+            onConfirmed={() => setPaymentConfirmed(true)}
             onError={(msg) => setLocalError(msg)}
           />
         </Elements>
@@ -140,7 +137,7 @@ export function StepPayment({ draft }: { draft: DraftHook }) {
               .then(() => draft.patchDraft({ step: "CONFIRMED" }))
               .catch((e) => setLocalError(e instanceof Error ? e.message : "Submit failed."));
           }}
-          disabled={!holdSecured || draft.saving}
+          disabled={!paymentConfirmed || draft.saving}
           className="bg-8fold-green hover:bg-8fold-green-dark text-white font-semibold px-4 py-2 rounded-lg disabled:bg-gray-200 disabled:text-gray-500"
         >
           {draft.saving ? "Submitting..." : "Submit Job"}

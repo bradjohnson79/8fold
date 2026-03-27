@@ -360,7 +360,7 @@ export default function JobPosterDashboard() {
                     <div className="text-sm text-gray-600 mt-1">
                       Status: <span className="font-mono">{j.status}</span> · Payment:{" "}
                       <span className={funded ? "text-8fold-green font-semibold" : "text-gray-700 font-semibold"}>
-                        {funded ? "Funded" : "Not funded"}
+                        {funded ? "Paid" : "Pending"}
                       </span>
                       {repeatStatus ? (
                         <span className="ml-2 text-xs font-semibold px-2 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-700">
@@ -385,7 +385,7 @@ export default function JobPosterDashboard() {
                     ) : null}
                     {String(j.paymentStatus ?? "").toUpperCase() === "FUNDS_SECURED" ? (
                       <div className="mt-2 rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">
-                        ✅ A contractor has accepted your job. Your card has now been charged and funds are securely held until completion.
+                        Payment confirmed. Stripe has charged your card and funds are secured for payout after completion.
                       </div>
                     ) : null}
                   </div>

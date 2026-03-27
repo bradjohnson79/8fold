@@ -14,13 +14,39 @@
  */
 import { db } from "@/db/drizzle";
 import { users } from "@/db/schema/user";
+import { v4NotificationDeliveryLogs } from "@/db/schema/v4NotificationDeliveryLog";
+import { DEFAULT_TEMPLATES } from "@/src/services/v4/notifications/defaultTemplates";
 import { resolveTemplate, renderSubject, renderHtml } from "@/src/services/v4/notifications/notificationTemplateService";
 import { logDelivery } from "@/src/services/v4/notifications/notificationDeliveryLogService";
+import { hydrateRefundEmailMetadata } from "@/src/services/refunds/refundEmailMetadataService";
 import { sendTransactionalEmail } from "@/src/mailer/sendTransactionalEmail";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+
+async function hasDeliveredEmailForDedupe(args: {
+  notificationType: string;
+  recipientUserId: string;
+  dedupeKey: string;
+}): Promise<boolean> {
+  const rows = await db
+    .select({ id: v4NotificationDeliveryLogs.id })
+    .from(v4NotificationDeliveryLogs)
+    .where(
+      and(
+        eq(v4NotificationDeliveryLogs.notificationType, args.notificationType),
+        eq(v4NotificationDeliveryLogs.recipientUserId, args.recipientUserId),
+        eq(v4NotificationDeliveryLogs.channel, "EMAIL"),
+        eq(v4NotificationDeliveryLogs.dedupeKey, args.dedupeKey),
+        inArray(v4NotificationDeliveryLogs.status, ["DELIVERED", "SKIPPED"]),
+      ),
+    )
+    .orderBy(desc(v4NotificationDeliveryLogs.createdAt))
+    .limit(1);
+
+  return Boolean(rows[0]?.id);
+}
 
 export async function POST(req: Request) {
   const internalKey = req.headers.get("x-internal-key") ?? "";
@@ -56,7 +82,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const tpl = await resolveTemplate(notificationType);
+    const resolvedTemplate = await resolveTemplate(notificationType);
+    const tpl =
+      notificationType === "JOB_REFUNDED" &&
+      (!resolvedTemplate.emailEnabled || !resolvedTemplate.emailSubject || !resolvedTemplate.emailTemplate)
+        ? {
+            ...resolvedTemplate,
+            emailEnabled: true,
+            emailSubject: DEFAULT_TEMPLATES.JOB_REFUNDED.emailSubject ?? null,
+            emailTemplate: DEFAULT_TEMPLATES.JOB_REFUNDED.emailTemplate ?? null,
+          }
+        : resolvedTemplate;
     if (!tpl.emailEnabled || !tpl.emailSubject || !tpl.emailTemplate) {
       return NextResponse.json({ ok: true, skipped: true, reason: "email_disabled_or_no_template" });
     }
@@ -66,9 +102,11 @@ export async function POST(req: Request) {
     // Spread raw metadata first (preserves camelCase keys for any new templates),
     // then add explicit snake_case aliases so legacy {{snake_case}} templates
     // render correctly regardless of which key convention the event payload uses.
-    const raw: Record<string, string> = Object.fromEntries(
-      Object.entries(metadata ?? {}).map(([k, v]) => [k, String(v ?? "")]),
-    );
+    const metadataForTemplate =
+      notificationType === "JOB_REFUNDED"
+        ? await hydrateRefundEmailMetadata({ userId: userId ?? null, metadata: metadata ?? {} })
+        : Object.fromEntries(Object.entries(metadata ?? {}).map(([k, v]) => [k, String(v ?? "")]));
+    const raw: Record<string, string> = metadataForTemplate;
     const vars: Record<string, string> = {
       platform_name: "8Fold",
       ...raw,
@@ -98,6 +136,28 @@ export async function POST(req: Request) {
     }
 
     const recipientUserId = userId ?? `override:${overrideEmail}`;
+    if (dedupeKey) {
+      const alreadyDelivered = await hasDeliveredEmailForDedupe({
+        notificationType,
+        recipientUserId,
+        dedupeKey,
+      });
+      if (alreadyDelivered) {
+        await logDelivery({
+          notificationId: undefined,
+          notificationType,
+          recipientUserId,
+          recipientEmail,
+          channel: "EMAIL",
+          status: "SKIPPED",
+          dedupeKey,
+          eventId: eventId ?? null,
+          metadata: { reason: "duplicate_dedupe_key" },
+        });
+        return NextResponse.json({ ok: true, skipped: true, reason: "duplicate_dedupe_key" });
+      }
+    }
+
     try {
       await sendTransactionalEmail({ to: recipientEmail, subject, html });
       await logDelivery({

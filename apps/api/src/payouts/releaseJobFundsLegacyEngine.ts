@@ -3,6 +3,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { stripe } from "@/src/stripe/stripe";
 import { jobs } from "@/db/schema/job";
+import { jobHolds } from "@/db/schema/jobHold";
 import { jobAssignments } from "@/db/schema/jobAssignment";
 import { contractors } from "@/db/schema/contractor";
 import { users } from "@/db/schema/user";
@@ -12,7 +13,6 @@ import { transferRecords } from "@/db/schema/transferRecord";
 import { escrows } from "@/db/schema/escrow";
 import { ledgerEntries } from "@/db/schema/ledgerEntry";
 import { jobPayments } from "@/db/schema/jobPayment";
-import { isCompletionReady } from "@/src/utils/isCompletionReady";
 import { getOrCreatePlatformUserId } from "@/src/system/platformUser";
 import { getStripeModeFromEnv } from "@/src/stripe/mode";
 import { isRefundInitiatedOrCompleteJobPayment } from "./releaseSafetyGuards";
@@ -251,7 +251,7 @@ export async function releaseJobFundsLegacyEngine(input: {
         jobPosterUserId: jobs.job_poster_user_id,
         contractorCompletedAt: jobs.contractor_completed_at,
         customerApprovedAt: jobs.customer_approved_at,
-        routerApprovedAt: jobs.router_approved_at,
+        completionWindowExpiresAt: jobs.completion_window_expires_at,
         contractorTransferId: jobs.contractor_transfer_id,
         routerTransferId: jobs.router_transfer_id,
         releasedAt: jobs.released_at,
@@ -282,7 +282,16 @@ export async function releaseJobFundsLegacyEngine(input: {
     const refundGuard = isRefundInitiatedOrCompleteJobPayment({ status: jpStatus, refundedAt: jp?.refundedAt ?? null, refundIssuedAt: jp?.refundIssuedAt ?? null });
     if (refundGuard.blocked) return { kind: "refund_initiated" as const, jobPaymentStatus: jpStatus || null };
 
-    if (!isCompletionReady(job as any)) return { kind: "not_ready" as const };
+    if (String(job.status ?? "").toUpperCase() !== "COMPLETED") return { kind: "not_ready" as const };
+    if (job.completionWindowExpiresAt instanceof Date && job.completionWindowExpiresAt.getTime() > now.getTime()) {
+      return { kind: "review_window_active" as const, completionWindowExpiresAt: job.completionWindowExpiresAt };
+    }
+    const activeHoldRows = await tx
+      .select({ id: jobHolds.id })
+      .from(jobHolds)
+      .where(and(eq(jobHolds.jobId, jobId), eq(jobHolds.reason, "DISPUTE" as any), eq(jobHolds.status, "ACTIVE" as any)))
+      .limit(1);
+    if (activeHoldRows[0]?.id) return { kind: "disputed" as const };
     const routerUserId = String(job.claimedByUserId ?? "").trim();
     if (!routerUserId) return { kind: "missing_router" as const };
 
@@ -312,11 +321,10 @@ export async function releaseJobFundsLegacyEngine(input: {
       .from(transferRecords)
       .where(eq(transferRecords.jobId, jobId));
 
-    // Defensive guardrails: never attempt release when a leg is FAILED/REVERSED; this prevents retries from
-    // silently mixing states and ensures ops must investigate before more money moves.
+    // Reversed legs require investigation before any more money moves. FAILED legs are retryable.
     for (const r of existing ?? []) {
       const st = String(r.status ?? "").toUpperCase();
-      if (st === "FAILED" || st === "REVERSED") {
+      if (st === "REVERSED") {
         return {
           kind: "blocked_by_leg_status" as const,
           role: String(r.role ?? ""),
@@ -383,6 +391,8 @@ export async function releaseJobFundsLegacyEngine(input: {
               ? "JOB_DISPUTED"
               : snapshot.kind === "not_funded"
                 ? "ESCROW_NOT_FUNDED"
+                : snapshot.kind === "review_window_active"
+                  ? "REVIEW_WINDOW_ACTIVE"
                 : snapshot.kind === "not_ready"
                   ? "JOB_NOT_READY"
                   : snapshot.kind === "missing_router"
@@ -403,6 +413,8 @@ export async function releaseJobFundsLegacyEngine(input: {
     const msg =
       snapshot.kind === "not_funded"
         ? `Job not funded (paymentStatus=${(snapshot as any).paymentStatus})`
+        : snapshot.kind === "review_window_active"
+          ? "Release blocked: 24-hour review window is still active"
         : snapshot.kind === "not_ready"
           ? "Job is not completion-ready"
           : snapshot.kind === "missing_router"

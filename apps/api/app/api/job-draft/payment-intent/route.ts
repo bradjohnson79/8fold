@@ -227,16 +227,25 @@ export async function POST(req: Request) {
 
     const payment = asObject(body?.payment);
     const modelAJobId = String(payment.modelAJobId ?? payment.provisionalJobId ?? "").trim() || randomUUID();
+    const paymentIntentIdempotencyKey = [
+      "job-post-v4",
+      user.userId,
+      modelAJobId,
+      paymentCurrency,
+      String(totalCents),
+    ].join(":");
 
     const result = await createPaymentIntent(totalCents, {
       currency: paymentCurrency,
-      paymentMethodTypes: ["card"],
-      automaticPaymentMethodsEnabled: false,
-      idempotencyKey: `job-post-v4:${user.userId}:${randomUUID()}`,
+      automaticPaymentMethodsEnabled: true,
+      idempotencyKey: paymentIntentIdempotencyKey,
       metadata: {
+        type: "job_escrow",
         scope: "job-post-v4",
         userId: user.userId,
         jobPosterId: user.userId,
+        jobPosterUserId: user.userId,
+        jobId: modelAJobId,
         modelAJobId,
         country: computed.country,
         province: computed.province ?? "",

@@ -71,10 +71,8 @@ describe("submitJobFromPayload", () => {
     const writeChargeLedger = vi.fn(async () => {
       timeline.push("ledger_written");
     });
-    const writeAuthHoldLedger = vi.fn();
     vi.doMock("@/src/services/escrow/ledger", () => ({
       writeChargeLedger,
-      writeAuthHoldLedger,
     }));
 
     const { submitJobFromPayload } = await import("@/src/services/escrow/jobSubmitService");
@@ -143,7 +141,6 @@ describe("submitJobFromPayload", () => {
 
     expect(timeline).toEqual(["transaction_done", "ledger_written"]);
     expect(writeChargeLedger).toHaveBeenCalledTimes(1);
-    expect(writeAuthHoldLedger).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledTimes(1);
   });
 
@@ -200,7 +197,6 @@ describe("submitJobFromPayload", () => {
 
     vi.doMock("@/src/services/escrow/ledger", () => ({
       writeChargeLedger: vi.fn(),
-      writeAuthHoldLedger: vi.fn(),
     }));
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -276,7 +272,6 @@ describe("submitJobFromPayload", () => {
           column: null,
         });
       }),
-      writeAuthHoldLedger: vi.fn(),
     }));
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

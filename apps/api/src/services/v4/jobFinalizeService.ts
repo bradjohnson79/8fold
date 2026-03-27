@@ -10,7 +10,7 @@ import { db } from "@/db/drizzle";
 import { jobs } from "@/db/schema/job";
 import { tradeCategoryEnum } from "@/db/schema/enums";
 import { stripe } from "@/src/payments/stripe";
-import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
+import { writeChargeLedger } from "@/src/services/escrow/ledger";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 import { deriveCountryFromRegion } from "@/src/jobs/jurisdictionGuard";
 import { normalizeRegionToCode } from "@/src/services/v4/geocodeService";
@@ -43,8 +43,7 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
   // A. Stripe validation
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
   const piStatus = String(pi.status ?? "").toLowerCase();
-  const isValidStatus = piStatus === "requires_capture" || piStatus === "succeeded";
-  if (!isValidStatus) {
+  if (piStatus !== "succeeded") {
     throw Object.assign(new Error("Payment not completed. Complete Stripe confirmation first."), { status: 409 });
   }
 
@@ -199,21 +198,12 @@ export async function finalizeJob(userId: string, payload: unknown): Promise<Fin
 
   // D. Ledger (post-insert only, failure must not break job creation)
   try {
-    if (piStatus === "succeeded") {
-      await writeChargeLedger(db as any, {
-        jobId,
-        totalAmountCents: stripeAmountCents,
-        currency,
-        paymentIntentId,
-      });
-    } else {
-      await writeAuthHoldLedger(db as any, {
-        jobId,
-        totalAmountCents: stripeAmountCents,
-        currency,
-        paymentIntentId,
-      });
-    }
+    await writeChargeLedger(db as any, {
+      jobId,
+      totalAmountCents: stripeAmountCents,
+      currency,
+      paymentIntentId,
+    });
   } catch (err) {
     console.warn("[POST_JOB_LEDGER_FAIL]", err);
   }

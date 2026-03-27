@@ -85,9 +85,9 @@ Admin communicates with the API through the internal proxy exclusively ✅
 | Runtime declaration | `export const runtime = "nodejs"` | ✅ |
 | Stripe mode validated before PI creation | `getStripeRuntimeConfig()` → returns 409 on mismatch | ✅ |
 | `createPaymentIntent()` called | Line 231, amount=`totalCents`, currency from country | ✅ |
-| `captureMethod: "manual"` | Escrow-style pre-authorization | ✅ |
-| `idempotencyKey` enforced | `job-post-v4:${user.userId}:${randomUUID()}` | ✅ |
-| PI metadata present | `scope`, `userId`, `jobPosterId`, `modelAJobId`, `country`, `province` | ✅ |
+| Automatic capture | Immediate charge into platform Stripe balance | ✅ |
+| `idempotencyKey` enforced | `job-post-v4:${user.userId}:${modelAJobId}:${currency}:${totalCents}` | ✅ |
+| PI metadata present | `type`, `jobId`, `jobPosterUserId`, `scope`, `userId`, `jobPosterId`, `modelAJobId`, `country`, `province` | ✅ |
 | PI amount verified post-creation | `if (result.amountCents !== totalCents)` → cancel + throw | ✅ |
 | Ledger entries written | `appendModelALedgerEntries()` — 7 entry types | ✅ |
 | Split invariant validated | `contractor + router + platform === subtotal` | ✅ |
