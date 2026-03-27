@@ -27,6 +27,34 @@ type QueueCycleResult = {
   nextSendWindow?: Date;
 };
 
+type JobPosterQueuedItem = {
+  queueId: string;
+  messageId: string;
+  leadId: string;
+  campaignId: string | null;
+  subject: string;
+  body: string;
+  generationContext: unknown;
+  email: string;
+  website: string | null;
+  senderId: string;
+  senderEmail: string;
+};
+
+type JobPosterQueueFetchResult =
+  | {
+      settings: Awaited<ReturnType<typeof loadBrainSettings>>;
+      item: JobPosterQueuedItem;
+      blockedReason?: undefined;
+      nextSendWindow?: undefined;
+    }
+  | {
+      settings: Awaited<ReturnType<typeof loadBrainSettings>>;
+      item: null;
+      blockedReason?: "outside_send_window";
+      nextSendWindow?: Date;
+    };
+
 function mergeOutboundMetadata(
   current: unknown,
   metadata: {
@@ -57,7 +85,7 @@ function mergeOutboundMetadata(
   };
 }
 
-async function fetchNextQueuedJobPosterMessage(allowRefill = true) {
+async function fetchNextQueuedJobPosterMessage(allowRefill = true): Promise<JobPosterQueueFetchResult> {
   const settings = await loadBrainSettings();
   return fetchNextQueuedJobPosterMessageWithSenderPreference(undefined, allowRefill, settings);
 }
@@ -66,7 +94,7 @@ async function fetchNextQueuedJobPosterMessageWithSenderPreference(
   preferredSenderEmail?: string | null,
   allowRefill = true,
   settingsOverride?: Awaited<ReturnType<typeof loadBrainSettings>>,
-) {
+): Promise<JobPosterQueueFetchResult> {
   const settings = settingsOverride ?? await loadBrainSettings();
   const sender = await selectAvailableSender(settings, "jobs", preferredSenderEmail);
   if (!sender) {
@@ -166,7 +194,7 @@ async function fetchNextQueuedJobPosterMessageWithSenderPreference(
   if (allowRefill) {
     const refill = await queueApprovedJobPosterMessagesForAutomation();
     if (refill.queued > 0) {
-      return fetchNextQueuedJobPosterMessage(false);
+      return fetchNextQueuedJobPosterMessageWithSenderPreference(preferredSenderEmail, false, settings);
     }
   }
 
