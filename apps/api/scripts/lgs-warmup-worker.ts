@@ -1,7 +1,7 @@
 /**
  * LGS Warmup Worker.
  * Runs every 5 minutes. Responsibilities:
- *   1. Anchor-based 24-hour day advancement for warming/ready senders.
+ *   1. Anchor-based 24-hour day advancement for warming senders.
  *   2. Slot-based warmup email sending with external routing.
  *   3. Activity logging to lgs_warmup_activity.
  *   4. Stuck sender detection.
@@ -29,7 +29,7 @@ import {
   pickWarmupTarget,
   computeHealthScore,
 } from "../src/services/lgs/warmupEngine";
-import { getWarmupEnabled } from "../src/services/lgs/warmupConfigService";
+import { getWarmupEnabled, shutdownWarmupAfterCompletion } from "../src/services/lgs/warmupConfigService";
 
 const MAX_WARMUP_DAY = 5;
 const STUCK_SENDER_HOURS = 2;
@@ -119,7 +119,7 @@ async function advanceDays(): Promise<void> {
     .where(
       or(
         eq(senderPool.warmupStatus, "warming"),
-        eq(senderPool.warmupStatus, "ready")
+        eq(senderPool.warmupStatus, "complete")
       )
     );
 
@@ -142,7 +142,7 @@ async function advanceDays(): Promise<void> {
 
     const newLimit = getDailyLimit(currentDay);
     const outreachEnabled = currentDay >= 5;
-    const warmupStatus = currentDay >= MAX_WARMUP_DAY ? "ready" : "warming";
+    const warmupStatus = currentDay >= MAX_WARMUP_DAY ? "complete" : "warming";
 
     await db
       .update(senderPool)
@@ -156,6 +156,10 @@ async function advanceDays(): Promise<void> {
         warmupEmailsSentToday: 0,
         outreachEnabled,
         warmupStatus,
+        nextWarmupSendAt: warmupStatus === "complete" ? null : sender.nextWarmupSendAt,
+        lastWarmupSentAt: warmupStatus === "complete" ? null : sender.lastWarmupSentAt,
+        lastWarmupResult: warmupStatus === "complete" ? null : sender.lastWarmupResult,
+        lastWarmupRecipient: warmupStatus === "complete" ? null : sender.lastWarmupRecipient,
         updatedAt: now,
       })
       .where(eq(senderPool.id, sender.id));
@@ -173,10 +177,7 @@ async function sendWarmupEmails(): Promise<void> {
     .select()
     .from(senderPool)
     .where(
-      or(
-        eq(senderPool.warmupStatus, "warming"),
-        eq(senderPool.warmupStatus, "ready")
-      )
+      eq(senderPool.warmupStatus, "warming")
     );
 
   const now = new Date();
@@ -400,10 +401,7 @@ async function updateHealthScores(): Promise<void> {
     .select()
     .from(senderPool)
     .where(
-      or(
-        eq(senderPool.warmupStatus, "warming"),
-        eq(senderPool.warmupStatus, "ready")
-      )
+      eq(senderPool.warmupStatus, "warming")
     );
 
   for (const sender of senders) {
@@ -432,10 +430,10 @@ export async function runWarmupCycle(): Promise<void> {
   });
 
   if (!warmupEnabled) {
-    console.log("[LGS Warmup] Paused by operator toggle. Skipping warmup cycle.");
+    console.log("[LGS Warmup] Disabled or complete. Skipping warmup cycle.");
     try {
       await heartbeatStart();
-      await heartbeatFinish("paused");
+      await heartbeatFinish("disabled");
     } catch (err) {
       console.error("[LGS Warmup] paused heartbeat error:", err);
     }
@@ -452,6 +450,7 @@ export async function runWarmupCycle(): Promise<void> {
 
   try {
     await advanceDays();
+    await shutdownWarmupAfterCompletion();
   } catch (err) {
     console.error("[LGS Warmup] day advancement error:", err);
     cycleError = err instanceof Error ? err.message : String(err);
@@ -483,12 +482,21 @@ export async function runWarmupCycle(): Promise<void> {
   }
 }
 
-cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
-  timezone: "America/Los_Angeles",
-});
-void runWarmupCycle();
+async function bootstrap() {
+  const warmupEnabled = await getWarmupEnabled().catch(() => true);
+  if (!warmupEnabled) {
+    console.log("[LGS Warmup] Worker idle. Warmup is disabled or complete.");
+    return;
+  }
 
-console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+  cron.schedule("*/5 * * * *", () => void runWarmupCycle(), {
+    timezone: "America/Los_Angeles",
+  });
+  void runWarmupCycle();
+  console.log("[LGS Warmup] Worker started. Cron: */5 * * * * (every 5 minutes)");
+}
+
+void bootstrap();
 
 process.on("SIGINT", () => {
   console.log("[LGS Warmup] Shutting down...");

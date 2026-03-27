@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { formatDateTime } from "@/lib/formatters";
 
 type WarmupSender = {
   id: string;
@@ -41,6 +40,7 @@ type WarmupSender = {
 type WarmupSummary = {
   total_senders: number;
   warming: number;
+  complete: number;
   ready_for_outreach: number;
   not_started: number;
   outreach_blocked: boolean;
@@ -57,17 +57,7 @@ type WarmupSummary = {
   worker_last_run_status: string | null;
   next_system_warmup_send_at: string | null;
   warmup_enabled: boolean;
-};
-
-type ActivityEntry = {
-  id: number;
-  sender_email: string;
-  recipient_email: string;
-  subject: string | null;
-  message_type: string | null;
-  sent_at: string | null;
-  status: string;
-  error_message: string | null;
+  warmup_complete: boolean;
 };
 
 type HealthData = {
@@ -87,10 +77,10 @@ type HealthData = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  not_started: "#475569", warming: "#f59e0b", ready: "#22c55e", paused: "#64748b", disabled: "#64748b",
+  not_started: "#475569", warming: "#f59e0b", complete: "#22c55e", ready: "#22c55e", paused: "#64748b", disabled: "#64748b",
 };
 const STATUS_LABELS: Record<string, string> = {
-  not_started: "Not Started", warming: "Warming", ready: "Ready", paused: "Paused", disabled: "Disabled",
+  not_started: "Not Started", warming: "Warming", complete: "Complete", ready: "Ready", paused: "Paused", disabled: "Disabled",
 };
 const HEALTH_COLORS: Record<string, string> = {
   good: "#22c55e", warning: "#f59e0b", risk: "#f87171", unknown: "#475569",
@@ -99,10 +89,7 @@ const HEALTH_LABELS: Record<string, string> = {
   good: "Good", warning: "Warning", risk: "Risk", unknown: "—",
 };
 const WORKER_STATUS_COLORS: Record<string, string> = {
-  healthy: "#22c55e", warning: "#f59e0b", stale: "#f87171", unknown: "#475569",
-};
-const RESULT_COLORS: Record<string, string> = {
-  sent: "#22c55e", wait: "#f59e0b", skipped: "#64748b", error: "#f87171",
+  healthy: "#22c55e", warning: "#f59e0b", stale: "#f87171", disabled: "#94a3b8", unknown: "#475569",
 };
 const WARMUP_RAMP = [
   { day: 1, limit: 5 },
@@ -129,16 +116,6 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span style={{ padding: "0.2rem 0.6rem", borderRadius: 4, fontSize: "0.75rem", fontWeight: 600, background: `${color}22`, border: `1px solid ${color}55`, color }}>
       {status === "warming" && <span style={{ marginRight: "0.3rem" }}>●</span>}
-      {label}
-    </span>
-  );
-}
-
-function RoutingBadge({ isExternal }: { isExternal: boolean }) {
-  const color = isExternal ? "#38bdf8" : "#a78bfa";
-  const label = isExternal ? "External" : "Internal";
-  return (
-    <span style={{ padding: "0.1rem 0.4rem", borderRadius: 3, fontSize: "0.65rem", fontWeight: 600, background: `${color}22`, border: `1px solid ${color}44`, color }}>
       {label}
     </span>
   );
@@ -187,10 +164,6 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function isExternalEmail(email: string): boolean {
-  return !email.toLowerCase().endsWith("@8fold.app");
-}
-
 function CapacityBar({ used, total, label }: { used: number; total: number; label: string }) {
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
   const barColor = pct >= 90 ? "#f87171" : pct >= 70 ? "#f59e0b" : "#22c55e";
@@ -214,14 +187,13 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
     ? Math.round((sender.warmup_total_replies / sender.warmup_total_sent) * 100)
     : 0;
   const rollover = useCountdown(sender.next_rollover_at);
-  const nextWarmupCountdown = useCountdown(sender.next_warmup_send_at);
 
   async function act(action: string) {
     setActing(true);
     try { await onAction(sender.id, action); } finally { setActing(false); }
   }
 
-  const isActive = sender.warmup_status === "warming" || sender.warmup_status === "ready";
+  const isActive = sender.warmup_status === "warming";
 
   return (
     <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem", border: `1px solid ${color}33` }}>
@@ -274,51 +246,24 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
         </div>
       </div>
 
-      {/* Next warmup send */}
-      {isActive && (
+      {sender.warmup_status === "complete" && (
         <div style={{ background: "#0f172a", borderRadius: 6, padding: "0.65rem 0.75rem", marginBottom: "0.75rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "#64748b", marginBottom: "0.3rem" }}>
-            <span>Next Warmup Send</span>
-            <span style={{ fontVariantNumeric: "tabular-nums", color: "#f59e0b", fontWeight: 600 }}>{nextWarmupCountdown}</span>
+          <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#4ade80", marginBottom: "0.25rem" }}>
+            Warmup complete — outreach active
           </div>
-          {sender.next_warmup_send_at && (
-            <div style={{ fontSize: "0.72rem", color: "#475569" }}>
-              Scheduled: {formatDateTime(sender.next_warmup_send_at)}
-            </div>
-          )}
+          <div style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+            Warmup activity is fully shut down for this sender. Only outreach sends remain active.
+          </div>
         </div>
       )}
 
-      {/* Last warmup sent */}
-      {isActive && sender.last_warmup_sent_at && (
-        <div style={{ background: "#0f172a", borderRadius: 6, padding: "0.65rem 0.75rem", marginBottom: "0.75rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", alignItems: "center" }}>
-            <span style={{ color: "#64748b" }}>Last Warmup Sent</span>
-            <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>{relativeTime(sender.last_warmup_sent_at)}</span>
-          </div>
-          {sender.last_warmup_recipient && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.3rem" }}>
-              <span style={{ fontSize: "0.75rem", fontFamily: "monospace", color: "#94a3b8" }}>{sender.last_warmup_recipient}</span>
-              <RoutingBadge isExternal={isExternalEmail(sender.last_warmup_recipient)} />
-            </div>
-          )}
-          {sender.last_warmup_result && (
-            <div style={{ marginTop: "0.3rem", fontSize: "0.72rem" }}>
-              Result: <span style={{ color: RESULT_COLORS[sender.last_warmup_result] ?? "#94a3b8", fontWeight: 600 }}>{sender.last_warmup_result}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Warmup / Outreach split */}
       {isActive && (
         <div style={{ background: "#0f172a", borderRadius: 6, padding: "0.65rem 0.75rem", marginBottom: "0.75rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "#64748b", marginBottom: "0.5rem" }}>
-            <span>Sends Today</span>
-            <span style={{ fontVariantNumeric: "tabular-nums", color: "#94a3b8" }}>{sender.total_sent_today} / {sender.daily_outreach_limit}</span>
+            <span>Outreach Sends Today</span>
+            <span style={{ fontVariantNumeric: "tabular-nums", color: "#94a3b8" }}>{sender.outreach_sent_today} / {sender.daily_outreach_limit}</span>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.78rem" }}>
-            <span><span style={{ color: "#f59e0b" }}>Warmup:</span> <span style={{ color: "#e2e8f0", fontVariantNumeric: "tabular-nums" }}>{sender.warmup_sent_today}</span></span>
             <span><span style={{ color: "#38bdf8" }}>Outreach:</span> <span style={{ color: "#e2e8f0", fontVariantNumeric: "tabular-nums" }}>{sender.outreach_sent_today}</span></span>
             <span><span style={{ color: "#64748b" }}>Left:</span> <span style={{ color: "#e2e8f0", fontVariantNumeric: "tabular-nums" }}>{sender.remaining_capacity}</span></span>
           </div>
@@ -340,7 +285,7 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
         </div>
       )}
 
-      {sender.warmup_status === "ready" && (
+      {sender.warmup_status === "complete" && (
         <div style={{ padding: "0.5rem 0.75rem", background: "#1e3a2f", border: "1px solid #166534", borderRadius: 6, fontSize: "0.82rem", color: "#4ade80", marginBottom: "0.75rem" }}>
           Warmup complete — outreach fully enabled ({sender.daily_outreach_limit}/day)
         </div>
@@ -372,7 +317,7 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
             Resume
           </button>
         )}
-        {(sender.warmup_status === "warming" || sender.warmup_status === "paused" || sender.warmup_status === "ready") && (
+        {(sender.warmup_status === "warming" || sender.warmup_status === "paused" || sender.warmup_status === "complete") && (
           <button onClick={() => void act("reset")} disabled={acting}
             style={{ padding: "0.4rem 0.875rem", background: "transparent", border: "1px solid #475569", borderRadius: 6, color: "#64748b", cursor: acting ? "not-allowed" : "pointer", fontSize: "0.82rem" }}>
             Reset
@@ -386,19 +331,15 @@ function WarmupProgressCard({ sender, onAction }: { sender: WarmupSender; onActi
 export default function WarmupPage() {
   const [senders, setSenders] = useState<WarmupSender[]>([]);
   const [summary, setSummary] = useState<WarmupSummary | null>(null);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [togglingWarmup, setTogglingWarmup] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [warmupRes, activityRes, healthRes] = await Promise.all([
+      const [warmupRes, healthRes] = await Promise.all([
         fetch("/api/lgs/outreach/warmup"),
-        fetch("/api/lgs/outreach/warmup/activity"),
         fetch("/api/lgs/outreach/warmup/health"),
       ]);
       const warmupJson = await warmupRes.json();
@@ -408,8 +349,6 @@ export default function WarmupPage() {
       } else {
         setErr("Failed to load warmup data");
       }
-      const activityJson = await activityRes.json().catch(() => ({ ok: false }));
-      if (activityJson.ok) setActivity(activityJson.data ?? []);
       const healthJson = await healthRes.json().catch(() => ({ ok: false }));
       if (healthJson.ok) setHealth(healthJson.data ?? null);
     } catch (e) {
@@ -434,22 +373,6 @@ export default function WarmupPage() {
     await load();
   }
 
-  async function handleWarmupToggle(nextEnabled: boolean) {
-    setTogglingWarmup(true);
-    try {
-      await fetch("/api/lgs/outreach/warmup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ warmup_enabled: nextEnabled }),
-      });
-      await load();
-    } finally {
-      setTogglingWarmup(false);
-    }
-  }
-
-  const systemCountdown = useCountdown(summary?.next_system_warmup_send_at ?? null);
-
   return (
     <div style={{ maxWidth: 960 }}>
       {/* Header */}
@@ -461,53 +384,6 @@ export default function WarmupPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={() => void handleWarmupToggle(!(summary?.warmup_enabled ?? true))}
-            disabled={togglingWarmup}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.75rem",
-              padding: "0.55rem 0.9rem",
-              background: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: 999,
-              color: "#e2e8f0",
-              cursor: togglingWarmup ? "not-allowed" : "pointer",
-            }}
-          >
-            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Warmup Emails</span>
-            <span style={{
-              position: "relative",
-              width: 42,
-              height: 24,
-              borderRadius: 999,
-              background: summary?.warmup_enabled ? "#166534" : "#334155",
-              transition: "background 0.2s ease",
-              display: "inline-flex",
-              alignItems: "center",
-            }}>
-              <span style={{
-                position: "absolute",
-                left: summary?.warmup_enabled ? 22 : 3,
-                width: 18,
-                height: 18,
-                borderRadius: "50%",
-                background: "#f8fafc",
-                transition: "left 0.2s ease",
-              }} />
-            </span>
-            <span style={{
-              fontSize: "0.8rem",
-              fontWeight: 700,
-              color: summary?.warmup_enabled ? "#4ade80" : "#94a3b8",
-              minWidth: 58,
-              textAlign: "left",
-            }}>
-              {summary?.warmup_enabled ? "Enabled" : "Paused"}
-            </span>
-          </button>
           <Link href="/settings/senders" style={{ padding: "0.55rem 1rem", background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: "0.875rem", color: "#94a3b8", textDecoration: "none" }}>
             Manage Senders →
           </Link>
@@ -518,9 +394,9 @@ export default function WarmupPage() {
 
       {summary && !summary.warmup_enabled && (
         <div style={{ background: "#1e293b", border: "1px solid #475569", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
-          <div style={{ fontWeight: 600, color: "#f8fafc", marginBottom: "0.25rem" }}>Warmup paused — no warmup emails are being sent</div>
+          <div style={{ fontWeight: 600, color: "#f8fafc", marginBottom: "0.25rem" }}>Warmup complete — outreach active</div>
           <div style={{ color: "#94a3b8", fontSize: "0.875rem" }}>
-            Warmup reserved capacity is now 0 and all remaining capacity is freed for lead outreach.
+            Warmup sends, scheduling, and activity tracking are fully shut down. Only outreach emails are active.
           </div>
         </div>
       )}
@@ -529,14 +405,14 @@ export default function WarmupPage() {
       {summary && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
-            <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Next System Warmup Send</div>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: summary.warmup_enabled ? "#f59e0b" : "#94a3b8", fontVariantNumeric: "tabular-nums" }}>
-              {summary.warmup_enabled ? systemCountdown : "Paused"}
+            <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Warmup Mode</div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: summary.warmup_enabled ? "#f59e0b" : "#4ade80" }}>
+              {summary.warmup_enabled ? "Running" : "Complete"}
             </div>
           </div>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
-            <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Last Warmup Activity</div>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#94a3b8" }}>{activity.length > 0 ? relativeTime(activity[0]?.sent_at ?? null) : "—"}</div>
+            <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Mode Status</div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: summary.warmup_enabled ? "#f59e0b" : "#4ade80" }}>{summary.warmup_enabled ? "Enabled" : "Disabled"}</div>
           </div>
           <div style={{ background: "#1e293b", borderRadius: 8, padding: "1rem 1.25rem" }}>
             <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>Worker Status</div>
@@ -570,7 +446,7 @@ export default function WarmupPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           <StatCard label="Total Senders" value={summary.total_senders} />
           <StatCard label="Warming" value={summary.warming} color="#f59e0b" sub="in progress" />
-          <StatCard label="Ready" value={summary.ready_for_outreach} color="#22c55e" sub="≥ 50/day" />
+          <StatCard label="Complete" value={summary.complete} color="#22c55e" sub="outreach active" />
           <StatCard label="Not Started" value={summary.not_started} color="#475569" />
           <StatCard label="Queue Pending" value={summary.pending_queue_count} color="#38bdf8" sub="approved msgs" />
           <StatCard label="Outreach Enabled" value={summary.outreach_enabled_count} color="#22c55e" sub={`of ${summary.total_senders}`} />
@@ -590,8 +466,8 @@ export default function WarmupPage() {
               <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase" }}>Outreach Available</div>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#f59e0b", fontVariantNumeric: "tabular-nums" }}>{summary.system_warmup_capacity}</div>
-              <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase" }}>Warmup Reserved</div>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#4ade80", fontVariantNumeric: "tabular-nums" }}>{summary.outreach_enabled_count}</div>
+              <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase" }}>Outreach Active</div>
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#22c55e", fontVariantNumeric: "tabular-nums" }}>{summary.system_remaining}</div>
@@ -649,56 +525,6 @@ export default function WarmupPage() {
           )}
         </div>
       )}
-
-      {/* Warmup Activity Log */}
-      <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem", marginBottom: "2rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={() => setActivityOpen(!activityOpen)}>
-          <h2 style={{ margin: 0, fontSize: "0.85rem", color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Warmup Activity {activity.length > 0 && <span style={{ color: "#475569" }}>({activity.length})</span>}
-          </h2>
-          <span style={{ color: "#64748b", fontSize: "0.85rem" }}>{activityOpen ? "▲" : "▼"}</span>
-        </div>
-        {activityOpen && (
-          <div style={{ overflowX: "auto", marginTop: "1rem" }}>
-            {activity.length === 0 ? (
-              <p style={{ color: "#475569", fontSize: "0.82rem" }}>No warmup activity recorded yet.</p>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #334155", color: "#64748b", textAlign: "left" }}>
-                    <th style={{ padding: "0.5rem 0.6rem" }}>Time</th>
-                    <th style={{ padding: "0.5rem 0.6rem" }}>Sender</th>
-                    <th style={{ padding: "0.5rem 0.6rem" }}>Recipient</th>
-                    <th style={{ padding: "0.5rem 0.6rem" }}>Subject</th>
-                    <th style={{ padding: "0.5rem 0.6rem" }}>Type</th>
-                    <th style={{ padding: "0.5rem 0.6rem" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activity.slice(0, 25).map((a) => (
-                    <tr key={a.id} style={{ borderBottom: "1px solid #0f172a" }}>
-                      <td style={{ padding: "0.5rem 0.6rem", color: "#94a3b8", whiteSpace: "nowrap" }}>{formatDateTime(a.sent_at)}</td>
-                      <td style={{ padding: "0.5rem 0.6rem", fontFamily: "monospace", color: "#e2e8f0" }}>{a.sender_email}</td>
-                      <td style={{ padding: "0.5rem 0.6rem", fontFamily: "monospace", color: "#94a3b8" }}>
-                        {a.recipient_email}
-                        {" "}
-                        <RoutingBadge isExternal={isExternalEmail(a.recipient_email)} />
-                      </td>
-                      <td style={{ padding: "0.5rem 0.6rem", color: "#64748b", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.subject ?? "—"}</td>
-                      <td style={{ padding: "0.5rem 0.6rem" }}>
-                        {a.message_type && <RoutingBadge isExternal={a.message_type === "external"} />}
-                      </td>
-                      <td style={{ padding: "0.5rem 0.6rem" }}>
-                        <span style={{ color: a.status === "sent" ? "#22c55e" : a.status === "failed" ? "#f87171" : "#64748b", fontWeight: 600 }}>{a.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Warmup ramp schedule reference */}
       <div style={{ background: "#1e293b", borderRadius: 10, padding: "1.25rem 1.5rem", marginBottom: "2rem" }}>

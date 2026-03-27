@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
-import { lgsWorkerHealth } from "@/db/schema/directoryEngine";
+import { lgsWarmupActivity, lgsWorkerHealth, senderPool } from "@/db/schema/directoryEngine";
 
 const WARMUP_WORKER_NAME = "warmup";
 
@@ -17,6 +17,14 @@ function readConfigObject(value: unknown): WarmupConfig {
 }
 
 export async function getWarmupEnabled(): Promise<boolean> {
+  const [completedRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(senderPool)
+    .where(eq(senderPool.warmupStatus, "complete"));
+  if (Number(completedRow?.count ?? 0) > 0) {
+    return false;
+  }
+
   const [row] = await db
     .select({ configCheckResult: lgsWorkerHealth.configCheckResult })
     .from(lgsWorkerHealth)
@@ -28,6 +36,16 @@ export async function getWarmupEnabled(): Promise<boolean> {
 }
 
 export async function setWarmupEnabled(enabled: boolean): Promise<boolean> {
+  if (enabled) {
+    const [completedRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(senderPool)
+      .where(eq(senderPool.warmupStatus, "complete"));
+    if (Number(completedRow?.count ?? 0) > 0) {
+      enabled = false;
+    }
+  }
+
   const [existing] = await db
     .select()
     .from(lgsWorkerHealth)
@@ -56,4 +74,27 @@ export async function setWarmupEnabled(enabled: boolean): Promise<boolean> {
   }
 
   return enabled;
+}
+
+export async function shutdownWarmupAfterCompletion(): Promise<void> {
+  const now = new Date();
+
+  await db
+    .update(senderPool)
+    .set({
+      nextWarmupSendAt: null as any,
+      warmupSentToday: 0,
+      warmupEmailsSentToday: 0,
+      lastWarmupSentAt: null as any,
+      lastWarmupResult: null as any,
+      lastWarmupRecipient: null as any,
+      updatedAt: now,
+    })
+    .where(eq(senderPool.warmupStatus, "complete"));
+
+  await setWarmupEnabled(false);
+
+  await db
+    .delete(lgsWarmupActivity)
+    .where(sql`true`);
 }

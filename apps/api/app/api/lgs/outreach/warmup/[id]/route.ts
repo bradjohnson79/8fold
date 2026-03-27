@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { senderPool } from "@/db/schema/directoryEngine";
 import { getDailyLimit } from "@/src/services/lgs/warmupSchedule";
+import { shutdownWarmupAfterCompletion } from "@/src/services/lgs/warmupConfigService";
 
 export async function POST(
   req: Request,
@@ -61,7 +62,11 @@ export async function POST(
         sentToday: 0,
         warmupEmailsSentToday: 0,
         outreachEnabled: nextDay >= 5,
-        warmupStatus: nextDay >= 5 ? "ready" : "warming",
+        warmupStatus: nextDay >= 5 ? "complete" : "warming",
+        nextWarmupSendAt: nextDay >= 5 ? (null as any) : undefined,
+        lastWarmupSentAt: nextDay >= 5 ? (null as any) : undefined,
+        lastWarmupResult: nextDay >= 5 ? (null as any) : undefined,
+        lastWarmupRecipient: nextDay >= 5 ? (null as any) : undefined,
       };
     } else if (action === "reset") {
       updates = {
@@ -89,6 +94,10 @@ export async function POST(
       .set(updates)
       .where(eq(senderPool.id, id))
       .returning();
+
+    if (updated.warmupStatus === "complete") {
+      await shutdownWarmupAfterCompletion();
+    }
 
     return NextResponse.json({
       ok: true,

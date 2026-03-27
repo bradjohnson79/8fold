@@ -1,4 +1,5 @@
 import { runWarmupCycle } from "@/scripts/lgs-warmup-worker";
+import { getWarmupEnabled } from "@/src/services/lgs/warmupConfigService";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,12 @@ async function handleWarmup(req: Request) {
   console.log("[LGS Warmup Cron] Triggered", { startedAt, method: req.method });
 
   try {
+    const warmupEnabled = await getWarmupEnabled();
+    if (!warmupEnabled) {
+      console.log("[LGS Warmup Cron] Warmup complete. Scheduler remains disabled.");
+      return Response.json({ ok: true, started_at: startedAt, skipped: true, reason: "warmup_complete" });
+    }
+
     await runWarmupCycle();
     return Response.json({ ok: true, started_at: startedAt });
   } catch (error) {

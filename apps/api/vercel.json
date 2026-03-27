@@ -17,10 +17,6 @@
       "schedule": "*/1 * * * *"
     },
     {
-      "path": "/api/internal/lgs/process-warmup",
-      "schedule": "*/1 * * * *"
-    },
-    {
       "path": "/api/internal/seo/process-index-queue",
       "schedule": "*/5 * * * *"
     },

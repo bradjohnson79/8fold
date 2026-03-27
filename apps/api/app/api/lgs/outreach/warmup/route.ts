@@ -31,7 +31,7 @@ export async function GET() {
       const status = r.warmupStatus ?? "not_started";
       const currentLimit = getDailyLimit(day);
       const nextLimit = getNextDayLimit(day);
-      const ready = isReadyForOutreach(day, status);
+      const ready = isReadyForOutreach(day, status) || status === "complete";
 
       const warmupSent = r.warmupSentToday ?? 0;
       const outreachSent = r.outreachSentToday ?? 0;
@@ -43,7 +43,7 @@ export async function GET() {
           ? (
               r.outreachEnabled
                 ? Math.min(3, remaining)
-                : (status === "warming" || status === "ready") ? remaining : 0
+                : status === "warming" ? remaining : 0
             )
           : 0;
       const outreachBudget = Math.max(0, remaining - warmupBudget);
@@ -93,13 +93,14 @@ export async function GET() {
     });
 
     // Summary metrics
-    const managedStatuses = ["warming", "ready"];
+    const managedStatuses = ["warming", "complete"];
     const managedSenders = data.filter((d) =>
       managedStatuses.includes(d.warmup_status)
     );
 
     const warming = data.filter((d) => d.warmup_status === "warming").length;
     const readyCount = data.filter((d) => d.ready_for_outreach).length;
+    const completeCount = data.filter((d) => d.warmup_status === "complete").length;
     const notStarted = data.filter((d) => d.warmup_status === "not_started").length;
     const outreachBlocked = readyCount === 0 && data.length > 0;
 
@@ -132,8 +133,8 @@ export async function GET() {
       .where(eq(lgsWorkerHealth.workerName, "warmup"))
       .limit(1);
 
-    let workerStatus = "unknown";
-    if (workerRow?.lastHeartbeatAt) {
+    let workerStatus = warmupEnabled ? "unknown" : "disabled";
+    if (warmupEnabled && workerRow?.lastHeartbeatAt) {
       const ageMs = Date.now() - new Date(workerRow.lastHeartbeatAt).getTime();
       if (ageMs < 10 * 60_000) workerStatus = "healthy";
       else if (ageMs < 20 * 60_000) workerStatus = "warning";
@@ -154,6 +155,7 @@ export async function GET() {
         total_senders: data.length,
         warming,
         ready_for_outreach: readyCount,
+        complete: completeCount,
         not_started: notStarted,
         outreach_blocked: outreachBlocked,
         schedule: WARMUP_SCHEDULE,
@@ -169,6 +171,7 @@ export async function GET() {
         worker_last_run_status: workerRow?.lastRunStatus ?? null,
         next_system_warmup_send_at: nextSystemWarmupSendAt,
         warmup_enabled: warmupEnabled,
+        warmup_complete: completeCount > 0,
       },
     });
   } catch (err) {
@@ -189,7 +192,7 @@ export async function POST(req: Request) {
       ok: true,
       data: {
         warmup_enabled: enabled,
-        status_label: enabled ? "Enabled" : "Paused",
+        status_label: enabled ? "Enabled" : "Complete",
       },
     });
   } catch (err) {

@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { desc } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import { lgsWarmupActivity } from "@/db/schema/directoryEngine";
+import { getWarmupEnabled } from "@/src/services/lgs/warmupConfigService";
 
 export async function GET() {
   try {
+    const warmupEnabled = await getWarmupEnabled();
+    if (!warmupEnabled) {
+      return NextResponse.json({ ok: true, data: [] });
+    }
+
     const rows = await db
       .select()
       .from(lgsWarmupActivity)
