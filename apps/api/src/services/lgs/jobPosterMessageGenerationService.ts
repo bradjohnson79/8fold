@@ -78,6 +78,10 @@ function textToHtml(text: string): string {
     .join("\n");
 }
 
+function stripSubjectLine(text: string): string {
+  return text.replace(/^subject:\s.*(?:\r?\n)+/i, "").trim();
+}
+
 export async function generateJobPosterMessage(input: JobPosterMessageInput): Promise<JobPosterMessageOutput> {
   const openai = getOpenAiClient();
   const raw = (await openai.responses.create({
@@ -97,7 +101,7 @@ export async function generateJobPosterMessage(input: JobPosterMessageInput): Pr
     throw new Error("empty_job_poster_generation");
   }
 
-  const body = textToHtml(text);
+  const body = textToHtml(stripSubjectLine(text) || text);
 
   return {
     subject: buildSubject(input),
