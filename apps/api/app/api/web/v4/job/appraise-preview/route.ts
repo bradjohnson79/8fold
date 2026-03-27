@@ -5,6 +5,7 @@ import { requireRole } from "@/src/auth/requireRole";
 import { V4JobAppraiseBodySchema } from "@/src/services/v4/jobAppraisalService";
 import { badRequest, toV4ErrorResponse, type V4Error } from "@/src/services/v4/v4Errors";
 import { appraiseJobPrice } from "@/src/pricing/aiAppraisal";
+import { computeAppraisalConfidence, deriveDynamicPriceRange } from "@/src/pricing/appraisalConfidence";
 
 export const runtime = "nodejs";
 
@@ -18,9 +19,7 @@ function staticFallbackAppraisal(input: { tradeCategory: string; provinceState: 
   if (input.tradeCategory === "ELECTRICAL") median += 40;
   if (input.isRegionalRequested) median += 20;
 
-  const low = Math.max(50, roundToNearestFive(median * 0.85));
   const finalMedian = roundToNearestFive(median);
-  const high = Math.max(finalMedian + 5, roundToNearestFive(median * 1.15));
   const rationale = [
     `Province ${input.provinceState} baseline applied for ${input.tradeCategory}.`,
     input.isRegionalRequested
@@ -30,7 +29,7 @@ function staticFallbackAppraisal(input: { tradeCategory: string; provinceState: 
     .join(" ")
     .slice(0, 100);
 
-  return { low, median: finalMedian, high, rationale };
+  return { median: finalMedian, rationale };
 }
 
 export async function POST(req: Request) {
@@ -65,15 +64,31 @@ export async function POST(req: Request) {
           scope: input.description,
           title: input.title,
         });
-        const medianDollars = Math.round(aiResult.priceMedianCents / 100);
-        const low = Math.max(50, roundToNearestFive(medianDollars * 0.85));
-        const high = Math.max(medianDollars + 5, roundToNearestFive(medianDollars * 1.15));
+        const medianDollars = roundToNearestFive(Math.round(aiResult.priceMedianCents / 100));
+        const range = deriveDynamicPriceRange({
+          title: input.title,
+          description: input.description,
+          tradeCategory: input.tradeCategory,
+          median: medianDollars,
+          isRegionalRequested: input.isRegionalRequested,
+        });
+        const confidence = computeAppraisalConfidence({
+          title: input.title,
+          description: input.description,
+          tradeCategory: input.tradeCategory,
+          median: medianDollars,
+          low: range.low,
+          high: range.high,
+        });
         return NextResponse.json({
-          low,
-          median: roundToNearestFive(medianDollars),
-          high,
-          confidence: "MEDIUM",
+          low: range.low,
+          median: medianDollars,
+          high: range.high,
+          confidence: confidence.confidenceLabel,
+          confidenceScore: confidence.confidenceScore,
           rationale: aiResult.reasoning.slice(0, 100),
+          confidenceExplanation:
+            "Confidence is based on job clarity, category familiarity, and pricing consistency.",
           appraisalToken: randomUUID(),
           modelUsed: "gpt-5-nano",
           usedFallback: false,
@@ -84,9 +99,30 @@ export async function POST(req: Request) {
     }
 
     const fallback = staticFallbackAppraisal(input);
+    const range = deriveDynamicPriceRange({
+      title: input.title,
+      description: input.description,
+      tradeCategory: input.tradeCategory,
+      median: fallback.median,
+      isRegionalRequested: input.isRegionalRequested,
+    });
+    const confidence = computeAppraisalConfidence({
+      title: input.title,
+      description: input.description,
+      tradeCategory: input.tradeCategory,
+      median: fallback.median,
+      low: range.low,
+      high: range.high,
+    });
     return NextResponse.json({
-      ...fallback,
-      confidence: "MEDIUM",
+      low: range.low,
+      median: fallback.median,
+      high: range.high,
+      rationale: fallback.rationale,
+      confidence: confidence.confidenceLabel,
+      confidenceScore: confidence.confidenceScore,
+      confidenceExplanation:
+        "Confidence is based on job clarity, category familiarity, and pricing consistency.",
       appraisalToken: randomUUID(),
       modelUsed: "static",
       usedFallback: true,
@@ -105,7 +141,10 @@ export async function POST(req: Request) {
       median: 200,
       high: 300,
       confidence: "LOW",
+      confidenceScore: 0.2,
       rationale: "Fallback appraisal applied.",
+      confidenceExplanation:
+        "Confidence is based on job clarity, category familiarity, and pricing consistency.",
       appraisalToken: randomUUID(),
       modelUsed: "fallback",
       usedFallback: true,

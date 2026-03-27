@@ -7,7 +7,7 @@ import { jobPayments } from "@/db/schema/jobPayment";
 import { jobPhotos } from "@/db/schema/jobPhoto";
 import { v4JobUploads } from "@/db/schema/v4JobUpload";
 import { stripe } from "@/src/payments/stripe";
-import { writeAuthHoldLedger, writeChargeLedger } from "@/src/services/escrow/ledger";
+import { writeChargeLedger } from "@/src/services/escrow/ledger";
 import { createJobMinimalInsert } from "@/src/services/v4/jobPosterJobInsertMinimal";
 import { TRADE_CATEGORIES_CANONICAL } from "@/src/validation/v4/constants";
 
@@ -59,23 +59,13 @@ function toSubmitCurrency(value: unknown): LedgerCurrency {
 }
 
 async function writePostInsertLedger(input: {
-  isCapturedCharge: boolean;
   jobId: string;
   totalAmountCents: number;
   currency: LedgerCurrency;
   paymentIntentId: string;
 }) {
   try {
-    if (input.isCapturedCharge) {
-      await writeChargeLedger(db as any, {
-        jobId: input.jobId,
-        totalAmountCents: input.totalAmountCents,
-        currency: input.currency,
-        paymentIntentId: input.paymentIntentId,
-      });
-      return;
-    }
-    await writeAuthHoldLedger(db as any, {
+    await writeChargeLedger(db as any, {
       jobId: input.jobId,
       totalAmountCents: input.totalAmountCents,
       currency: input.currency,
@@ -89,7 +79,7 @@ async function writePostInsertLedger(input: {
       code: ledgerErr?.code,
       constraint: ledgerErr?.constraint,
       column: ledgerErr?.column,
-      status: input.isCapturedCharge ? "CAPTURED" : "AUTHORIZED",
+      status: "CAPTURED",
       message: ledgerErr?.message,
     });
   }
@@ -120,9 +110,8 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
 
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
   const piStatus = String(pi.status ?? "").toLowerCase();
-  const isAuthorizedHold = piStatus === "requires_capture";
   const isCapturedCharge = piStatus === "succeeded";
-  if (!isAuthorizedHold && !isCapturedCharge) {
+  if (!isCapturedCharge) {
     throw Object.assign(new Error("Payment not completed. Complete Stripe confirmation first."), { status: 409 });
   }
 
@@ -254,9 +243,9 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
             stripePaymentIntentStatus: String(pi.status ?? ""),
             stripeChargeId,
             amountCents: stripeAmountCents,
-            status: isCapturedCharge ? "CAPTURED" : "PENDING",
-            escrowLockedAt: isCapturedCharge ? now : null,
-            paymentCapturedAt: isCapturedCharge ? now : null,
+            status: "CAPTURED",
+            escrowLockedAt: now,
+            paymentCapturedAt: now,
             updatedAt: now,
           } as any)
           .where(eq(jobPayments.id, existingPayment.id));
@@ -268,9 +257,9 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
           stripePaymentIntentStatus: String(pi.status ?? ""),
           stripeChargeId,
           amountCents: stripeAmountCents,
-          status: isCapturedCharge ? "CAPTURED" : "PENDING",
-          escrowLockedAt: isCapturedCharge ? now : null,
-          paymentCapturedAt: isCapturedCharge ? now : null,
+          status: "CAPTURED",
+          escrowLockedAt: now,
+          paymentCapturedAt: now,
           createdAt: now,
           updatedAt: now,
         } as any);
@@ -324,7 +313,6 @@ export async function submitJobFromPayload(userId: string, payload: unknown): Pr
   }
 
   await writePostInsertLedger({
-    isCapturedCharge,
     jobId,
     totalAmountCents: stripeAmountCents,
     currency,

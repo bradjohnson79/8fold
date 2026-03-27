@@ -72,29 +72,6 @@ async function ensureLedgerEntry(
   } as any);
 }
 
-export async function writeAuthHoldLedger(
-  tx: TxLike,
-  input: {
-    jobId: string;
-    totalAmountCents: number;
-    currency: "USD" | "CAD";
-    paymentIntentId: string;
-  },
-) {
-  await ensureLedgerEntry(tx, {
-    userId: SYSTEM_ESCROW_LEDGER_USER_ID,
-    jobId: input.jobId,
-    type: "AUTH_HOLD",
-    direction: "CREDIT",
-    bucket: "PENDING",
-    amountCents: input.totalAmountCents,
-    currency: input.currency,
-    stripeRef: input.paymentIntentId,
-    memo: "Escrow authorization hold",
-    metadata: { paymentIntentId: input.paymentIntentId },
-  });
-}
-
 export async function writeChargeLedger(
   tx: TxLike,
   input: {
@@ -127,42 +104,6 @@ export async function writeChargeLedger(
     currency: input.currency,
     stripeRef: input.paymentIntentId,
     memo: "Escrow held balance",
-    metadata: { paymentIntentId: input.paymentIntentId },
-  });
-}
-
-export async function writeCaptureLedger(
-  tx: TxLike,
-  input: {
-    jobId: string;
-    totalAmountCents: number;
-    currency: "USD" | "CAD";
-    paymentIntentId: string;
-  },
-) {
-  await ensureLedgerEntry(tx, {
-    userId: SYSTEM_ESCROW_LEDGER_USER_ID,
-    jobId: input.jobId,
-    type: "CAPTURE",
-    direction: "CREDIT",
-    bucket: "HELD",
-    amountCents: input.totalAmountCents,
-    currency: input.currency,
-    stripeRef: input.paymentIntentId,
-    memo: "Escrow capture",
-    metadata: { paymentIntentId: input.paymentIntentId },
-  });
-
-  await ensureLedgerEntry(tx, {
-    userId: SYSTEM_ESCROW_LEDGER_USER_ID,
-    jobId: input.jobId,
-    type: "ESCROW_AVAILABLE",
-    direction: "CREDIT",
-    bucket: "AVAILABLE",
-    amountCents: input.totalAmountCents,
-    currency: input.currency,
-    stripeRef: input.paymentIntentId,
-    memo: "Escrow available",
     metadata: { paymentIntentId: input.paymentIntentId },
   });
 }
@@ -236,29 +177,6 @@ export async function writeEscrowAllocationLedger(
     currency: input.currency,
     stripeRef: input.paymentIntentId,
     memo: "Tax liability allocation",
-    metadata: { paymentIntentId: input.paymentIntentId },
-  });
-}
-
-export async function writeAuthExpiredLedger(
-  tx: TxLike,
-  input: {
-    jobId: string;
-    totalAmountCents: number;
-    currency: "USD" | "CAD";
-    paymentIntentId: string;
-  },
-) {
-  await ensureLedgerEntry(tx, {
-    userId: SYSTEM_ESCROW_LEDGER_USER_ID,
-    jobId: input.jobId,
-    type: "AUTH_EXPIRED",
-    direction: "DEBIT",
-    bucket: "PENDING",
-    amountCents: input.totalAmountCents,
-    currency: input.currency,
-    stripeRef: input.paymentIntentId,
-    memo: "Escrow authorization expired",
     metadata: { paymentIntentId: input.paymentIntentId },
   });
 }

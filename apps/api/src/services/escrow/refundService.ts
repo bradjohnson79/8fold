@@ -5,6 +5,7 @@ import { jobPayments } from "@/db/schema/jobPayment";
 import { ledgerEntries } from "@/db/schema/ledgerEntry";
 import { v4JobAssignments } from "@/db/schema/v4JobAssignment";
 import { refundPaymentIntent } from "@/src/payments/stripe";
+import { emitDomainEvent } from "@/src/events/domainEventDispatcher";
 import { getRefundWindowDays, getUnassignedRefundEligibility, type RefundEligibility, type RefundIneligibleCode } from "@/src/services/escrow/refundEligibility";
 import { writeRefundLedger } from "@/src/services/escrow/ledger";
 
@@ -23,6 +24,7 @@ export type RefundUnassignedJobResult = {
   ok: boolean;
   idempotent: boolean;
   jobId: string;
+  jobPosterUserId?: string | null;
   refundedAt: string | null;
   paymentStatus: string;
   stripePaymentIntentStatus: string | null;
@@ -36,8 +38,7 @@ export async function refundUnassignedJob(
   opts?: { expectedPosterUserId?: string; now?: Date },
 ): Promise<RefundUnassignedJobResult> {
   const now = opts?.now ?? new Date();
-
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select id from jobs where id = ${jobId} for update`);
 
     const rows = await tx
@@ -66,11 +67,12 @@ export async function refundUnassignedJob(
         ok: false,
         idempotent: false,
         jobId,
+        jobPosterUserId: null,
         refundedAt: null,
         paymentStatus: "",
         stripePaymentIntentStatus: null,
         refundId: null,
-        reasonCode: "NOT_FOUND",
+        reasonCode: "NOT_FOUND" as const,
       };
     }
 
@@ -79,11 +81,12 @@ export async function refundUnassignedJob(
         ok: false,
         idempotent: false,
         jobId,
+        jobPosterUserId: String(job.jobPosterUserId ?? ""),
         refundedAt: null,
         paymentStatus: String(job.paymentStatus ?? ""),
         stripePaymentIntentStatus: job.stripePaymentIntentStatus ?? null,
         refundId: null,
-        reasonCode: "FORBIDDEN",
+        reasonCode: "FORBIDDEN" as const,
       };
     }
 
@@ -114,11 +117,12 @@ export async function refundUnassignedJob(
         ok: idempotent,
         idempotent,
         jobId,
+        jobPosterUserId: String(job.jobPosterUserId ?? ""),
         refundedAt: job.stripeRefundedAt ? job.stripeRefundedAt.toISOString() : null,
         paymentStatus: String(job.paymentStatus ?? ""),
         stripePaymentIntentStatus: job.stripePaymentIntentStatus ?? null,
         refundId: null,
-        reasonCode: eligibility.code,
+        reasonCode: eligibility.code as RefundIneligibleCode,
       };
     }
 
@@ -128,11 +132,12 @@ export async function refundUnassignedJob(
         ok: false,
         idempotent: false,
         jobId,
+        jobPosterUserId: String(job.jobPosterUserId ?? ""),
         refundedAt: null,
         paymentStatus: String(job.paymentStatus ?? ""),
         stripePaymentIntentStatus: job.stripePaymentIntentStatus ?? null,
         refundId: null,
-        reasonCode: "MISSING_PAYMENT_INTENT",
+        reasonCode: "MISSING_PAYMENT_INTENT" as const,
       };
     }
 
@@ -185,12 +190,35 @@ export async function refundUnassignedJob(
       ok: true,
       idempotent: false,
       jobId,
+      jobPosterUserId: String(job.jobPosterUserId ?? ""),
       refundedAt: now.toISOString(),
       paymentStatus: "REFUNDED",
       stripePaymentIntentStatus: job.stripePaymentIntentStatus ?? null,
       refundId: refund.refundId,
     };
   });
+
+  if (result.ok && !result.idempotent && result.refundId) {
+    await emitDomainEvent(
+      {
+        type: "REFUND_ISSUED",
+        payload: {
+          jobId: result.jobId,
+          refundId: result.refundId,
+          jobPosterId: result.jobPosterUserId || null,
+          createdAt: now,
+          dedupeKeyBase: `refund_issued:${result.refundId}`,
+          metadata: {
+            source: "stale_unassigned_refund",
+            actorType: actor.actorType,
+          },
+        },
+      },
+      { mode: "best_effort" },
+    );
+  }
+
+  return result;
 }
 
 export type RefundStaleSweepResult = {

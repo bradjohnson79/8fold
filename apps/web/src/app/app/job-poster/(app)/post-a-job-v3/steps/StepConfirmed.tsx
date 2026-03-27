@@ -11,7 +11,7 @@ export function StepConfirmed({ draft }: { draft: DraftHook }) {
     <div className="space-y-4">
       <h2 className="text-lg font-bold text-gray-900">Confirmed</h2>
       <div className="rounded-xl border border-green-200 bg-green-50 text-green-800 px-4 py-3">
-        Job submitted successfully. Your payment hold is secured and will be captured after completion approvals.
+        Job submitted successfully. Payment confirmed successfully and funds are secured in Stripe.
       </div>
       {paymentIntentId ? (
         <div className="text-xs text-gray-600">

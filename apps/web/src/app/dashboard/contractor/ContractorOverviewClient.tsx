@@ -19,6 +19,8 @@ type CompletedJob = {
   title: string | null;
   completedAt: string | null;
   payoutStatus: string | null;
+  completionWindowExpiresAt?: string | null;
+  hasActiveDisputeHold?: boolean;
   contractorPayoutCents: number | null;
 };
 
@@ -29,6 +31,26 @@ type SummaryData = {
   awaitingPosterCompletion?: AwaitingCompletion[];
   fullyCompletedJobs?: CompletedJob[];
 };
+
+function payoutStateLabel(job: CompletedJob) {
+  const payoutStatus = String(job.payoutStatus ?? "").toUpperCase();
+  if (payoutStatus === "RELEASED") {
+    return {
+      className: "bg-emerald-600 text-white",
+      text: "Paid out",
+    };
+  }
+  if (job.hasActiveDisputeHold) {
+    return {
+      className: "bg-red-100 text-red-700",
+      text: "On hold (dispute active)",
+    };
+  }
+  return {
+    className: "bg-slate-100 text-slate-600",
+    text: "Pending release (24h review period)",
+  };
+}
 
 type InvitePreview = {
   inviteId: string;
@@ -430,20 +452,21 @@ export default function ContractorOverviewClient() {
                       {" "}&middot; Completed {j.completedAt ? new Date(j.completedAt).toLocaleDateString() : ""}
                       {j.contractorPayoutCents ? <span> &middot; Payout: ${(j.contractorPayoutCents / 100).toFixed(2)}</span> : null}
                     </div>
+                    {j.hasActiveDisputeHold ? (
+                      <div className="mt-1.5 text-xs font-medium text-red-700">Payout is blocked until the dispute is resolved.</div>
+                    ) : j.completionWindowExpiresAt && String(j.payoutStatus ?? "").toUpperCase() !== "RELEASED" ? (
+                      <div className="mt-1.5 text-xs font-medium text-slate-700">
+                        Auto release in: <DeadlineCountdown targetIso={j.completionWindowExpiresAt} />
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
                       2/2
                     </span>
-                    {j.payoutStatus === "RELEASED" ? (
-                      <span className="inline-flex rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">
-                        PAID
-                      </span>
-                    ) : (
-                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                        Pending Release
-                      </span>
-                    )}
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${payoutStateLabel(j).className}`}>
+                      {payoutStateLabel(j).text}
+                    </span>
                   </div>
                 </div>
               </div>

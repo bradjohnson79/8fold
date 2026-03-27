@@ -21,8 +21,6 @@ export async function createPaymentIntent(
     metadata?: Record<string, string>;
     idempotencyKey: string;
     description?: string;
-    captureMethod?: "automatic" | "manual";
-    confirmationMethod?: "automatic" | "manual";
     requestExtendedAuthorization?: boolean;
     paymentMethodTypes?: Stripe.PaymentIntentCreateParams["payment_method_types"];
     automaticPaymentMethodsEnabled?: boolean;
@@ -43,7 +41,7 @@ export async function createPaymentIntent(
     currency,
     metadata: opts.metadata ?? {},
     description: opts.description,
-    capture_method: opts.captureMethod ?? "automatic",
+    capture_method: "automatic",
     payment_method_options: opts.requestExtendedAuthorization
       ? {
           card: {
@@ -57,16 +55,7 @@ export async function createPaymentIntent(
   if (hasExplicitPaymentMethodTypes) {
     createParams.payment_method_types = opts.paymentMethodTypes;
   } else if (opts.automaticPaymentMethodsEnabled ?? true) {
-    // Escrow-style approach:
-    // - We capture funds into the platform account
-    // - We DO NOT split at charge time (transfers happen later, controlled by backend)
     createParams.automatic_payment_methods = { enabled: true };
-  }
-
-  // Stripe can reject requests that combine automatic_payment_methods with explicit confirmation_method.
-  // Keep this unset by default; only send when a caller explicitly asks for non-default behavior.
-  if (opts.confirmationMethod && opts.confirmationMethod !== "automatic" && !createParams.automatic_payment_methods) {
-    createParams.confirmation_method = opts.confirmationMethod;
   }
 
   const paymentIntent = await stripe.paymentIntents.create(createParams, { idempotencyKey: opts.idempotencyKey });

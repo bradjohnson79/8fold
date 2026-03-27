@@ -127,7 +127,15 @@ export async function listJobsBothTabs(contractorUserId: string) {
         contractor_marked_complete_at: jobs.contractor_marked_complete_at,
         poster_marked_complete_at: jobs.poster_marked_complete_at,
         payout_status: jobs.payout_status,
+        completion_window_expires_at: jobs.completion_window_expires_at,
         contractor_payout_cents: jobs.contractor_payout_cents,
+        has_active_dispute_hold: sql<boolean>`exists(
+          select 1
+          from "JobHold" h
+          where h."jobId" = ${jobs.id}
+            and h."reason" = 'DISPUTE'
+            and h."status" = 'ACTIVE'
+        )`,
         created_at: jobs.created_at,
         assignedAt: v4JobAssignments.assignedAt,
       })

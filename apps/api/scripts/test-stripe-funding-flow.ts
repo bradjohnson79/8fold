@@ -50,8 +50,6 @@ async function main() {
     const pi = await createPaymentIntent(amountCents, {
       currency,
       idempotencyKey: `test_${jobId}_${amountCents}`,
-      captureMethod: "automatic",
-      confirmationMethod: "automatic",
       description: `8Fold Job Escrow - ${jobId}`,
       metadata: {
         type: "job_escrow",

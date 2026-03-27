@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { handleApiError } from "@/src/lib/errorHandler";
 import { badRequest, fail, ok } from "@/src/lib/api/respond";
 import { assertJobTransition } from "../../../../../../src/jobs/jobTransitions";
-import { releaseFundsForJob } from "../../../../../../src/services/v4/payouts/releaseFundsService";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -162,17 +161,6 @@ export async function POST(req: Request) {
     if (result.kind === "no_assignment") return fail(409, "job_not_assigned");
     if (result.kind === "materials_pending") return fail(409, "materials_request_pending");
     if (result.kind === "invalid_transition") return fail(409, (result as any).message ?? "invalid_transition");
-
-    // Release funds (best-effort; completion approval is authoritative even if payout fails).
-    try {
-      await releaseFundsForJob({
-        jobId: String((result as any).job?.id ?? jobId),
-        actorRole: "ADMIN",
-        actorId: identity.userId,
-      });
-    } catch {
-      // Failure is reflected via TransferRecord + Job.payoutStatus.
-    }
 
     return ok({ job: result.job });
   } catch (err) {

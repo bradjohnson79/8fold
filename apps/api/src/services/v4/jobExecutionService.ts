@@ -141,6 +141,7 @@ async function finalizeCompletionIfBothMarked(
   }
 
   const completedAt = input.now;
+  const payoutReleaseAt = new Date(completedAt.getTime() + 24 * 60 * 60 * 1000);
 
   const preCheck = await exec
     .select({
@@ -172,6 +173,8 @@ async function finalizeCompletionIfBothMarked(
       completed_at: completedAt,
       contractor_completed_at: input.contractorMarkedCompleteAt,
       customer_approved_at: input.posterMarkedCompleteAt,
+      completion_window_expires_at: payoutReleaseAt,
+      payout_status: "NOT_READY" as any,
       updated_at: completedAt,
     })
     .where(and(eq(jobs.id, input.jobId), inArray(jobs.status, [...FINALIZE_ELIGIBLE_STATUSES] as any)))
@@ -212,20 +215,6 @@ async function finalizeCompletionIfBothMarked(
     } as Record<string, unknown>,
     createdAt: completedAt,
   });
-  await exec.insert(v4EventOutbox).values({
-    id: randomUUID(),
-    eventType: "FUNDS_RELEASE_ELIGIBLE",
-    payload: {
-      jobId: input.jobId,
-      contractorId: input.contractorUserId ? String(input.contractorUserId) : null,
-      jobPosterId: input.jobPosterUserId ? String(input.jobPosterUserId) : null,
-      routerId: input.routerUserId ? String(input.routerUserId) : null,
-      createdAt: completedAt.toISOString(),
-      dedupeKeyBase: `funds_release_eligible:${input.jobId}`,
-    } as Record<string, unknown>,
-    createdAt: completedAt,
-  });
-
   return { finalized: true, completedAt };
 }
 

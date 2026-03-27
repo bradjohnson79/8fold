@@ -706,6 +706,12 @@ export async function notificationEventMapper(
 
       case "REFUND_ISSUED": {
         const p = event.payload;
+        const refundMetadata = {
+          ...(p.metadata ?? {}),
+          jobId: p.jobId,
+          refundId: p.refundId,
+          refund_id: p.refundId,
+        };
         if (p.jobPosterId) {
           await safeNotify(
             event.type,
@@ -722,7 +728,7 @@ export async function notificationEventMapper(
               createdAt: asDate(p.createdAt),
               dedupeKey: `${p.dedupeKeyBase}:poster`,
               idempotencyKey: `${p.dedupeKeyBase}:poster`,
-              metadata: p.metadata ?? {},
+              metadata: refundMetadata,
             },
             tx,
           );
@@ -744,7 +750,7 @@ export async function notificationEventMapper(
               createdAt: asDate(p.createdAt),
               dedupeKey: `${p.dedupeKeyBase}:admin:${adminId}`,
               idempotencyKey: `${p.dedupeKeyBase}:admin:${adminId}`,
-              metadata: p.metadata ?? {},
+              metadata: refundMetadata,
             },
             tx,
           );

@@ -33,7 +33,6 @@ function installPricingMock() {
   }));
   vi.doMock("@/src/services/escrow/ledger", () => ({
     writeChargeLedger: vi.fn(),
-    writeAuthHoldLedger: vi.fn(),
   }));
 }
 

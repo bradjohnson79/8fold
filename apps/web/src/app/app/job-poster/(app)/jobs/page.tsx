@@ -73,7 +73,7 @@ export default function JobPosterJobsPage() {
   return (
     <>
       <h2 className="text-lg font-bold text-gray-900">My Jobs</h2>
-      <p className="text-gray-600 mt-2">Payment status is shown as funded/not funded. Stripe IDs are never shown.</p>
+      <p className="text-gray-600 mt-2">Payment status is shown as paid or pending. Stripe IDs are never shown.</p>
       <div className="mt-3 text-sm text-gray-700">
         Refunds and reimbursements are processed through Stripe and returned to the original payment method according to Stripe’s processing timelines.
       </div>
@@ -118,7 +118,7 @@ export default function JobPosterJobsPage() {
                   <div className="text-sm text-gray-600 mt-1">
                     Status: <span className="font-mono">{j.status}</span> · Payment:{" "}
                     <span className={funded ? "text-8fold-green font-semibold" : "text-gray-700 font-semibold"}>
-                      {funded ? "Funded" : "Not funded"}
+                      {funded ? "Paid" : "Pending"}
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2 items-center">
@@ -177,7 +177,7 @@ export default function JobPosterJobsPage() {
               </div>
               {paymentStatusUpper === "FUNDS_SECURED" ? (
                 <div className="mt-3 rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">
-                  ✅ A contractor has accepted your job. Your card has now been charged and funds are securely held until completion.
+                  Payment confirmed. Stripe has charged your card and funds are secured for payout after completion.
                 </div>
               ) : null}
             </div>

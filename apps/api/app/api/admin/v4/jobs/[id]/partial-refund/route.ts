@@ -276,6 +276,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       await appendSystemMessageByJobId(jobId, msgBody, msgDedupeMarker).catch(() => null);
     }
 
+    await emitDomainEvent(
+      {
+        type: "REFUND_ISSUED",
+        payload: {
+          jobId,
+          refundId: stripeRefundId,
+          jobPosterId: String(job.jobPosterUserId ?? ""),
+          createdAt: now,
+          dedupeKeyBase: `refund_issued:${stripeRefundId}`,
+          metadata: {
+            cancelRequestId: cancelRequest.id,
+            adminId: authed.adminId,
+            source: "admin_v4_partial_refund",
+            stripePaymentIntentId: job.stripePaymentIntentId,
+            refundAmountCents: refundCents,
+            currency: String(job.paymentCurrency ?? "CAD").toUpperCase(),
+          },
+        },
+      },
+      { mode: "best_effort" },
+    );
+
     // Emit resolution event if fully resolved
     if (shouldResolveTicket) {
       await emitDomainEvent(

@@ -208,10 +208,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           refundId: stripeRefundId,
           jobPosterId: String(job.jobPosterUserId ?? cancelRequest.jobPosterId ?? ""),
           createdAt: now,
-          dedupeKeyBase: `admin_refund_${jobId}_${cancelRequest.id}`,
+          dedupeKeyBase: `refund_issued:${stripeRefundId}`,
           metadata: {
             cancelRequestId: cancelRequest.id,
             adminId: authed.adminId,
+            source: "admin_v4_refund",
+            stripePaymentIntentId: job.stripePaymentIntentId,
           },
         },
       },

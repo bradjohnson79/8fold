@@ -35,7 +35,7 @@ curl -sS -X POST \
   "${BASE_URL}/api/job-draft/payment-intent" | tee /tmp/job-draft-v3-payment-intent.json
 
 echo
-echo "5) POST submit (requires confirmed payment hold)"
+echo "5) POST submit (requires confirmed Stripe payment)"
 curl -sS -X POST \
   -H "Authorization: Bearer $TOKEN" \
   "${BASE_URL}/api/job-draft/submit" | tee /tmp/job-draft-v3-submit.json

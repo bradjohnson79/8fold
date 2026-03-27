@@ -31,6 +31,8 @@ type CompletedJob = {
   contractorMarkedCompleteAt?: string | null;
   posterMarkedCompleteAt?: string | null;
   payoutStatus: "NOT_READY" | "READY" | "RELEASED" | "FAILED" | string;
+  payoutReleaseAt?: string | null;
+  hasActiveDisputeHold?: boolean;
   contractorPayoutCents: number;
 };
 
@@ -71,32 +73,32 @@ function fmtAppointment(iso: string | null | undefined): string | null {
   }
 }
 
-function payoutBadge(payoutStatus: string, payoutCents: number) {
+function payoutBadge(payoutStatus: string, payoutCents: number, opts?: { payoutReleaseAt?: string | null; hasActiveDisputeHold?: boolean }) {
   const s = (payoutStatus ?? "").toUpperCase();
   if (s === "RELEASED") {
     return (
       <span className="inline-flex rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-semibold text-white">
-        PAID {payoutCents > 0 ? `· $${(payoutCents / 100).toFixed(2)}` : ""}
+        PAID OUT {payoutCents > 0 ? `· $${(payoutCents / 100).toFixed(2)}` : ""}
       </span>
     );
   }
-  if (s === "READY") {
+  if (opts?.hasActiveDisputeHold) {
     return (
-      <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
-        PAYOUT READY {payoutCents > 0 ? `· $${(payoutCents / 100).toFixed(2)}` : ""}
+      <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+        ON HOLD
       </span>
     );
   }
   if (s === "FAILED") {
     return (
       <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-        PAYOUT FAILED
+        RETRYING PAYOUT
       </span>
     );
   }
   return (
     <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-      PAYOUT PENDING
+      PENDING RELEASE
     </span>
   );
 }
@@ -243,7 +245,10 @@ export default function ContractorJobsPage() {
                     <h3 className="font-semibold text-slate-900 leading-snug">{j.title ?? "Job"}</h3>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
                       {statusBadge(j.status)}
-                      {payoutBadge(j.payoutStatus, j.contractorPayoutCents)}
+                      {payoutBadge(j.payoutStatus, j.contractorPayoutCents, {
+                        payoutReleaseAt: j.payoutReleaseAt,
+                        hasActiveDisputeHold: j.hasActiveDisputeHold,
+                      })}
                     </div>
                   </div>
                   {j.scope ? (
@@ -256,6 +261,13 @@ export default function ContractorJobsPage() {
                     ) : null}
                     {j.contractorMarkedCompleteAt && !j.posterMarkedCompleteAt ? (
                       <span className="font-medium text-amber-600">Awaiting poster report</span>
+                    ) : null}
+                    {j.hasActiveDisputeHold ? (
+                      <span className="font-medium text-red-600">On hold (dispute active)</span>
+                    ) : j.payoutReleaseAt && String(j.payoutStatus ?? "").toUpperCase() !== "RELEASED" ? (
+                      <span className="font-medium text-slate-600">
+                        Pending release until {new Date(j.payoutReleaseAt).toLocaleString()}
+                      </span>
                     ) : null}
                   </div>
                 </Link>

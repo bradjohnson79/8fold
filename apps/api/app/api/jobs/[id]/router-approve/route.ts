@@ -3,7 +3,6 @@ import { requireRouterReady } from "../../../../../src/auth/requireRouterReady";
 import { toHttpError } from "../../../../../src/http/errors";
 import { assertJobTransition } from "../../../../../src/jobs/jobTransitions";
 import { getOrCreatePlatformUserId } from "../../../../../src/system/platformUser";
-import { releaseFundsForJob } from "../../../../../src/services/v4/payouts/releaseFundsService";
 import { maybeCreateRouterReferralRewardForUser, trySettleRouterReward } from "../../../../../src/rewards/routerRewards";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
@@ -228,13 +227,6 @@ export async function POST(req: Request) {
     if (result.kind === "deadline_exceeded") {
       return NextResponse.json({ error: "Completion deadline exceeded. Manual review required." }, { status: 409 });
     }
-    // Release funds (Stripe Connect transfers). Best-effort: completion approval is authoritative even if payout fails.
-    try {
-      await releaseFundsForJob({ jobId: id, actorRole: "ROUTER", actorId: user.userId });
-    } catch {
-      // Failure is reflected via TransferRecord + Job.payoutStatus; client can retry or admin can force retry.
-    }
-
     return NextResponse.json({ job: result.job });
   } catch (err) {
     const { status, message } = toHttpError(err);
