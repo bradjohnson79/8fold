@@ -6,6 +6,10 @@ import { lgsFetch } from "@/lib/api";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { helpText } from "@/lib/helpText";
 import { formatDateTime } from "@/lib/formatters";
+import {
+  getGenerateErrorMessage,
+  type MessageGenerationApiResponse,
+} from "@/lib/messageGeneration";
 
 type Lead = {
   id: string;
@@ -133,15 +137,7 @@ function verificationLabel(
 }
 
 function canGenerateForLead(lead: Lead): boolean {
-  if (lead.archived || lead.status === "archived") return false;
-  if (!lead.email) return false;
-  return normalizeVerificationStatus(lead.verification_status) !== "invalid";
-}
-
-function getGenerateErrorMessage(status: number): string {
-  if (status === 400) return "Missing required data";
-  if (status >= 500) return "Generation failed, try again";
-  return "Generate failed";
+  return !lead.archived && lead.status !== "archived";
 }
 
 function MsgCell({
@@ -164,32 +160,39 @@ function MsgCell({
   const generateDisabled = !canGenerateForLead(lead);
 
   const handleGenerate = useCallback(async () => {
-    if (!lead.email) return;
     setGenerating(true);
     try {
-      const res = await fetch("/api/lgs/messages/generate", {
+      const res = await fetch("/api/lgs/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: lead.id }),
+        body: JSON.stringify({
+          leadId: lead.id,
+          email: lead.email,
+          category: lead.trade,
+          city: lead.city,
+          persona: "contractor",
+          force_regenerate: status !== "none",
+        }),
       });
-      if (res.ok) {
+      const json = (await res.json().catch(() => ({}))) as MessageGenerationApiResponse;
+      if (res.ok && json.ok !== false) {
         onGenerated(lead.id);
       } else {
-        onError(getGenerateErrorMessage(res.status));
+        onError(getGenerateErrorMessage(res.status, json));
       }
     } catch {
       onError("Generation failed, try again");
     } finally {
       setGenerating(false);
     }
-  }, [lead.email, lead.id, onError, onGenerated]);
+  }, [lead.city, lead.email, lead.id, lead.trade, onError, onGenerated, status]);
 
   if (status === "none") {
     return (
       <button
         onClick={handleGenerate}
         disabled={generating || generateDisabled}
-        title={generateDisabled ? (!lead.email ? "Email not found yet" : "Invalid email") : "Generate message"}
+        title={generateDisabled ? "Archived leads cannot generate messages" : "Generate message"}
         style={{
           padding: "0.2rem 0.5rem",
           background: "#1e293b",

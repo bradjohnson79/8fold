@@ -19,6 +19,25 @@ type OutreachStatus =
   | "sent"
   | "failed";
 
+export type LeadMessagePersona = "contractor" | "job_poster";
+
+type MessageGenerationOverrides = {
+  email?: string | null;
+  category?: string | null;
+  city?: string | null;
+};
+
+export type LeadMessageGenerationResult = {
+  ok: boolean;
+  skipped?: boolean;
+  id?: string;
+  error?: string;
+  reason?: "missing_data";
+  outreach_status?: OutreachStatus;
+  limitedData?: boolean;
+  missingFields?: string[];
+};
+
 function now() {
   return new Date();
 }
@@ -125,8 +144,9 @@ async function getJobExistingMessage(leadId: string) {
 export async function generateContractorMessageForLead(
   leadId: string,
   existingHashes: Set<string>,
-  skipIfExists = true
-): Promise<{ ok: boolean; skipped?: boolean; id?: string; error?: string; outreach_status?: OutreachStatus }> {
+  skipIfExists = true,
+  overrides: MessageGenerationOverrides = {},
+): Promise<LeadMessageGenerationResult> {
   const [lead] = await db
     .select({
       id: contractorLeads.id,
@@ -147,7 +167,18 @@ export async function generateContractorMessageForLead(
     .limit(1);
 
   if (!lead) return { ok: false, error: "lead_not_found" };
-  if (!lead.email?.trim()) return { ok: false, error: "lead_email_required" };
+
+  const email = lead.email?.trim() || overrides.email?.trim() || "";
+  const trade = lead.trade?.trim() || overrides.category?.trim() || "";
+  const city = lead.city?.trim() || overrides.city?.trim() || "";
+  const businessName = lead.businessName?.trim() || lead.leadName?.trim() || email || "";
+  const missingFields = [
+    ...(!email ? ["email"] : []),
+    ...(!trade ? ["category"] : []),
+    ...(!city ? ["city"] : []),
+    ...(!businessName ? ["company"] : []),
+  ];
+  const limitedData = missingFields.length > 0;
 
   if (skipIfExists) {
     const existing = await getContractorExistingMessage(leadId);
@@ -157,16 +188,16 @@ export async function generateContractorMessageForLead(
         await syncContractorLeadOutreachStatus(leadId, synced, existing.messageType);
       }
       if (synced !== "pending") {
-        return { ok: true, skipped: true, id: existing.id, outreach_status: synced };
+        return { ok: true, skipped: true, id: existing.id, outreach_status: synced, limitedData, missingFields };
       }
     }
   }
 
   const result = await generateOutreachEmail(
     {
-      businessName: lead.businessName ?? "",
-      trade: lead.trade ?? "",
-      city: lead.city ?? "",
+      businessName,
+      trade,
+      city,
       state: lead.state ?? "",
       contactName: lead.leadName ?? undefined,
       leadPriority: lead.leadPriority ?? "medium",
@@ -179,12 +210,14 @@ export async function generateContractorMessageForLead(
   existingHashes.add(result.hash);
 
   const generationContext = {
-    business_name: lead.businessName ?? "",
-    trade: lead.trade ?? "",
-    city: lead.city ?? "",
+    business_name: businessName,
+    trade,
+    city,
     state: lead.state ?? "",
     source: lead.source ?? "",
     message_type: result.messageType,
+    limited_data: limitedData,
+    missing_fields: missingFields,
   };
 
   const [inserted] = await db
@@ -205,13 +238,14 @@ export async function generateContractorMessageForLead(
   await syncContractorLeadOutreachStatus(leadId, "message_generated", result.messageType);
 
   console.log("[Outreach] Message generated", { pipeline: "contractor", leadId, messageId: inserted?.id });
-  return { ok: true, id: inserted?.id, outreach_status: "message_generated" };
+  return { ok: true, id: inserted?.id, outreach_status: "message_generated", limitedData, missingFields };
 }
 
 export async function generateJobPosterMessageForLead(
   leadId: string,
   skipIfExists = true,
-): Promise<{ ok: boolean; skipped?: boolean; id?: string; error?: string; outreach_status?: OutreachStatus }> {
+  overrides: MessageGenerationOverrides = {},
+): Promise<LeadMessageGenerationResult> {
   const [lead] = await db
     .select({
       id: jobPosterLeads.id,
@@ -228,8 +262,18 @@ export async function generateJobPosterMessageForLead(
     .limit(1);
 
   if (!lead) return { ok: false, error: "lead_not_found" };
-  if (!lead.email?.trim()) return { ok: false, error: "lead_email_required" };
-  if (!lead.campaignId) return { ok: false, error: "campaign_id_required" };
+
+  const email = lead.email?.trim() || overrides.email?.trim() || "";
+  const city = lead.city?.trim() || overrides.city?.trim() || "";
+  const category = lead.category?.trim() || overrides.category?.trim() || "";
+  const companyName = lead.companyName?.trim() || lead.contactName?.trim() || email || null;
+  const missingFields = [
+    ...(!email ? ["email"] : []),
+    ...(!category ? ["category"] : []),
+    ...(!city ? ["city"] : []),
+    ...(!companyName ? ["company"] : []),
+  ];
+  const limitedData = missingFields.length > 0;
 
   const existing = await getJobExistingMessage(leadId);
   if (existing) {
@@ -238,7 +282,7 @@ export async function generateJobPosterMessageForLead(
       await syncJobLeadOutreachStatus(leadId, synced);
     }
     if (skipIfExists && synced !== "pending") {
-      return { ok: true, skipped: true, id: existing.id, outreach_status: synced };
+      return { ok: true, skipped: true, id: existing.id, outreach_status: synced, limitedData, missingFields };
     }
     if (!skipIfExists) {
       if (existing.queueStatus) {
@@ -250,24 +294,26 @@ export async function generateJobPosterMessageForLead(
   }
 
   const generated = await generateJobPosterMessage({
-    companyName: lead.companyName,
+    companyName,
     contactName: lead.contactName,
-    city: lead.city,
-    category: lead.category,
+    city,
+    category,
   });
 
   const [inserted] = await db
     .insert(jobPosterEmailMessages)
     .values({
-      campaignId: lead.campaignId,
+      campaignId: lead.campaignId ?? null,
       leadId: lead.id,
       subject: generated.subject,
       body: generated.body,
       messageHash: generated.hash,
       generationContext: {
         campaign_type: "jobs",
-        city: lead.city,
-        category: lead.category,
+        city,
+        category,
+        limited_data: limitedData,
+        missing_fields: missingFields,
       },
       generatedBy: "gpt5-nano",
       status: "pending_review",
@@ -280,7 +326,7 @@ export async function generateJobPosterMessageForLead(
   await syncJobLeadOutreachStatus(leadId, "message_generated");
 
   console.log("[Outreach] Message generated", { pipeline: "jobs", leadId, messageId: inserted?.id });
-  return { ok: true, id: inserted?.id, outreach_status: "message_generated" };
+  return { ok: true, id: inserted?.id, outreach_status: "message_generated", limitedData, missingFields };
 }
 
 export async function approveContractorMessage(

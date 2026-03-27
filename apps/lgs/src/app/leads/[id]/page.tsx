@@ -5,6 +5,11 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { lgsFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/formatters";
+import {
+  getGenerateErrorMessage,
+  hasLimitedMessageContext,
+  type MessageGenerationApiResponse,
+} from "@/lib/messageGeneration";
 
 type Message = {
   id: string;
@@ -55,15 +60,7 @@ function normalizeVerificationStatus(status: string | null | undefined): "pendin
 }
 
 function canGenerateForLead(lead: Lead | null): boolean {
-  if (!lead?.email) return false;
-  if (lead.status === "archived") return false;
-  return normalizeVerificationStatus(lead.verification_status) !== "invalid";
-}
-
-function getGenerateErrorMessage(status: number): string {
-  if (status === 400) return "Missing required data";
-  if (status >= 500) return "Generation failed, try again";
-  return "Generate failed";
+  return !!lead && lead.status !== "archived";
 }
 
 const MSG_STATUS_LABEL: Record<string, string> = {
@@ -303,23 +300,31 @@ export default function LeadDetailPage() {
   }
 
   async function handleGenerate() {
-    if (!lead?.email) return;
+    if (!lead) return;
     setGenerating(true);
     setEditing(false);
     setShowRegenPrompt(false);
     setActionMsg(null);
     try {
-      const res = await fetch("/api/lgs/messages/generate", {
+      const res = await fetch("/api/lgs/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: leadId }),
+        body: JSON.stringify({
+          leadId,
+          email: lead.email,
+          category: lead.trade,
+          city: lead.city,
+          persona: "contractor",
+          force_regenerate: !!lead.latest_message,
+        }),
       });
-      if (res.ok) {
-        setActionMsg({ text: "Message generated.", ok: true });
+      const json = (await res.json().catch(() => ({}))) as MessageGenerationApiResponse;
+      if (res.ok && json.ok !== false) {
+        setActionMsg({ text: json.data?.warning ?? "Message generated.", ok: true });
         const updated = await fetchLead(leadId);
         if (updated) setLead(updated);
       } else {
-        setActionMsg({ text: getGenerateErrorMessage(res.status), ok: false });
+        setActionMsg({ text: getGenerateErrorMessage(res.status, json), ok: false });
       }
     } catch {
       setActionMsg({ text: "Generation failed, try again", ok: false });
@@ -360,6 +365,13 @@ export default function LeadDetailPage() {
   const location = [lead.city, lead.state, lead.country].filter(Boolean).join(", ");
   const generateDisabled = !canGenerateForLead(lead);
   const verificationStatus = normalizeVerificationStatus(lead.verification_status);
+  const limitedMessageContext = hasLimitedMessageContext({
+    email: lead.email,
+    category: lead.trade,
+    city: lead.city,
+    company: lead.business_name,
+    contact: lead.lead_name,
+  });
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -422,6 +434,12 @@ export default function LeadDetailPage() {
           </p>
         )}
       </div>
+
+      {limitedMessageContext && (
+        <div style={{ background: "#2a220f", border: "1px solid #a16207", color: "#fbbf24", borderRadius: 8, padding: "0.85rem 1rem", marginBottom: "1.5rem", fontSize: "0.875rem" }}>
+          Using limited data — message may be generic
+        </div>
+      )}
 
       {/* Contact Emails — shows primary selection + all secondary emails discovered */}
       {(lead.email || (lead.secondary_emails && lead.secondary_emails.length > 0)) && (
