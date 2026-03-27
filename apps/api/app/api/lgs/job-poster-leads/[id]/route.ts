@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/drizzle";
 import {
   jobPosterEmailMessages,
   jobPosterEmailQueue,
   jobPosterLeads,
 } from "@/db/schema/directoryEngine";
+import {
+  getLgsSchemaCapabilities,
+} from "@/src/services/lgs/lgsSchemaCapabilities";
 
 function normalizeVerificationStatus(status: string | null | undefined): "pending" | "valid" | "invalid" {
   const normalized = String(status ?? "").trim().toLowerCase();
@@ -43,13 +46,44 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const schemaCapabilities = await getLgsSchemaCapabilities();
     const { id } = await params;
     if (!id) {
       return NextResponse.json({ ok: false, error: "id_required" }, { status: 400 });
     }
 
+    const processingStatusNormalized = schemaCapabilities.jobPosterProcessingStatus
+      ? sql<string>`coalesce(lower(trim(${jobPosterLeads.processingStatus})), 'new')`
+      : sql<string>`case
+          when coalesce(${jobPosterLeads.needsEnrichment}, false) = true then 'enriching'
+          when ${jobPosterLeads.email} is not null and trim(${jobPosterLeads.email}) <> '' then 'processed'
+          else 'new'
+        end`;
+
     const [lead] = await db
-      .select()
+      .select({
+        id: jobPosterLeads.id,
+        website: jobPosterLeads.website,
+        companyName: jobPosterLeads.companyName,
+        contactName: jobPosterLeads.contactName,
+        email: jobPosterLeads.email,
+        phone: jobPosterLeads.phone,
+        category: jobPosterLeads.category,
+        city: jobPosterLeads.city,
+        state: jobPosterLeads.state,
+        country: jobPosterLeads.country,
+        source: jobPosterLeads.source,
+        status: jobPosterLeads.status,
+        processingStatus: processingStatusNormalized,
+        assignmentStatus: jobPosterLeads.assignmentStatus,
+        outreachStatus: jobPosterLeads.outreachStatus,
+        contactAttempts: jobPosterLeads.contactAttempts,
+        responseReceived: jobPosterLeads.responseReceived,
+        signedUp: jobPosterLeads.signedUp,
+        emailVerificationStatus: jobPosterLeads.emailVerificationStatus,
+        createdAt: jobPosterLeads.createdAt,
+        updatedAt: jobPosterLeads.updatedAt,
+      })
       .from(jobPosterLeads)
       .where(eq(jobPosterLeads.id, id))
       .limit(1);
@@ -100,8 +134,8 @@ export async function GET(
         response_received: lead.responseReceived,
         signed_up: lead.signedUp,
         verification_status: normalizeVerificationStatus(lead.emailVerificationStatus),
-        email_bounced: lead.emailBounced,
-        notes: lead.notes,
+        email_bounced: null,
+        notes: null,
         created_at: lead.createdAt?.toISOString() ?? null,
         updated_at: lead.updatedAt?.toISOString() ?? null,
         latest_message: message
