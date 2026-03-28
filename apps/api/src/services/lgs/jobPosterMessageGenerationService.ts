@@ -17,7 +17,7 @@ export type JobPosterMessageOutput = {
 };
 
 const MODEL = "gpt-5-nano";
-const MESSAGE_VERSION = "job-poster-v1";
+const MESSAGE_VERSION = "job-poster-v2";
 const MAX_OUTPUT_TOKENS = 420;
 
 function getGreetingName(input: JobPosterMessageInput): string {
@@ -29,43 +29,66 @@ function getGreetingName(input: JobPosterMessageInput): string {
 function buildPrompt(input: JobPosterMessageInput): string {
   const city = input.city?.trim() || "your area";
   const name = getGreetingName(input);
-  const category = input.category?.trim() ? input.category.replace(/_/g, " ") : "local businesses";
+  const company = input.companyName?.trim() || "their business";
+  const category = input.category?.trim() ? input.category.replace(/_/g, " ") : "general";
 
   return `
-Write a short outreach email to a potential job poster or business that may need contractor help.
+Write a short, natural outreach email to a potential job poster (property manager, business, or homeowner).
 
 Context:
 - Recipient: ${name}
-- Company: ${input.companyName?.trim() || "their business"}
+- Company: ${company}
 - City: ${city}
 - Category: ${category}
 
-About 8Fold:
-- 8Fold helps job posters connect with reliable local contractors.
-- We focus on fast routing, clear communication, and dependable project fulfillment.
+Tone:
+- Human
+- Conversational
+- Confident but not pushy
+- Not robotic or corporate
 
-Goal:
-- Ask whether they ever need contractor help for upcoming work.
-- Keep it human, direct, and low-pressure.
-- Generate a fresh variation each time.
+Subject:
+- Catch attention
+- Mention contractors, help, or availability
+- Avoid generic phrases like "support" or "services"
 
-Requirements:
-- Under 120 words
-- Sound observant and specific, not salesy
-- Do not ask for a meeting or call
-- Do not use generic openers like "I hope you're doing well"
-- Mention 8Fold naturally
-- End with a simple invitation to reply if contractor support would be useful
+Body structure:
+1. Open naturally with "Hi ${name}," when a recipient name is available, otherwise "Hi ${company} team,"
+2. Quick intro: "I'm Brad from 8Fold."
+3. What we do, simple and clear: "We connect people with reliable local contractors in ${city} for day-to-day jobs and projects."
+4. Light relevance: mention maintenance, repairs, or one-off jobs naturally.
+5. Value: explain that 8Fold can quickly match them with someone solid without the usual back-and-forth.
+6. Pricing angle: mention they can also post jobs on 8Fold with flexible pricing depending on what they need.
+7. Soft encouragement: invite them to check out https://8fold.app and create a free account if they want to see how it works.
+8. Soft close: "No pressure—just figured I'd reach out in case it's useful."
+9. CTA: "Happy to help whenever you need it."
+10. Include this exact signature:
+Best,
+Brad Johnson
+Chief Operations Officer
+info@8fold.app
+https://8fold.app
 
-Output:
-Return only the email body in plain text.
+Rules:
+- Keep the full email under 150 words
+- No fluff
+- No buzzwords
+- No "we'd love to" language
+- Do not ask for a call, meeting, or chat
+- Make it feel like a real person typed it in under a minute
+- Return only the email body in plain text
 `;
 }
 
 function buildSubject(input: JobPosterMessageInput): string {
-  const city = input.city?.trim();
-  if (city) return `Contractor support in ${city}`;
-  return "Quick question about contractor coverage";
+  const company = input.companyName?.trim();
+  const category = input.category?.trim()?.replace(/_/g, " ").toLowerCase();
+
+  if (category?.includes("property")) return "Contractors available for your property";
+  if (category?.includes("moving")) return "Extra contractor help when you need it";
+  if (category?.includes("construction")) return "Contractors available for upcoming jobs";
+  if (company) return `Contractors available for ${company}`;
+  return "Trade contractors available if needed";
 }
 
 function textToHtml(text: string): string {
